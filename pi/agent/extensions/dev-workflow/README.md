@@ -102,12 +102,12 @@ Plan files are ordinary markdown files stored under `.plans/` in the repo root.
 
 The Plan-mode contract requires a discovery-first flow before durable plan writing:
 
-1. Discover: read relevant repo context and run a bounded grilling loop.
-2. Explore: compare viable approaches with trade-offs and a recommendation.
+1. Discover: read relevant repo context and clarify the purpose, constraints, success criteria, acceptance criteria, and scope boundaries.
+2. Explore: compare viable approaches when trade-offs matter, lead with a recommendation, and get the user's decision.
 3. Validate: confirm the chosen direction and unresolved assumptions with the user.
-4. Author: write or update the `.plans/` markdown file.
+4. Author: write or update the `.plans/` markdown file only after the direction is validated.
 
-For non-trivial work, the agent should ask requirements-discovery questions until the purpose, constraints, success criteria, major trade-offs, and acceptance criteria are clear enough to execute. It should ask one focused question at a time, include a recommended answer, resolve upstream decisions before downstream questions, and explore the repo instead of asking whenever the repo can answer the question. This grilling behavior is inspired by Matt Pocock's [`grill-me` skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me). The agent should use `ask_user` for material decisions with multiple valid directions, and it should not call `write_plan` or `edit_plan` until discovery, exploration, and validation are complete unless the user explicitly asks to skip discovery or provides a complete implementation-ready plan.
+For non-trivial work, the agent should ask at least one focused requirements-discovery question before authoring unless the user explicitly asks to skip discovery or provides a complete implementation-ready plan. It should ask one focused question at a time, include a recommended answer, prefer multiple choice when it fits, resolve upstream decisions before downstream questions, and explore the repo instead of asking whenever the repo can answer the question. After asking a material question or presenting a material decision, it should stop and wait for the user's answer rather than continuing into authoring in the same turn. This grilling behavior is inspired by Matt Pocock's [`grill-me` skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me). The agent should use `ask_user` for material decisions with multiple valid directions, and it should not call `write_plan` or `edit_plan` until discovery, exploration, and validation are complete unless the user explicitly asks to skip discovery or provides a complete implementation-ready plan.
 
 The Plan-mode contract includes a plan template for substantial work. Agents should use it unless there is a clear reason to simplify:
 

@@ -436,6 +436,14 @@ test("/plan sends a kickoff user message, switches tools/thinking, and injects t
   assert.match(String(pi._sentUserMessages[0]?.content), /plan mode/i);
   assert.match(
     String(pi._sentUserMessages[0]?.content),
+    /start discovery now/i,
+  );
+  assert.match(
+    String(pi._sentUserMessages[0]?.content),
+    /do not write or edit a plan yet/i,
+  );
+  assert.match(
+    String(pi._sentUserMessages[0]?.content),
     /Refactor auth middleware/,
   );
   assert.deepEqual(pi._emittedEvents.at(-1), {
@@ -453,6 +461,8 @@ test("/plan sends a kickoff user message, switches tools/thinking, and injects t
     pi._ctx(),
   );
   assert.match(result.systemPrompt, /current mode: plan/i);
+  assert.match(result.systemPrompt, /stop and wait for the user's answer/i);
+  assert.match(result.systemPrompt, /approved the direction/i);
   assert.match(result.systemPrompt, /write_plan/i);
   assert.match(result.systemPrompt, /edit_plan/i);
   assert.match(result.systemPrompt, /\.plans\//i);

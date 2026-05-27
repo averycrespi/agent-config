@@ -384,7 +384,7 @@ export function createDevWorkflowExtension(
 
       if (mode === "plan") {
         lines.push(
-          "Start planning now. Read relevant repo context, clarify what matters, and create or refine .plans/*.md files only when you have enough information.",
+          "Start discovery now. Read relevant repo context first. For non-trivial work, do not write or edit a plan yet: ask one focused requirements question or present the next material decision with a recommendation, then wait for the user's answer. Author .plans/*.md only after discovery, approach exploration, and user validation are complete.",
         );
       } else if (mode === "execute") {
         lines.push(

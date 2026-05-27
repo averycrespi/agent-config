@@ -13,25 +13,27 @@ test("buildModeContract for plan mode includes collaborative discovery and plan-
   });
 
   assert.match(contract, /current mode: plan/i);
-  assert.match(contract, /Plan mode has four phases/i);
-  assert.match(contract, /Discover, Explore, Validate, and Author/i);
-  assert.match(contract, /clarify ambiguous requests/i);
-  assert.match(contract, /bounded grilling loop/i);
-  assert.match(contract, /requirements-discovery questions until/i);
+  assert.match(contract, /Plan mode outcome/i);
+  assert.match(contract, /start with discovery/i);
+  assert.match(
+    contract,
+    /purpose, constraints, success criteria, acceptance criteria/i,
+  );
+  assert.match(
+    contract,
+    /ask at least one focused requirements-discovery question/i,
+  );
   assert.match(contract, /ask one focused question at a time/i);
   assert.match(contract, /recommended answer/i);
   assert.match(contract, /multiple-choice/i);
+  assert.match(contract, /stop and wait for the user's answer/i);
   assert.match(contract, /exploring the repo/i);
+  assert.match(contract, /2-3 viable approaches/i);
+  assert.match(contract, /lead with your recommendation/i);
+  assert.match(contract, /validate the chosen direction/i);
   assert.match(
     contract,
-    /purpose, constraints, success criteria, major trade-offs, and acceptance criteria/i,
-  );
-  assert.match(contract, /2-3 approaches/i);
-  assert.match(contract, /Use ask_user for material decisions/i);
-  assert.match(contract, /confirm the chosen direction/i);
-  assert.match(
-    contract,
-    /Do not call write_plan or edit_plan until Discovery, Explore, and Validate are complete/i,
+    /Do not call write_plan or edit_plan until discovery, exploration, and validation are complete/i,
   );
   assert.match(contract, /skip discovery for trivial mechanical tasks/i);
   assert.match(contract, /testable acceptance criteria/i);
