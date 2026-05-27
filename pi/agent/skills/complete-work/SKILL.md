@@ -77,7 +77,7 @@ For push/create/update operations:
 1. Ensure the working tree is in the expected state. If cleanup edits were made, they should be committed or explicitly left unstaged by user choice.
 2. Push through MCP broker `git` tools such as `git.git_push`, not shell remote git.
 3. Create draft PRs through `github.gh_draft_pr` when available; update existing PRs through `github.gh_edit_pr`.
-4. Draft PR titles and descriptions from all branch changes relative to the base branch. Include verification commands and results. Follow any existing repository PR template.
+4. Draft PR titles and descriptions from all branch changes relative to the base branch. Follow any existing repository PR template and the Pull Request Titles and Descriptions guidance in `AGENTS.md`.
 
 For keep-as-is, report the current branch name and any unpushed/local-only state discovered.
 

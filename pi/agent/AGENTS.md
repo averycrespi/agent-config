@@ -56,6 +56,10 @@
 - Never push to remote unless the user explicitly asks.
 - Commit messages: focus on the _why_, not the _what_. Imperative mood, under 50 characters, no trailing period. Use conventional commits: `<type>(<optional scope>): <description>`.
 
+## Pull Request Titles and Descriptions
+
+Title under 70 chars: `ABC-123: description` when a ticket is known, otherwise use conventional commit format. Body sections: Context, Changes, Review Notes, and Test Plan. Explain why, not just how. Group changes by concept rather than file. Be specific and include verification commands and results.
+
 ## Risky Actions
 
 - Do not require extra confirmation when the user explicitly requests a local workspace change.
