@@ -60,6 +60,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | ------------------------- | ------------------------------------------------------------------------------------------------- |
 | `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows  |
 | `challenge-plan`          | Stress-testing, challenging, reviewing, repairing, or grilling a plan before execution            |
+| `complete-work`           | Finishing verified implementation work, cleaning plan artifacts, and choosing branch or PR steps  |
 | `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                    |
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends |
 | `hindsight`               | Retaining and querying Hindsight memories via the mcp-broker `hindsight` namespace                |
