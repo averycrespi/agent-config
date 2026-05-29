@@ -88,6 +88,26 @@ test("renderFooterLine colors statusline percentages above warning and error thr
   assert.match(line, /\x1b\[2mhigh\x1b\[0m/);
 });
 
+test("renderFooterLine appends the git branch to the working directory in brackets", () => {
+  const line = renderFooterLine(
+    {
+      cwd: "/Users/example/Workspace/agent-config",
+      homeDir: "/Users/example",
+      gitBranch: "feature/statusline-git",
+      contextUsage: { percent: 42, contextWindow: 200_000 },
+      modelId: "gpt-5-codex",
+      thinking: "medium",
+    } as any,
+    200,
+    theme,
+  );
+
+  assert.equal(
+    stripAnsi(line),
+    "~/Workspace/agent-config [feature/statusline-git] · ctx 42%/200k · gpt-5-codex · medium",
+  );
+});
+
 test("renderFooterLine drops lower-priority statusline segments first when width is tight", () => {
   const line = renderFooterLine(
     {

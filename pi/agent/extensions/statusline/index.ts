@@ -12,6 +12,7 @@ import {
 } from "../dev-workflow/api.ts";
 import { codexAdapter } from "./codex.ts";
 import { renderFooterLine, type FooterState } from "./footer.ts";
+import { getGitBranch } from "./git.ts";
 import { type ProviderAdapter } from "./utils.ts";
 
 const ADAPTERS: ProviderAdapter[] = [codexAdapter];
@@ -29,6 +30,7 @@ export default function (pi: ExtensionAPI) {
   function syncState(ctx: any): void {
     state.cwd = ctx.cwd;
     state.homeDir = process.env.HOME;
+    state.gitBranch = getGitBranch(ctx.cwd);
     state.contextUsage = ctx.getContextUsage?.() ?? null;
     state.modelId = ctx.model?.id;
     state.thinking = pi.getThinkingLevel();

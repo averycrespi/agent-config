@@ -20,6 +20,7 @@ export type FooterState = {
   } | null;
   modelId?: string;
   thinking?: string;
+  gitBranch?: string;
   workflowMode?: WorkflowMode;
   workflowBaseThinking?: string;
 };
@@ -29,6 +30,11 @@ function collapseHome(cwd: string, homeDir?: string): string {
     return `~${cwd.slice(homeDir.length)}`;
   }
   return cwd;
+}
+
+function buildCwdSegment(state: FooterState): string {
+  const cwd = collapseHome(state.cwd, state.homeDir);
+  return state.gitBranch ? `${cwd} [${state.gitBranch}]` : cwd;
 }
 
 function formatTokens(value: number): string {
@@ -162,7 +168,7 @@ export function renderFooterLine(
   const separator = theme.fg("dim", " · ");
   const segments = [
     buildWorkflowModeSegment(state.workflowMode, theme),
-    collapseHome(state.cwd, state.homeDir),
+    buildCwdSegment(state),
     buildUsageSegment(state.usage, theme),
     buildContextSegment(state.contextUsage, theme),
     state.modelId ? dim(state.modelId, theme) : undefined,
