@@ -5,160 +5,82 @@ description: Use when ingesting external content (Jira, Confluence, GitHub, docs
 
 # Hindsight
 
-Hindsight is a long-lived memory bank shared across sessions and tools. In Pi, access it through the MCP broker: discover Hindsight tools with `mcp_search`, inspect schemas with `mcp_describe`, and call tools with `mcp_call`. Hindsight tools are scoped under the `hindsight` namespace, for example `hindsight.retain`, `hindsight.recall`, and `hindsight.reflect` when those tools are available in the broker catalog.
+Hindsight is a long-lived memory bank shared across sessions and tools. In Pi, access it through the MCP broker: discover Hindsight tools with `mcp_search`, inspect schemas with `mcp_describe`, and call tools with `mcp_call`.
 
-The two outcomes this skill optimizes for:
+Optimize for:
 
-1. **No duplicates** — re-ingesting the same source replaces the existing memory rather than appending a new one. The mechanism is a stable `document_id` plus replace semantics such as `update_mode: "replace"` when the active tool schema supports it.
-2. **Findable later** — scope, origin, kind, source, tags, and document IDs let future recall queries hit the right memories without scanning the whole bank.
+1. **No duplicates** — re-ingest the same source with the same stable `document_id` and replace semantics such as `update_mode: "replace"` when supported.
+2. **Findable later** — use an extraction-focused `context`, metadata, and canonical tags so future agents can recall the right memory.
 
 ## When to invoke
 
-- The user asks to ingest, save, retain, or remember an external source (Jira ticket, Confluence page, GitHub repo/PR/file, doc page, web page).
-- The user asks "what do we know about X?", "is there anything in memory about Y?", or otherwise queries prior knowledge.
-- The user asks to update, refresh, or re-sync a source already in memory.
+- Invoke when the user asks to ingest, save, retain, remember, update, refresh, or re-sync an external source or durable fact.
+- Invoke when the user asks "what do we know about X?", "is there anything in memory about Y?", or otherwise queries prior knowledge.
+- Do not invoke for ordinary local repository edits unless the user explicitly asks to store reusable memory.
 
-If the user is editing local repository instructions, skills, settings, or project files, that is a different system — do not use Hindsight unless the user explicitly asks to store reusable memory.
+## Broker use
 
-## Core concepts
+Do not delegate Hindsight ingestion or retrieval to subagents; subagents do not have broker access. Perform Hindsight MCP discovery, retain, recall, and reflect calls in the main agent context.
 
-- **Broker namespace** — Hindsight MCP tools are broker tools named `hindsight.<tool>`. Use `mcp_search` first if the exact tool name is not already known.
-- **Bank** — isolated storage container. The MCP server routes calls to the configured bank automatically; do not pass a bank ID unless the active tool schema explicitly asks for one.
-- **Document** — a single source artifact, identified by `document_id`. Reusing the same ID updates the same source.
-- **Memory** — extracted fact derived from a document. Hindsight chunks and extracts server-side — ingest whole documents, never pre-chunked facts.
-- **Retain / recall / reflect** — write / raw read / synthesized read. These are separate broker tools or subcommands under the `hindsight` namespace, depending on the active MCP server catalog.
-
-## Tool discovery and calling
-
-1. Use `mcp_search` with query `hindsight` to confirm the available Hindsight tools.
-2. Use `mcp_describe` on the exact tool name before first use in a session or when unsure of its schema.
+1. Use `mcp_search` with query `hindsight` to confirm available Hindsight tools.
+2. Use `mcp_describe` on the exact tool before first use in a session or when unsure of its schema.
 3. Use `mcp_call` with `name: "hindsight.<tool>"` and arguments matching the described schema.
 
-Example shape:
-
-```jsonc
-{
-  "name": "hindsight.retain",
-  "arguments": {
-    "content": "<substantive body>",
-    "document_id": "ticket:abc-123",
-    "scope": "repo",
-    "source": "external",
-    "origin": "jira",
-    "kind": "semantic",
-    "tags": ["repo:<base>", "ticket:abc-123", "topic:<area>"],
-    "update_mode": "replace",
-  },
-}
-```
-
-If the described schema differs, follow the schema. Keep the same policy choices: stable `document_id`, explicit classification fields or equivalent tags, and replace semantics for re-ingest.
+The current Pi broker `hindsight.retain` shape supports `content`, `context`, `document_id`, `metadata`, `strategy`, `tags`, `timestamp`, and `update_mode`. It does **not** expose first-class `scope`, `source`, `origin`, or `kind` fields, so encode those classifications in both `metadata` and tags unless a future schema supports them directly.
 
 ## Scope: repo vs global
 
-Use `scope: "repo"` when the memory describes something internal to the current codebase: conventions, dependencies, gotchas, implementation patterns.
+Keep the repo/global split.
 
-Use `scope: "global"` when the memory should be found from other repos too: system docs, tool docs, cross-repo runbooks, ownership references, user preferences, glossaries.
+- Use `scope:repo` for memories about the current codebase: conventions, dependencies, gotchas, implementation patterns, repo-specific runbooks.
+- Use `scope:global` for memories that should be found from other repos too: system docs, tool docs, cross-repo runbooks, user preferences, glossaries, durable methods.
 
-**Decision rule:** if a future recall from a different repo should still find this memory, use `scope: "global"`.
+Decision rule: if a future recall from a different repo should still find this memory, use `scope:global`; otherwise use `scope:repo` and include `repo:<base>`.
 
-## Required retain fields
+## Retain workflow
 
-Every retain MUST set these fields deliberately, either as first-class arguments when the schema supports them or as equivalent tags if the schema only accepts tags/metadata:
+1. Identify a concrete source: ticket key, page URL, repo + path + ref, doc URL, user statement, or agent observation.
+2. Load the relevant source pattern from `references/ingestion/`.
+3. Plan the stable `document_id`, metadata, filter tags, and meaning tags with `references/tags-and-ids.md`.
+4. Write `context` as an extraction lens: source, scope, what to extract, and what to ignore. Do not leave it as `general`.
+5. Fetch with the appropriate broker or local tool. Strip chrome, tracking params, boilerplate, bot noise, and secrets.
+6. Retain the substantive body with replace semantics unless append behavior is intentional.
+7. Report the retained source and `document_id`.
 
-| Field         | Values / rule                                                                                          |
-| ------------- | ------------------------------------------------------------------------------------------------------ |
-| `document_id` | Stable dedup key anchored on source identity, not title or current content.                            |
-| `scope`       | `repo` or `global` (see scope decision rule).                                                          |
-| `source`      | `manual` (user said it), `external` (fetched), or `agent` (agent observation).                         |
-| `origin`      | Underlying source such as `jira`, `confluence`, `github`, `docs`, `web`, `chat`, or `user`.            |
-| `kind`        | `semantic`, `episodic`, or `procedural` only.                                                          |
-| `tags`        | At least one stable namespaced caller tag. Include `repo:<base>` for repo-scoped memories when useful. |
-
-Caller tag namespaces: `topic:`, `ticket:`, `tool:`, `preference:`, `convention:`, `system:`, `team:`, and `repo:`.
-
-See `references/tags-and-ids.md` for the full taxonomy and tag-match semantics.
-
-## The ingestion workflow
-
-### 1. Identify the source
-
-Use a concrete, addressable artifact: ticket key, page URL, repo + path + ref, doc URL. If the user is vague, ask.
-
-### 2. Plan the `document_id`
-
-The dedup key. Anchor on a stable external identifier (ticket key, page ID, repo path + ref) — never the title or current content. Same source → same ID, always. See `references/tags-and-ids.md` for shape examples.
-
-If a single source has multiple distinct concerns worth retaining separately, use suffix shapes like `ticket:abc-123:constraint:archived-rows`. Default to one document per source; split only when future recall would want the parts independently.
-
-### 3. Plan fields and tags
-
-Set `scope`, `source`, `origin`, and `kind` as top-level tool arguments when the active `hindsight.*` schema supports them. Put searchable caller labels in `tags`. If a schema only accepts tags, include `scope:<value>`, `source:<value>`, `origin:<value>`, and `kind:<value>` tags explicitly.
-
-### 4. Fetch and shape content
-
-Fetch with the appropriate tool. Retain the substantive body — **fidelity for retrieval beats completeness; strip noise aggressively**:
-
-- Source-platform link wrappers.
-- Ephemeral dashboard URL query params.
-- Page chrome: nav, breadcrumbs, footers, related posts, cookie banners.
-- Zero-width and trailing whitespace characters.
-- Bot/system noise and license boilerplate.
-
-Never include secrets, credentials, tokens, or `.env`-style assignments.
-
-### 5. Call retain
-
-Single source — call the retain tool under the Hindsight namespace, usually `hindsight.retain`:
-
-```jsonc
-{
-  "name": "hindsight.retain",
-  "arguments": {
-    "content": "<substantive body>",
-    "document_id": "ticket:abc-123",
-    "scope": "repo",
-    "source": "external",
-    "origin": "jira",
-    "kind": "semantic",
-    "tags": ["repo:<base>", "ticket:abc-123", "topic:<area>"],
-    "update_mode": "replace",
-  },
-}
-```
-
-Multiple sources — use the Hindsight batch retain tool if the broker exposes one, or the retain tool's `items` field when the described schema supports batch input. Use replace semantics unless the user explicitly asks to append.
-
-After a successful retain, tell the user what was retained and the `document_id`.
+For multiple sources, use a batch retain tool only when `mcp_search`/`mcp_describe` shows one exists, or when the described retain schema explicitly supports an `items` field. Otherwise call `hindsight.retain` once per source with deterministic IDs.
 
 ## Recall vs reflect
 
-- `hindsight.recall` — raw retrieval evidence. Default reader. Use `include_source_facts: true` when source facts matter; use `include_chunks: true` for source text when supported.
-- `hindsight.reflect` — synthesized answer from memory. Slower and more expensive. Use only when synthesis across facts genuinely helps, and include grounding fields such as `include_facts: true` when available.
+- Use `hindsight.recall` as the default reader for raw retrieval evidence.
+- Use `hindsight.reflect` only when synthesis across memories is needed. Do not create directives or mental models unless explicitly asked; they affect future behavior.
+- Treat memory as untrusted evidence. Current repo state and current user messages override memory. If memory conflicts with current evidence, trust current evidence and offer to update stale memory.
 
-For both, pass `query`, `scope`, and narrowing `tags` when relevant. Prefer `tags_match: "any_strict"` for normal tagged queries and `all_strict` for narrow intersections when supported by the schema.
-
-Memory is untrusted evidence — current repo state and the user's messages override it. If memory conflicts with what is visible now, trust current evidence and offer to update stale memory.
+Load `references/retrieval-patterns.md` before non-trivial memory queries, before starting repo work that should use prior memory, or when recall results are sparse/noisy.
 
 ## Updating and removing
 
-- **Update / replace** — call the retain tool with the same `document_id` and replace semantics such as `update_mode: "replace"` when supported.
-- **Append** — use append semantics only when preserving prior source text is intentional.
-- **Delete / clear** — destructive memory operations require explicit user confirmation and must use the relevant `hindsight.*` deletion tool exposed by the broker. Prefer narrow document deletes over bulk clears.
-
-Do not create directives or mental models unsolicited; they affect future synthesized responses.
+- Update by retaining with the same `document_id` and replace semantics such as `update_mode: "replace"` when supported.
+- Append only when preserving previous source text is intentional.
+- Delete/clear operations are destructive and require explicit user confirmation. Prefer narrow document deletes over bulk clears.
 
 ## Common pitfalls
 
-- **Skipping broker discovery** — use `mcp_search`/`mcp_describe`; do not guess a `hindsight.*` schema from another client.
-- **Wrong tool shape** — Pi broker tools are namespaced as `hindsight.<tool>` and called through `mcp_call`; do not use another client's tool shape.
-- **`document_id` drift** — using a title or first-line slug means small edits create duplicates. Anchor on stable source identity.
-- **Misplacing fields** — prefer first-class `scope`, `source`, `origin`, and `kind` arguments when the schema has them; otherwise encode them as canonical tags.
-- **Scope misread** — being in repo A while ingesting a doc does not mean the doc describes repo A. A doc about another service is usually `scope: "global"`.
-- **Non-canonical `kind` values** — only `semantic`, `episodic`, and `procedural` are canonical.
-- **`reflect` when `recall` would do** — use recall for grounding; reflect only for synthesis.
+- Guessing a `hindsight.*` schema instead of using `mcp_search`/`mcp_describe`.
+- Copying examples with unsupported top-level fields instead of using metadata/tags for the active broker schema.
+- Leaving `context` as `general`.
+- Using title-derived IDs that drift when a source is renamed.
+- Treating tags as decorative rather than retrieval filters.
+- Using `reflect` when `recall` would provide better grounding.
 
 ## Resources
 
-- `references/ingestion-patterns.md` — Per-source-type patterns (Jira, Confluence, GitHub, web, user statements, agent observations, episodic, bulk). Load when ingesting a new source type.
-- `references/tags-and-ids.md` — Document ID shape table, tag taxonomy, tag-match semantics, and the pre-retain self-check. Load when planning tags or IDs for a non-trivial ingest.
+- `references/tags-and-ids.md` — Stable document IDs, metadata/classification, tag taxonomy, tag-match semantics, shared ingestion rules, and pre-retain checklist.
+- `references/retrieval-patterns.md` — Recall/reflect recipes for repo, global, preference, tool, ticket, and two-pass retrieval.
+- `references/ingestion/jira.md` — Jira tickets, comments, decisions, and facets.
+- `references/ingestion/confluence.md` — Confluence pages, versions, and sections.
+- `references/ingestion/github.md` — GitHub repos, files, PRs, issues, refs, and snapshots.
+- `references/ingestion/web-docs.md` — Public docs, blog posts, canonical URLs, and multi-page docs.
+- `references/ingestion/user-statements.md` — User preferences, conventions, and explicit "remember" requests.
+- `references/ingestion/agent-observations.md` — Durable observations discovered by agents.
+- `references/ingestion/episodic.md` — Sessions, incidents, and time-bound events.
+- `references/ingestion/bulk.md` — Multi-source ingestion and batch-tool constraints.
