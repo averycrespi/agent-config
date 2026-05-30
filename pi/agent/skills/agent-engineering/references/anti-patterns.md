@@ -108,15 +108,15 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5).
 
-### Old "double-check" / "be careful" scaffolding on Claude Opus 4.7
+### Old "double-check" / "be careful" scaffolding on Claude Opus 4.x
 
 **What**: Prompt says "double-check your work," "be careful with X," "verify before responding."
 
-**Why it fails**: Opus 4.7 follows instructions more literally. "Double-check" produces extra verification turns instead of being interpreted as polite emphasis. Wastes tokens, slows the loop.
+**Why it fails**: Current Opus 4.x models follow instructions more literally. "Double-check" produces extra verification turns instead of being interpreted as polite emphasis. Wastes tokens, slows the loop.
 
 **Instead**: State the constraint once, clearly. Trust the model. Use structured verification at phase boundaries instead of asking the implementer to self-verify.
 
-**Citation**: [Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code).
+**Citation**: [Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code); [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8).
 
 ## Context and memory
 
@@ -136,7 +136,7 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **Why it fails**: Sonnet 4.5 documented to take shortcuts when it _believes_ it's near context exhaustion — even when it isn't. The model sees the cue and switches into "ship something now" mode.
 
-**Instead**: Don't expose the agent to its own context-pressure signal unless eagerness-to-finish is what you want. Use structured budgets like Opus 4.7's `task_budget` deliberately, not as a generic "be quick" hint.
+**Instead**: Don't expose the agent to its own context-pressure signal unless eagerness-to-finish is what you want. Use structured effort/task-budget controls deliberately, not as generic "be quick" hints.
 
 **Citation**: [Inkeep on Context Anxiety](https://inkeep.com/blog/context-anxiety) — documents Cognition's discovery.
 

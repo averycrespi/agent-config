@@ -46,11 +46,12 @@ These are the load-bearing references. Read them directly when you need to groun
 ## 2. Model-specific guides
 
 - [Claude models overview](https://platform.claude.com/docs/en/about-claude/models/overview) — Authoritative model spec sheet.
-- [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7) — Breaking changes for harness authors. Read before reusing 4.6 prompts.
-- [Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code) — `xhigh` default, fewer subagents, remove "double-check" scaffolding.
-- [Introducing Claude Opus 4.7](https://www.anthropic.com/news/claude-opus-4-7) — Release post. Better at file-system memory, self-verification, high-res images.
-- [Building with extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) — Interleaved thinking automatic on 4.6/4.7; tool-use constraints; pin thinking config.
-- [Anthropic system cards index](https://www.anthropic.com/system-cards) — Opus 4.6 (Feb 2026), 4.5 (Nov 2025), Sonnet 4.5 (Sept 2025) published; Opus 4.7 not yet at survey time.
+- [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8) — Current Opus guidance: `high` default effort, adaptive-thinking-only thinking mode, fast mode, lower prompt-cache minimum, refusal stop details.
+- [Introducing Claude Opus 4.8](https://www.anthropic.com/news/claude-opus-4-8) — Release post.
+- [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7) — Still useful for migration caveats inherited by 4.8: no sampling params, no explicit thinking budgets, tokenizer changes.
+- [Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code) — Remove "double-check" scaffolding; don't overuse `max` effort.
+- [Building with extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) — Interleaved thinking automatic on 4.6/4.7/4.8; tool-use constraints; pin thinking config.
+- [Anthropic system cards index](https://www.anthropic.com/system-cards) — Safety system-card index; re-check current Opus/Sonnet/Haiku cards before making deployment claims.
 - [GPT-5 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide)
 - [GPT-5.1 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-1_prompting_guide)
 - [GPT-5.2 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-2_prompting_guide) — `<planning>` block (compaction-discardable); strict JSON schemas; tighter scope discipline.
@@ -130,7 +131,7 @@ These are the load-bearing references. Read them directly when you need to groun
 - [Coding-agent README](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/README.md)
 - [Examples](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent/examples/extensions)
 - [CHANGELOG](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/CHANGELOG.md) — Track API breaks.
-- [@mariozechner/pi-coding-agent (npm)](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
+- [@earendil-works/pi-coding-agent (npm)](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
 
 ## 4. Pi extension repos
 
@@ -204,7 +205,7 @@ A high-leverage set of harness-pattern repos from the survey for this skill.
 
 ## 6. SWE-bench and benchmarks
 
-- [SWE-bench Verified leaderboard](https://www.swebench.com/verified.html) — April 2026 leaders: Claude Opus 4.7 (87.6%), GPT-5.3-Codex (85.0%), Opus 4.5 (80.9%), Gemini 3.1 Pro (80.6%).
+- [SWE-bench Verified leaderboard](https://www.swebench.com/verified.html) — Check live before citing model rankings; leaderboard positions move quickly and scaffold differences matter.
 - [Morph LLM — SWE-bench Pro analysis](https://www.morphllm.com/swe-bench-pro) — Same models drop to ~46% on standardized scaffolding. Scaffold-driven gap.
 - [SWE-agent docs (ACI design)](https://swe-agent.com/) — Tightly curated tools outperform raw shell.
 - [arXiv 2505.23419 — SWE-bench Goes Live!](https://arxiv.org/abs/2505.23419) — Live-updatable benchmark. Solves training-data-leakage in Verified.

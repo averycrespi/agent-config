@@ -117,7 +117,7 @@ The Responses API compaction is server-side and opaque (the compacted item is en
 
 ### Tokenizer changes between model versions
 
-Opus 4.7's tokenizer is ~1.0–1.35x more tokens than 4.6. Recompute context budgets and compaction triggers on model upgrades. Same warning applies whenever a provider ships a new tokenizer.
+Opus 4.7's tokenizer was ~1.0–1.35x more tokens than 4.6, and Opus 4.8 changed prompt-cache economics again. Recompute context budgets, `max_tokens`, cache thresholds, and compaction triggers on model upgrades. Same warning applies whenever a provider ships a new tokenizer or cache policy.
 
 ## Context anxiety
 
@@ -127,7 +127,7 @@ Implications:
 
 - Don't expose the agent to its own context-pressure signal unless you've thought about it.
 - Don't write "you have N turns remaining" into prompts unless you actually want eagerness-to-finish.
-- The `task_budget` on Opus 4.7 is an explicit version of this signal — use it intentionally.
+- Claude effort/task-budget style controls are explicit versions of this signal — use them intentionally, not as generic "be quick" hints.
 
 ## Compaction-aware prompt design
 
@@ -136,7 +136,7 @@ If your harness runs through compaction events (Claude Agent SDK loops or OpenAI
 - **Re-state constraints at phase boundaries.** "Reminder: do not modify the public API. AC are at <workflowDir>/ac.json."
 - **Reference artifacts by path, not inline.** Compaction collapses inline content; paths survive.
 - **Use GPT-5.2/5.4-style `<planning>` blocks** for ephemeral scratch work. Tokens are discardable during compaction.
-- **Use Claude Opus 4.7 adaptive thinking deliberately.** Thinking content is omitted by default after 4.7; if you want it visible, opt in via `display: "summarized"`.
+- **Use Claude adaptive thinking deliberately.** Opus 4.8 supports adaptive thinking as the only thinking-on mode; thinking content is omitted by default, so opt into summarized display only when the harness actually needs it visible.
 
 ## Practical defaults
 

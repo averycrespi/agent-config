@@ -31,7 +31,7 @@ Fourteen principles that show up repeatedly across 2025–2026 literature, vendo
 
 3. **Validated machine-readable output, not free text.** JSON schemas (TypeBox / Pydantic / Zod) are preferred for phase boundaries when the API supports strict structured output. Parsed tagged outputs (`<status>done</status>`) are an acceptable fallback in CLI/Pi-style harnesses where JSON is brittle. Free-text completion markers like `<promise>COMPLETE</promise>` are fragile. GPT-5.5 explicitly recommends moving output schemas out of prompt prose into the Structured Outputs API. ([GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5))
 
-4. **Per-phase reasoning effort.** Don't set `reasoning_effort` (OpenAI) or thinking budget (Claude) globally. Execution-heavy phases want low/minimal; planning, verification, and review want medium/high. GPT-5.5 ships with `medium` default; Claude Opus 4.7 retired the explicit budget knob in favor of adaptive thinking and the new `task_budget` advisory countdown. ([What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7))
+4. **Per-phase reasoning effort.** Don't set `reasoning_effort` (OpenAI) or effort/thinking configuration (Claude) globally. Execution-heavy phases want low/minimal; planning, verification, and review want medium/high. GPT-5.5 ships with `medium` default; Claude Opus 4.8 ships with `high` default and adaptive thinking as the only thinking-on mode. ([What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8))
 
 5. **Cross-family verification beats same-model verification.** Self-preference bias is the most damaging of the four canonical judge biases (position, verbosity, self-preference, authority); judges are ~50% more likely to pass output from their own family on objective rubrics. Route implementer through one family, reviewer through another. ([Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996))
 
@@ -104,14 +104,14 @@ Quick orientation; deep guidance in `references/platforms.md`.
 
 - **Claude Code**: best when you want an interactive coding harness with first-class hooks, skills, subagents, routines, and settings.
 - **Claude Agent SDK**: best when you want the Claude Code loop but need to drive it programmatically in TypeScript or Python.
-- **Pi (`@mariozechner/pi-coding-agent`)**: best when you want a smaller TypeScript extension surface and a lightweight base for custom harness experiments.
+- **Pi (`@earendil-works/pi-coding-agent`)**: best when you want a smaller TypeScript extension surface and a lightweight base for custom harness experiments.
 
 For exact platform behavior, current gotchas, and repo-specific conventions, read `references/platforms.md`.
 
 ## How to use this skill
 
 1. **For broad orientation** ("how should I shape this harness?"): read this `SKILL.md` end-to-end. The principles section is the load-bearing part.
-2. **For model-specific design questions** ("how does Opus 4.7 change my prompt?"): read `references/models.md`.
+2. **For model-specific design questions** ("how does Opus 4.8 change my prompt?"): read `references/models.md`.
 3. **For platform-specific implementation** ("how do I wire up a Claude Code hook?"): read `references/platforms.md`.
 4. **For workflow design** ("what phases should my pipeline have?"): read `references/workflow-patterns.md`.
 5. **For verification design** ("how should my reviewer be structured?"): read `references/verification.md`.

@@ -1,39 +1,39 @@
 # Model-specific guidance
 
-Two families dominate AI coding agents in April 2026: Anthropic's Claude 4.x and OpenAI's GPT-5.x. They differ on default behavior, the knobs you turn, and the failure modes you guard against. This document captures what's load-bearing for _harness design_ — not a full model card.
+Two families dominate AI coding agents in May 2026: Anthropic's Claude 4.x and OpenAI's GPT-5.x. They differ on default behavior, the knobs you turn, and the failure modes you guard against. This document captures what's load-bearing for _harness design_ — not a full model card.
 
-Cutoff: 2026-04-27. Verify model names and version-specific claims against the linked primary sources before relying on them.
+Cutoff: 2026-05-29. Verify model names and version-specific claims against the linked primary sources before relying on them.
 
 ## Claude 4.x family
 
-Three current models as of 2026-04:
+Three current models as of 2026-05:
 
 | Model      | Released | Context | Output | Thinking modes              | Notes                                                                                       |
 | ---------- | -------- | ------- | ------ | --------------------------- | ------------------------------------------------------------------------------------------- |
-| Opus 4.7   | 2026-04  | 1M      | 128K   | Adaptive only               | Long-running, high-reasoning. Default for agent loops where reasoning quality matters most. |
+| Opus 4.8   | 2026-05  | 1M      | 128K   | Adaptive only               | Long-running, high-reasoning. Default for agent loops where reasoning quality matters most. |
 | Sonnet 4.6 | 2025-Q4  | 1M      | 64K    | Adaptive + extended         | The workhorse. Balanced cost/quality.                                                       |
 | Haiku 4.5  | 2025-10  | 200K    | 64K    | Extended only (no adaptive) | Fast, cheap. Good for fan-out subagents (review, classify, retrieve).                       |
 
 Authoritative model overview: [Claude models overview](https://platform.claude.com/docs/en/about-claude/models/overview).
 
-### Opus 4.7 specifics that change harness design
+### Opus 4.8 specifics that change harness design
 
-The single most important page: [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7). Breaking changes for harness authors:
+The single most important page: [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8). Version-specific changes for harness authors:
 
-- **Extended-thinking budgets removed.** Setting `budget_tokens` returns 400. Adaptive thinking decides on its own.
-- **`temperature`, `top_p`, `top_k` removed.** All return 400. Determinism via seeds, not sampling knobs.
-- **Thinking content omitted by default.** The model still thinks, but you don't see it unless you opt in via `display: "summarized"`. Agent UIs that streamed thinking tokens for "the agent is working" feedback need to be updated.
-- **New tokenizer.** ~1.0–1.35x more tokens than 4.6. Bump `max_tokens` and any compaction triggers proportionally.
-- **More literal instruction-following.** Remove old "double-check" / "be careful" scaffolding from prompts — it now produces extra unnecessary verification turns instead of being interpreted as polite emphasis. ([Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code))
-- **`task_budget` advisory countdown** (beta header `task-budgets-2026-03-13`) gives the model a turn-count budget across the whole agentic loop. Useful for hard-capping runs without destroying the agent's plan.
-- **Fewer subagents by default.** 4.7 reasons more before delegating; if your harness depends on parallel subagent fan-out, prompt explicitly for it.
-- **Default `xhigh` reasoning effort, not `max`.** `max` overthinks for most agentic work.
+- **Adaptive thinking is the only thinking-on mode.** Extended-thinking budgets remain unsupported; setting `budget_tokens` returns 400.
+- **Default effort is `high` on API and Claude Code.** Treat `max` as an explicit overthinking/extra-cost choice, not the default for agentic work.
+- **`temperature`, `top_p`, `top_k` remain unsupported.** Determinism via seeds and harness design, not sampling knobs.
+- **Thinking content is omitted by default.** The model still thinks, but you don't see it unless you opt in via summarized display. Agent UIs that streamed thinking tokens for "the agent is working" feedback need to be updated.
+- **Mid-conversation system messages preserve cache hits.** Use them for turn-local or phase-local steering instead of rebuilding the whole system prompt when the provider supports it.
+- **Fast mode exists for higher output speed at premium pricing.** Useful for latency-sensitive review or fan-out phases; cost routing should make the trade-off explicit.
+- **Lower prompt-cache minimums reduce the cost of small stable prefixes.** Re-evaluate prompt-cache boundaries after upgrading from 4.7.
+- **4.7 migration caveats still matter.** Remove old "double-check" / "be careful" scaffolding; literal instruction-following turns those into extra verification turns instead of polite emphasis. ([Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code))
 
 ### Extended thinking and interleaved thinking
 
 Authoritative: [Building with extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking).
 
-- On 4.6/4.7, **interleaved thinking is automatic with adaptive thinking** — no beta header.
+- On 4.6/4.7/4.8, **interleaved thinking is automatic with adaptive thinking** — no beta header.
 - With interleaved thinking, `budget_tokens` can exceed `max_tokens` (it's per-turn, not per-response).
 - Tool-use constraints: `tool_choice` must be `auto` or `none` (not `any`). Thinking blocks **must be passed back unmodified** with tool results — losing them invalidates the chain.
 - You **cannot toggle thinking mid-turn**. Pin thinking config across an agent loop.
@@ -57,7 +57,7 @@ The "Claude Code SDK" was renamed to "Claude Agent SDK" in early 2026. It packag
 
 - Overview: [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)
 - Building agents: [Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk) — frames the loop as gather→act→verify→repeat.
-- Migration guide for the rename: [Claude Code SDK → Claude Agent SDK migration](https://docs.claude.com/en/docs/claude-code/sdk/migration-guide). Opus 4.7 requires SDK ≥ v0.2.111.
+- Migration guide for the rename: [Claude Code SDK → Claude Agent SDK migration](https://docs.claude.com/en/docs/claude-code/sdk/migration-guide). Check the current SDK release notes before adopting a new Claude model; model support has moved quickly across 4.x releases.
 
 What the SDK gives you for harness work:
 
@@ -84,7 +84,7 @@ Reference: [Memory tool](https://platform.claude.com/docs/en/agents-and-tools/to
 
 ## GPT-5.x family
 
-Five public models as of 2026-04:
+Five public models as of 2026-05:
 
 | Model   | Released   | Context | Default `reasoning_effort` | Notes                                                                                    |
 | ------- | ---------- | ------- | -------------------------- | ---------------------------------------------------------------------------------------- |
@@ -162,13 +162,14 @@ Authoritative pages:
 - [Skills + Shell + Compaction blog](https://developers.openai.com/blog/skills-shell-tips) — best published source on long-running-agent harness discipline
 - [AGENTS.md guide](https://developers.openai.com/codex/guides/agents-md)
 
-Recent harness-relevant changes (April 2026):
+Recent harness-relevant changes (May 2026):
 
-- **v0.124.0**: Hooks stable for MCP tools, `apply_patch`, and long-running bash. `/side` conversations. `Alt+,` / `Alt+.` for quick reasoning-effort toggling. Model upgrades reset reasoning to new defaults.
-- **v0.125.0**: Permission profiles round-trip across TUI/MCP/shell-escalation/app-server. `codex exec --json` reports reasoning-token usage. Rollout tracing records tool/code-mode/session/multi-agent edges. Sandboxed `apply_patch` write fix for split filesystem policies.
+- **Codex CLI v0.135.0**: `codex doctor` reports richer environment/Git/terminal/app-server/thread diagnostics; `/permissions` understands named permission profiles; the Python SDK exposes sandbox presets; packaged builds bundle a patched zsh helper.
+- **Codex app May 29 update**: Windows computer use and remote control, thread coordination for local projects and worktrees, broader past-thread search, and token-activity/profile visibility.
+- **Memory and telemetry moved into first-class runtime state.** Recent changelog entries moved memory runtime state to SQLite and added memory/goal telemetry. Treat durable memory as a stateful subsystem, not prompt text.
 - **AGENTS.md resolution**: global `~/.codex/` then root → cwd; `AGENTS.override.md` beats `AGENTS.md` at each level; concatenated root-down so closer files override; capped at `project_doc_max_bytes` (32 KiB). The override convention is the canonical spec for layered agent guidance.
-- **Subagents**: concurrency cap `agents.max_threads` (default 6), nesting cap `agents.max_depth`. Pattern from OpenAI: "narrow and opinionated... clear job, tool surface that matches that job." `spawn_agents_on_csv` worker contract requires exactly one `report_agent_job_result` call.
-- **Skills**: skill descriptions must answer "when to use / when NOT to use" (same convention as Anthropic Agent Skills). Templates belong inside skills, not system prompt. Two-layer network allowlist (org max + request subset). Use `domain_secrets` so credentials never reach the model.
+- **Subagents**: Codex only spawns them when explicitly asked. Built-ins are `default`, `worker`, and `explorer`; custom agents are TOML files under `.codex/agents/` or `~/.codex/agents/`. `agents.max_threads` defaults to 6 and `agents.max_depth` defaults to 1. `spawn_agents_on_csv` requires each worker to call `report_agent_job_result` exactly once.
+- **Skills + shell + compaction**: skill descriptions should read like routing logic, including when _not_ to use the skill; templates and examples belong inside skills; use server-side compaction as a default long-run primitive; keep networking on narrow org/request allowlists and use `domain_secrets` so credentials never reach the model.
 - **`apply_patch` is a dedicated tool, not shell.** The cookbook prompting guide explicitly says use it "to match training distributions."
 
 ## Cross-family rules
@@ -177,6 +178,6 @@ These apply regardless of which model family you're using:
 
 1. **Never use the same model for implement and verify if avoidable.** Self-preference bias is the most damaging judge bias. Cross-family routing is the cheapest mitigation. ([Self-Preference Bias paper](https://arxiv.org/abs/2604.06996))
 2. **Pin thinking/reasoning config across a single loop.** Mid-loop changes invalidate caches and (on Claude) break thinking-block continuity.
-3. **Read the model's own most recent prompting/migration guide before reusing prompts.** Both families have published "your old prompts are wrong" notices for major releases (Anthropic via the 4.7 best-practices post; OpenAI via GPT-5.5 prompt guidance). The advice is genuinely different version-to-version.
+3. **Read the model's own most recent prompting/migration guide before reusing prompts.** Both families have published "your old prompts are wrong" notices for major releases (Anthropic via 4.7/4.8 migration guidance; OpenAI via GPT-5.5 prompt guidance). The advice is genuinely different version-to-version.
 4. **Cache strategy is model-specific.** Anthropic: 5-min ephemeral TTL by default; place `cache_control` on the last tool. OpenAI: server-side compaction with opaque items chained via `previous_response_id`.
-5. **Tokenizers change.** Recompute context budgets on model upgrades. Opus 4.7's tokenizer is ~1.0–1.35x more tokens than 4.6.
+5. **Tokenizers and cache behavior change.** Recompute context budgets, max-token settings, and compaction/cache thresholds on model upgrades; Opus 4.7 changed token counts materially, and Opus 4.8 changed prompt-cache economics.

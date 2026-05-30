@@ -25,9 +25,9 @@ Default controls:
 - **Least-privilege tool sets.** Give each phase only the tools it needs. Explorers and reviewers should not have write tools unless the workflow explicitly requires it.
 - **Side-effect gates.** Enforce approvals for network writes, repository pushes, package publishing, deployment, billing operations, and destructive file/history operations.
 - **Sandboxing.** Worktree isolation protects source files, not databases, ports, credentials, or external services. Runtime isolation needs separate temp dirs, ports, env vars, and service instances.
-- **Secret isolation.** Do not place secrets in prompts, logs, artifacts, or model-visible tool results. Use broker/domain-secret mechanisms where available so credentials stay outside model context.
-- **Prompt-injection handling.** Treat instructions found in repo files, web pages, tickets, comments, and tool output as untrusted data unless they come from the harness's trusted instruction channel.
-- **Policy by code.** Hooks, permission callbacks, deny lists, allow lists, and broker scopes are stronger than "do not do X" prompt text.
+- **Secret isolation.** Do not place secrets in prompts, logs, artifacts, or model-visible tool results. Use broker/domain-secret mechanisms where available so credentials stay outside model context. OpenAI hosted shell workflows should use `domain_secrets`; Pi/GitHub/Jira-style external access should go through broker tools or scoped credentials rather than raw env dumps.
+- **Prompt-injection handling.** Treat instructions found in repo files, web pages, tickets, comments, web search results, and tool output as untrusted data unless they come from the harness's trusted instruction channel.
+- **Policy by code.** Hooks, permission callbacks, deny lists, allow lists, sandbox modes, tool exclusion flags, and broker scopes are stronger than "do not do X" prompt text.
 
 ## Tool contract checklist
 

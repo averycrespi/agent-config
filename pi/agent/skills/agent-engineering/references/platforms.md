@@ -1,6 +1,6 @@
 # Harness platforms: Claude Code, the Claude Agent SDK, and Pi
 
-Three platforms dominate the agent-config ecosystem in this repo: **Claude Code** (Anthropic's CLI/IDE harness), the **Claude Agent SDK** (the same harness as a programmable library), and **Pi** (`@mariozechner/pi-coding-agent`, an opinionated minimal harness). This document covers what each gives you, how to extend it, and the gotchas that bite harness builders.
+Three platforms dominate the agent-config ecosystem in this repo: **Claude Code** (Anthropic's CLI/IDE harness), the **Claude Agent SDK** (the same harness as a programmable library), and **Pi** (`@earendil-works/pi-coding-agent`, an opinionated minimal harness). This document covers what each gives you, how to extend it, and the gotchas that bite harness builders.
 
 ## Claude Code
 
@@ -19,7 +19,7 @@ Claude Code is a deterministic harness around the Claude Agent loop. One retrosp
 
 Authoritative: [Hooks reference](https://docs.claude.com/en/docs/claude-code/hooks) and [Hooks getting-started guide](https://docs.claude.com/en/docs/claude-code/hooks-guide).
 
-Hooks fire on lifecycle events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`, `StopFailure`, `PreToolUse`, `PostToolUse`, `WorktreeCreate`, `WorktreeRemove`. They receive a JSON payload on stdin and decide what happens via exit code.
+Hooks fire on lifecycle events across sessions, turns, tools, subagents, configuration, compaction, worktrees, MCP elicitation, and file watching. The load-bearing events for harness authors are `PreToolUse`/`PostToolUse`/`PostToolUseFailure`, `PermissionRequest`/`PermissionDenied`, `PostToolBatch`, `SubagentStart`/`SubagentStop`, `InstructionsLoaded`, `PreCompact`/`PostCompact`, `WorktreeCreate`/`WorktreeRemove`, and `SessionStart`/`SessionEnd`. Command hooks receive JSON on stdin; HTTP hooks receive JSON in the POST body; LLM hooks run as model prompts.
 
 **Critical exit-code semantics that everyone trips over:**
 
@@ -27,7 +27,7 @@ Hooks fire on lifecycle events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`
 - **Exit 1**: log and _continue_. This does NOT block. ([dev.to "5 Hook Mistakes"](https://dev.to/yurukusa/5-claude-code-hook-mistakes-that-silently-break-your-safety-net-58l3))
 - **Exit 2**: block. The action is canceled and the hook's stderr is shown to the model.
 
-Use exit 2 when you actually want to stop something. Exit 1 is observability only.
+Use exit 2 when you actually want to stop something. Exit 1 is observability only. Prefer structured hook output such as `permissionDecision: "deny"` / `permissionDecisionReason` when the event supports it; it is clearer than encoding policy in process exit status.
 
 When something _must_ run on every action, hooks or permission callbacks are the right tool — `CLAUDE.md` instructions are advisory and the model can ignore them. Hooks are deterministic.
 
@@ -36,6 +36,7 @@ When something _must_ run on every action, hooks or permission callbacks are the
 - A single JSON syntax error in `settings.json` silently disables the entire settings file, including all hook configuration. No warning. ([Hooks Not Firing troubleshooting](https://claudelab.net/en/articles/claude-code/claude-code-hooks-not-firing-troubleshooting))
 - Settings hierarchy precedence is **reversed from intuition**: managed > CLI > local > shared > user. A managed policy will quietly override your user config.
 - Template variables like `{{tool.name}}` and `{{tool.input.file_path}}` appear literally in some hook contexts. ([Issue #2814](https://github.com/anthropics/claude-code/issues/2814))
+- Some events ignore `matcher` silently (`UserPromptSubmit`, `PostToolBatch`, `Stop`, `WorktreeCreate`, etc.). Put argument-level filtering in the handler or in an event-supported `if` predicate.
 
 ### Skills
 
@@ -52,10 +53,13 @@ The skill loading model is **progressive disclosure**:
 **Skill-authoring rules from Anthropic's official guidance:**
 
 - One skill, one job. Don't bundle unrelated capabilities.
-- Description must answer "when to invoke" — name user intents, not features.
+- Description must answer "when to invoke" — name user intents, not features. Current Claude Code also supports `when_to_use`; combined routing text is capped in the skill listing, so put the key trigger first.
+- Include negative cases when routing can be confused: "do not use when..." is often as important as "use when...".
 - Use `disable-model-invocation: true` for skills that should only fire on explicit user request.
-- Use `paths:` glob list to scope a skill to specific file types.
-- Bundle deep reference material in `references/`; keep `SKILL.md` itself short.
+- Use `allowed-tools` / `disallowed-tools`, `model`, and `effort` frontmatter when the skill needs a narrower or different execution profile for one turn.
+- Bundle deep reference material, templates, examples, and scripts in supporting files; keep `SKILL.md` itself short. Once loaded, the body stays in context across turns.
+
+Claude Code ships bundled skills such as `/code-review`, `/batch`, `/debug`, `/loop`, `/run`, `/verify`, and `/run-skill-generator`. The `/run-skill-generator` pattern is harness-relevant: record the project-specific launch/verification recipe once as a skill so later agents stop rediscovering it.
 
 This `agent-engineering` skill is itself an example of the pattern.
 
@@ -63,13 +67,13 @@ This `agent-engineering` skill is itself an example of the pattern.
 
 Authoritative: [Sub-agents](https://docs.claude.com/en/docs/claude-code/sub-agents) and [Subagents in Claude Code blog](https://claude.com/blog/subagents-in-claude-code).
 
-Subagents are markdown files in `.claude/agents/*.md` (project) or `~/.claude/agents/` (user). They're invoked through the `Agent` tool with a prompt and an optional subagent type. Each subagent runs in an isolated context window — the parent doesn't see what the subagent saw, only its final response.
+Subagents are markdown files in `.claude/agents/*.md` (project) or `~/.claude/agents/` (user), can also be provided by managed settings, CLI JSON, or plugins, and are invoked through the `Agent` tool with a prompt and an optional subagent type. Each subagent runs in an isolated context window — the parent doesn't see what the subagent saw, only its final response. Claude Code includes built-in `Explore` (Haiku, read-only), `Plan` (read-only planning research), and `general-purpose` subagents.
 
 **Key knobs:**
 
 - `isolation: worktree` in the frontmatter creates a temporary git worktree for the subagent. **At the time of writing, issue reports say it silently no-ops outside a git repo** ([issue #39886](https://github.com/anthropics/claude-code/issues/39886)).
 - At the time of writing, issue reports say worktree subagents branch from `origin/main`, not the parent's HEAD ([issue #50850](https://github.com/anthropics/claude-code/issues/50850)). Surprises workflows that assume the subagent inherits parent's branch state.
-- Tools available to the subagent are configured in its frontmatter; avoid the default-all surface for specialized agents when a narrower tool set is possible.
+- Tools, disallowed tools, model, permission mode, MCP servers, hooks, max turns, preloaded skills, memory, effort, background execution, isolation, and color can be configured in subagent frontmatter or CLI JSON. Avoid the default-all surface for specialized agents when a narrower tool set is possible.
 - The subagent's prompt should be self-contained — it has no access to prior conversation.
 
 **When to use them:**
@@ -119,10 +123,10 @@ Authoritative: [Slash commands](https://docs.claude.com/en/docs/claude-code/slas
 
 Two flavors:
 
-- `.claude/commands/*.md` — legacy, prefer skills.
+- `.claude/commands/*.md` — legacy-style prompt commands.
 - Plugin commands — bundled in plugins.
 
-Skills have largely superseded `.claude/commands/`. New work should be a skill unless there's a reason to be invocable only via `/<name>`.
+New procedural work should usually be a skill: skills can be model-invoked, scoped with tools/model/effort, packaged in plugins, and progressively disclose supporting files. Keep commands for behavior that must be explicitly slash-invoked or that already exists as a stable command contract.
 
 ### Routines
 
@@ -140,7 +144,7 @@ Per-tier daily caps (Pro 5, Max 15, Team/Enterprise 25). Each event is a fresh s
 
 Authoritative: [Plugins reference](https://docs.claude.com/en/docs/claude-code/plugins-reference), [Plugin marketplaces](https://docs.claude.com/en/docs/claude-code/plugin-marketplaces).
 
-Plugins bundle slash commands, subagents, MCP servers, hooks, and skills as one installable unit. `marketplace.json` enables team distribution, version pinning, automatic updates. The `claude plugin marketplace` subcommands are non-interactive — scriptable in CI.
+Plugins bundle skills, agents, hooks, MCP servers, LSP servers, background monitors, default settings, and executables on `PATH` as one installable unit. Use standalone `.claude/` configuration for one repo or personal experiments; use plugins for versioned/team/community distribution. Marketplace catalogs enable version pinning and automatic updates, and local plugin directories/URLs support test-before-publish workflows.
 
 ### Claude Code on the web
 
@@ -184,7 +188,7 @@ The SDK is the right choice when:
 
 When the CLI is enough, use the CLI — fewer moving parts.
 
-## Pi (`@mariozechner/pi-coding-agent`)
+## Pi (`@earendil-works/pi-coding-agent`)
 
 Pi is an opinionated minimal coding agent by Mario Zechner. Smaller surface than Claude Code and fast to iterate on. Upstream, an extension is a TypeScript module; in this repo, extensions are organized as directory-based packages. Use the upstream Pi docs plus this repo's `AGENTS.md` for day-to-day extension conventions; this section captures harness-engineering-specific patterns.
 
@@ -207,14 +211,14 @@ Background reading:
 Upstream, an extension entrypoint is a TypeScript module with a synchronous default-exported factory. In this repo that usually means an `index.ts` entrypoint inside `pi/agent/extensions/<name>/`:
 
 ```ts
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   // register tools, events, commands here
 }
 ```
 
-The factory receives the `ExtensionAPI` and registers tools (`pi.registerTool`), commands (`pi.registerCommand`), events (`pi.on(event, ...)`), and UI (`pi.ui.setWidget`).
+The factory receives the `ExtensionAPI` and registers tools (`pi.registerTool`), commands (`pi.registerCommand`), shortcuts/flags, events (`pi.on(event, ...)`), and UI (`pi.ui.setWidget`). Recent Pi versions also expose structured system-prompt options in `before_agent_start`, streaming-aware input events, exact automation session IDs, selective tool disablement, and RPC bash output that can stay out of model context.
 
 ### Pi-specific harness patterns
 
@@ -226,7 +230,7 @@ These showed up repeatedly across the Pi extensions surveyed for this skill:
 4. **Verify is parallelizable and benefits from diversity.** Single-pass verify is rarer than multi-pass.
 5. **Termination is hard; cap + structured-output > free-text marker.** Ralph's text-match termination is fragile; tag-based or schema-based completion signals are robust.
 6. **Worktrees are underused.** Only `roach-pi` uses them, and only for parallel subagents.
-7. **Compaction is hostile to long pipelines.** Only `roach-pi` survives compaction by re-injecting workflow state; others assume single-shot or human-driven resume.
+7. **Compaction is hostile to long pipelines.** Only `roach-pi` survives compaction by re-injecting workflow state; others assume single-shot or human-driven resume. Pi's `session_before_compact` / `session_compact` hooks are the right extension surface for making this durable.
 
 ### Pi gotchas
 
@@ -236,6 +240,10 @@ From this repo's `CLAUDE.md` and the broader ecosystem:
 - **`mock.method` from `node:test` can't replace ESM module exports** — they're non-configurable bindings. To stub something like `child_process.spawn`, wrap in an exported holder (`export const _spawn = { fn: _nodeSpawn }`) and call through `_spawn.fn(...)`. Tests then `mock.method(_spawn, "fn", stub)`. Reference pattern in this repo: `pi/agent/extensions/subagents/spawn.ts`.
 - **RPC mode loses component-factory widgets** — only string arrays cross the RPC boundary. Design any widget you want RPC-portable as line arrays.
 - **Events stream as JSON lines without an `id` field** (responses do); host code parsing the stream must not key on `id` for events.
+- **Use `--exclude-tools` for least-privilege experiments.** Recent Pi releases can disable specific built-in, extension, or custom tools without removing the rest of the harness.
+- **Use `InputEvent.streamingBehavior` for mid-stream steering.** Extensions can distinguish idle prompts, queued follow-ups, and live steering instead of guessing from UI state.
+- **Use exact `--session-id` for automation.** Scripted runs can create or resume a project-local session deterministically.
+- **Keep noisy RPC bash output out of context when appropriate.** RPC clients can pass `excludeFromContext` for output that should be visible to the caller but not fed back to the model.
 - **`setWidget` cast pattern.** The typed signature is `pi.ui.setWidget`, but the in-repo convention — used by both `pi/agent/extensions/dev-workflow/index.ts` and `pi/agent/extensions/todo/index.ts` — is `(pi as any).setWidget(...)` gated on `piAny.hasUI && typeof piAny.setWidget === "function"`. Match this when adding sticky widgets.
 - **Tool schemas exposed to the agent are snake_case while internal task fields stay camelCase.** Map between them in the tool's `execute` body or validation breaks.
 - **Atomic agent-tool mutations.** When an agent tool mutates shared state, collect ALL validation errors before rejecting, apply changes atomically with a single `notify()` on success, and return errors as tool result text (not `throw`) so the agent can read and recover.
