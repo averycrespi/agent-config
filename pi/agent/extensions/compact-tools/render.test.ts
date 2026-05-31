@@ -233,6 +233,17 @@ test("bash error renders the first non-empty error line", () => {
   );
 });
 
+test("bash output expands tabs before compact rendering", () => {
+  const tool = captureTool(registerBash);
+
+  assert.deepEqual(
+    renderResult(tool, "     1\talpha\npath:161:\t\tenumerable: true,", 80, {
+      args: { command: "nl file" },
+    }),
+    ["     1   alpha", "path:161:      enumerable: true,"],
+  );
+});
+
 test("ls empty success renders empty", () => {
   const tool = captureTool(registerLs);
 
