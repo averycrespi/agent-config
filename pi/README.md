@@ -26,6 +26,7 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `ask-user`       | `ask_user` tool for multiple-choice questions                                                                          |
 | `compact-tools`  | Compact TUI rendering for built-in shell and file tools                                                                |
+| `context`        | `/context` token-blame report for current context-window usage                                                         |
 | `dev-workflow`   | Plan/Execute/Verify workflow shell with mode-specific prompts, scoped plan tools, auto-advance, and compaction context |
 | `goal`           | Branch-scoped persistent goal steering with commands, tools, widget, and compaction context                            |
 | `mcp-broker`     | Broker CLI skill + guard for remote operations                                                                         |
