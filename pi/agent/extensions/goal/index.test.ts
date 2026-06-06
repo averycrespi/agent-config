@@ -336,6 +336,56 @@ test("agent_end schedules bounded continuation", async () => {
   assert.equal((pi.entries.at(-1)?.data as any).autoRun.continuationTurns, 1);
 });
 
+test("tool_call blocks ask_user only while goal auto-run is running", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxTurns: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  const toolCall = pi.handlers.get("tool_call");
+  assert.ok(toolCall);
+
+  assert.equal(
+    await toolCall({ toolName: "ask_user", toolCallId: "call-0" }, ctx),
+    undefined,
+  );
+
+  await pi.commands.get("goal").handler("Avoid interactive waits", ctx);
+
+  const blocked = await toolCall(
+    { toolName: "ask_user", toolCallId: "call-1" },
+    ctx,
+  );
+  assert.equal(blocked.block, true);
+  assert.match(blocked.reason, /ask_user is unavailable/i);
+
+  assert.equal(
+    await toolCall({ toolName: "read", toolCallId: "call-2" }, ctx),
+    undefined,
+  );
+
+  await pi.commands.get("goal-stop").handler("", ctx);
+  assert.equal(
+    await toolCall({ toolName: "ask_user", toolCallId: "call-3" }, ctx),
+    undefined,
+  );
+});
+
 test("/goal-stop leaves goal active and stops auto-run", async () => {
   const pi = makePi();
   const ctx = makeCtx();

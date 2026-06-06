@@ -29,6 +29,8 @@ After each `agent_end`, the extension schedules one follow-up user message when:
 
 The loop stops when the goal is completed, paused, cleared, explicitly stopped, interrupted by user input, or a turn/time bound is exhausted. Budget exhaustion does not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget` or `time_budget`.
 
+While auto-run is running, the extension blocks `ask_user` tool calls when that tool is available. Headless continuation cannot answer interactive prompts, so agents should choose the safest reversible default, continue with documented assumptions, or stop and report a blocker instead. This guard is only applied at tool-call time and does not require the `ask_user` tool to be loaded.
+
 ## Agent tools
 
 The extension registers two tools:

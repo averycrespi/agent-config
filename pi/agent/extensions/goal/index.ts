@@ -329,6 +329,23 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       return { action: "continue" };
     });
 
+    pi.on("tool_call", async (event: { toolName?: string }) => {
+      const goal = store.getGoal();
+      if (
+        event.toolName !== "ask_user" ||
+        !goal ||
+        goal.status !== "active" ||
+        store.getAutoRun()?.status !== "running"
+      ) {
+        return undefined;
+      }
+      return {
+        block: true,
+        reason:
+          "goal: ask_user is unavailable while goal auto-run is running. Choose the safest reversible default, continue with documented assumptions, or stop and report a blocker.",
+      };
+    });
+
     pi.on("before_agent_start", async (event: { systemPrompt: string }) => {
       const goal = store.getGoal();
       if (!config.injectActiveGoal || !goal || goal.status !== "active")
