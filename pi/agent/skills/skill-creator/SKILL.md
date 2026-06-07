@@ -23,7 +23,7 @@ skill-name/
 
 ## Naming Convention
 
-- **Workflow skills** (invoked to perform a task): use verb-object names (e.g., `challenge-plan`, `review-pr`)
+- **Workflow skills** (invoked to perform a task): use verb-object names when natural, or concise task nouns for broad workflows (e.g., `challenge-plan`, `review`)
 - **Reference skills** (provide information/context): use nouns (e.g., `playwright`, `tdd`)
 
 ## SKILL.md Frontmatter

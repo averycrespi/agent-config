@@ -68,7 +68,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `jira-tickets`            | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace              |
 | `plan`                    | Creating research-grounded, question-driven implementation plans ready for autonomous `/goal` handoff |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                          |
-| `review-pr`               | Reviewing a pull request or branch holistically across correctness, security, and quality             |
+| `review`                  | Reviewing a PR, branch, commit range, working tree, plan, document, or unit of work holistically      |
 | `skill-creator`           | Creating a new skill or updating an existing one                                                      |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                   |
 
