@@ -76,7 +76,7 @@ When `showWidget` is enabled and a goal exists, a compact widget appears above t
 
 When `compactSummaryEnabled` is enabled and a goal exists, the extension provides a goal-aware custom compaction summary that preserves the objective, status, completion evidence when present, and the anti-early-completion rule.
 
-This custom compaction behavior is intentionally not composable with other extensions that also return `session_before_compact` compaction content, including `dev-workflow`. Pi keeps one custom compaction result, so extension load order can determine which result wins when multiple compaction-providing extensions are active.
+This custom compaction behavior is intentionally not composable with other extensions that also return `session_before_compact` compaction content. Pi keeps one custom compaction result, so extension load order can determine which result wins when multiple compaction-providing extensions are active.
 
 Because extension-provided compaction replaces Pi's default compaction result, default file/change tracking may not be preserved. This is an accepted v1 trade-off.
 

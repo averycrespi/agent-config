@@ -244,7 +244,7 @@ From this repo's `CLAUDE.md` and the broader ecosystem:
 - **Use `InputEvent.streamingBehavior` for mid-stream steering.** Extensions can distinguish idle prompts, queued follow-ups, and live steering instead of guessing from UI state.
 - **Use exact `--session-id` for automation.** Scripted runs can create or resume a project-local session deterministically.
 - **Keep noisy RPC bash output out of context when appropriate.** RPC clients can pass `excludeFromContext` for output that should be visible to the caller but not fed back to the model.
-- **`setWidget` cast pattern.** The typed signature is `pi.ui.setWidget`, but the in-repo convention — used by both `pi/agent/extensions/dev-workflow/index.ts` and `pi/agent/extensions/todo/index.ts` — is `(pi as any).setWidget(...)` gated on `piAny.hasUI && typeof piAny.setWidget === "function"`. Match this when adding sticky widgets.
+- **`setWidget` cast pattern.** The typed signature is `pi.ui.setWidget`, but the in-repo convention — used by `pi/agent/extensions/todo/index.ts` — is `(pi as any).setWidget(...)` gated on `piAny.hasUI && typeof piAny.setWidget === "function"`. Match this when adding sticky widgets.
 - **Tool schemas exposed to the agent are snake_case while internal task fields stay camelCase.** Map between them in the tool's `execute` body or validation breaks.
 - **Atomic agent-tool mutations.** When an agent tool mutates shared state, collect ALL validation errors before rejecting, apply changes atomically with a single `notify()` on success, and return errors as tool result text (not `throw`) so the agent can read and recover.
 

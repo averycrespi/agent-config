@@ -1,5 +1,4 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { WorkflowMode } from "../dev-workflow/types.ts";
 import { formatDuration, type UsageStats } from "./utils.ts";
 
 export type FooterTheme = {
@@ -21,8 +20,6 @@ export type FooterState = {
   modelId?: string;
   thinking?: string;
   gitBranch?: string;
-  workflowMode?: WorkflowMode;
-  workflowBaseThinking?: string;
 };
 
 function collapseHome(cwd: string, homeDir?: string): string {
@@ -127,34 +124,11 @@ function buildContextSegment(
   )}`;
 }
 
-function buildWorkflowModeSegment(
-  mode: FooterState["workflowMode"],
-  theme: FooterTheme,
-): string | undefined {
-  if (!mode || mode === "normal") return undefined;
-
-  const label = `${mode} mode`;
-  if (mode === "plan") return theme.fg("accent", label);
-  if (mode === "execute") return theme.fg("success", label);
-  return theme.fg("warning", label);
-}
-
 function buildThinkingSegment(
   state: FooterState,
   theme: FooterTheme,
 ): string | undefined {
   if (!state.thinking) return undefined;
-  if (
-    state.workflowMode &&
-    state.workflowMode !== "normal" &&
-    state.workflowBaseThinking &&
-    state.thinking !== state.workflowBaseThinking
-  ) {
-    return `${dim(state.thinking, theme)} ${dim(
-      `(base: ${state.workflowBaseThinking})`,
-      theme,
-    )}`;
-  }
   return dim(state.thinking, theme);
 }
 
@@ -167,7 +141,6 @@ export function renderFooterLine(
 
   const separator = theme.fg("dim", " · ");
   const segments = [
-    buildWorkflowModeSegment(state.workflowMode, theme),
     buildCwdSegment(state),
     buildUsageSegment(state.usage, theme),
     buildContextSegment(state.contextUsage, theme),

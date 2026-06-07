@@ -6,10 +6,6 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  WORKFLOW_MODE_CHANGED_EVENT,
-  type WorkflowModeState,
-} from "../dev-workflow/api.ts";
 import { codexAdapter } from "./codex.ts";
 import { renderFooterLine, type FooterState } from "./footer.ts";
 import { getGitBranch } from "./git.ts";
@@ -34,12 +30,6 @@ export default function (pi: ExtensionAPI) {
     state.contextUsage = ctx.getContextUsage?.() ?? null;
     state.modelId = ctx.model?.id;
     state.thinking = pi.getThinkingLevel();
-  }
-
-  function syncWorkflowState(workflowState: WorkflowModeState): void {
-    state.workflowMode = workflowState.mode;
-    state.workflowBaseThinking =
-      workflowState.baselineThinking ?? workflowState.baseThinking;
   }
 
   async function refreshUsage(ctx: any): Promise<void> {
@@ -102,12 +92,6 @@ export default function (pi: ExtensionAPI) {
     await refreshUsage(ctx);
     requestRender?.();
   }
-
-  pi.events.on(WORKFLOW_MODE_CHANGED_EVENT, (workflowState) => {
-    syncWorkflowState(workflowState as WorkflowModeState);
-    state.thinking = pi.getThinkingLevel();
-    requestRender?.();
-  });
 
   pi.on("session_start", async (_event, ctx) => {
     syncState(ctx);

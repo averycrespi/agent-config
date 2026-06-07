@@ -89,7 +89,7 @@ Do not ask permission to continue with obvious research or mechanical plan writi
 
 Save the plan under `.plans/YYYY-MM-DD-<short-slug>.md` unless the user asks for a different path or an existing plan should be updated. Use repo-relative paths only; never include absolute local paths.
 
-If `write_plan` / `edit_plan` tools are available, use them. Otherwise create `.plans/` and use normal file tools.
+Create `.plans/` if needed and use normal file tools to write or update the plan.
 
 The plan should be complete enough for a fresh agent to run something like:
 

@@ -117,31 +117,6 @@ test("session_start installs a single-line statusline instead of publishing only
   ]);
 });
 
-test("workflow mode events rerender the statusline with mode badge and base thinking", async () => {
-  const pi = makePi();
-  statuslineExtension(pi as any);
-
-  const handler = pi._handlers.get("session_start");
-  assert.ok(handler, "session_start handler should be registered");
-
-  await handler!({ type: "session_start", reason: "startup" }, pi._ctx());
-  pi._setThinkingLevel("low");
-  pi.events.emit("dev-workflow:changed", {
-    mode: "execute",
-    baseThinking: "low",
-    baselineThinking: "high",
-  });
-
-  assert.deepEqual(pi._statuslineCalls[0], [
-    "/repo/agent-config · ctx 42%/200k · gpt-5-codex · medium",
-  ]);
-  assert.deepEqual(pi._statuslineCalls.slice(-1), [
-    [
-      "execute mode · /repo/agent-config · ctx 42%/200k · gpt-5-codex · low (base: high)",
-    ],
-  ]);
-});
-
 test("failed usage fetches are not debounced as successful fetches", async () => {
   const pi = makePi();
   statuslineExtension(pi as any);

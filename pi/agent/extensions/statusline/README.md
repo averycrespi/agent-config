@@ -1,20 +1,20 @@
 # statusline
 
-Pi extension that renders a single-line footer with the current workflow mode, working directory, git branch, provider quota, context usage, model, and thinking level.
+Pi extension that renders a single-line footer with the current working directory, git branch, provider quota, context usage, model, and thinking level.
 
 ## Footer format
 
 ```
 ~/Workspace/agent-config [main] · Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
-plan mode · /repo [feature/statusline-git] · Codex limit 2h · ctx 92%/200k · gpt-5-codex · high
-verify mode · /repo [detached: abc1234] · Codex $4.20 1h · ctx 18%/200k · gpt-5-codex · low (base: high)
+/repo [feature/statusline-git] · Codex limit 2h · ctx 92%/200k · gpt-5-codex · high
+/repo [detached: abc1234] · Codex $4.20 1h · ctx 18%/200k · gpt-5-codex · low
 ```
 
-Normal mode omits the workflow badge. When a workflow mode is active, the footer prefixes a colored `plan mode`, `execute mode`, or `verify mode` segment. When the working directory is in a git repository, the current branch is appended to the working directory in brackets. Detached HEAD states render as `detached: <short-hash>`. If the current thinking level differs from the session's original pre-workflow thinking level, the footer appends `(base: …)` after the current thinking level.
+When the working directory is in a git repository, the current branch is appended to the working directory in brackets. Detached HEAD states render as `detached: <short-hash>`.
 
-Left-to-right priority is preserved when the terminal is narrow: workflow mode, cwd, provider quota, context, model, then thinking. Quota percentages and context percentage are highlighted in warning/error colors above the configured thresholds.
+Left-to-right priority is preserved when the terminal is narrow: cwd, provider quota, context, model, then thinking. Quota percentages and context percentage are highlighted in warning/error colors above the configured thresholds.
 
-The footer updates on session start, workflow-mode changes, model changes, thinking-level changes, and after each turn. Successful provider usage fetching is debounced to one API call per provider/model every 60 seconds.
+The footer updates on session start, model changes, thinking-level changes, and after each turn. Successful provider usage fetching is debounced to one API call per provider/model every 60 seconds.
 
 ## Configuration
 

@@ -2,7 +2,7 @@
 
 Pi extension that compacts verbose built-in tool output in the TUI. Execution behavior is unchanged — only the visual rendering is overridden. The full tool output is still delivered to the agent.
 
-Renderer overrides are registered after `session_start`, not during extension factory setup. This avoids force-enabling inactive tools during Pi startup while still making compact rendering available for tools that another extension or command activates later, such as `dev-workflow` enabling `ls`, `find`, and `grep` in Plan mode.
+Renderer overrides are registered after `session_start`, not during extension factory setup. This avoids force-enabling inactive tools during Pi startup while still making compact rendering available for tools that another extension or command activates later.
 
 ## Compacted tools
 

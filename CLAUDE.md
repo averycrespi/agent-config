@@ -88,7 +88,7 @@ Documentation split:
 
 Implementation conventions:
 
-- **`setWidget` cast pattern.** The typed signature lives at `pi.ui.setWidget` (on `ExtensionUIContext`), but the in-repo convention — used by `dev-workflow/index.ts` and `todo/index.ts` — is to call `(pi as any).setWidget(...)` at the top level, gated on `piAny.hasUI && typeof piAny.setWidget === "function"`. Match this pattern when adding sticky widgets in new extensions.
+- **`setWidget` cast pattern.** The typed signature lives at `pi.ui.setWidget` (on `ExtensionUIContext`), but the in-repo convention — used by `todo/index.ts` — is to call `(pi as any).setWidget(...)` at the top level, gated on `piAny.hasUI && typeof piAny.setWidget === "function"`. Match this pattern when adding sticky widgets in new extensions.
 - **Shared render helpers.** For compact tool-call/result renderers, prefer helpers from `pi/agent/extensions/_shared/render.ts` instead of reimplementing common formatting, truncation, and partial-timer logic per extension.
 - **Shared config helpers.** For user-facing extension settings, prefer helpers from `pi/agent/extensions/_shared/config.ts` instead of hand-reading Pi settings files. Validate merged values at the extension boundary and fall back to defaults for invalid values.
 - **Logging.** Prefer `pi/agent/extensions/_shared/logging.ts` for retained diagnostic logs. Avoid `console.*` in interactive TUI paths because it can corrupt the display; use `ctx.ui.notify` for user-visible issues, and reserve stderr/stdout writes for headless-only or last-resort diagnostics.
