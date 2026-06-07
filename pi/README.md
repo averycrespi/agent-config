@@ -57,24 +57,25 @@ Markdown snippets invoked with `/name` in Pi, where `name` is the filename witho
 
 Markdown skill packages that load on demand via progressive disclosure — only the `name` and `description` are pre-registered; the body of `SKILL.md` and any bundled `references/` files load only when the skill activates.
 
-| Skill                     | Use when                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows  |
-| `challenge-plan`          | Stress-testing, challenging, reviewing, repairing, or grilling a plan before execution            |
-| `complete-work`           | Finishing verified implementation work, cleaning plan artifacts, and choosing branch or PR steps  |
-| `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                    |
-| `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends |
-| `hindsight`               | Retaining and querying Hindsight memories via the mcp-broker `hindsight` namespace                |
-| `html-artifacts`          | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools     |
-| `jira-tickets`            | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace          |
-| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                      |
-| `review-pr`               | Reviewing a pull request or branch holistically across correctness, security, and quality         |
-| `skill-creator`           | Creating a new skill or updating an existing one                                                  |
-| `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic               |
+| Skill                     | Use when                                                                                              |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows      |
+| `challenge-plan`          | Stress-testing, challenging, reviewing, repairing, or grilling a plan before execution                |
+| `complete-work`           | Finishing verified implementation work, cleaning plan artifacts, and choosing branch or PR steps      |
+| `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                        |
+| `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends     |
+| `hindsight`               | Retaining and querying Hindsight memories via the mcp-broker `hindsight` namespace                    |
+| `html-artifacts`          | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools         |
+| `jira-tickets`            | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace              |
+| `plan`                    | Creating research-grounded, question-driven implementation plans ready for autonomous `/goal` handoff |
+| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                          |
+| `review-pr`               | Reviewing a pull request or branch holistically across correctness, security, and quality             |
+| `skill-creator`           | Creating a new skill or updating an existing one                                                      |
+| `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                   |
 
 Notes:
 
 - Most skills are mirrored from `claude/skills/` with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
-- Collaborative planning now lives in the `dev-workflow` Plan-mode contract rather than a separate Pi brainstorming skill.
+- Collaborative planning lives in the `plan` skill; `challenge-plan` stress-tests plans before autonomous execution, and `goal` drives execution/completion evidence.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [skill-creator](../pi/agent/skills/skill-creator/SKILL.md) skill when adding new skills.

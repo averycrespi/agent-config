@@ -9,7 +9,7 @@ Stress-test a plan before execution. Optimize for finding material problems earl
 
 ## Core rule
 
-Challenge the plan against the user's goal, acceptance criteria, repo reality, and verification path. Report meaningful blockers and risks only. Do not nitpick wording or invent theoretical issues.
+Challenge the plan against the user's goal, acceptance criteria, repo reality, verification path, and autonomous handoff readiness. Report meaningful blockers and risks only. Do not nitpick wording or invent theoretical issues.
 
 ## Process
 
@@ -25,11 +25,11 @@ Then gather only the repo context needed to judge the plan:
 - nearby implementation patterns
 - tests, docs, or config that the plan depends on
 
-If a claim can be checked in the repo, check it instead of asking the user.
+If a claim can be checked in the repo, check it instead of asking the user. If the plan was produced by the `plan` skill and already includes research evidence, reuse that evidence instead of duplicating work unless something looks stale, missing, or contradictory.
 
-### 2. Use a read-only challenger when useful
+### 2. Use read-only challengers when useful
 
-For non-trivial plans, prefer `spawn_agents` with the `review` agent. Ask it to evaluate the plan against this rubric:
+For non-trivial plans, prefer `spawn_agents` with read-only review or exploration agents. When independent checks can run concurrently, spawn them in one parallel `spawn_agents` call instead of serial calls. Ask challengers to evaluate the plan against this rubric:
 
 - Does the plan satisfy every acceptance criterion?
 - Are success criteria observable and testable?
@@ -40,6 +40,9 @@ For non-trivial plans, prefer `spawn_agents` with the `review` agent. Ask it to 
 - Is verification strong enough to catch likely failures?
 - Is scope too broad, speculative, or missing an explicit out-of-scope boundary?
 - Are documentation or migration impacts missing?
+- Is the plan executable by a fresh autonomous agent, such as a `/goal` run, without requiring more user decisions?
+- Are blocking open questions absent, with only safe non-blocking assumptions remaining?
+- Does the handoff summary or equivalent section include a clear implementation objective and concrete completion evidence expectations?
 
 Keep subagent prompts read-only. Ask for evidence-backed findings, not edits.
 
@@ -50,7 +53,8 @@ Return a concise challenge report:
 1. **Blockers** — issues that should be resolved before execution
 2. **Risks** — plausible failure modes worth addressing or accepting
 3. **Questions** — human decisions needed to proceed
-4. **Suggested plan edits** — concrete changes, grouped by plan section
+4. **Handoff readiness** — whether the plan is ready for autonomous execution, especially via `/goal`, and what must change before handoff
+5. **Suggested plan edits** — concrete changes, grouped by plan section
 
 For each finding, include why it matters and the evidence. If no material issues are found, say the plan is ready enough to execute and list any residual uncertainty.
 
@@ -64,4 +68,4 @@ Use `ask_user` when there are multiple valid choices with different trade-offs.
 
 Do not edit the plan by default. If the user asks for revisions, or if the current Plan-mode task is explicitly to repair the plan, update the plan with the available plan-editing tools.
 
-Keep revisions minimal. Preserve good plan structure. Do not turn a plan into a line-by-line diff; plans should capture intent, constraints, acceptance criteria, ordered tasks, verification, and known follow-ups.
+Keep revisions minimal. Preserve good plan structure. Do not turn a plan into a line-by-line diff; plans should capture intent, constraints, acceptance criteria, implementation notes or task groups, documentation impact, verification, risks, assumptions, and handoff guidance.
