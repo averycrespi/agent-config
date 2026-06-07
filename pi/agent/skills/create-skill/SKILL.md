@@ -1,10 +1,10 @@
 ---
-name: skill-creator
+name: create-skill
 description: Use when creating a new skill or updating an existing skill
 license: Complete terms in LICENSE
 ---
 
-# Skill Creator
+# Create Skill
 
 Skills are modular, self-contained packages that extend the agent's capabilities with specialized knowledge, workflows, and tools.
 
