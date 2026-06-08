@@ -14,6 +14,10 @@ Use conventional commits: `<type>(<optional scope>): <description>`. Types: feat
 
 Title under 70 chars: `TICKET-123: description` or conventional commit format. Body sections: Context (why), Changes (by concept, not file), Review Notes (if non-obvious), Test Plan (checklist). Explain _why_ not _how_. Be specific, not vague.
 
+## Git Branching
+
+Only create a new branch when currently on the default branch (`main`/`master`). If already on a non-default branch, keep working on it — never branch off an existing feature branch for the same work.
+
 ## Git Worktree Rules
 
 In a worktree, **all git operations target the worktree, never the main repo**. Use `git -C <worktree-path>` if needed — never point it at the main repo. Do not `cd` to the main repo to run git. Verify with `git rev-parse --show-toplevel`.
