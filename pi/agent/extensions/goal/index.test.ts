@@ -5,7 +5,7 @@ import { createGoalExtension } from "./index.ts";
 function makePi() {
   const commands = new Map<string, any>();
   const handlers = new Map<string, any>();
-  const widgets: Array<{ key: string; content: any }> = [];
+  const widgets: Array<{ key: string; content: any; options?: any }> = [];
   const entries: Array<{ type: string; data: unknown }> = [];
   const sentMessages: Array<{ content: unknown; options: unknown }> = [];
   return {
@@ -22,8 +22,8 @@ function makePi() {
     on(name: string, handler: any) {
       handlers.set(name, handler);
     },
-    setWidget(key: string, content: any) {
-      widgets.push({ key, content });
+    setWidget(key: string, content: any, options?: any) {
+      widgets.push({ key, content, options });
     },
     appendEntry(type: string, data: unknown) {
       entries.push({ type, data });
@@ -107,6 +107,7 @@ test("commands mutate goal state and persist snapshots", async () => {
     /Goal \[active\] Ship goal extension/,
   );
   assert.equal(pi.entries.at(-1)?.type, "goal-state");
+  assert.deepEqual(pi.widgets.at(-1)?.options, { placement: "belowEditor" });
 
   await pi.commands.get("goal-pause").handler("", ctx);
   assert.match(ctx.notifications.at(-1)?.msg, /Goal \[paused\]/);

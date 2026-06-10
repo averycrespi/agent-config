@@ -37,7 +37,6 @@ export function renderGoalWidgetLines(
   if (!goal) return [];
   const safeWidth = Math.max(0, width);
   const lines = [
-    theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)),
     truncateLine(
       `Goal ${renderStatus(goal.status, theme)} ${goal.objective}`,
       safeWidth,
@@ -56,6 +55,7 @@ export function renderGoalWidgetLines(
       ),
     );
   }
+  lines.push(theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)));
   return lines;
 }
 

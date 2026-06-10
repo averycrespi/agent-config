@@ -15,9 +15,9 @@ test("renders compact active goal widget within width", () => {
   const lines = renderGoalWidgetLines(baseGoal, 32);
 
   assert.equal(lines.length, 2);
-  assert.equal(lines[0], "─".repeat(32));
-  assert.ok(lines[1].includes("Goal [active]"));
-  assert.ok(lines[1].length <= 32);
+  assert.ok(lines[0].includes("Goal [active]"));
+  assert.ok(lines[0].length <= 32);
+  assert.equal(lines[1], "─".repeat(32));
 });
 
 test("renders one evidence line for complete goals", () => {
@@ -32,6 +32,7 @@ test("renders one evidence line for complete goals", () => {
   );
 
   assert.equal(lines.length, 3);
-  assert.match(lines[2], /^Evidence: /);
-  assert.ok(lines[2].length <= 40);
+  assert.match(lines[1], /^Evidence: /);
+  assert.ok(lines[1].length <= 40);
+  assert.equal(lines[2], "─".repeat(40));
 });

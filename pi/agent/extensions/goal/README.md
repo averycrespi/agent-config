@@ -70,7 +70,7 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 ## Widget
 
-When `showWidget` is enabled and a goal exists, a compact widget appears above the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completed goals also show one truncated evidence line.
+When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completed goals also show one truncated evidence line.
 
 ## Compaction
 

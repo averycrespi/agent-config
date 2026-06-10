@@ -17,6 +17,7 @@ import {
 import { registerGoalTools, STATE_ENTRY_TYPE } from "./tools.ts";
 
 const WIDGET_KEY = "goal";
+const WIDGET_PLACEMENT = "belowEditor";
 
 const DEFAULT_RUNTIME_CONFIG: GoalConfig = {
   injectActiveGoal: true,
@@ -44,11 +45,13 @@ function setGoalWidget(
 ): void {
   const piAny = pi as any;
   if (piAny.hasUI && typeof piAny.setWidget === "function") {
-    piAny.setWidget(WIDGET_KEY, content);
+    piAny.setWidget(WIDGET_KEY, content, { placement: WIDGET_PLACEMENT });
     return;
   }
   if (!ctx.hasUI) return;
-  ctx.ui.setWidget(WIDGET_KEY, content as any, { placement: "aboveEditor" });
+  ctx.ui.setWidget(WIDGET_KEY, content as any, {
+    placement: WIDGET_PLACEMENT,
+  });
 }
 
 function renderWidget(
