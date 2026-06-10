@@ -47,14 +47,6 @@ export function renderGoalWidgetLines(
     if (usageLine)
       lines.push(truncateLine(theme.fg("dim", usageLine), safeWidth));
   }
-  if (goal.status === "complete" && goal.completionEvidence) {
-    lines.push(
-      truncateLine(
-        theme.fg("dim", `Evidence: ${goal.completionEvidence}`),
-        safeWidth,
-      ),
-    );
-  }
   lines.push(theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)));
   return lines;
 }

@@ -6,7 +6,7 @@ The goal extension keeps one branch-scoped durable objective for the current Pi 
 
 - `/goal <objective>` — create or replace the current goal as active, start bounded auto-run, and send the initial agent message.
 - `/goal` — show the current goal, usage counters when enabled, and auto-run state.
-- `/goal-show` — show the current goal, usage counters when enabled, or report that none is set.
+- `/goal-show` — show the current goal, usage counters when enabled, completion evidence when present, or report that none is set.
 - `/goal-set <objective>` — create or replace the current goal as active without starting auto-run.
 - `/goal-pause` — pause the current goal and stop auto-run.
 - `/goal-resume` — resume a paused or completed goal as active without starting auto-run.
@@ -69,7 +69,7 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 ## Widget
 
-When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completed goals also show one truncated evidence line.
+When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completion evidence is available through `/goal-show` instead of the widget.
 
 ## Compaction
 
