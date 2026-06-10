@@ -15,12 +15,12 @@ test("renders compact active goal widget within width", () => {
   const lines = renderGoalWidgetLines(baseGoal, 32);
 
   assert.equal(lines.length, 2);
-  assert.equal(lines[0], "─".repeat(32));
-  assert.ok(lines[1].includes("Goal [active]"));
-  assert.ok(lines[1].length <= 32);
+  assert.ok(lines[0].includes("[active] Goal:"));
+  assert.ok(lines[0].length <= 32);
+  assert.equal(lines[1], "─".repeat(32));
 });
 
-test("renders one evidence line for complete goals", () => {
+test("omits completion evidence from complete goal widget", () => {
   const lines = renderGoalWidgetLines(
     {
       ...baseGoal,
@@ -31,7 +31,8 @@ test("renders one evidence line for complete goals", () => {
     40,
   );
 
-  assert.equal(lines.length, 3);
-  assert.match(lines[2], /^Evidence: /);
-  assert.ok(lines[2].length <= 40);
+  assert.equal(lines.length, 2);
+  assert.ok(lines[0].includes("[complete] Goal:"));
+  assert.doesNotMatch(lines.join("\n"), /Evidence:/);
+  assert.equal(lines[1], "─".repeat(40));
 });

@@ -37,9 +37,8 @@ export function renderGoalWidgetLines(
   if (!goal) return [];
   const safeWidth = Math.max(0, width);
   const lines = [
-    theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)),
     truncateLine(
-      `Goal ${renderStatus(goal.status, theme)} ${goal.objective}`,
+      `${renderStatus(goal.status, theme)} Goal: ${goal.objective}`,
       safeWidth,
     ),
   ];
@@ -48,14 +47,7 @@ export function renderGoalWidgetLines(
     if (usageLine)
       lines.push(truncateLine(theme.fg("dim", usageLine), safeWidth));
   }
-  if (goal.status === "complete" && goal.completionEvidence) {
-    lines.push(
-      truncateLine(
-        theme.fg("dim", `Evidence: ${goal.completionEvidence}`),
-        safeWidth,
-      ),
-    );
-  }
+  lines.push(theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)));
   return lines;
 }
 

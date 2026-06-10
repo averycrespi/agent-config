@@ -6,11 +6,10 @@ The goal extension keeps one branch-scoped durable objective for the current Pi 
 
 - `/goal <objective>` — create or replace the current goal as active, start bounded auto-run, and send the initial agent message.
 - `/goal` — show the current goal, usage counters when enabled, and auto-run state.
-- `/goal-show` — show the current goal, usage counters when enabled, or report that none is set.
+- `/goal-show` — show the current goal, usage counters when enabled, completion evidence when present, or report that none is set.
 - `/goal-set <objective>` — create or replace the current goal as active without starting auto-run.
 - `/goal-pause` — pause the current goal and stop auto-run.
 - `/goal-resume` — resume a paused or completed goal as active without starting auto-run.
-- `/goal-stop` — stop auto-run while keeping the goal active for steering.
 - `/goal-clear` — clear the current goal and stop auto-run.
 
 Objectives are trimmed, must be non-empty, and are bounded by `objectiveMaxChars`.
@@ -27,7 +26,7 @@ After each `agent_end`, the extension schedules one follow-up user message when:
 - `autoRunMaxTurns` and `autoRunMaxActiveMinutes` have not been exhausted
 - Pi reports no pending messages, when that API is available
 
-The loop stops when the goal is completed, paused, cleared, explicitly stopped, interrupted by user input, or a turn/time bound is exhausted. Budget exhaustion does not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget` or `time_budget`.
+The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, or a turn/time bound is exhausted. Budget exhaustion does not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget` or `time_budget`.
 
 While auto-run is running, the extension blocks `ask_user` tool calls when that tool is available. Headless continuation cannot answer interactive prompts, so agents should choose the safest reversible default, continue with documented assumptions, or stop and report a blocker instead. This guard is only applied at tool-call time and does not require the `ask_user` tool to be loaded.
 
@@ -70,7 +69,7 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 ## Widget
 
-When `showWidget` is enabled and a goal exists, a compact widget appears above the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completed goals also show one truncated evidence line.
+When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completion evidence is available through `/goal-show` instead of the widget.
 
 ## Compaction
 
