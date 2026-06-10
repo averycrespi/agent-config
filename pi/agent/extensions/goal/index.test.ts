@@ -380,43 +380,11 @@ test("tool_call blocks ask_user only while goal auto-run is running", async () =
     undefined,
   );
 
-  await pi.commands.get("goal-stop").handler("", ctx);
+  await pi.handlers.get("input")({ source: "user" }, ctx);
   assert.equal(
     await toolCall({ toolName: "ask_user", toolCallId: "call-3" }, ctx),
     undefined,
   );
-});
-
-test("/goal-stop leaves goal active and stops auto-run", async () => {
-  const pi = makePi();
-  const ctx = makeCtx();
-  createGoalExtension({
-    loadConfig: async () => ({
-      config: {
-        injectActiveGoal: true,
-        showWidget: false,
-        objectiveMaxChars: 100,
-        evidenceMaxChars: 100,
-        compactSummaryEnabled: true,
-        checkpointCommits: true,
-        showUsage: true,
-        autoRunEnabled: true,
-        autoRunMaxTurns: 10,
-        autoRunMaxActiveMinutes: 60,
-      },
-      warnings: [],
-    }),
-  })(pi);
-  await pi.handlers.get("session_start")({}, ctx);
-  await pi.commands.get("goal").handler("Stop later", ctx);
-
-  await pi.commands.get("goal-stop").handler("", ctx);
-  await pi.handlers.get("agent_end")({}, ctx);
-
-  assert.match(ctx.notifications.at(-1)?.msg, /stopped/i);
-  assert.equal((pi.entries.at(-1)?.data as any).goal.status, "active");
-  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "stopped");
-  assert.equal(pi.sentMessages.length, 1);
 });
 
 test("agent_end stops auto-run at turn budget", async () => {

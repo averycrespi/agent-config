@@ -282,22 +282,6 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       },
     });
 
-    pi.registerCommand("goal-stop", {
-      description: "Stop goal auto-run while keeping the active goal.",
-      handler: async (_args, ctx) => {
-        if (!store.getGoal()) {
-          ctx.ui.notify("No goal is set.", "info");
-          return;
-        }
-        if (store.getAutoRun()?.status !== "running") {
-          ctx.ui.notify("Goal auto-run is not running.", "info");
-          return;
-        }
-        store.stopAutoRun("user_stopped");
-        persistAndNotify(ctx, "Goal auto-run stopped.");
-      },
-    });
-
     pi.registerCommand("goal-clear", {
       description: "Clear the current goal.",
       handler: async (_args, ctx) => {
