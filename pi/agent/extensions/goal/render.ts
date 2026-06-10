@@ -38,7 +38,7 @@ export function renderGoalWidgetLines(
   const safeWidth = Math.max(0, width);
   const lines = [
     truncateLine(
-      `Goal ${renderStatus(goal.status, theme)} ${goal.objective}`,
+      `${renderStatus(goal.status, theme)} Goal: ${goal.objective}`,
       safeWidth,
     ),
   ];

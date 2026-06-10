@@ -15,7 +15,7 @@ test("renders compact active goal widget within width", () => {
   const lines = renderGoalWidgetLines(baseGoal, 32);
 
   assert.equal(lines.length, 2);
-  assert.ok(lines[0].includes("Goal [active]"));
+  assert.ok(lines[0].includes("[active] Goal:"));
   assert.ok(lines[0].length <= 32);
   assert.equal(lines[1], "─".repeat(32));
 });
