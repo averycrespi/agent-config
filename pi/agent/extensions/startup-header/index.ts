@@ -34,11 +34,17 @@ export default function (pi: ExtensionAPI) {
       };
     });
 
-    void loadGitMetadata(pi, ctx.cwd).then((nextMetadata) => {
-      if (currentGeneration !== generation) return;
-      metadata = nextMetadata;
-      requestRender?.();
-    });
+    void loadGitMetadata(pi, ctx.cwd)
+      .then((nextMetadata) => {
+        if (currentGeneration !== generation) return;
+        metadata = nextMetadata;
+        requestRender?.();
+      })
+      .catch(() => {
+        if (currentGeneration !== generation) return;
+        metadata = { commits: [] };
+        requestRender?.();
+      });
   });
 
   pi.on("session_shutdown", async () => {

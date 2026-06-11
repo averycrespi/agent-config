@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { mock, test } from "node:test";
+import { _loggingFs } from "../_shared/logging.ts";
 import statuslineExtension from "./index.ts";
+import { _execFile } from "./git.ts";
 
 const identityTheme = {
   fg: (_color: string, text: string) => text,
@@ -117,6 +122,41 @@ test("session_start installs a single-line statusline instead of publishing only
   ]);
 });
 
+test("git branch lookup does not block initial rendering and refreshes later", async () => {
+  const pi = makePi();
+  let finishGit!: () => void;
+  const execStub = mock.method(
+    _execFile,
+    "fn",
+    (_file: string, _args: string[], _options: unknown, cb: Function) => {
+      finishGit = () => cb(null, "feature/async\n");
+    },
+  );
+
+  try {
+    statuslineExtension(pi as any);
+    const handler = pi._handlers.get("session_start");
+    assert.ok(handler, "session_start handler should be registered");
+
+    await handler!({ type: "session_start", reason: "startup" }, pi._ctx());
+
+    assert.deepEqual(pi._statuslineCalls[0], [
+      "/repo/agent-config · ctx 42%/200k · gpt-5-codex · medium",
+    ]);
+
+    finishGit();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.ok(
+      pi._statuslineCalls.some((call) =>
+        call[0]?.includes("/repo/agent-config [feature/async]"),
+      ),
+    );
+  } finally {
+    execStub.mock.restore();
+  }
+});
+
 test("failed usage fetches are not debounced as successful fetches", async () => {
   const pi = makePi();
   statuslineExtension(pi as any);
@@ -145,4 +185,41 @@ test("failed usage fetches are not debounced as successful fetches", async () =>
   }
 
   assert.equal(fetchStub.mock.callCount(), 2);
+});
+
+test("usage fetch failures are logged once per session", async () => {
+  const root = await mkdtemp(join(tmpdir(), "statusline-log-test-"));
+  const tmpStub = mock.method(_loggingFs, "tmpdir", () => root);
+  const pi = makePi();
+  statuslineExtension(pi as any);
+  const turnEnd = pi._handlers.get("turn_end");
+  assert.ok(turnEnd, "turn_end handler should be registered");
+
+  const ctx = {
+    ...makeCtx(),
+    modelRegistry: {
+      async getApiKeyAndHeaders() {
+        return { ok: true, apiKey: "token", headers: {} };
+      },
+    },
+  };
+  const fetchStub = mock.method(
+    globalThis,
+    "fetch",
+    async () => ({ ok: false }) as Response,
+  );
+
+  try {
+    await turnEnd!({}, ctx);
+    await turnEnd!({}, ctx);
+
+    assert.equal(fetchStub.mock.callCount(), 2);
+    const files = await readdir(join(root, "pi-extension-logs", "statusline"));
+    assert.equal(files.length, 1);
+    assert.match(files[0]!, /quota-fetch-failure/);
+  } finally {
+    fetchStub.mock.restore();
+    tmpStub.mock.restore();
+    await rm(root, { recursive: true, force: true });
+  }
 });

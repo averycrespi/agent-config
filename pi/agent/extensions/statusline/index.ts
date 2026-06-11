@@ -6,6 +6,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createManagedLogger } from "../_shared/logging.ts";
 import { codexAdapter } from "./codex.ts";
 import { renderFooterLine, type FooterState } from "./footer.ts";
 import { getGitBranch } from "./git.ts";
@@ -18,6 +19,8 @@ export default function (pi: ExtensionAPI) {
   let lastFetchAt = 0;
   let lastFetchKey = "";
   let requestRender: (() => void) | null = null;
+  let gitGeneration = 0;
+  let usageFailureLogged = false;
   const state: FooterState = {
     cwd: process.cwd(),
     homeDir: process.env.HOME,
@@ -26,10 +29,32 @@ export default function (pi: ExtensionAPI) {
   function syncState(ctx: any): void {
     state.cwd = ctx.cwd;
     state.homeDir = process.env.HOME;
-    state.gitBranch = getGitBranch(ctx.cwd);
     state.contextUsage = ctx.getContextUsage?.() ?? null;
     state.modelId = ctx.model?.id;
     state.thinking = pi.getThinkingLevel();
+  }
+
+  async function logUsageFailureOnce(message: string): Promise<void> {
+    if (usageFailureLogged) return;
+    usageFailureLogged = true;
+    try {
+      const logger = createManagedLogger({
+        extensionName: "statusline",
+        id: "quota-fetch-failure",
+      });
+      logger.write(`${message}\n`);
+      await logger.close();
+    } catch {
+      // best-effort diagnostics
+    }
+  }
+
+  async function refreshGitBranch(cwd: string): Promise<void> {
+    const generation = ++gitGeneration;
+    const branch = await getGitBranch(cwd);
+    if (generation !== gitGeneration || state.cwd !== cwd) return;
+    state.gitBranch = branch ?? state.gitBranch;
+    requestRender?.();
   }
 
   async function refreshUsage(ctx: any): Promise<void> {
@@ -60,6 +85,9 @@ export default function (pi: ExtensionAPI) {
     const stats = await adapter.fetchUsage(auth.apiKey, auth.headers);
     if (!stats) {
       state.usage = undefined;
+      await logUsageFailureOnce(
+        `Provider usage fetch failed for ${model.provider}:${model.id}`,
+      );
       return;
     }
 
@@ -89,6 +117,7 @@ export default function (pi: ExtensionAPI) {
   async function refreshAndRender(ctx: any): Promise<void> {
     syncState(ctx);
     requestRender?.();
+    void refreshGitBranch(ctx.cwd);
     await refreshUsage(ctx);
     requestRender?.();
   }
