@@ -11,16 +11,24 @@ type Group = {
   examples: string[];
 };
 
+type ToolResultCall = {
+  label: string;
+  tokens: number;
+  preview: string;
+};
+
 type ContextReport = {
   estimatedTokens: number;
   reportedTokens: number | null;
   contextWindow: number | null;
   groups: Group[];
+  toolResultCalls: ToolResultCall[];
   unattributedTokens: number;
   sourceNote: string;
 };
 
 const MAX_EXAMPLES = 3;
+const TOP_TOOL_RESULT_CALLS = 5;
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -87,8 +95,21 @@ function addGroup(
   groups.set(label, group);
 }
 
+function toolCallLabel(message: Record<string, unknown>): string {
+  const toolName =
+    typeof message.toolName === "string" ? message.toolName : "unknown";
+  const toolCallId =
+    typeof message.toolCallId === "string"
+      ? message.toolCallId
+      : typeof message.id === "string"
+        ? message.id
+        : undefined;
+  return toolCallId ? `${toolName} (${toolCallId})` : toolName;
+}
+
 function addMessageEntry(
   groups: Map<string, Group>,
+  toolResultCalls: ToolResultCall[],
   entry: Extract<SessionEntry, { type: "message" }>,
 ): void {
   const message = entry.message;
@@ -110,12 +131,14 @@ function addMessageEntry(
     }
     case "toolResult": {
       const text = contentToText(message.content);
-      addGroup(
-        groups,
-        `Tool result: ${message.toolName}`,
-        estimateTokens(text),
-        preview(text),
-      );
+      const tokens = estimateTokens(text);
+      const textPreview = preview(text);
+      addGroup(groups, `Tool result: ${message.toolName}`, tokens, textPreview);
+      toolResultCalls.push({
+        label: toolCallLabel(message as unknown as Record<string, unknown>),
+        tokens,
+        preview: textPreview,
+      });
       break;
     }
     default: {
@@ -125,10 +148,14 @@ function addMessageEntry(
   }
 }
 
-function addEntry(groups: Map<string, Group>, entry: SessionEntry): void {
+function addEntry(
+  groups: Map<string, Group>,
+  toolResultCalls: ToolResultCall[],
+  entry: SessionEntry,
+): void {
   switch (entry.type) {
     case "message":
-      addMessageEntry(groups, entry);
+      addMessageEntry(groups, toolResultCalls, entry);
       break;
     case "compaction":
       addGroup(
@@ -183,6 +210,7 @@ function formatPercent(part: number, total: number): string {
 
 function buildReport(ctx: ExtensionCommandContext): ContextReport {
   const groups = new Map<string, Group>();
+  const toolResultCalls: ToolResultCall[] = [];
   const systemPrompt = ctx.getSystemPrompt();
   addGroup(
     groups,
@@ -191,9 +219,14 @@ function buildReport(ctx: ExtensionCommandContext): ContextReport {
     "Pi prompt, AGENTS.md, loaded extension guidance",
   );
 
-  for (const entry of ctx.sessionManager.getBranch()) addEntry(groups, entry);
+  for (const entry of ctx.sessionManager.getBranch()) {
+    addEntry(groups, toolResultCalls, entry);
+  }
 
   const sortedGroups = [...groups.values()].sort((a, b) => b.tokens - a.tokens);
+  const sortedToolResultCalls = toolResultCalls.sort(
+    (a, b) => b.tokens - a.tokens,
+  );
   const estimatedTokens = sortedGroups.reduce(
     (sum, group) => sum + group.tokens,
     0,
@@ -217,6 +250,7 @@ function buildReport(ctx: ExtensionCommandContext): ContextReport {
     reportedTokens,
     contextWindow,
     groups: sortedGroups,
+    toolResultCalls: sortedToolResultCalls,
     unattributedTokens,
     sourceNote,
   };
@@ -247,6 +281,20 @@ export function renderContextReport(
     );
     if (detailed) lines.push(`   e.g. ${group.examples.join(" · ")}`);
   });
+
+  const toolResultCalls = report.toolResultCalls.slice(
+    0,
+    TOP_TOOL_RESULT_CALLS,
+  );
+  if (toolResultCalls.length > 0) {
+    lines.push("", "Largest individual tool results");
+    toolResultCalls.forEach((call, index) => {
+      lines.push(
+        `${index + 1}. ${call.label.padEnd(42)} ${formatTokens(call.tokens).padStart(7)}  ${formatPercent(call.tokens, totalForShare).padStart(4)}`,
+      );
+      if (detailed) lines.push(`   e.g. ${call.preview}`);
+    });
+  }
 
   if (report.unattributedTokens > 0) {
     lines.push(

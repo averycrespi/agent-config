@@ -18,11 +18,15 @@ Context usage: 82.4k / 200.0k tokens · 41%
 Source: Pi-reported current usage + local current-branch blame estimate
 
 Top token sources
-1. Tool result: bash                            28.1k   34%  1 item
+1. Tool result: bash                            28.1k   34%  2 items
 2. System prompt + project instructions         14.6k   18%  1 item
+
+Largest individual tool results
+1. bash (call_abc123)                           19.4k   24%
+2. bash (call_def456)                            8.7k   11%
 ```
 
-`/context` shows the largest groups in a compact summary. `/context --details` shows every grouped source plus short examples.
+`/context` shows the largest grouped sources plus the top individual tool-result calls. `/context --details` shows every grouped source plus short examples for groups and individual calls.
 
 ## What it counts
 
@@ -31,6 +35,7 @@ Top token sources
 - User messages
 - Assistant messages, including tool-call arguments
 - Tool results grouped by tool name
+- Largest individual tool-result calls, including call IDs when available
 - Compaction and branch summaries
 - Custom context messages from extensions
 
