@@ -1,6 +1,6 @@
 ---
 name: complete-work
-description: Use when finishing implementation work after verification has passed; cleans up plan artifacts and offers branch or PR next steps.
+description: Use when the user says finish up, work is done, PR ready, wrap up, or asks to complete verified implementation work; cleans up plan artifacts and offers branch or PR next steps.
 ---
 
 # Complete Work

@@ -112,6 +112,8 @@ After obtaining target material:
 
 ## Dispatch Reviewers
 
+Before launching LLM reviewers, run deterministic checks that are practical for the target, such as typecheck, lint, tests, format checks, or focused validation scripts. Include passing results, failures, unavailable checks, and any skipped-check rationale in the context package. Do not pretend failed or unavailable deterministic checks passed; reviewers should receive the real pass-or-report state.
+
 Read each prompt file from `references/` at dispatch time, then launch all six reviewers in one `spawn_agents` call. Use the `review` agent type for every reviewer. Each agent prompt is the relevant prompt file content plus the full context package.
 
 | #   | Reviewer           | Prompt File                                 | Intent example       |

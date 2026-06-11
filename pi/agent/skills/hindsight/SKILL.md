@@ -1,6 +1,6 @@
 ---
 name: hindsight
-description: Use when ingesting external content (Jira, Confluence, GitHub, docs, web pages) into Hindsight memory from Pi, retaining facts for long-term recall, or querying stored memories through Pi's mcp-broker Hindsight namespace. Covers stable document IDs, tagging conventions, retain/recall/reflect selection, and avoiding duplicate memories.
+description: Use when the user says remember, save this, retain, recall, what do we know about, or asks to ingest/query Jira, Confluence, GitHub, docs, or web pages through Pi's Hindsight MCP tools. Covers stable document IDs, tagging conventions, retain/recall/reflect selection, and avoiding duplicate memories.
 ---
 
 # Hindsight
