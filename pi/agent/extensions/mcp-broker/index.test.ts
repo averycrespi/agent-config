@@ -11,8 +11,11 @@ afterEach(() => {
 });
 
 const TOOLS: BrokerTool[] = [
-  { name: "github.gh_list_prs", description: "List pull requests" },
-  { name: "github.gh_view_pr", description: "View a pull request by number" },
+  { name: "github.list_pull_requests", description: "List pull requests" },
+  {
+    name: "github.pull_request_read",
+    description: "Get information on a pull request",
+  },
   { name: "git.git_push", description: "Push to a remote" },
   { name: "git.git_pull", description: "Pull from a remote" },
 ];
@@ -21,7 +24,7 @@ test("buildBrokerPrompt groups tools by namespace and lists names", () => {
   const prompt = buildBrokerPrompt(TOOLS);
   assert.match(prompt, /MCP broker tools/);
   assert.match(prompt, /^- git: git_pull, git_push$/m);
-  assert.match(prompt, /^- github: gh_list_prs, gh_view_pr$/m);
+  assert.match(prompt, /^- github: list_pull_requests, pull_request_read$/m);
 });
 
 test("buildBrokerPrompt mentions the meta-tools and decision rules", () => {

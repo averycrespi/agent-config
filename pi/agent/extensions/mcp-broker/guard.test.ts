@@ -162,10 +162,16 @@ test("getHintReason returns distinct strings per kind", () => {
 });
 
 const SAMPLE_TOOLS: BrokerTool[] = [
-  { name: "github.gh_list_prs", description: "List pull requests" },
-  { name: "github.gh_view_pr", description: "View a pull request by number" },
-  { name: "github.gh_create_pr", description: "Create a new pull request" },
-  { name: "github.gh_list_issues", description: "List issues in a repo" },
+  { name: "github.list_pull_requests", description: "List pull requests" },
+  {
+    name: "github.pull_request_read",
+    description: "Get information on a pull request",
+  },
+  {
+    name: "github.create_pull_request",
+    description: "Create a new pull request",
+  },
+  { name: "github.list_issues", description: "List issues in a repo" },
   { name: "git.git_push", description: "Push to a remote" },
   { name: "git.git_pull", description: "Pull from a remote" },
   { name: "git.git_fetch", description: "Fetch from a remote" },
@@ -174,7 +180,7 @@ const SAMPLE_TOOLS: BrokerTool[] = [
 test("findToolCandidates returns top github matches for `gh pr list`", () => {
   const matches = findToolCandidates("gh pr list", "github", SAMPLE_TOOLS);
   assert.ok(matches.length > 0);
-  assert.equal(matches[0].name, "github.gh_list_prs");
+  assert.equal(matches[0].name, "github.list_pull_requests");
   // Should not include git.* tools
   for (const m of matches) assert.ok(m.name.startsWith("github."));
 });
@@ -208,8 +214,8 @@ test("getHintMessage includes segment, namespace, and tool candidates", () => {
   assert.match(msg, /\[mcp-broker hint\]/);
   assert.match(msg, /gh pr list/);
   assert.match(msg, /mcp_call/);
-  assert.match(msg, /github\.gh_list_prs/);
-  assert.match(msg, /github\.gh_view_pr/);
+  assert.match(msg, /github\.list_pull_requests/);
+  assert.match(msg, /github\.pull_request_read/);
 });
 
 test("getHintMessage falls back to mcp_search guidance when no candidates", () => {

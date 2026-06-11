@@ -49,7 +49,7 @@ Fall back to `origin/main`, then `main`, if the default-branch command fails. Us
 
 Use MCP broker tools for remote Git and GitHub operations. Prefer the broker tools listed in the system prompt; otherwise use `mcp_search` and `mcp_describe` before calling them. Do not use the `gh` CLI or shell remote `git` commands.
 
-To detect an existing PR, use GitHub broker tools such as `github.gh_list_prs` or `github.gh_search_prs` when available. If the schema requires repository details, derive owner/repo from `git remote -v` and the current branch from `git branch --show-current`. If broker access is unavailable, say remote PR detection is unavailable and present only local-safe options.
+To detect an existing PR, use GitHub broker tools such as `github.list_pull_requests` or `github.search_pull_requests` when available. If the schema requires repository details, derive owner/repo from `git remote -v` and the current branch from `git branch --show-current`. If broker access is unavailable, say remote PR detection is unavailable and present only local-safe options.
 
 ### 4. Present exactly two options
 
@@ -76,7 +76,7 @@ For push/create/update operations:
 
 1. Ensure the working tree is in the expected state. If cleanup edits were made, they should be committed or explicitly left unstaged by user choice.
 2. Push through MCP broker `git` tools such as `git.git_push`, not shell remote git.
-3. Create draft PRs through `github.gh_draft_pr` when available; update existing PRs through `github.gh_edit_pr`.
+3. Create draft PRs through `github.create_pull_request` with `draft: true` when available; update existing PRs through `github.update_pull_request`.
 4. Draft PR titles and descriptions from all branch changes relative to the base branch. Follow any existing repository PR template and the Pull Request Titles and Descriptions guidance in `AGENTS.md`.
 
 For keep-as-is, report the current branch name and any unpushed/local-only state discovered.

@@ -6,16 +6,19 @@ import { tmpdir } from "node:os";
 import { callBrokerTool, summarize } from "./tools.ts";
 
 test("summarize returns just the name when description is missing", () => {
-  assert.equal(summarize({ name: "github.create_pr" }), "github.create_pr");
+  assert.equal(
+    summarize({ name: "github.create_pull_request" }),
+    "github.create_pull_request",
+  );
 });
 
 test("summarize joins name and first description line with an em-dash", () => {
   assert.equal(
     summarize({
-      name: "github.create_pr",
+      name: "github.create_pull_request",
       description: "Create a pull request",
     }),
-    "github.create_pr — Create a pull request",
+    "github.create_pull_request — Create a pull request",
   );
 });
 

@@ -37,7 +37,7 @@ const SEARCH_PARAMS = Type.Object({
 
 const DESCRIBE_PARAMS = Type.Object({
   name: Type.String({
-    description: "Exact tool name, e.g. 'github.create_pr'.",
+    description: "Exact tool name, e.g. 'github.create_pull_request'.",
   }),
 });
 

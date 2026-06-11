@@ -27,7 +27,7 @@ In a worktree, **all git operations target the worktree, never the main repo**. 
 Prefer MCP broker tools over shell `git` remote subcommands and the `gh` CLI:
 
 - **Git remote ops** (fetch, pull, push, list remotes/refs): use `mcp__mcp-broker__git_*` tools instead of `git fetch/pull/push`.
-- **GitHub ops** (PRs, issues, reviews, runs, releases, search): use `mcp__mcp-broker__github_gh_*` tools instead of the `gh` CLI.
+- **GitHub ops** (PRs, issues, reviews, runs, releases, search): use `mcp__mcp-broker__github_*` tools with official GitHub names, such as `mcp__mcp-broker__github_list_pull_requests` and `mcp__mcp-broker__github_pull_request_read`, instead of the `gh` CLI.
 
 Local-only git commands (`status`, `diff`, `log`, `add`, `commit`, `branch`, `rev-parse`, etc.) still go through the shell `git` command.
 

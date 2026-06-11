@@ -14,7 +14,10 @@ function tool(name: string): BrokerTool {
 
 test("extractProviders splits on the first '.' to derive namespaces", () => {
   assert.deepEqual(
-    extractProviders([tool("github.create_pr"), tool("git.git_push")]),
+    extractProviders([
+      tool("github.create_pull_request"),
+      tool("git.git_push"),
+    ]),
     ["git", "github"],
   );
 });
@@ -22,9 +25,9 @@ test("extractProviders splits on the first '.' to derive namespaces", () => {
 test("extractProviders dedupes namespaces that appear multiple times", () => {
   assert.deepEqual(
     extractProviders([
-      tool("github.create_pr"),
-      tool("github.list_prs"),
-      tool("github.merge_pr"),
+      tool("github.create_pull_request"),
+      tool("github.list_pull_requests"),
+      tool("github.merge_pull_request"),
     ]),
     ["github"],
   );
@@ -39,7 +42,7 @@ test("extractProviders returns namespaces sorted alphabetically", () => {
 
 test("extractProviders ignores tools with no namespace separator", () => {
   assert.deepEqual(
-    extractProviders([tool("noDot"), tool("github.create_pr")]),
+    extractProviders([tool("noDot"), tool("github.create_pull_request")]),
     ["github"],
   );
 });
@@ -145,7 +148,7 @@ test("BrokerClient.close closes the live MCP client and clears caches", async ()
       closed.push("client");
     },
   };
-  (client as any).cachedTools = [{ name: "github.gh_list_prs" }];
+  (client as any).cachedTools = [{ name: "github.list_pull_requests" }];
   (client as any).cachedProviders = ["github"];
 
   await (client as any).close();
