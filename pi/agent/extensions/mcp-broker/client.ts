@@ -11,6 +11,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 export const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_NETWORK_TIMEOUT_MS = 15_000;
 
 export type BrokerTool = {
   name: string;
@@ -38,17 +39,20 @@ export class BrokerClient {
   private endpoint: string | undefined;
   private authToken: string | undefined;
   private readOnly: boolean;
+  private networkTimeoutMs: number;
 
   constructor(
     opts: {
       endpoint?: string;
       authToken?: string;
       readOnly?: boolean;
+      networkTimeoutMs?: number;
     } = {},
   ) {
     this.endpoint = opts.endpoint;
     this.authToken = opts.authToken;
     this.readOnly = opts.readOnly ?? false;
+    this.networkTimeoutMs = opts.networkTimeoutMs ?? DEFAULT_NETWORK_TIMEOUT_MS;
   }
 
   configure(opts: {
@@ -69,6 +73,30 @@ export class BrokerClient {
 
   getReadOnly(): boolean {
     return this.readOnly;
+  }
+
+  private async withNetworkTimeout<T>(
+    operation: Promise<T>,
+    label: string,
+    timeoutMs: number = this.networkTimeoutMs,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<T>((_resolve, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(`MCP broker ${label} timed out after ${timeoutMs}ms`),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async getClient(): Promise<Client> {
@@ -98,7 +126,7 @@ export class BrokerClient {
         { name: "pi-mcp-broker", version: "0.1.0" },
         { capabilities: {} },
       );
-      await client.connect(transport);
+      await this.withNetworkTimeout(client.connect(transport), "connect");
       if (this.connecting !== connectPromise) {
         await client.close().catch(() => {});
         throw new Error("broker client closed during connect");
@@ -118,19 +146,37 @@ export class BrokerClient {
     }
   }
 
-  async listTools(): Promise<BrokerTool[]> {
+  private async fetchTools(): Promise<BrokerTool[]> {
     const client = await this.getClient();
-    const result = await client.listTools();
+    const result = await this.withNetworkTimeout(
+      client.listTools(),
+      "listTools",
+    );
     const all: BrokerTool[] = (result.tools ?? []).map((t) => ({
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
       annotations: t.annotations,
     }));
-    const tools = this.readOnly ? filterReadOnly(all) : all;
-    this.cachedTools = tools;
-    this.cachedProviders = extractProviders(tools);
-    return tools;
+    return this.readOnly ? filterReadOnly(all) : all;
+  }
+
+  async listTools(): Promise<BrokerTool[]> {
+    try {
+      const tools = await this.fetchTools();
+      this.cachedTools = tools;
+      this.cachedProviders = extractProviders(tools);
+      return tools;
+    } catch (error) {
+      const hadCache =
+        this.cachedTools !== null || this.cachedProviders !== null;
+      this.reset();
+      if (!hadCache) throw error;
+      const tools = await this.fetchTools();
+      this.cachedTools = tools;
+      this.cachedProviders = extractProviders(tools);
+      return tools;
+    }
   }
 
   async callTool(
@@ -139,10 +185,14 @@ export class BrokerClient {
     signal: AbortSignal,
   ) {
     const client = await this.getClient();
-    return client.callTool({ name, arguments: args }, undefined, {
-      signal,
-      timeout: APPROVAL_TIMEOUT_MS,
-    });
+    return this.withNetworkTimeout(
+      client.callTool({ name, arguments: args }, undefined, {
+        signal,
+        timeout: APPROVAL_TIMEOUT_MS,
+      }),
+      "callTool",
+      APPROVAL_TIMEOUT_MS,
+    );
   }
 
   /** Return cached tools without a network call. Populated by listTools. */

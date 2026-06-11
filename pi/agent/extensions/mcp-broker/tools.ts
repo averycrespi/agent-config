@@ -14,6 +14,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { createManagedLogger } from "../_shared/logging.ts";
 import {
   clearPartialTimer,
   countNonEmptyLines,
@@ -60,10 +61,29 @@ export function summarize(tool: BrokerTool): string {
   return desc ? `${tool.name} — ${desc}` : tool.name;
 }
 
-function errorResult(message: string) {
+async function logMcpCallFailure(
+  toolCallId: string,
+  toolName: string,
+  message: string,
+): Promise<string | undefined> {
+  try {
+    const logger = createManagedLogger({
+      extensionName: "mcp-broker",
+      id: `${toolCallId}-failure`,
+    });
+    logger.write(`mcp_call failure for ${toolName}\n${message}\n`);
+    await logger.close();
+    return logger.path;
+  } catch {
+    return undefined;
+  }
+}
+
+function errorResult(message: string, logFile?: string) {
+  const suffix = logFile ? `\nLog: ${logFile}` : "";
   return {
-    content: [{ type: "text" as const, text: message }],
-    details: {},
+    content: [{ type: "text" as const, text: `${message}${suffix}` }],
+    details: logFile ? { logFile } : {},
   };
 }
 
@@ -187,10 +207,23 @@ export async function callBrokerTool(
       } catch (retryErr) {
         const retryMsg =
           retryErr instanceof Error ? retryErr.message : String(retryErr);
-        return errorResult(`mcp_call failed after session retry: ${retryMsg}`);
+        const logFile = await logMcpCallFailure(
+          toolCallId,
+          params.name,
+          `mcp_call failed after session retry: ${retryMsg}`,
+        );
+        return errorResult(
+          `mcp_call failed after session retry: ${retryMsg}`,
+          logFile,
+        );
       }
     }
-    return errorResult(`mcp_call failed: ${message}`);
+    const logFile = await logMcpCallFailure(
+      toolCallId,
+      params.name,
+      `mcp_call failed: ${message}`,
+    );
+    return errorResult(`mcp_call failed: ${message}`, logFile);
   }
 }
 

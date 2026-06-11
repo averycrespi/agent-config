@@ -16,7 +16,9 @@ Typical agent flow:
 2. `mcp_describe` for any candidate that looks right. Returns the full description and JSON Schema for `arguments`.
 3. `mcp_call` with the exact name and an arguments object matching the schema.
 
-Tool calls that require human approval block for up to 10 minutes, matching the broker's own approval timeout. After 10 minutes without an approval decision, `mcp_call` returns an error and the agent can retry.
+Broker connect and tool-list operations use an explicit 15-second network timeout. Tool calls that require human approval block for up to 10 minutes, matching the broker's own approval timeout. After 10 minutes without an approval decision, `mcp_call` returns an error and the agent can retry.
+
+If a cached broker tool list becomes stale or the connection fails while refreshing it, the client drops the stale cache, reconnects, and retries once before surfacing the error.
 
 ## Configuration
 
@@ -77,7 +79,7 @@ Use the read tool on the path above to fetch the full content.
 </persisted-output>
 ```
 
-File location: `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt`. Files are written with the `wx` flag and left for OS temp-dir reaping; no active cleanup.
+File location: `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt`. Files are written with owner-only permissions and old spillover files are cleaned up lazily by the shared spillover helper.
 
 **Scope and edge cases:**
 
@@ -88,7 +90,9 @@ File location: `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt`. Files are 
 
 ## Logging
 
-This extension does not write retained diagnostic logs. Large-output spillover writes temporary output files as described above; those files may contain raw broker tool output. If a spillover write fails, the extension returns the original content inline.
+Failed `mcp_call` invocations write a retained diagnostic log under `${tmpdir()}/pi-extension-logs/mcp-broker/`, and the returned tool error includes the log path when logging succeeds. Logs are written with owner-only permissions and cleaned up lazily by the shared logging helper. These logs may contain broker tool names, arguments implied by error output, and raw failure messages.
+
+Large-output spillover writes temporary output files as described above; those files may contain raw broker tool output. If a spillover write fails, the extension returns the original content inline.
 
 ## Guard behavior
 

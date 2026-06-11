@@ -1,6 +1,6 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { callBrokerTool, summarize } from "./tools.ts";
@@ -175,6 +175,35 @@ test("summarize omits the dash when description is whitespace-only", () => {
         typeof c.text === "string" && c.text.includes("<persisted-output>"),
     );
     assert.ok(!hasEnvelope, "error responses should not contain envelope");
+  });
+
+  test("mcp_call logs unrecoverable call failures", async () => {
+    const client = {
+      callTool: async () => {
+        throw new Error("network down");
+      },
+      reset: noop,
+      listTools: async () => [],
+    };
+
+    const result = await callBrokerTool(
+      client as any,
+      { name: "test.failure", arguments: {} },
+      "failure-log-test-id",
+      makeSignal(),
+      scratchDir,
+    );
+
+    assert.match(
+      (result.content[0] as any).text,
+      /mcp_call failed: network down/,
+    );
+    assert.match((result.content[0] as any).text, /Log: /);
+    const logFile = result.details.logFile as string;
+    const log = await readFile(logFile, "utf8");
+    assert.match(log, /mcp_call failure for test\.failure/);
+    assert.match(log, /network down/);
+    await rm(logFile, { force: true });
   });
 
   test("mcp_call retry path spills oversize content", async () => {

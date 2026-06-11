@@ -136,6 +136,39 @@ test("filterReadOnly preserves annotations on kept tools", () => {
   });
 });
 
+test("BrokerClient.listTools times out stalled broker operations", async () => {
+  const client = new BrokerClient({ networkTimeoutMs: 5 });
+  (client as any).client = {
+    listTools: () => new Promise(() => {}),
+    close: async () => {},
+  };
+
+  await assert.rejects(() => client.listTools(), /timed out after 5ms/);
+  assert.equal((client as any).cachedTools, null);
+  assert.equal((client as any).cachedProviders, null);
+});
+
+test("BrokerClient.listTools invalidates stale cache and retries once", async () => {
+  const client = new BrokerClient({ networkTimeoutMs: 5 });
+  const calls: string[] = [];
+  (client as any).cachedTools = [{ name: "old.tool" }];
+  (client as any).cachedProviders = ["old"];
+  (client as any).fetchTools = async () => {
+    calls.push("fetch");
+    if (calls.length === 1) throw new Error("broker unreachable");
+    return [{ name: "github.gh_list_prs" }];
+  };
+
+  const tools = await client.listTools();
+
+  assert.deepEqual(tools, [{ name: "github.gh_list_prs" }]);
+  assert.deepEqual(calls, ["fetch", "fetch"]);
+  assert.deepEqual((client as any).cachedTools, [
+    { name: "github.gh_list_prs" },
+  ]);
+  assert.deepEqual((client as any).cachedProviders, ["github"]);
+});
+
 test("BrokerClient.close closes the live MCP client and clears caches", async () => {
   const closed: string[] = [];
   const client = new BrokerClient();
