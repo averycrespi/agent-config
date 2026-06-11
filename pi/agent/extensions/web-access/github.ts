@@ -124,6 +124,14 @@ function exec(
   });
 }
 
+export function isGitHubRateLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return (
+    /rate limit/i.test(message) ||
+    (/\b(?:403|429)\b/.test(message) && /github/i.test(message))
+  );
+}
+
 function sanitizeRefForPath(ref: string): string {
   return ref.replace(/[^a-zA-Z0-9._-]/g, "_");
 }

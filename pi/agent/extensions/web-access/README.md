@@ -63,6 +63,12 @@ Example settings:
 }
 ```
 
+## External content safety
+
+Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT` envelope. The envelope reminds the agent that fetched web pages, search snippets, GitHub contents, and PDF text are external data rather than instructions.
+
+GitHub rate-limit failures are returned as recoverable tool-result messages with a retry/backoff hint instead of being treated as unrecoverable extension failures.
+
 ## Temporary files
 
 For GitHub repository URLs, `web_fetch` shallow-clones the repository and returns that clone path for follow-up exploration with Pi's built-in tools. Bare repository URLs clone to `/tmp/pi-github-repos/<owner>/<repo>`. `blob` and `tree` URLs with a ref clone to a ref-specific path such as `/tmp/pi-github-repos/<owner>/<repo>--<sanitized-ref>`, so branch/tag/commit URLs do not collide with the default-branch cache. If the clone already exists and contains a `.git` directory, it is reused. Clones are not actively cleaned up by the extension. These temp clones contain raw repository contents fetched from the requested public GitHub URL; raw file contents may also be returned directly for GitHub blob URLs.
