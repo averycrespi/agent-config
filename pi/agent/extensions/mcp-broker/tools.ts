@@ -19,6 +19,7 @@ import {
   countNonEmptyLines,
   firstLine,
   getResultText,
+  getTruncatedText,
   headNonEmptyLines,
   partialElapsed,
   plural,
@@ -365,7 +366,7 @@ export function registerTools(
         client.getReadOnly(),
       );
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       const header = theme.fg("toolTitle", theme.bold("mcp_call"));
       const nameLabel = args?.name
         ? theme.fg("accent", args.name)
@@ -377,26 +378,24 @@ export function registerTools(
       const keysLabel = argKeys.length
         ? ` ${theme.fg("muted", `(${argKeys.join(", ")})`)}`
         : "";
-      return new Text(`${header} ${nameLabel}${keysLabel}`, 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        `${header} ${nameLabel}${keysLabel}`,
+      ]);
     },
     renderResult(result, { isPartial }, theme, context) {
       const name = context.args?.name;
       if (isPartial) {
         const subject = name ? `Calling ${name}` : "Calling broker tool";
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("warning", `${subject}...${partialElapsed(context)}`),
-          0,
-          0,
-        );
+        ]);
       }
       clearPartialTimer(context);
       const text = getResultText(result);
       if (context.isError) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("error", firstLine(text) || "mcp_call error"),
-          0,
-          0,
-        );
+        ]);
       }
       const details = result.details as { brokerError?: boolean } | undefined;
       if (details?.brokerError) {
@@ -412,20 +411,22 @@ export function registerTools(
           .map((t) => t.text)
           .join("\n");
         const message = firstLine(underlyingText) || "broker error";
-        return new Text(theme.fg("error", `broker error: ${message}`), 0, 0);
+        return getTruncatedText(context.lastComponent, [
+          theme.fg("error", `broker error: ${message}`),
+        ]);
       }
       const head = headNonEmptyLines(text, CALL_HEAD_LINES);
       if (head.length === 0) {
-        return new Text("", 0, 0);
+        return getTruncatedText(context.lastComponent, []);
       }
       const totalLines = countNonEmptyLines(text);
       const extra = totalLines - head.length;
       const displayLines =
         extra > 0 ? [...head, `... +${plural(extra, "more line")}`] : head;
-      const rendered = displayLines
-        .map((line) => theme.fg("muted", line))
-        .join("\n");
-      return new Text(rendered, 0, 0);
+      return getTruncatedText(
+        context.lastComponent,
+        displayLines.map((line) => theme.fg("muted", line)),
+      );
     },
   });
 }

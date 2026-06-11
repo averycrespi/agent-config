@@ -3,7 +3,61 @@ import assert from "node:assert/strict";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { callBrokerTool, summarize } from "./tools.ts";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import { callBrokerTool, registerTools, summarize } from "./tools.ts";
+
+const identityTheme = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+};
+
+type RegisteredTool = {
+  name: string;
+  renderCall: (
+    args: Record<string, unknown>,
+    theme: typeof identityTheme,
+    context: Record<string, unknown>,
+  ) => { render: (width: number) => string[] };
+  renderResult: (
+    result: {
+      content: Array<{ type: string; text: string }>;
+      details?: unknown;
+    },
+    options: { isPartial: boolean },
+    theme: typeof identityTheme,
+    context: Record<string, unknown>,
+  ) => { render: (width: number) => string[] };
+};
+
+function loadMcpCallTool(): RegisteredTool {
+  const registered: RegisteredTool[] = [];
+  registerTools(
+    {
+      registerTool(def: RegisteredTool) {
+        registered.push(def);
+      },
+    } as any,
+    {
+      listTools: async () => [],
+      callTool: async () => ({ content: [], isError: false }),
+      reset() {},
+      getReadOnly: () => false,
+    } as any,
+  );
+  const tool = registered.find((t) => t.name === "mcp_call");
+  assert.ok(tool, "mcp_call should be registered");
+  return tool;
+}
+
+function assertRenderedWidth(lines: string[], width: number) {
+  assert.ok(lines.length > 0, "expected visible lines");
+  for (const line of lines) {
+    assert.ok(
+      visibleWidth(line) <= width,
+      `expected line width <= ${width}, got ${visibleWidth(line)} for ${JSON.stringify(line)}`,
+    );
+  }
+}
 
 test("summarize returns just the name when description is missing", () => {
   assert.equal(
@@ -41,6 +95,61 @@ test("summarize omits the dash when description is whitespace-only", () => {
     summarize({ name: "foo.bar", description: "   \n  \n" }),
     "foo.bar",
   );
+});
+
+test("mcp_call renderCall truncates long labels instead of wrapping", () => {
+  const tool = loadMcpCallTool();
+  const lines = tool
+    .renderCall(
+      {
+        name: "github.extremely_long_broker_tool_name_that_would_wrap",
+        arguments: {
+          first_extremely_long_argument_key: true,
+          second_extremely_long_argument_key: true,
+          third_extremely_long_argument_key: true,
+        },
+      },
+      identityTheme,
+      { lastComponent: undefined },
+    )
+    .render(32);
+
+  assert.equal(lines.length, 1);
+  assertRenderedWidth(lines, 32);
+});
+
+test("mcp_call renderResult truncates each preview line instead of wrapping", () => {
+  const tool = loadMcpCallTool();
+  const lines = tool
+    .renderResult(
+      {
+        content: [
+          {
+            type: "text",
+            text: [
+              "first extremely long broker result line that would wrap",
+              "second extremely long broker result line that would wrap",
+              "third extremely long broker result line that would wrap",
+              "fourth extremely long broker result line that would wrap",
+            ].join("\n"),
+          },
+        ],
+        details: {},
+      },
+      { isPartial: false },
+      identityTheme,
+      {
+        args: { name: "github.example" },
+        isError: false,
+        lastComponent: undefined,
+        state: {},
+        invalidate() {},
+      },
+    )
+    .render(28);
+
+  assert.equal(lines.length, 4);
+  assertRenderedWidth(lines, 28);
 });
 
 // ---------------------------------------------------------------------------
