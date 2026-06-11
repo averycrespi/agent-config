@@ -1,6 +1,6 @@
 import { after, before, describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -8,6 +8,7 @@ import {
   THRESHOLD_CHARS,
   buildEnvelope,
   joinText,
+  cleanupOldSpilloverFiles,
   spillIfNeeded,
 } from "./spillover.ts";
 
@@ -193,9 +194,10 @@ describe("spillIfNeeded", () => {
     assert.equal(result.spilled, true);
     if (!result.spilled) throw new Error("unreachable");
 
-    // File was written
+    // File was written with owner-only permissions
     const written = await readFile(result.filePath, "utf8");
     assert.equal(written, bigText);
+    assert.equal((await stat(result.filePath)).mode & 0o777, 0o600);
 
     // Details
     assert.equal(result.originalSize, bigText.length);
@@ -284,6 +286,24 @@ describe("spillIfNeeded", () => {
     await spillIfNeeded(content, "call_no_console", unwritableDir);
 
     assert.equal(warn.mock.callCount(), 0);
+  });
+
+  test("cleanupOldSpilloverFiles removes old spill files only", async () => {
+    const oldFile = join(scratchDir, "old.txt");
+    const freshFile = join(scratchDir, "fresh.txt");
+    const ignoredFile = join(scratchDir, "old.log");
+    await writeFile(oldFile, "old", "utf8");
+    await writeFile(freshFile, "fresh", "utf8");
+    await writeFile(ignoredFile, "ignored", "utf8");
+    const oldDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    await utimes(oldFile, oldDate, oldDate);
+    await utimes(ignoredFile, oldDate, oldDate);
+
+    await cleanupOldSpilloverFiles(scratchDir);
+
+    await assert.rejects(() => stat(oldFile), { code: "ENOENT" });
+    assert.equal(await readFile(freshFile, "utf8"), "fresh");
+    assert.equal(await readFile(ignoredFile, "utf8"), "ignored");
   });
 
   test("preview truncated to PREVIEW_BYTES with correct truncated-byte count", async () => {

@@ -25,6 +25,18 @@ test("readJsonFileObject returns parsed objects and ignores missing/non-object f
   assert.deepEqual(await readJsonFileObject(arrayFile), {});
 });
 
+test("readJsonFileObject surfaces parse warnings", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-config-test-"));
+  const file = join(dir, "settings.json");
+  const warnings: string[] = [];
+  await writeFile(file, "{ invalid", "utf8");
+
+  assert.deepEqual(await readJsonFileObject(file, warnings), {});
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /Ignoring invalid JSON settings file/);
+  assert.match(warnings[0]!, /settings\.json/);
+});
+
 test("readPiSettingsFiles reads global and project settings", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-settings-test-"));
   const agentDir = join(root, "agent");
