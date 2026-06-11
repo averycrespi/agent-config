@@ -32,7 +32,7 @@ The built-in types:
 
 All built-in agent types are read-only. `review` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `research` is the faster default for external lookup, while `deep-research` is the slower, evidence-heavier option. Both `research` and `deep-research` add web search and fetch via the `web-access` extension. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
 
-**Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, the agent's section contains a formatted error including exit code and stderr.
+**Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
 
 ## UI behavior
 
@@ -81,7 +81,7 @@ The `PI_CODING_AGENT_DIR` environment variable can point discovery at a non-defa
 
 Each child process writes raw stdout and stderr to a managed temp log while it runs. Successful subagent logs are deleted after the process exits. Failed or aborted subagents retain their log under `${tmpdir()}/pi-extension-logs/subagents/`, and the path is shown in the tool result and activity rendering.
 
-Retained logs may contain raw subagent output, tool results, command output, and stderr. Do not treat them as sanitized artifacts.
+Retained logs may contain raw subagent output, tool results, command output, and stderr. Spillover files may contain the full raw combined subagent response. Do not treat these artifacts as sanitized output. Managed logs and spillover files are written with owner-only permissions and old files are cleaned up lazily by the shared helpers.
 
 ## Notes
 

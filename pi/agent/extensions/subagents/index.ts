@@ -10,6 +10,7 @@ import {
   createSubagentActivityTracker,
   type SubagentActivityTracker,
 } from "./activity.ts";
+import { spillIfNeeded } from "../_shared/spillover.ts";
 import { formatSpawnFailure, spawnSubagent } from "./spawn.ts";
 import { loadAgents } from "./loader.ts";
 import { getActivity, renderAgentsCall, renderAgentsResult } from "./render.ts";
@@ -83,6 +84,27 @@ type OnUpdate = (event: {
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
 }) => void;
+
+export async function spillSubagentOutput(
+  content: { type: "text"; text: string }[],
+  toolCallId: string,
+  dir?: string,
+): Promise<{
+  content: { type: "text"; text: string }[];
+  details: Record<string, unknown>;
+}> {
+  const spilled = await spillIfNeeded(content, toolCallId, dir);
+  return {
+    content: spilled.content as { type: "text"; text: string }[],
+    details: spilled.spilled
+      ? {
+          outputSpilled: true,
+          spillFile: spilled.filePath,
+          originalSize: spilled.originalSize,
+        }
+      : {},
+  };
+}
 
 async function runSpawn(
   pi: ExtensionAPI,
@@ -251,13 +273,19 @@ async function runParallelSpawn(
     return `${header}\n\n${body}`;
   });
 
+  const spilled = await spillSubagentOutput(
+    text(parts.join("\n\n---\n\n")),
+    toolCallId,
+  );
+
   return {
-    content: text(parts.join("\n\n---\n\n")),
+    content: spilled.content,
     details: {
       agents: states,
       total: specs.length,
       failed,
       allOk: failed === 0,
+      ...spilled.details,
     },
   };
 }
