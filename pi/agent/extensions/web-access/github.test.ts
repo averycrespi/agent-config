@@ -107,6 +107,10 @@ test("isGitHubRateLimitError detects 403/429 and rate-limit bodies", () => {
     isGitHubRateLimitError(new Error("HTTP 429 from github.com")),
     true,
   );
+  assert.equal(
+    isGitHubRateLimitError(new Error("GitHub API HTTP 403: Forbidden")),
+    false,
+  );
   assert.equal(isGitHubRateLimitError(new Error("File not found")), false);
 });
 

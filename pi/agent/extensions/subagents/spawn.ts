@@ -1,5 +1,6 @@
 import { spawn as _nodeSpawn } from "node:child_process";
 import { createManagedLogger } from "../_shared/logging.ts";
+import { spillIfNeeded } from "../_shared/spillover.ts";
 import {
   MAX_SUBAGENT_DEPTH,
   type BuiltinTool,
@@ -395,7 +396,7 @@ export async function spawnSubagent(
   }
 
   const logId = options.logId ?? "subagent";
-  return await runSpawn(
+  const outcome = await runSpawn(
     args,
     options.cwd,
     logId,
@@ -403,6 +404,20 @@ export async function spawnSubagent(
     options.onEvent,
     options.env,
   );
+
+  for (const key of ["stdout", "stderr"] as const) {
+    const spilled = await spillIfNeeded(
+      [{ type: "text", text: outcome[key] }],
+      `${logId}-${key}`,
+    );
+    const text = spilled.content.find(
+      (block): block is { type: "text"; text: string } =>
+        block.type === "text" && typeof block.text === "string",
+    )?.text;
+    if (spilled.spilled && text) outcome[key] = text;
+  }
+
+  return outcome;
 }
 
 export function formatSpawnFailure(outcome: SpawnOutcome): string {

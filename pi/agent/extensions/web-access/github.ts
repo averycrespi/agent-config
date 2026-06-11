@@ -126,10 +126,9 @@ function exec(
 
 export function isGitHubRateLimitError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
-  return (
-    /rate limit/i.test(message) ||
-    (/\b(?:403|429)\b/.test(message) && /github/i.test(message))
-  );
+  if (!/github/i.test(message)) return /rate limit/i.test(message);
+  if (/\b429\b/.test(message)) return true;
+  return /rate limit/i.test(message);
 }
 
 function sanitizeRefForPath(ref: string): string {
