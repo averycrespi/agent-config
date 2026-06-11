@@ -7,13 +7,13 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { registerConfigCommand } from "../_shared/config.ts";
 import { type Static, Type } from "@sinclair/typebox";
 import {
   clearPartialTimer,
   firstLine,
   getResultText,
+  getTruncatedText,
   headNonEmptyLines,
   partialElapsed,
   plural,
@@ -25,10 +25,6 @@ import { extractPdf } from "./pdf.ts";
 import { formatResults, webSearch } from "./search.ts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
-}
 
 function isPdfUrl(url: string): boolean {
   try {
@@ -68,50 +64,47 @@ const searchTool = {
     "Search the web for current information. Returns titles, URLs, and relevant snippets. Use for finding documentation, recent news, answers to factual questions, or anything requiring up-to-date information.",
   parameters: searchParams,
 
-  renderCall(args: Static<typeof searchParams>, theme: any) {
-    const query = truncate(args?.query ?? "", 80);
+  renderCall(args: Static<typeof searchParams>, theme: any, context: any) {
+    const query = args?.query ?? "";
     const count =
       args?.num_results != null
         ? ` ${theme.fg("dim", `(${args.num_results})`)}`
         : "";
-    return new Text(
+    return getTruncatedText(context.lastComponent, [
       `${theme.fg("toolTitle", theme.bold("web_search"))} ${theme.fg("accent", query)}${count}`,
-      0,
-      0,
-    );
+    ]);
   },
 
   renderResult(result: any, { isPartial }: any, theme: any, context: any) {
     if (isPartial) {
-      const q = truncate(context.args?.query ?? "web", 40);
-      return new Text(
+      const q = context.args?.query ?? "web";
+      return getTruncatedText(context.lastComponent, [
         theme.fg("warning", `Searching ${q}...${partialElapsed(context)}`),
-        0,
-        0,
-      );
+      ]);
     }
     clearPartialTimer(context);
 
     const text = getResultText(result);
     if (context.isError) {
-      return new Text(
+      return getTruncatedText(context.lastComponent, [
         theme.fg("error", firstLine(text) || "web_search error"),
-        0,
-        0,
-      );
+      ]);
     }
 
     // Show first ~3 result titles as head snippet
     const details = result.details as { resultCount?: number } | undefined;
     const count = details?.resultCount ?? 0;
     if (count === 0) {
-      return new Text(theme.fg("muted", "No results found"), 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        theme.fg("muted", "No results found"),
+      ]);
     }
-    const head = headNonEmptyLines(text, 3)
-      .map((line) => truncate(line, 80))
-      .join("\n");
-    const more = count > 3 ? `\n... +${count - 3} more` : "";
-    return new Text(theme.fg("muted", head + more), 0, 0);
+    const head = headNonEmptyLines(text, 3);
+    const displayLines = count > 3 ? [...head, `... +${count - 3} more`] : head;
+    return getTruncatedText(
+      context.lastComponent,
+      displayLines.map((line) => theme.fg("muted", line)),
+    );
   },
 
   async execute(
@@ -164,37 +157,31 @@ const fetchTool = {
     "Fetch and read the content of a webpage as clean markdown. Use for reading documentation, articles, GitHub READMEs, or any web page where you need the full content. For GitHub repository URLs, clones the repo and returns the README, file tree, and clone path for further exploration.",
   parameters: fetchParams,
 
-  renderCall(args: Static<typeof fetchParams>, theme: any) {
-    const url = truncate(args?.url ?? "", 120);
+  renderCall(args: Static<typeof fetchParams>, theme: any, context: any) {
+    const url = args?.url ?? "";
     const chars =
       args?.max_chars != null
         ? ` ${theme.fg("dim", `(${args.max_chars})`)}`
         : "";
-    return new Text(
+    return getTruncatedText(context.lastComponent, [
       `${theme.fg("toolTitle", theme.bold("web_fetch"))} ${theme.fg("accent", url)}${chars}`,
-      0,
-      0,
-    );
+    ]);
   },
 
   renderResult(result: any, { isPartial }: any, theme: any, context: any) {
     if (isPartial) {
-      const url = truncate(context.args?.url ?? "page", 50);
-      return new Text(
+      const url = context.args?.url ?? "page";
+      return getTruncatedText(context.lastComponent, [
         theme.fg("warning", `Fetching ${url}...${partialElapsed(context)}`),
-        0,
-        0,
-      );
+      ]);
     }
     clearPartialTimer(context);
 
     const text = getResultText(result);
     if (context.isError) {
-      return new Text(
+      return getTruncatedText(context.lastComponent, [
         theme.fg("error", firstLine(text) || "web_fetch error"),
-        0,
-        0,
-      );
+      ]);
     }
 
     const details = result.details as
@@ -208,35 +195,27 @@ const fetchTool = {
 
     // GitHub clone: show clone path
     if (details?.clonePath) {
-      return new Text(
+      return getTruncatedText(context.lastComponent, [
         theme.fg("muted", `Cloned to ${details.clonePath}`),
-        0,
-        0,
-      );
+      ]);
     }
 
     // PDF: show page count
     if (details?.pageCount) {
-      return new Text(
+      return getTruncatedText(context.lastComponent, [
         theme.fg("muted", plural(details.pageCount, "page")),
-        0,
-        0,
-      );
+      ]);
     }
 
     // Regular fetch: show page title, falling back to first content line
     const title = details?.title;
     const preview = title || firstLine(text);
-    return new Text(
+    return getTruncatedText(context.lastComponent, [
       theme.fg(
         "muted",
-        preview
-          ? truncate(preview, 80)
-          : `${text.length.toLocaleString()} chars`,
+        preview ? preview : `${text.length.toLocaleString()} chars`,
       ),
-      0,
-      0,
-    );
+    ]);
   },
 
   async execute(

@@ -12,7 +12,6 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import {
   clearPartialTimer,
@@ -232,33 +231,31 @@ export function registerTools(
         details: { matchCount: matches.length, totalCount: tools.length },
       };
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       const header = theme.fg("toolTitle", theme.bold("mcp_search"));
       const queryLabel =
         args?.query && args.query.length > 0
           ? theme.fg("accent", `"${args.query}"`)
           : theme.fg("muted", "(all)");
-      return new Text(`${header} ${queryLabel}`, 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        `${header} ${queryLabel}`,
+      ]);
     },
     renderResult(result, { isPartial }, theme, context) {
       if (isPartial) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg(
             "warning",
             `Searching broker tools...${partialElapsed(context)}`,
           ),
-          0,
-          0,
-        );
+        ]);
       }
       clearPartialTimer(context);
       const text = getResultText(result);
       if (context.isError) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("error", firstLine(text) || "mcp_search error"),
-          0,
-          0,
-        );
+        ]);
       }
       const details = result.details as
         | { matchCount?: number; totalCount?: number }
@@ -266,7 +263,9 @@ export function registerTools(
       const matchCount = details?.matchCount ?? 0;
       const totalCount = details?.totalCount ?? 0;
       const summary = `${matchCount} matches of ${totalCount} tools`;
-      return new Text(theme.fg("muted", summary), 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        theme.fg("muted", summary),
+      ]);
     },
   });
 
@@ -311,12 +310,14 @@ export function registerTools(
         },
       };
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       const header = theme.fg("toolTitle", theme.bold("mcp_describe"));
       const nameLabel = args?.name
         ? theme.fg("accent", args.name)
         : theme.fg("muted", "(missing name)");
-      return new Text(`${header} ${nameLabel}`, 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        `${header} ${nameLabel}`,
+      ]);
     },
     renderResult(result, { isPartial }, theme, context) {
       if (isPartial) {
@@ -324,27 +325,25 @@ export function registerTools(
           typeof context.args?.name === "string" && context.args.name.length > 0
             ? context.args.name
             : "broker tool";
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg(
             "warning",
             `Describing ${name}...${partialElapsed(context)}`,
           ),
-          0,
-          0,
-        );
+        ]);
       }
       clearPartialTimer(context);
       const text = getResultText(result);
       if (context.isError) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("error", firstLine(text) || "mcp_describe error"),
-          0,
-          0,
-        );
+        ]);
       }
       const details = result.details as { summary?: string } | undefined;
       const summary = details?.summary ?? "";
-      return new Text(theme.fg("muted", summary), 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        theme.fg("muted", summary),
+      ]);
     },
   });
 

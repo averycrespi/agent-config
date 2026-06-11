@@ -29,7 +29,7 @@ type RegisteredTool = {
   ) => { render: (width: number) => string[] };
 };
 
-function loadMcpCallTool(): RegisteredTool {
+function loadRegisteredTool(name: string): RegisteredTool {
   const registered: RegisteredTool[] = [];
   registerTools(
     {
@@ -44,8 +44,8 @@ function loadMcpCallTool(): RegisteredTool {
       getReadOnly: () => false,
     } as any,
   );
-  const tool = registered.find((t) => t.name === "mcp_call");
-  assert.ok(tool, "mcp_call should be registered");
+  const tool = registered.find((t) => t.name === name);
+  assert.ok(tool, `${name} should be registered`);
   return tool;
 }
 
@@ -97,8 +97,39 @@ test("summarize omits the dash when description is whitespace-only", () => {
   );
 });
 
+test("mcp_search renderCall truncates long queries instead of wrapping", () => {
+  const tool = loadRegisteredTool("mcp_search");
+  const lines = tool
+    .renderCall(
+      {
+        query:
+          "extremely long broker search query that would otherwise wrap in the transcript",
+      },
+      identityTheme,
+      { lastComponent: undefined },
+    )
+    .render(30);
+
+  assert.equal(lines.length, 1);
+  assertRenderedWidth(lines, 30);
+});
+
+test("mcp_describe renderCall truncates long names instead of wrapping", () => {
+  const tool = loadRegisteredTool("mcp_describe");
+  const lines = tool
+    .renderCall(
+      { name: "github.extremely_long_broker_tool_name_that_would_wrap" },
+      identityTheme,
+      { lastComponent: undefined },
+    )
+    .render(30);
+
+  assert.equal(lines.length, 1);
+  assertRenderedWidth(lines, 30);
+});
+
 test("mcp_call renderCall truncates long labels instead of wrapping", () => {
-  const tool = loadMcpCallTool();
+  const tool = loadRegisteredTool("mcp_call");
   const lines = tool
     .renderCall(
       {
@@ -119,7 +150,7 @@ test("mcp_call renderCall truncates long labels instead of wrapping", () => {
 });
 
 test("mcp_call renderResult truncates each preview line instead of wrapping", () => {
-  const tool = loadMcpCallTool();
+  const tool = loadRegisteredTool("mcp_call");
   const lines = tool
     .renderResult(
       {
