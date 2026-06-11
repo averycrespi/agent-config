@@ -157,6 +157,50 @@ test("git branch lookup does not block initial rendering and refreshes later", a
   }
 });
 
+test("git branch lookup clears stale branch when later cwd is not a git repo", async () => {
+  const pi = makePi();
+  let call = 0;
+  const execStub = mock.method(
+    _execFile,
+    "fn",
+    (_file: string, _args: string[], options: any, cb: Function) => {
+      call += 1;
+      if (options.cwd === "/repo/agent-config") cb(null, "feature/old\n");
+      else cb(new Error("not a git repo"), "");
+    },
+  );
+
+  try {
+    statuslineExtension(pi as any);
+    const sessionStart = pi._handlers.get("session_start");
+    const turnEnd = pi._handlers.get("turn_end");
+    assert.ok(sessionStart, "session_start handler should be registered");
+    assert.ok(turnEnd, "turn_end handler should be registered");
+
+    await sessionStart!(
+      { type: "session_start", reason: "startup" },
+      pi._ctx(),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(
+      pi._statuslineCalls.some((render) =>
+        render[0]?.includes("[feature/old]"),
+      ),
+    );
+
+    await turnEnd!({}, { ...pi._ctx(), cwd: "/tmp/not-a-repo" });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.ok(call >= 2);
+    assert.equal(
+      pi._statuslineCalls.at(-1)?.[0]?.includes("[feature/old]"),
+      false,
+    );
+  } finally {
+    execStub.mock.restore();
+  }
+});
+
 test("failed usage fetches are not debounced as successful fetches", async () => {
   const pi = makePi();
   statuslineExtension(pi as any);

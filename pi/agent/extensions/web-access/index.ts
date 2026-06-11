@@ -122,12 +122,14 @@ const searchTool = {
     }
 
     // Show first ~3 result titles as head snippet
-    const details = result.details as { resultCount?: number } | undefined;
+    const details = result.details as
+      | { resultCount?: number; previewText?: string }
+      | undefined;
     const count = details?.resultCount ?? 0;
     if (count === 0) {
       return new Text(theme.fg("muted", "No results found"), 0, 0);
     }
-    const head = headNonEmptyLines(text, 3)
+    const head = headNonEmptyLines(details?.previewText ?? text, 3)
       .map((line) => truncate(line, 80))
       .join("\n");
     const more = count > 3 ? `\n... +${count - 3} more` : "";
@@ -151,14 +153,18 @@ const searchTool = {
         signal ?? AbortSignal.timeout(15_000),
         config,
       );
+      const formattedResults = formatResults(response);
       return {
         content: [
           {
             type: "text" as const,
-            text: wrapUntrustedContent("search", formatResults(response)),
+            text: wrapUntrustedContent("search", formattedResults),
           },
         ],
-        details: { resultCount: response.results.length },
+        details: {
+          resultCount: response.results.length,
+          previewText: formattedResults,
+        },
       };
     } catch (e: any) {
       return {

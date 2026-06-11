@@ -20,10 +20,12 @@ const DEFAULT_CONFIG: McpBrokerConfig = {
 
 export async function loadMcpBrokerConfig(
   cwd: string,
+  warnings: string[] = [],
 ): Promise<McpBrokerConfig> {
   const { globalSettings, projectSettings } = await readPiSettingsFiles({
     agentDir: getAgentDir(),
     cwd,
+    warnings,
   });
   const merged = mergeExtensionConfig({
     defaults: DEFAULT_CONFIG,

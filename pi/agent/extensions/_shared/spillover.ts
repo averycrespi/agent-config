@@ -7,6 +7,8 @@ export const PREVIEW_BYTES = 2_000;
 export const SPILL_DIR = join(tmpdir(), "pi-extension-spillover");
 export const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
+const cleanedDirs = new Set<string>();
+
 type ContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; [k: string]: unknown }
@@ -116,15 +118,33 @@ export async function spillIfNeeded(
   }
 
   const safeName = toolCallId.replace(/[^a-zA-Z0-9_:-]/g, "_");
-  const filePath = join(dir, `${safeName}.txt`);
+  let filePath: string | undefined;
 
   try {
     await mkdir(dir, { recursive: true });
-    await cleanupOldSpilloverFiles(dir);
-    await writeFile(filePath, joinedText, { flag: "wx", mode: 0o600 });
+    if (!cleanedDirs.has(dir)) {
+      cleanedDirs.add(dir);
+      await cleanupOldSpilloverFiles(dir);
+    }
+    for (let i = 0; i <= 100; i += 1) {
+      const candidate = join(
+        dir,
+        i === 0 ? `${safeName}.txt` : `${safeName}-${i}.txt`,
+      );
+      try {
+        await writeFile(candidate, joinedText, { flag: "wx", mode: 0o600 });
+        filePath = candidate;
+        break;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException | undefined)?.code;
+        if (code !== "EEXIST") throw error;
+      }
+    }
   } catch {
     return { spilled: false, content };
   }
+
+  if (!filePath) return { spilled: false, content };
 
   const originalSize = joinedText.length;
   const envelope = buildEnvelope({ filePath, originalSize, joinedText });

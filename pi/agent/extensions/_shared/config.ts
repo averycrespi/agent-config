@@ -9,7 +9,7 @@ type PlainObject = Record<string, unknown>;
 
 type ConfigCommandOptions<T extends PlainObject> = {
   extensionName: string;
-  loadConfig: (cwd: string) => Promise<T> | T;
+  loadConfig: (cwd: string, warnings?: string[]) => Promise<T> | T;
   sensitiveFields?: readonly string[];
 };
 
@@ -126,13 +126,15 @@ export function registerConfigCommand<T extends PlainObject>(
   pi.registerCommand(`${options.extensionName}-config`, {
     description: `Show the effective ${options.extensionName} extension config.`,
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const config = await options.loadConfig(ctx.cwd);
-      ctx.ui.notify(
+      const warnings: string[] = [];
+      const config = await options.loadConfig(ctx.cwd, warnings);
+      const message = [
         formatConfigForDisplay(options.extensionName, config, {
           sensitiveFields: options.sensitiveFields,
         }),
-        "info",
-      );
+        ...warnings,
+      ].join("\n\n");
+      ctx.ui.notify(message, warnings.length > 0 ? "warning" : "info");
     },
   });
 }

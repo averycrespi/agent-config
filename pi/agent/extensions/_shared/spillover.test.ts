@@ -338,14 +338,18 @@ describe("spillIfNeeded wx flag", () => {
     await rm(scratchDir, { recursive: true, force: true });
   });
 
-  test("second call with same toolCallId falls back (wx flag prevents overwrite)", async () => {
+  test("second call with same toolCallId writes a unique file", async () => {
     const bigText = "h".repeat(THRESHOLD_CHARS + 1);
     const content = [{ type: "text" as const, text: bigText }];
-    // First call succeeds
     const first = await spillIfNeeded(content, "call_wx", scratchDir);
     assert.equal(first.spilled, true);
-    // Second call: file already exists, wx should fail → passthrough
+    if (!first.spilled) throw new Error("unreachable");
+
     const second = await spillIfNeeded(content, "call_wx", scratchDir);
-    assert.equal(second.spilled, false);
+    assert.equal(second.spilled, true);
+    if (!second.spilled) throw new Error("unreachable");
+    assert.notEqual(second.filePath, first.filePath);
+    assert.ok(second.filePath.endsWith("call_wx-1.txt"));
+    assert.equal(await readFile(second.filePath, "utf8"), bigText);
   });
 });

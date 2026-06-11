@@ -126,13 +126,20 @@ export class BrokerClient {
         { name: "pi-mcp-broker", version: "0.1.0" },
         { capabilities: {} },
       );
-      await this.withNetworkTimeout(client.connect(transport), "connect");
-      if (this.connecting !== connectPromise) {
+      try {
+        await this.withNetworkTimeout(client.connect(transport), "connect");
+        if (this.connecting !== connectPromise) {
+          await client.close().catch(() => {});
+          throw new Error("broker client closed during connect");
+        }
+        this.client = client;
+        return client;
+      } catch (error) {
         await client.close().catch(() => {});
-        throw new Error("broker client closed during connect");
+        await transport.close().catch(() => {});
+        if (this.transport === transport) this.transport = null;
+        throw error;
       }
-      this.client = client;
-      return client;
     })();
 
     this.connecting = connectPromise;
@@ -184,15 +191,22 @@ export class BrokerClient {
     args: Record<string, unknown>,
     signal: AbortSignal,
   ) {
-    const client = await this.getClient();
-    return this.withNetworkTimeout(
-      client.callTool({ name, arguments: args }, undefined, {
-        signal,
-        timeout: APPROVAL_TIMEOUT_MS,
-      }),
-      "callTool",
-      APPROVAL_TIMEOUT_MS,
-    );
+    try {
+      const client = await this.getClient();
+      return await this.withNetworkTimeout(
+        client.callTool({ name, arguments: args }, undefined, {
+          signal,
+          timeout: APPROVAL_TIMEOUT_MS,
+        }),
+        "callTool",
+        APPROVAL_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "AbortError")) {
+        this.reset();
+      }
+      throw error;
+    }
   }
 
   /** Return cached tools without a network call. Populated by listTools. */

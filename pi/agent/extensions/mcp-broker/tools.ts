@@ -87,6 +87,16 @@ function errorResult(message: string, logFile?: string) {
   };
 }
 
+function allText(content: AgentToolResult<unknown>["content"]): string {
+  return content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        block.type === "text" && typeof block.text === "string",
+    )
+    .map((block) => block.text)
+    .join("\n");
+}
+
 type CallParams = { name: string; arguments: Record<string, unknown> };
 
 /**
@@ -129,7 +139,19 @@ export async function callBrokerTool(
         type: "text" as const,
         text: `[mcp_call: broker tool '${params.name}' reported an error]`,
       });
-      return { content, details: { name: params.name, brokerError } };
+      const logFile = await logMcpCallFailure(
+        toolCallId,
+        params.name,
+        allText(content),
+      );
+      return {
+        content,
+        details: {
+          name: params.name,
+          brokerError,
+          ...(logFile ? { logFile } : {}),
+        },
+      };
     }
     const spill = await spillIfNeeded(content as any, toolCallId, dir);
     if (spill.spilled) {
@@ -168,12 +190,18 @@ export async function callBrokerTool(
             type: "text" as const,
             text: `[mcp_call: broker tool '${params.name}' reported an error]`,
           });
+          const logFile = await logMcpCallFailure(
+            toolCallId,
+            params.name,
+            allText(retriedContent),
+          );
           return {
             content: retriedContent,
             details: {
               name: params.name,
               brokerError: retriedBrokerError,
               retried: true,
+              ...(logFile ? { logFile } : {}),
             },
           };
         }

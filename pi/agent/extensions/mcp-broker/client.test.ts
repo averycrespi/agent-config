@@ -169,6 +169,31 @@ test("BrokerClient.listTools invalidates stale cache and retries once", async ()
   assert.deepEqual((client as any).cachedProviders, ["github"]);
 });
 
+test("BrokerClient.callTool resets the live client after call failures", async () => {
+  const closed: string[] = [];
+  const client = new BrokerClient();
+  (client as any).client = {
+    callTool: async () => {
+      throw new Error("MCP broker callTool timed out after 5ms");
+    },
+    close: async () => {
+      closed.push("client");
+    },
+  };
+  (client as any).cachedTools = [{ name: "old.tool" }];
+  (client as any).cachedProviders = ["old"];
+
+  await assert.rejects(
+    () => client.callTool("test.tool", {}, new AbortController().signal),
+    /timed out/,
+  );
+
+  assert.equal((client as any).client, null);
+  assert.equal((client as any).cachedTools, null);
+  assert.equal((client as any).cachedProviders, null);
+  assert.deepEqual(closed, ["client"]);
+});
+
 test("BrokerClient.close closes the live MCP client and clears caches", async () => {
   const closed: string[] = [];
   const client = new BrokerClient();

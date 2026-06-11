@@ -138,6 +138,32 @@ test("summarize omits the dash when description is whitespace-only", () => {
     assert.equal((result.content[0] as any).text, smallText);
   });
 
+  test("mcp_call logs broker-reported error responses", async () => {
+    const client = {
+      callTool: async () => ({
+        content: [{ type: "text", text: "broker said no" }],
+        isError: true,
+      }),
+      reset: noop,
+      listTools: async () => [],
+    };
+
+    const result = await callBrokerTool(
+      client as any,
+      { name: "test.broker-error", arguments: {} },
+      "broker-error-log-test-id",
+      makeSignal(),
+      scratchDir,
+    );
+
+    const logFile = result.details.logFile as string;
+    assert.match(logFile, /broker-error-log-test-id/);
+    const log = await readFile(logFile, "utf8");
+    assert.match(log, /mcp_call failure for test\.broker-error/);
+    assert.match(log, /broker said no/);
+    await rm(logFile, { force: true });
+  });
+
   test("mcp_call does not spill error responses", async () => {
     const bigText = "z".repeat(30_000);
     const client = {

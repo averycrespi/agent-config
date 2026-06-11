@@ -53,7 +53,7 @@ export default function (pi: ExtensionAPI) {
     const generation = ++gitGeneration;
     const branch = await getGitBranch(cwd);
     if (generation !== gitGeneration || state.cwd !== cwd) return;
-    state.gitBranch = branch ?? state.gitBranch;
+    state.gitBranch = branch;
     requestRender?.();
   }
 

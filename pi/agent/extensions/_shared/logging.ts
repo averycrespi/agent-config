@@ -30,6 +30,8 @@ const LOG_ROOT = "pi-extension-logs";
 const DEFAULT_ID = "session";
 export const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
+const cleanedDirs = new Set<string>();
+
 function sanitizeLogPart(value: string): string {
   const sanitized = value.trim().replace(/[^a-zA-Z0-9_:-]/g, "_");
   return sanitized || "log";
@@ -139,7 +141,10 @@ export function createManagedLogger(
   const id = sanitizeLogPart(options.id ?? DEFAULT_ID);
   const dir = join(_loggingFs.tmpdir(), LOG_ROOT, extensionName);
   _loggingFs.mkdirSync(dir, { recursive: true });
-  cleanupOldLogFiles(dir);
+  if (!cleanedDirs.has(dir)) {
+    cleanedDirs.add(dir);
+    cleanupOldLogFiles(dir);
+  }
   const { path, stream } = createUniqueStream(dir, id);
   return new ManagedLogger(path, stream);
 }
