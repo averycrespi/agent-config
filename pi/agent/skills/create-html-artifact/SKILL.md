@@ -147,7 +147,7 @@ Turn this long Markdown plan into a browser-readable HTML artifact with a timeli
 
 ## Source-Informed Principles
 
-This skill is based on public guidance and examples from:
+This skill is based on public guidance and examples from the named sources below. Links are intentionally omitted until they are reverified before being added.
 
 - Thariq Shihipar’s “The unreasonable effectiveness of HTML” examples: single-file artifacts for planning, review, design, prototypes, diagrams, decks, research, reports, and custom editors.
 - Hacker News discussion of the approach: HTML improves rich consumption and throwaway tools, while Markdown remains valuable for coauthoring, token efficiency, readable diffs, and maintainability.

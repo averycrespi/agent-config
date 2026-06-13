@@ -15,4 +15,4 @@ Use source-specific files for source-specific guidance:
 - `ingestion/episodic.md` — Sessions, incidents, and time-bound events.
 - `ingestion/bulk.md` — Multi-source ingestion and batch-tool constraints.
 
-Keep this file as a compatibility pointer for agents or prompts that still reference `references/ingestion-patterns.md`.
+Keep this file as a compatibility pointer for external agents or prompts that still reference `references/ingestion-patterns.md`; current in-repo guidance should link directly to the source-specific files under `references/ingestion/`.

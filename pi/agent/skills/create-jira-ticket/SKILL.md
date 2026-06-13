@@ -16,7 +16,7 @@ Draft well-structured Jira tickets that are clear for human readers and useful f
 Before drafting, collect the information needed:
 
 - Read the user's description of the work to be done
-- Check project CLAUDE.md and related docs for project key, issue types, and conventions
+- Check project AGENTS.md, CLAUDE.md, and related docs for project key, issue types, and conventions
 - If the project key or issue type cannot be inferred, ask the user
 - Review relevant code, designs, or prior tickets if referenced
 
