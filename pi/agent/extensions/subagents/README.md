@@ -73,9 +73,12 @@ Recursion is blocked by default. Each spawn sets `PI_SUBAGENT_DEPTH` in the chil
 
 ## Configuration
 
-Subagent types are configured by markdown files with YAML frontmatter; see [Agent file format](#agent-file-format). Agent files control the tool allowlist, extensions, model, thinking level, skill/template availability, and child-process environment.
+This extension has no `extension:subagents` settings and does not register a `/subagents-config` command. Subagent types are configured by markdown files with YAML frontmatter; see [Agent file format](#agent-file-format). Agent files control the tool allowlist, extensions, model, thinking level, skill/template availability, and child-process environment.
 
-The `PI_CODING_AGENT_DIR` environment variable can point discovery at a non-default Pi agent directory. By default, Pi's default agent directory is used.
+| Field      | Default                         | Environment override  | Description                                                       |
+| ---------- | ------------------------------- | --------------------- | ----------------------------------------------------------------- |
+| `agentDir` | Pi's default agent directory    | `PI_CODING_AGENT_DIR` | Agent directory to search for `agents/*.md` subagent definitions. |
+| agent file | `agents/<name>.md` under Pi dir | none                  | Markdown frontmatter and prompt body defining each subagent type. |
 
 ## Logging
 
@@ -100,7 +103,7 @@ Each agent is a markdown file with YAML frontmatter:
 ---
 name: explore
 description: Read-only codebase research — finding files and answering questions
-tools: read
+tools: read, ls, find, grep
 extensions:
 thinking: medium
 disable_skills: true

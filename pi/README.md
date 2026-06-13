@@ -8,7 +8,7 @@ This directory manages [Pi](https://pi.dev/) coding agent configuration files.
 pi/agent/
 ├── AGENTS.md       # Agent instructions (task approach, git rules, style)
 ├── settings.json   # Provider, model, and thinking settings
-├── agents/         # Subagent definitions (code, explore, research, deep-research, review)
+├── agents/         # Subagent definitions (explore, research, deep-research, review)
 ├── extensions/     # TypeScript extensions
 ├── prompts/        # Custom prompt templates
 └── skills/         # Custom skills
@@ -28,7 +28,7 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `compact-tools`  | Compact TUI rendering for built-in shell and file tools                                     |
 | `context`        | `/context` token-blame report for current context-window usage                              |
 | `goal`           | Branch-scoped persistent goal steering with commands, tools, widget, and compaction context |
-| `mcp-broker`     | Broker CLI skill + guard for remote operations                                              |
+| `mcp-broker`     | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations           |
 | `statusline`     | Single-line footer with cwd, quota, context, model, and thinking                            |
 | `startup-header` | Minimal colored startup header with Pi version, repo, branch, and recent commits            |
 | `subagents`      | Dynamic subagent loading and dispatch                                                       |
@@ -77,4 +77,4 @@ Notes:
 - Most skills are mirrored from `claude/skills/` with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
 - Collaborative planning lives in the `plan` skill; `challenge-plan` stress-tests plans before autonomous execution, and `goal` drives execution/completion evidence.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
-- See the [create-skill](../pi/agent/skills/create-skill/SKILL.md) skill when adding new skills.
+- See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

@@ -1,12 +1,12 @@
 # mcp-broker
 
-Pi extension that exposes the MCP broker to the agent via three meta-tools (`mcp_search`, `mcp_describe`, `mcp_call`) plus a bash guard that redirects native `gh` and remote-git calls to the broker.
+Pi extension that exposes the MCP broker to the agent via three meta-tools (`mcp_search`, `mcp_describe`, `mcp_call`) plus a bash guard that steers native `gh` and remote-git calls toward the broker.
 
 ## What it does
 
 - **Meta-tools** — registers `mcp_search`, `mcp_describe`, and `mcp_call`, which share one long-lived MCP client connection to the broker. The agent discovers tools with `mcp_search`, inspects their schemas with `mcp_describe`, and invokes them with `mcp_call`. The upstream broker tool set stays out of the agent's tool list, so the prompt cache prefix stays stable regardless of how many broker tools are discovered.
 - **Tool menu in the system prompt** — on `session_start` the extension pre-fetches the broker's tool list. `before_agent_start` injects a per-namespace menu (e.g. `git: git_push, git_pull, …` / `github: list_pull_requests, pull_request_read, …`) plus a short decision rule into the system prompt. The agent can pick a tool and call `mcp_call` directly without an `mcp_search` round-trip.
-- **Guard** — when bash is invoked with direct `gh` or remote git (`push`, `pull`, `fetch`, `ls-remote`, `remote`), the bash still runs but a hint is prepended to its result naming likely broker tools to use next time. Local git is unaffected. Detection is a heuristic; false positives are harmless because nothing is blocked.
+- **Guard** — when bash is invoked with direct `gh` or remote git (`push`, `pull`, `fetch`, `ls-remote`, `remote`), the bash still runs but a hidden steer is queued afterward naming likely broker tools to use next time. Local git is unaffected. Detection is a heuristic; false positives are harmless because nothing is blocked.
 
 ## Usage
 
@@ -113,7 +113,7 @@ If the broker is unreachable (no cached tool list), the hint falls back to sugge
 - `client.ts` — `BrokerClient` wrapping `@modelcontextprotocol/sdk`'s `StreamableHTTPClientTransport`
 - `tools.ts` — `mcp_search`, `mcp_describe`, `mcp_call` definitions
 - `spillover.ts` — re-exports shared large-output spill-to-file logic from `../_shared/spillover.ts`
-- `guard.ts` — bash detection and `tool_result` hint injection
+- `guard.ts` — bash detection and hidden steer delivery
 
 ## Prior art
 
