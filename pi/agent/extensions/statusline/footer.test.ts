@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { renderFooterLine } from "./footer.ts";
+import { renderFooterLine, renderFooterLines } from "./footer.ts";
 import type { UsageStats } from "./utils.ts";
 
 const theme = {
@@ -108,8 +108,8 @@ test("renderFooterLine appends the git branch to the working directory in bracke
   );
 });
 
-test("renderFooterLine drops lower-priority statusline segments first when width is tight", () => {
-  const line = renderFooterLine(
+test("renderFooterLines right-aligns status segments after the repository segment", () => {
+  const lines = renderFooterLines(
     {
       cwd: "/Users/example/Workspace/agent-config",
       homeDir: "/Users/example",
@@ -121,12 +121,35 @@ test("renderFooterLine drops lower-priority statusline segments first when width
       modelId: "gpt-5-codex",
       thinking: "medium",
     } as any,
-    52,
+    100,
     theme,
   );
 
-  assert.equal(
-    stripAnsi(line),
-    "~/Workspace/agent-config · Codex 45% (20%) 2h",
+  assert.deepEqual(lines.map(stripAnsi), [
+    "~/Workspace/agent-config                    Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium",
+  ]);
+});
+
+test("renderFooterLines moves status segments to a second line instead of truncating the repository segment", () => {
+  const lines = renderFooterLines(
+    {
+      cwd: "/Users/example/Workspace/a-very-long-worktree-name-for-statusline",
+      homeDir: "/Users/example",
+      gitBranch: "feature/a-very-long-branch-name",
+      usage: renderUsage({
+        primary: { usedPercent: 45, resetAfterSeconds: 2 * 3600 },
+        secondary: { usedPercent: 20, resetAfterSeconds: 3 * 24 * 3600 },
+      }),
+      contextUsage: { percent: 42, contextWindow: 200_000 },
+      modelId: "gpt-5-codex",
+      thinking: "medium",
+    } as any,
+    80,
+    theme,
   );
+
+  assert.deepEqual(lines.map(stripAnsi), [
+    "~/Workspace/a-very-long-worktree-name-for-statusline [feature/a-very-long-branch-name]",
+    "Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium",
+  ]);
 });

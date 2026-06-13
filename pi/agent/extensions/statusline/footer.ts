@@ -132,22 +132,20 @@ function buildThinkingSegment(
   return dim(state.thinking, theme);
 }
 
-export function renderFooterLine(
-  state: FooterState,
-  width: number,
-  theme: FooterTheme,
-): string {
-  if (width <= 0) return "";
-
-  const separator = theme.fg("dim", " · ");
-  const segments = [
-    buildCwdSegment(state),
+function buildStatusSegments(state: FooterState, theme: FooterTheme): string[] {
+  return [
     buildUsageSegment(state.usage, theme),
     buildContextSegment(state.contextUsage, theme),
     state.modelId ? dim(state.modelId, theme) : undefined,
     buildThinkingSegment(state, theme),
   ].filter((segment): segment is string => Boolean(segment));
+}
 
+function joinFittingSegments(
+  segments: string[],
+  width: number,
+  separator: string,
+): string {
   let line = "";
   for (const segment of segments) {
     const candidate = line ? `${line}${separator}${segment}` : segment;
@@ -161,4 +159,44 @@ export function renderFooterLine(
   }
 
   return line;
+}
+
+export function renderFooterLines(
+  state: FooterState,
+  width: number,
+  theme: FooterTheme,
+): string[] {
+  if (width <= 0) return [""];
+
+  const separator = theme.fg("dim", " · ");
+  const left = buildCwdSegment(state);
+  const right = joinFittingSegments(
+    buildStatusSegments(state, theme),
+    width,
+    separator,
+  );
+  if (!right) return [left];
+
+  const leftWidth = visibleWidth(left);
+  const rightWidth = visibleWidth(right);
+  if (leftWidth + 1 + rightWidth <= width) {
+    return [`${left}${" ".repeat(width - leftWidth - rightWidth)}${right}`];
+  }
+
+  return [left, right];
+}
+
+export function renderFooterLine(
+  state: FooterState,
+  width: number,
+  theme: FooterTheme,
+): string {
+  if (width <= 0) return "";
+
+  const separator = theme.fg("dim", " · ");
+  const segments = [
+    buildCwdSegment(state),
+    ...buildStatusSegments(state, theme),
+  ];
+  return joinFittingSegments(segments, width, separator);
 }

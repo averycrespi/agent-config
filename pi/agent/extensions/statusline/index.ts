@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createManagedLogger } from "../_shared/logging.ts";
 import { codexAdapter } from "./codex.ts";
-import { renderFooterLine, type FooterState } from "./footer.ts";
+import { renderFooterLines, type FooterState } from "./footer.ts";
 import { getGitBranch } from "./git.ts";
 import { type ProviderAdapter } from "./utils.ts";
 
@@ -107,7 +107,7 @@ export default function (pi: ExtensionAPI) {
       return {
         render(width: number): string[] {
           state.thinking = pi.getThinkingLevel();
-          return [renderFooterLine(state, width, theme)];
+          return renderFooterLines(state, width, theme);
         },
         invalidate() {},
       };

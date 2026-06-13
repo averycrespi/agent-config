@@ -1,18 +1,25 @@
 # statusline
 
-Pi extension that renders a single-line footer with the current working directory, git branch, provider quota, context usage, model, and thinking level.
+Pi extension that renders a footer with the current working directory, git branch, provider quota, context usage, model, and thinking level.
 
 ## Footer format
 
 ```
-~/Workspace/agent-config [main] · Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
-/repo [feature/statusline-git] · Codex limit 2h · ctx 92%/200k · gpt-5-codex · high
-/repo [detached: abc1234] · Codex $4.20 1h · ctx 18%/200k · gpt-5-codex · low
+~/Workspace/agent-config [main]        Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
+/repo [feature/statusline-git]          Codex limit 2h · ctx 92%/200k · gpt-5-codex · high
+/repo [detached: abc1234]               Codex $4.20 1h · ctx 18%/200k · gpt-5-codex · low
 ```
 
 When the working directory is in a git repository, the current branch is appended to the working directory in brackets. Detached HEAD states render as `detached: <short-hash>`. Git branch lookup runs asynchronously with a short timeout, so footer rendering is not blocked by a slow repository; the footer keeps the last known branch while a refresh is pending or fails.
 
-Left-to-right priority is preserved when the terminal is narrow: cwd, provider quota, context, model, then thinking. Quota percentages and context percentage are highlighted in warning/error colors above the configured thresholds.
+The repository segment stays on the left and the remaining status segments are right-aligned when they fit on one line. If the full repository segment plus the status segments do not fit, the repository segment moves to its own line and is not truncated:
+
+```text
+~/Workspace/a-very-long-worktree-name [feature/a-very-long-branch-name]
+Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
+```
+
+Left-to-right priority is preserved within the status segment when the terminal is narrow: provider quota, context, model, then thinking. Quota percentages and context percentage are highlighted in warning/error colors above the configured thresholds.
 
 The footer updates on session start, model changes, thinking-level changes, and after each turn. Successful provider usage fetching is debounced to one API call per provider/model every 60 seconds.
 

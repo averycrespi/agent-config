@@ -46,6 +46,10 @@ function makeCtx() {
   };
 }
 
+function rightAligned(left: string, right: string, width = 200): string {
+  return `${left}${" ".repeat(width - left.length - right.length)}${right}`;
+}
+
 function makePi() {
   const handlers = new Map<string, EventHandler>();
   const statuslineCalls: string[][] = [];
@@ -118,7 +122,7 @@ test("session_start installs a single-line statusline instead of publishing only
   await handler!({ type: "session_start", reason: "startup" }, pi._ctx());
 
   assert.deepEqual(pi._statuslineCalls[0], [
-    "/repo/agent-config · ctx 42%/200k · gpt-5-codex · medium",
+    rightAligned("/repo/agent-config", "ctx 42%/200k · gpt-5-codex · medium"),
   ]);
 });
 
@@ -141,7 +145,7 @@ test("git branch lookup does not block initial rendering and refreshes later", a
     await handler!({ type: "session_start", reason: "startup" }, pi._ctx());
 
     assert.deepEqual(pi._statuslineCalls[0], [
-      "/repo/agent-config · ctx 42%/200k · gpt-5-codex · medium",
+      rightAligned("/repo/agent-config", "ctx 42%/200k · gpt-5-codex · medium"),
     ]);
 
     finishGit();
