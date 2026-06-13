@@ -2,7 +2,7 @@
 
 ## Sandbox Environment
 
-Isolated Linux VM (Ubuntu 24.04). Full permissions — install packages, run any commands, use Docker freely. No prompts or hooks.
+Isolated Linux VM (Ubuntu 24.04). Full permissions — install packages, run any commands, use Docker freely. No permission prompts. Sandbox hooks still run for secret scanning, formatting, and MCP tool guidance.
 
 ## MCP Usage
 

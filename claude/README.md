@@ -9,7 +9,7 @@ claude/
 ├── CLAUDE.md           # Global instructions for all projects
 ├── settings.json       # Permissions and hooks
 ├── agents/             # Custom agent definitions
-├── commands/           # Slash command definitions
+├── commands/           # Reserved for slash command definitions
 ├── hooks/              # PreToolUse hooks (e.g., gitleaks)
 ├── sandbox/            # Sandbox overrides (settings, CLAUDE.md, scripts)
 ├── scripts/            # Status line and other scripts
@@ -18,7 +18,7 @@ claude/
 
 ## How It Works
 
-Running `make stow-claude` creates symlinks from `claude/` into `~/.claude/`. For example:
+Running `make stow-claude` creates symlinks from `claude/` into `~/.claude/`. Use `make stow-claude-sandbox` instead to install the sandbox overrides too. For example:
 
 - `claude/settings.json` → `~/.claude/settings.json`
 - `claude/skills/brainstorming/SKILL.md` → `~/.claude/skills/brainstorming/SKILL.md`
@@ -66,6 +66,7 @@ A workflow for reliably turning ideas into pull requests, adapted from [superpow
 | `creating-jira-tickets`   | Draft and create well-structured Jira tickets                          |
 | `reviewing-prs`           | Holistic PR review across 6 parallel dimensions                        |
 | `troubleshooting`         | Battle buddy for incident response and system troubleshooting          |
+| `using-hindsight`         | Retain and query Hindsight memories through MCP broker tools           |
 
 ### Reference Skills
 
@@ -96,6 +97,7 @@ A custom powerline-style status line (`scripts/statusline.sh`) configured via `s
 | Git branch | Branch name with compact status (ahead/behind, staged, modified counts)                        |
 | Context    | Context window usage percentage; color shifts white → yellow → orange → red as usage increases |
 | Session    | 5-hour rolling rate limit usage; same color scale as context                                   |
+| Weekly     | 7-day rolling rate limit usage; same color scale as context                                    |
 
 The sandbox variant (`scripts/statusline-sandbox.sh`) adds a purple "sandbox" badge prefix.
 

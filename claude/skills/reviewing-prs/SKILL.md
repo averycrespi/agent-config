@@ -20,18 +20,8 @@ The user MUST provide either a PR URL or a branch name as argument.
 Matches pattern: `https://github.com/.*/pull/[0-9]+`
 
 1. Extract `<owner>`, `<repo>`, and `<number>` from the URL
-2. Fetch the diff:
-   ```
-   gh pr diff <number> -R <owner>/<repo>
-   ```
-3. Fetch PR metadata:
-   ```
-   gh pr view <number> -R <owner>/<repo> --json title,body,comments,reviews
-   ```
-4. Fetch review comments:
-   ```
-   gh api repos/<owner>/<repo>/pulls/<number>/comments
-   ```
+2. Fetch PR metadata and changed files with `mcp__mcp-broker__github_pull_request_read`, requesting the diff or file list plus `title`, `body`, `comments`, and `reviews` when available.
+3. If review comments are not included, inspect the broker catalog and fetch them with the appropriate broker-backed GitHub pull request comments tool.
 
 ### Mode 2: Branch Name
 

@@ -91,9 +91,7 @@ options: [
 
 **Before presenting options, check if a PR already exists for this branch:**
 
-```bash
-gh pr view --json url,title,number
-```
+Use `mcp__mcp-broker__github_list_pull_requests` to find an open PR for the current branch, requesting at least `url`, `title`, and `number`.
 
 **If a PR exists**, use `AskUserQuestion` to present exactly 2 options:
 
@@ -131,23 +129,17 @@ AskUserQuestion(
 
 #### Option: Push and Create PR
 
-```bash
-# Push branch
-git push -u origin <feature-branch>
+Use MCP broker tools:
 
-# Create draft PR
-gh pr create --draft
-```
+1. `mcp__mcp-broker__git_push` to push `<feature-branch>` to the remote and set upstream when needed.
+2. `mcp__mcp-broker__github_create_pull_request` to create a draft PR.
 
 #### Option: Push and Update PR
 
-```bash
-# Push branch
-git push
+Use MCP broker tools:
 
-# Update PR title and description based on all commits relative to base branch
-gh pr edit <number> --title "..." --body "..."
-```
+1. `mcp__mcp-broker__git_push` to push the current branch.
+2. `mcp__mcp-broker__github_update_pull_request` to update the PR title and description based on all commits relative to the base branch.
 
 The updated PR title and description are regenerated from scratch based on all commits on the branch relative to the base branch. Follow the PR description template from the project or global CLAUDE.md.
 
