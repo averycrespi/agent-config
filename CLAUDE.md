@@ -9,6 +9,15 @@ This repo manages configuration for two AI coding agents via [GNU Stow](https://
 - `claude/` → symlinked to `~/.claude/` (Claude Code settings, skills, hooks, agents)
 - `pi/agent/` → symlinked to `~/.pi/agent/` (Pi agent extensions, agents, skills)
 
+## Broker Surface Distinction
+
+Claude Code and Pi connect to the MCP broker differently:
+
+- **Claude Code** gets broker-hosted tools directly from the MCP server, using names like `mcp__mcp-broker__github_pull_request_read` and `mcp__mcp-broker__git_push`. Claude skills must not refer to Pi-only meta-tools such as `mcp_search`, `mcp_describe`, or `mcp_call`.
+- **Pi** uses the `pi/agent/extensions/mcp-broker/` extension, which exposes the broker through the agent tools `mcp_search`, `mcp_describe`, and `mcp_call`.
+
+Keep docs under `claude/` written for Claude's direct MCP tool surface; keep docs under `pi/` written for Pi's broker extension surface.
+
 ## Public Repository Guidelines
 
 This is a public repository. When creating or modifying content:

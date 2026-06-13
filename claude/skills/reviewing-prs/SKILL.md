@@ -21,7 +21,7 @@ Matches pattern: `https://github.com/.*/pull/[0-9]+`
 
 1. Extract `<owner>`, `<repo>`, and `<number>` from the URL
 2. Fetch PR metadata and changed files with `mcp__mcp-broker__github_pull_request_read`, requesting the diff or file list plus `title`, `body`, `comments`, and `reviews` when available.
-3. If review comments are not included, inspect the broker catalog and fetch them with the appropriate broker-backed GitHub pull request comments tool.
+3. If review comments are not included, fetch them with the available broker-backed GitHub pull request comments tool.
 
 ### Mode 2: Branch Name
 
