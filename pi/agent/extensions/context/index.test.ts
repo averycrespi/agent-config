@@ -42,6 +42,7 @@ test("/context reports current token sources by branch content", async () => {
       message: {
         role: "toolResult",
         toolName: "bash",
+        toolCallId: "call_bash_big",
         content: [{ type: "text", text: "npm test output\n".repeat(1000) }],
         isError: false,
       },
@@ -62,6 +63,8 @@ test("/context reports current token sources by branch content", async () => {
   const output = ctx.notifications.at(-1)?.msg ?? "";
   assert.match(output, /Context usage: 20\.0k \/ 200\.0k tokens · 10%/);
   assert.match(output, /Tool result: bash/);
+  assert.match(output, /Largest individual tool results/);
+  assert.match(output, /bash \(call_bash_big\)/);
   assert.match(output, /System prompt \+ project instructions/);
   assert.match(output, /Compaction summaries/);
   assert.match(output, /Unattributed provider\/framing overhead/);
@@ -88,11 +91,48 @@ test("/context --details includes all groups", async () => {
   assert.doesNotMatch(output, /Run \/context --details/);
 });
 
+test("/context ranks individual tool results separately from tool groups", async () => {
+  const pi = makePi();
+  createContextExtension()(pi);
+  const branch = [
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "bash",
+        toolCallId: "call_small",
+        content: [{ type: "text", text: "small" }],
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "bash",
+        toolCallId: "call_large",
+        content: [{ type: "text", text: "large output ".repeat(100) }],
+      },
+    },
+  ];
+  const ctx = makeCtx(branch);
+
+  await pi.commands.get("context").handler("--details", ctx);
+
+  const output = ctx.notifications.at(-1)?.msg ?? "";
+  assert.match(output, /Tool result: bash/);
+  assert.match(output, /2 items/);
+  assert.match(output, /Largest individual tool results/);
+  assert.ok(
+    output.indexOf("bash (call_large)") < output.indexOf("bash (call_small)"),
+  );
+});
+
 test("renderContextReport falls back to estimated tokens", () => {
   const output = renderContextReport({
     estimatedTokens: 1234,
     reportedTokens: null,
     contextWindow: null,
+    toolResultCalls: [],
     unattributedTokens: 0,
     sourceNote: "Local current-branch estimate only",
     groups: [

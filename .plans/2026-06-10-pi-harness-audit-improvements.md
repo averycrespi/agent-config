@@ -2,169 +2,194 @@
 
 ## Goal
 
-Close the gaps found in a full audit of the Pi configuration (`pi/agent/`) against current agent-harness best practices: operationalize the repo's own `agent-engineering` principles in subagents and settings, harden extension reliability and security, and tighten context economy and observability. The work is organized into five independent workstreams that can be executed incrementally.
+Close the accepted gaps from the Pi configuration audit (`pi/agent/`) against current agent-harness best practices: make subagent and skill prompts more operational, harden extension reliability and security, improve selected context observability, and bring extension documentation into repo-convention compliance.
+
+This plan reflects the recommendation-by-recommendation decisions made with the user. Skipped items are recorded explicitly so implementers do not reintroduce them by following the original audit scope.
 
 ## Background / Repo Context
 
-The audit compared `pi/agent/` (11 extensions, 13 skills, 4 subagent definitions, AGENTS.md, prompts, settings) against published guidance (Anthropic context-engineering, tool-writing, Agent Skills, and long-running-harness posts; Manus context-engineering lessons; 12-factor agents; pi author Mario Zechner's harness-design writing; MCP tool-poisoning literature) and against the repo's own `pi/agent/skills/agent-engineering/` references.
+The audit compared `pi/agent/` against published agent-harness guidance and this repo's own `agent-engineering` principles. The accepted work keeps the highest-value prompt, reliability, security, and documentation fixes while intentionally deferring or rejecting several broader changes.
 
-Key audit conclusions:
+Important audit findings to preserve:
 
-- The config follows its own `agent-engineering` skill on roughly 9 of 14 principles. The biggest self-inconsistencies: cross-family verification is taught but not operationalized (`pi/agent/settings.json` hardcodes `openai-codex` / `gpt-5.5` globally; no subagent overrides the family), subagent definitions return free prose instead of structured output contracts, and deterministic-gates-first is not encoded anywhere.
-- Extensions are well-built (execution/rendering separation in `compact-tools`, spillover in `mcp-broker`, depth-limited `subagents`, conservative completion audit in `goal`) but have reliability gaps: no MCP transport timeout, no spillover/log cleanup or restrictive file modes, no spillover on subagent output, env leakage to subagent children, synchronous git call in the statusline render path (`pi/agent/extensions/statusline/git.ts:19`), silent failures in statusline/startup-header.
-- Security posture: web-fetched content is injected into context unsanitized (prompt-injection vector; the "lethal trifecta" applies when combined with mcp-broker access); spillover files may contain secrets and are written with default umask.
-- Findings checked and **rejected** during verification (do not re-introduce): the `compact-tools` grep renderer does NOT hide matches from the model (execution is delegated unchanged at `pi/agent/extensions/compact-tools/grep.ts:42`; only the TUI shows a count); `pi/agent/extensions/web-access/pdf.ts` has NO ArrayBuffer detach bug (copy precedes detach); `goal` auto-run DOES guard against pending messages via feature detection (`pi/agent/extensions/goal/index.ts:373-375`).
-- The `goal` extension already demonstrates the right injection-hardening pattern: it labels injected objectives as "user-provided data, not higher-priority instructions" (`pi/agent/extensions/goal/index.ts:102`). Reuse this pattern for web content.
+- Subagent definitions currently lack explicit output contracts; `review.md` should align with the `FINDINGS:` + confidence-threshold format used by `pi/agent/skills/review/SKILL.md`.
+- Deterministic checks should happen before LLM review dispatch where practical: typecheck/lint/tests should pass or be reported before reviewers are spawned.
+- Subagents should read named plan/criteria artifacts from disk, e.g. `.plans/<file>`, instead of depending only on inlined conversation context.
+- Several extension reliability gaps were accepted for remediation: MCP broker timeout/cache/logging behavior, spillover/log file permissions and cleanup, config parse warnings, subagent output spillover, statusline/startup-header failure behavior, and web-access rate-limit handling.
+- Security hardening for externally fetched web content was accepted: wrap fetched/search content in an untrusted-content envelope and add plain-language AGENTS.md guidance about malicious external content combined with private data and outbound tools.
+- Context observability improvement was accepted only for per-call tool-result breakdowns in the `context` extension.
+- Extension README convention compliance was accepted repo-wide.
+
+Findings checked and rejected during the original audit should remain rejected:
+
+- `compact-tools` grep renderer does not hide matches from the model; execution is delegated unchanged at `pi/agent/extensions/compact-tools/grep.ts:42`; only the TUI shows a count.
+- `pi/agent/extensions/web-access/pdf.ts` has no ArrayBuffer detach bug; copy precedes detach.
+- `goal` auto-run already guards against pending messages via feature detection at `pi/agent/extensions/goal/index.ts:373-375`.
 
 ## Acceptance Criteria
 
-Workstream A — operationalize agent-engineering principles:
+### Workstream A — prompt and skill operationalization
 
-- AC-1: `pi/agent/agents/review.md` and `pi/agent/agents/deep-research.md` declare (or document via comment in frontmatter) a model/provider from a different family than the session default, and `pi/agent/AGENTS.md` contains a short subsection explaining cross-family verification routing.
-- AC-2: All four subagent definitions in `pi/agent/agents/` specify an explicit output contract section (headed structure or fenced schema); `review.md`'s contract matches the `FINDINGS:` + confidence-threshold format used by `pi/agent/skills/review/`.
-- AC-3: `pi/agent/AGENTS.md` Workflow Discipline and `pi/agent/skills/review/SKILL.md` state that deterministic checks (typecheck, lint, tests) run and pass-or-are-reported before LLM reviewers are dispatched.
-- AC-4: Subagent definitions instruct agents to reference plan/criteria artifacts by repo path (e.g. read `.plans/<file>` / acceptance criteria from disk) instead of relying on inlined conversation context.
-- AC-5: Frontmatter descriptions for `challenge-plan`, `complete-work`, `hindsight`, and `create-html-artifact` skills include concrete trigger phrasing; `playwright`'s description identifies it as a reference skill.
-- AC-6: `pi/agent/skills/review/SKILL.md` and `pi/agent/skills/complete-work/SKILL.md` declare a bounded fix-loop cap (2 rounds default) with stop-and-report behavior.
+- AC-1: All four subagent definitions in `pi/agent/agents/` (`explore.md`, `research.md`, `deep-research.md`, `review.md`) include an explicit output contract section. `review.md` must use the `FINDINGS:` / `NO_FINDINGS` contract and confidence-threshold expectations from `pi/agent/skills/review/SKILL.md`.
+- AC-2: Subagent definitions instruct agents to read named plan/criteria artifacts from repo paths first when the dispatch prompt names such a file, e.g. `.plans/<file>`.
+- AC-3: `pi/agent/AGENTS.md` Workflow Discipline and `pi/agent/skills/review/SKILL.md` state that deterministic checks such as typecheck, lint, and tests should run and pass-or-be-reported before LLM reviewers are dispatched.
+- AC-4: Frontmatter descriptions for `challenge-plan`, `complete-work`, `hindsight`, and `create-html-artifact` include more concrete trigger phrasing; `playwright`'s description identifies it as a reference skill.
 
-Workstream B — extension reliability and resource hygiene:
+### Workstream B — extension reliability and resource hygiene
 
-- AC-7: `mcp-broker` applies an explicit network timeout to MCP transport operations, invalidates/retries its cached tool list when the broker is unreachable, and logs `mcp_call` failures via `_shared/logging.ts`; unit tests cover timeout and cache-invalidation paths.
-- AC-8: `_shared/spillover.ts` and `_shared/logging.ts` write files with owner-only permissions (0o600) and implement age-based cleanup (delete files older than a configurable retention, default 7 days, on extension load); `_shared/config.ts` surfaces a warning when a settings file fails to parse instead of silently returning `{}`. Tests cover all three behaviors.
-- AC-9: `subagents` applies spillover (via `_shared/spillover.ts`) to subagent outputs exceeding the shared threshold, and spawns children with a sanitized environment (sensitive variables stripped unless allowlisted; depth var still set). Tests cover both.
-- AC-10: `statusline` git branch lookup no longer blocks rendering (async with timeout and last-known-value fallback), and quota-fetch failures are logged once per session instead of silently blanking. `startup-header` metadata load failures render a fallback instead of an unhandled rejection.
-- AC-11: `web-access` detects GitHub rate-limit responses and returns a recoverable tool-result message with a backoff hint, and documents (or implements) a cleanup policy for accumulated clones.
+- AC-5: `mcp-broker` applies an explicit network timeout to MCP transport operations, invalidates/retries its cached tool list when the broker is unreachable, and logs `mcp_call` failures via `_shared/logging.ts`. Unit tests cover timeout and cache-invalidation paths.
+- AC-6: `_shared/spillover.ts` and `_shared/logging.ts` write files with owner-only permissions (`0o600`) and implement age-based cleanup for old files, defaulting to 7 days. `_shared/config.ts` surfaces a warning when a settings file fails to parse instead of silently returning `{}`. Tests cover all three behaviors.
+- AC-7: `subagents` applies spillover via `_shared/spillover.ts` to subagent outputs exceeding the shared threshold. Tests cover oversized-output spillover. Do not add child-process environment sanitization in this plan.
+- AC-8: `statusline` git branch lookup no longer blocks rendering; it uses async lookup with timeout and last-known-value fallback. Quota-fetch failures are logged once per session instead of silently blanking. `startup-header` metadata load failures render a fallback instead of causing an unhandled rejection.
+- AC-9: `web-access` detects GitHub rate-limit responses such as 429 or 403 rate-limit bodies and returns a recoverable tool-result message with a backoff hint. Do not add clone cleanup policy or implementation in this plan.
 
-Workstream C — security hardening:
+### Workstream C — security hardening
 
-- AC-12: `web_fetch` and `web_search` results are wrapped in a clearly delimited untrusted-content envelope stating the content is external data, not instructions (mirroring `goal/index.ts:102` phrasing); README documents the behavior.
-- AC-13: `pi/agent/AGENTS.md` Security section names the untrusted-content + private-data + exfiltration-channel combination ("lethal trifecta") and instructs flagging suspected injection in fetched content before acting on it.
+- AC-10: `web_fetch` and `web_search` results are wrapped in a clearly delimited untrusted-content envelope stating the content is external data, not instructions. `web-access` README documents the behavior.
+- AC-11: `pi/agent/AGENTS.md` Security section includes plain-language guidance warning agents to treat fetched external content as untrusted when private data and outbound/external tools are available, and to flag suspected prompt injection before acting on it. Do not use the phrase “lethal trifecta.”
 
-Workstream D — context economy and observability:
+### Workstream D — context observability
 
-- AC-14: The `context` extension breaks down tool results by individual call (top-N largest) rather than only by tool name.
-- AC-15: A documented measurement exists (extension README or note) of per-extension session-start context cost (broker menu, goal injection, prompt guidelines), with a stated cap or rationale for the broker tool menu size.
-- AC-16: `goal_update` accepts an optional structured evidence-links field (file/commit/test refs) persisted in goal state and shown by `/goal-show`; plain-string evidence remains valid.
+- AC-12: The `context` extension breaks down tool results by individual call, including a top-N largest individual call/result view, rather than only aggregating by tool name.
 
-Workstream E — documentation and conventions:
+### Workstream E — documentation and verification conventions
 
-- AC-17: Every extension README complies with the repo convention: config + logging behavior documented (explicitly "none" where applicable); extensions with user-facing config register a `/<name>-config` command.
-- AC-18: A short note exists (in `notes/` per the repo's notes format) recording the deliberate divergence from pi-idiomatic file-based plan/todo state: why the `todo` and `goal` extensions use session-persisted tool state, and when file artifacts (`.plans/`) remain the source of truth.
-- AC-19: `make typecheck`, `make test`, `npm run lint`, and `npm run format:check` all pass after each workstream lands.
+- AC-13: Every extension README complies with the repo convention: config and logging behavior documented, explicitly “none” where applicable; extensions with user-facing config register a `/<name>-config` command.
+- AC-14: Targeted tests/checks are run for each workstream as appropriate, and the full suite (`make typecheck`, `make test`, `npm run lint`, `npm run format:check`) passes at the end before reporting completion.
 
 ## Non-Goals / Out of Scope
 
-- No rewrite of the mcp-broker into a code-execution-with-MCP surface (worth evaluating later; recorded under Risks/Future as a direction, not in scope here).
+- No cross-family model/provider overrides for `review.md` or `deep-research.md`, and no new AGENTS.md cross-family routing section.
+- No bounded fix-loop cap for `review` or `complete-work`; neither skill currently contains a fix loop.
+- No subagent child-process environment sanitization.
+- No web-access clone cleanup policy or implementation.
+- No session-start context-cost measurement or broker menu cap/rationale documentation.
+- No `goal_update` structured `evidence_links` field.
+- No note under `notes/` about session-persisted `todo`/`goal` state versus file-based state.
+- No rewrite of the mcp-broker into a code-execution-with-MCP surface.
 - No new memory system; Hindsight integration is unchanged.
-- No resource limits (CPU/memory) for subagent child processes — flagged in the audit but deferred: Pi child processes are short-lived and sandboxed at the VM level.
+- No CPU/memory resource limits for subagent child processes.
 - No changes to the Claude Code side of the repo (`claude/`).
-- No grapheme-aware width handling in `_shared/render.ts` (cosmetic; revisit if emoji/wide-char rendering issues actually appear).
-- No golden-trace regression harness (principle 14 of agent-engineering) — too heavy for a personal config right now.
+- No grapheme-aware width handling in `_shared/render.ts`.
+- No golden-trace regression harness.
 
 ## Constraints
 
-- Public repository: no internal company details, credentials, or proprietary references in any added docs or examples.
-- Follow repo extension conventions in `CLAUDE.md` (Pi Extension Conventions section): `_shared` helpers for config/logging/render, snake_case agent-facing schemas, atomic agent-tool mutations, errors as tool-result text, README config tables with env overrides, `/<name>-config` commands, no `console.*` in TUI paths.
-- Edit files only under `pi/` (never `~/.pi/`); do not run `make stow-pi` unless the user asks.
-- For every Pi extension change: run both `make typecheck` and `make test` before reporting complete.
-- Keep prompt-cache stability in mind: do not introduce per-turn dynamic content (timestamps, counters) into system-prompt injections; broker menu and prompt guidelines must remain stable within a session.
-- Conventional commits, staged by name, no commits unless explicitly requested.
+- Public repository: do not add internal company details, credentials, proprietary references, or private URLs.
+- Follow repo extension conventions in `CLAUDE.md`: use `_shared` helpers for config/logging/render where appropriate, keep agent-facing schemas snake_case, keep internal fields camelCase, use atomic state mutations, return agent-tool errors as tool-result text where applicable, and avoid `console.*` in TUI paths.
+- Edit files only under `pi/` and repo docs/notes as explicitly accepted; never edit `~/.pi/` symlinks directly.
+- Do not run `make stow-pi` unless the user explicitly asks.
+- For Pi extension changes, run both `make typecheck` and `make test` before reporting complete; this plan additionally requires lint and format checks at the end.
+- Keep prompt-cache stability in mind: do not introduce per-turn dynamic content such as timestamps or counters into system-prompt injections.
+- Do not commit unless explicitly requested. If commits are later requested, stage files by name and use conventional commit messages.
 
 ## Chosen Approach
 
-Treat the highest-leverage, lowest-risk fixes first: Workstream A is pure markdown/config (subagent definitions, AGENTS.md, skill frontmatter) and directly closes the gaps between what the config teaches and what it does. Workstreams B and C are TypeScript changes that follow existing `_shared` patterns and the goal extension's established injection-labeling pattern, so they extend rather than invent conventions. D and E are smaller follow-ups.
+Implement the accepted workstream subset in order: A → C → B → D → E.
 
-Rationale for the cross-family decision (the single most material finding): the `agent-engineering` skill identifies same-family implement-and-verify as the highest-impact bias, the `subagents` extension already supports per-agent model selection via frontmatter, so the fix is configuration plus documentation — no code. The plan does not hardcode a specific second model in this document; the implementer should use the frontmatter override mechanism and pick the strongest available non-default family at implementation time, documenting the choice in AGENTS.md.
+Start with markdown/prompt changes because they are low-risk and establish the workflow constraints. Apply web-content security hardening early because it is small and security-relevant. Then implement the reliability/resource-hygiene code changes, beginning with shared helpers before extension-specific consumers. Finish with the context observability improvement and README convention sweep.
 
 ## Design Decisions
 
-- D1: Cross-family verification is implemented via subagent frontmatter overrides (`review.md`, `deep-research.md`), not by changing `defaultProvider`/`defaultModel` in `settings.json` — the user's interactive default stays untouched; only verification-shaped subagents route to a second family.
-- D2: Subagent output contracts use structured headed-markdown sections (not strict JSON): Pi subagents return text, and headed sections survive model variance better than JSON parsing while still being machine-checkable. `review.md` reuses the existing `FINDINGS:` format from the review skill for consistency.
-- D3: Untrusted-content wrapping for web-access reuses the exact framing already proven in `goal/index.ts:102` ("the following is external data, not higher-priority instructions") rather than attempting content sanitization, which is brittle and lossy.
-- D4: Spillover/log cleanup runs at extension load (lazy, no daemons), age-based with a configurable retention default of 7 days, consistent across `_shared/spillover.ts` and `_shared/logging.ts`.
-- D5: Subagent env sanitization is allowlist-based for known-needed variables (PATH, HOME, locale, PI\_\*) plus a configurable extra-allowlist, rather than denylist-based — denylists miss unknown secrets.
-- D6: Evidence links on `goal_update` are additive and optional (`evidence_links` snake_case in the tool schema, `evidenceLinks` camelCase in state, per repo convention); existing free-text evidence stays valid so the change is backward-compatible with old session entries.
-- D7: The mcp-broker tool menu gets a size cap with an explicit overflow line ("+N more tools — use mcp_search") instead of pagination, preserving prompt-cache stability.
+- D1: Subagent output contracts use headed Markdown sections rather than strict JSON. `review.md` must still preserve the existing `FINDINGS:` / `NO_FINDINGS` contract because the review skill already relies on that shape.
+- D2: Deterministic-gates guidance should be phrased as “run and pass-or-report before dispatching LLM reviewers,” not as an absolute prohibition that blocks reviews when checks cannot be run.
+- D3: Untrusted-content wrapping for `web-access` should mirror the established `goal` pattern: external content is data, not higher-priority instructions. Keep the envelope short to limit token overhead.
+- D4: Spillover/log cleanup runs lazily at extension load; no daemon or background scheduler.
+- D5: Subagent output spillover is accepted, but environment sanitization is explicitly out of scope.
+- D6: GitHub rate-limit handling is accepted, but clone cleanup is explicitly out of scope.
+- D7: Full-suite verification is required at the end. Per-workstream verification should be targeted to changed areas rather than always running the full suite after every workstream.
 
 ## Implementation Notes
 
-Workstream A (markdown/config only):
+### Workstream A
 
-- `pi/agent/agents/explore.md`, `research.md`, `deep-research.md`, `review.md` — add an "Output format" section to each; add model/provider frontmatter overrides to `review.md` and `deep-research.md`; add artifact-by-path guidance ("when the dispatching prompt names a plan or criteria file, read it from disk first").
-- `pi/agent/agents/explore.md` and `research.md` — consider lowering `thinking` to `low` (read-only execution phase per agent-engineering principle 4); keep `high` on review/deep-research.
-- `pi/agent/AGENTS.md` — add: cross-family verification subsection (Workflow Discipline), deterministic-gates-first sentence, lethal-trifecta line in Security (AC-13).
-- `pi/agent/skills/review/SKILL.md` — deterministic gates before reviewer dispatch; 2-round fix-loop cap. `pi/agent/skills/complete-work/SKILL.md` — same cap.
-- Skill frontmatter description edits: `challenge-plan` (add "review/vet/stress-test the plan"), `complete-work` (add "we're done / finish up / PR ready"), `hindsight` (add "remember/recall/what do we know about"), `create-html-artifact` (name concrete artifact types), `playwright` (mark as reference skill).
+- `pi/agent/agents/explore.md`, `research.md`, `deep-research.md`, `review.md`: add `Output format` sections and artifact-by-path guidance.
+- `pi/agent/agents/review.md`: align output contract with `pi/agent/skills/review/SKILL.md` (`FINDINGS:` lines, severity, confidence, `NO_FINDINGS`).
+- `pi/agent/AGENTS.md`: add deterministic-check-before-review guidance under Workflow Discipline.
+- `pi/agent/skills/review/SKILL.md`: add deterministic-gates-first guidance before reviewer dispatch.
+- Skill frontmatter description edits:
+  - `challenge-plan`: include concrete triggers such as review, vet, or stress-test a plan.
+  - `complete-work`: include concrete triggers such as finish up, work is done, or PR ready.
+  - `hindsight`: include concrete triggers such as remember, recall, or what do we know about.
+  - `create-html-artifact`: name concrete artifact types.
+  - `playwright`: mark as a reference skill.
 
-Workstream B:
+### Workstream C
 
-- `pi/agent/extensions/mcp-broker/client.ts` — transport timeout (suggest 30s) on `StreamableHTTPClientTransport` operations; cache invalidation when prefetch fails or a call errors with connection-shaped failures; `pi/agent/extensions/mcp-broker/tools.ts` — log failures via `_shared/logging.ts`; `index.ts` `buildBrokerPrompt` — apply menu cap (D7).
-- `pi/agent/extensions/_shared/spillover.ts`, `logging.ts` — file mode 0o600, age-based cleanup helper shared between them; `config.ts` — warning surface on JSON parse failure (return value or callback so callers can `ctx.ui.notify`; do not `console.*`).
-- `pi/agent/extensions/subagents/spawn.ts` — env allowlist (D5) and spillover application on oversized child output; follow the `_spawn` wrapper-export stub pattern already used at `spawn.ts:19-22` for testability.
-- `pi/agent/extensions/statusline/git.ts` + `index.ts` — async branch fetch with timeout and last-known-value cache; log quota fetch failures once per session via `_shared/logging.ts`.
-- `pi/agent/extensions/startup-header/index.ts` — catch metadata load failure, render fallback header.
-- `pi/agent/extensions/web-access/github.ts` — detect 429/403 rate-limit output and return recoverable guidance; document clone retention in README (implement age-based cleanup only if trivial with the shared helper from B2).
+- `pi/agent/extensions/web-access/index.ts` and related result construction: wrap search and fetch outputs in a short untrusted-content envelope.
+- `pi/agent/extensions/web-access/README.md`: document the envelope behavior.
+- `pi/agent/AGENTS.md`: add plain-language security guidance about untrusted fetched content interacting with private data and outbound tools; do not use the phrase “lethal trifecta.”
 
-Workstream C:
+### Workstream B
 
-- `pi/agent/extensions/web-access/index.ts` — wrap fetch/search result text in the untrusted-content envelope (D3); update README.
-- AGENTS.md security lines covered under Workstream A edits.
+- `pi/agent/extensions/mcp-broker/client.ts`: add MCP transport/network timeout and cache invalidation/retry behavior for unreachable broker/tool-list failures.
+- `pi/agent/extensions/mcp-broker/tools.ts`: log `mcp_call` failures through `_shared/logging.ts`.
+- `pi/agent/extensions/_shared/spillover.ts` and `pi/agent/extensions/_shared/logging.ts`: use `0o600` for written files and add age-based cleanup with 7-day default.
+- `pi/agent/extensions/_shared/config.ts`: surface parse warnings through an API that callers can route to `ctx.ui.notify` or equivalent; do not use `console.*` in TUI paths.
+- `pi/agent/extensions/subagents/spawn.ts`: apply shared spillover to oversized child output; preserve existing environment behavior.
+- `pi/agent/extensions/statusline/git.ts` and `index.ts`: make git lookup asynchronous with timeout and cached fallback; log quota failures once per session.
+- `pi/agent/extensions/startup-header/index.ts`: catch metadata-load failures and render a fallback header.
+- `pi/agent/extensions/web-access/github.ts`: detect GitHub rate-limit responses and return recoverable guidance.
 
-Workstream D:
+### Workstream D
 
-- `pi/agent/extensions/context/index.ts` — per-call top-N largest tool results in the report.
-- Measure session-start injection cost: write findings into the relevant extension READMEs (mcp-broker menu, goal injection, todo guidelines).
-- `pi/agent/extensions/goal/tools.ts`, `state.ts`, `render.ts` — optional `evidence_links` (D6).
+- `pi/agent/extensions/context/index.ts`: add top-N individual tool call/result reporting.
 
-Workstream E:
+### Workstream E
 
-- Sweep all extension READMEs against the CLAUDE.md convention checklist (config table, env overrides, logging section, `/<name>-config` where config exists; explicit "no configuration / no retained logs" where not).
-- `notes/` — add the divergence note (AC-18) following the repo's notes essay format (H1, thesis, `## The steelman` for the pi-idiomatic file-artifact position, `## References` citing Zechner's pi posts and Anthropic's context-engineering post).
-
-Sequencing: A → C (small, doc-heavy) → B (code) → D → E. Within B, do `_shared` changes (B2) first since B-items in subagents/web-access depend on the shared cleanup/spillover helpers.
+- Sweep all `pi/agent/extensions/*/README.md` files for config/logging convention compliance.
+- Ensure extensions with user-facing config have a `/<name>-config` command registered through `_shared/config.ts`.
+- For extensions with no user-facing config or retained logs, state that explicitly.
 
 ## Documentation Impact
 
-- Extension READMEs change wherever behavior/config changes (mcp-broker timeout + menu cap, web-access envelope + rate limits + clone retention, subagents env allowlist + spillover, statusline async git + logging, \_shared cleanup/permissions, goal evidence links, context per-call breakdown).
-- `pi/agent/AGENTS.md` and four skill SKILL.md files change per Workstream A.
-- New note under `notes/` (AC-18).
-- No changes to top-level `README.md` or `CLAUDE.md` expected; if a new shared helper meaningfully changes extension conventions, update the CLAUDE.md conventions section accordingly.
+- Update extension READMEs wherever accepted behavior changes:
+  - `mcp-broker`: timeout/cache/logging behavior if user-visible.
+  - `web-access`: untrusted-content envelope and rate-limit behavior.
+  - `subagents`: output spillover behavior.
+  - `statusline`: async git fallback and retained logging behavior.
+  - `startup-header`: fallback behavior if documented.
+  - `context`: per-call result breakdown.
+  - Shared helper behavior as reflected in affected extension docs.
+- Perform the accepted all-extension README config/logging sweep.
+- Update `pi/agent/AGENTS.md` and selected skill `SKILL.md` files per Workstream A/C.
+- Do not add the skipped `notes/` essay.
+- No top-level `README.md` or `CLAUDE.md` changes are expected unless implementation reveals a convention change that must be documented.
 
 ## Testing / Verification
 
-- V1 (AC-1..6): grep-able checks — frontmatter fields present in `pi/agent/agents/*.md`; "Output format"/"FINDINGS" sections present; AGENTS.md contains cross-family and deterministic-gates text; skill descriptions contain the new trigger phrases.
-- V2 (AC-7): unit tests in `pi/agent/extensions/mcp-broker/` for timeout and cache invalidation; `npx tsx --test pi/agent/extensions/mcp-broker/*.test.ts` passes.
-- V3 (AC-8): `_shared` tests assert 0o600 mode, retention cleanup, and parse-warning surfacing; `npx tsx --test pi/agent/extensions/_shared/*.test.ts` passes.
-- V4 (AC-9): subagents tests assert env allowlist (secrets stripped, PI_SUBAGENT_DEPTH set) and spillover envelope on oversized output.
-- V5 (AC-10, AC-11): statusline/startup-header/web-access tests cover async-git fallback, error logging, rate-limit message shape.
-- V6 (AC-12): web-access test asserts envelope delimiters around fetched content; README documents it.
-- V7 (AC-14, AC-16): context test covers per-call breakdown; goal tests cover `evidence_links` round-trip through state persistence and `/goal-show` rendering.
-- V8 (AC-17, AC-18): manual README sweep checklist; note exists in `notes/` and follows the notes format.
-- V9 (AC-19): `make typecheck && make test && npm run lint && npm run format:check` all pass at each workstream boundary.
+- V1 (AC-1..4): grep/read checks confirm subagent output contracts, artifact-by-path guidance, deterministic-gates guidance, and updated skill descriptions.
+- V2 (AC-5): mcp-broker unit tests cover timeout and cache invalidation; targeted `npx tsx --test pi/agent/extensions/mcp-broker/*.test.ts` passes.
+- V3 (AC-6): shared-helper tests assert `0o600` file modes, retention cleanup, and parse-warning surfacing; targeted `_shared` tests pass.
+- V4 (AC-7): subagents tests assert spillover envelope/path behavior on oversized output.
+- V5 (AC-8, AC-9): statusline/startup-header/web-access tests or focused checks cover async git fallback, quota logging once, startup fallback, and rate-limit message shape.
+- V6 (AC-10): web-access tests assert envelope delimiters around fetched and search content; README documents it.
+- V7 (AC-11): AGENTS.md contains the accepted plain-language security guidance without the phrase “lethal trifecta.”
+- V8 (AC-12): context tests or focused checks cover per-call top-N breakdown.
+- V9 (AC-13): manual README sweep checklist confirms every extension README documents config/logging behavior and config commands where applicable.
+- V10 (AC-14): final full suite passes: `make typecheck`, `make test`, `npm run lint`, and `npm run format:check`.
 
 ## Risks and Mitigations
 
-- Pi extension API may not expose everything assumed (e.g., transport timeout options, file-mode control on spillover writes). Mitigation: feature-detect like `goal/index.ts:373` does; where impossible, document the limitation in the README and adjust the AC to the documented behavior.
-- Untrusted-content envelope adds tokens to every fetch result. Mitigation: keep the envelope to two short lines; it is a deliberate, justified cost.
-- Changing subagent thinking levels or models can shift behavior quality. Mitigation: these are frontmatter one-liners — easy to revert; note the change in commit messages so regressions are traceable.
-- Broker menu cap could hide tools the agent needs. Mitigation: overflow line explicitly directs to `mcp_search`, which already covers full discovery.
-- README sweep (E) can drift into rewriting docs wholesale. Mitigation: checklist-driven, minimal diffs; only add missing required sections.
+- MCP transport timeout hooks may not map cleanly onto the current client API. Mitigation: implement timeout at the call boundary with `AbortController` or promise racing if transport-level support is unavailable, and document the chosen behavior if user-visible.
+- Untrusted-content envelope adds tokens to every fetch/search result. Mitigation: keep it to a short delimiter and one clear instruction line.
+- Shared cleanup could delete files unexpectedly if scoped too broadly. Mitigation: cleanup only files created by the corresponding helper in its own managed directory, older than the configured retention.
+- Config parse warning API could require touching multiple callers. Mitigation: preserve the existing default behavior while adding optional warning surfacing; update callers opportunistically where settings are user-facing.
+- README sweep can become noisy. Mitigation: make checklist-driven minimal edits; do not rewrite unrelated prose.
 
 ## Assumptions
 
-- The second model family for verification subagents is available through Pi's configured providers at implementation time; the implementer picks the strongest available non-default family and documents it in AGENTS.md (no hardcoded choice in this plan).
-- 7-day retention and 25KB-threshold spillover defaults are acceptable; both are configurable via the standard settings/env pattern.
-- Headed-markdown output contracts (not strict JSON) satisfy the structured-output principle for read-only subagents; the review skill's `FINDINGS:` format is the only contract that downstream logic currently parses.
-- The session-start cost audit (AC-15) is a measurement-and-document task, not an optimization mandate; optimization only happens if a single injection exceeds ~1k tokens.
+- Seven-day retention for logs/spillover is acceptable and can follow the standard config/env override pattern where user-facing.
+- Existing spillover thresholds remain acceptable; this plan expands where spillover is applied, not the threshold policy itself.
+- Headed Markdown output contracts are sufficient for read-only subagents; strict JSON is not required.
+- Targeted per-workstream checks plus final full-suite verification provide the desired safety/performance trade-off.
 
 ## Handoff Summary
 
-Execute workstreams in order A → C → B → D → E; each is independently landable and ends with V9 (full typecheck/test/lint/format pass). Workstreams A and C are markdown plus one small TypeScript change and can land in a single session. Workstream B is the bulk of the code work; do `_shared` (B2) first because subagents/web-access changes consume its helpers.
+Implement this revised accepted scope workstream by workstream: A → C → B → D → E. Do not implement skipped recommendations from the original audit. Complete only after AC-1 through AC-14 are satisfied with concrete file/test evidence and the final full verification suite passes.
 
 Suggested goal objective:
 
 ```text
-/goal Implement .plans/2026-06-10-pi-harness-audit-improvements.md workstream by workstream (A, C, B, D, E). Complete only after every acceptance criterion AC-1 through AC-19 is satisfied with concrete evidence (file diffs, passing test output, and the V1-V9 verification results).
+/goal Implement .plans/2026-06-10-pi-harness-audit-improvements.md as revised. Complete only after every acceptance criterion AC-1 through AC-14 is satisfied with concrete evidence from file diffs, targeted checks, and final `make typecheck`, `make test`, `npm run lint`, and `npm run format:check` results.
 ```
-
-Completion evidence expectations: per-AC mapping to diffs and command output; explicitly state any AC adjusted due to Pi API limitations (per Risks) and why.

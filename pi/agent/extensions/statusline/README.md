@@ -10,7 +10,7 @@ Pi extension that renders a single-line footer with the current working director
 /repo [detached: abc1234] · Codex $4.20 1h · ctx 18%/200k · gpt-5-codex · low
 ```
 
-When the working directory is in a git repository, the current branch is appended to the working directory in brackets. Detached HEAD states render as `detached: <short-hash>`.
+When the working directory is in a git repository, the current branch is appended to the working directory in brackets. Detached HEAD states render as `detached: <short-hash>`. Git branch lookup runs asynchronously with a short timeout, so footer rendering is not blocked by a slow repository; the footer keeps the last known branch while a refresh is pending or fails.
 
 Left-to-right priority is preserved when the terminal is narrow: cwd, provider quota, context, model, then thinking. Quota percentages and context percentage are highlighted in warning/error colors above the configured thresholds.
 
@@ -22,7 +22,7 @@ No extension-specific configuration. Path shortening uses the `HOME` environment
 
 ## Logging
 
-This extension does not write retained logs or diagnostic files.
+Quota-fetch failures are logged once per session under `${tmpdir()}/pi-extension-logs/statusline/` and may include provider/model identifiers and failure context. Logs are written with owner-only permissions and old files are cleaned up lazily by the shared logging helper.
 
 ## Current providers
 

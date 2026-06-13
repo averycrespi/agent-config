@@ -1,7 +1,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -14,6 +14,7 @@ import {
   type SpawnOutcome,
 } from "./spawn.ts";
 import { _loggingFs } from "../_shared/logging.ts";
+import { THRESHOLD_CHARS } from "../_shared/spillover.ts";
 
 function baseOutcome(overrides: Partial<SpawnOutcome> = {}): SpawnOutcome {
   return {
@@ -452,6 +453,63 @@ test("spawnSubagent: retained failure logs include raw output", async () => {
   } finally {
     spawnStub.mock.restore();
     tmpStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
+test("spawnSubagent: spills oversized final stdout", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+  const largeOutput = "subagent output\n".repeat(
+    Math.ceil((THRESHOLD_CHARS + 1) / "subagent output\n".length),
+  );
+  const expectedOutput = largeOutput.trim();
+  const logId = `large-stdout-${process.pid}`;
+
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "message_end",
+          message: {
+            content: [{ type: "text", text: largeOutput }],
+          },
+        })}\n`,
+      );
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+      logId,
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(result.stdout, /<persisted-output>/);
+    assert.match(result.stdout, new RegExp(`${logId}-stdout\\.txt`));
+    const spillFile = result.stdout.match(
+      /Full output saved to: `([^`]+)`/,
+    )?.[1];
+    assert.ok(spillFile, "spill file path appears in envelope");
+    assert.equal(await readFile(spillFile, "utf8"), expectedOutput);
+    await rm(spillFile, { force: true });
+  } finally {
+    spawnStub.mock.restore();
     if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
     else process.env.PI_SUBAGENT_DEPTH = prev;
   }

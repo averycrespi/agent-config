@@ -97,6 +97,39 @@ test("formatConfigForDisplay emits stable masked JSON", () => {
   assert.doesNotMatch(output, /secret/);
 });
 
+test("registerConfigCommand displays config loader warnings", async () => {
+  const commands = new Map<string, any>();
+  const notifications: Array<{ message: string; level: string }> = [];
+  const pi = {
+    registerCommand(name: string, command: any) {
+      commands.set(name, command);
+    },
+  };
+
+  registerConfigCommand(pi, {
+    extensionName: "example",
+    loadConfig: async (_cwd, warnings = []) => {
+      warnings.push(
+        "Ignoring invalid JSON settings file /repo/.pi/settings.json",
+      );
+      return { enabled: true };
+    },
+  });
+
+  await commands.get("example-config").handler("", {
+    cwd: "/repo",
+    ui: {
+      notify(message: string, level: string) {
+        notifications.push({ message, level });
+      },
+    },
+  });
+
+  assert.equal(notifications[0].level, "warning");
+  assert.match(notifications[0].message, /"enabled": true/);
+  assert.match(notifications[0].message, /Ignoring invalid JSON settings file/);
+});
+
 test("registerConfigCommand registers and displays loaded effective config", async () => {
   const commands = new Map<string, any>();
   const notifications: Array<{ message: string; level: string }> = [];

@@ -124,6 +124,13 @@ function exec(
   });
 }
 
+export function isGitHubRateLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (!/github/i.test(message)) return /rate limit/i.test(message);
+  if (/\b429\b/.test(message)) return true;
+  return /rate limit/i.test(message);
+}
+
 function sanitizeRefForPath(ref: string): string {
   return ref.replace(/[^a-zA-Z0-9._-]/g, "_");
 }

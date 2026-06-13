@@ -9,7 +9,7 @@ type PlainObject = Record<string, unknown>;
 
 type ConfigCommandOptions<T extends PlainObject> = {
   extensionName: string;
-  loadConfig: (cwd: string) => Promise<T> | T;
+  loadConfig: (cwd: string, warnings?: string[]) => Promise<T> | T;
   sensitiveFields?: readonly string[];
 };
 
@@ -40,11 +40,23 @@ export function mergeExtensionConfig<T extends PlainObject>(options: {
   } as T;
 }
 
-export async function readJsonFileObject(path: string): Promise<PlainObject> {
+export async function readJsonFileObject(
+  path: string,
+  warnings: string[] = [],
+): Promise<PlainObject> {
+  let raw: string;
   try {
-    const value = JSON.parse(await readFile(path, "utf8"));
-    return isPlainObject(value) ? value : {};
+    raw = await readFile(path, "utf8");
   } catch {
+    return {};
+  }
+
+  try {
+    const value = JSON.parse(raw);
+    return isPlainObject(value) ? value : {};
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    warnings.push(`Ignoring invalid JSON settings file ${path}: ${message}`);
     return {};
   }
 }
@@ -52,10 +64,12 @@ export async function readJsonFileObject(path: string): Promise<PlainObject> {
 export async function readPiSettingsFiles(options: {
   agentDir: string;
   cwd: string;
+  warnings?: string[];
 }): Promise<{ globalSettings: PlainObject; projectSettings: PlainObject }> {
+  const warnings = options.warnings ?? [];
   const [globalSettings, projectSettings] = await Promise.all([
-    readJsonFileObject(join(options.agentDir, "settings.json")),
-    readJsonFileObject(join(options.cwd, ".pi", "settings.json")),
+    readJsonFileObject(join(options.agentDir, "settings.json"), warnings),
+    readJsonFileObject(join(options.cwd, ".pi", "settings.json"), warnings),
   ]);
   return { globalSettings, projectSettings };
 }
@@ -112,13 +126,15 @@ export function registerConfigCommand<T extends PlainObject>(
   pi.registerCommand(`${options.extensionName}-config`, {
     description: `Show the effective ${options.extensionName} extension config.`,
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const config = await options.loadConfig(ctx.cwd);
-      ctx.ui.notify(
+      const warnings: string[] = [];
+      const config = await options.loadConfig(ctx.cwd, warnings);
+      const message = [
         formatConfigForDisplay(options.extensionName, config, {
           sensitiveFields: options.sensitiveFields,
         }),
-        "info",
-      );
+        ...warnings,
+      ].join("\n\n");
+      ctx.ui.notify(message, warnings.length > 0 ? "warning" : "info");
     },
   });
 }

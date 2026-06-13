@@ -43,6 +43,37 @@ test("readEnvSettings ignores invalid readonly environment values", () => {
   assert.deepEqual(readEnvSettings(), {});
 });
 
+test("loadMcpBrokerConfig surfaces invalid settings warnings", async () => {
+  delete process.env.MCP_BROKER_ENDPOINT;
+  delete process.env.MCP_BROKER_AUTH_TOKEN;
+  delete process.env.MCP_BROKER_READONLY;
+
+  const root = join(
+    tmpdir(),
+    `mcp-broker-config-warning-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "project");
+  await mkdir(join(cwd, ".pi"), { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+
+  try {
+    await writeFile(join(agentDir, "settings.json"), "{ invalid");
+    const warnings: string[] = [];
+
+    assert.deepEqual(await loadMcpBrokerConfig(cwd, warnings), {
+      endpoint: undefined,
+      authToken: undefined,
+      readOnly: false,
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /Ignoring invalid JSON settings file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("loadMcpBrokerConfig merges global, project, and env settings", async () => {
   delete process.env.MCP_BROKER_ENDPOINT;
   delete process.env.MCP_BROKER_AUTH_TOKEN;

@@ -32,6 +32,35 @@ test("readEnvSettings maps web access environment overrides", () => {
   });
 });
 
+test("loadWebAccessConfig surfaces invalid settings warnings", async () => {
+  delete process.env.TAVILY_API_KEY;
+  delete process.env.JINA_API_KEY;
+
+  const root = join(
+    tmpdir(),
+    `web-access-config-warning-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "project");
+  await mkdir(join(cwd, ".pi"), { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+
+  try {
+    await writeFile(join(agentDir, "settings.json"), "{ invalid");
+    const warnings: string[] = [];
+
+    assert.deepEqual(await loadWebAccessConfig(cwd, warnings), {
+      tavilyApiKey: undefined,
+      jinaApiKey: undefined,
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0]!, /Ignoring invalid JSON settings file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("loadWebAccessConfig merges global, project, and env settings", async () => {
   delete process.env.TAVILY_API_KEY;
   delete process.env.JINA_API_KEY;

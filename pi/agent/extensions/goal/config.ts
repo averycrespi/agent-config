@@ -217,6 +217,7 @@ export async function loadGoalConfig(cwd: string): Promise<{
   const { globalSettings, projectSettings } = await readPiSettingsFiles({
     agentDir: getAgentDir(),
     cwd,
+    warnings,
   });
   const settings = mergeExtensionConfig({
     defaults: {},

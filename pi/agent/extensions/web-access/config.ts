@@ -17,10 +17,12 @@ const DEFAULT_CONFIG: WebAccessConfig = {
 
 export async function loadWebAccessConfig(
   cwd: string,
+  warnings: string[] = [],
 ): Promise<WebAccessConfig> {
   const { globalSettings, projectSettings } = await readPiSettingsFiles({
     agentDir: getAgentDir(),
     cwd,
+    warnings,
   });
   const merged = mergeExtensionConfig({
     defaults: DEFAULT_CONFIG,

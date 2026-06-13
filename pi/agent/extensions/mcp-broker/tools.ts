@@ -13,6 +13,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { createManagedLogger } from "../_shared/logging.ts";
 import {
   clearPartialTimer,
   countNonEmptyLines,
@@ -60,11 +61,40 @@ export function summarize(tool: BrokerTool): string {
   return desc ? `${tool.name} — ${desc}` : tool.name;
 }
 
-function errorResult(message: string) {
+async function logMcpCallFailure(
+  toolCallId: string,
+  toolName: string,
+  message: string,
+): Promise<string | undefined> {
+  try {
+    const logger = createManagedLogger({
+      extensionName: "mcp-broker",
+      id: `${toolCallId}-failure`,
+    });
+    logger.write(`mcp_call failure for ${toolName}\n${message}\n`);
+    await logger.close();
+    return logger.path;
+  } catch {
+    return undefined;
+  }
+}
+
+function errorResult(message: string, logFile?: string) {
+  const suffix = logFile ? `\nLog: ${logFile}` : "";
   return {
-    content: [{ type: "text" as const, text: message }],
-    details: {},
+    content: [{ type: "text" as const, text: `${message}${suffix}` }],
+    details: logFile ? { logFile } : {},
   };
+}
+
+function allText(content: AgentToolResult<unknown>["content"]): string {
+  return content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        block.type === "text" && typeof block.text === "string",
+    )
+    .map((block) => block.text)
+    .join("\n");
 }
 
 type CallParams = { name: string; arguments: Record<string, unknown> };
@@ -109,7 +139,19 @@ export async function callBrokerTool(
         type: "text" as const,
         text: `[mcp_call: broker tool '${params.name}' reported an error]`,
       });
-      return { content, details: { name: params.name, brokerError } };
+      const logFile = await logMcpCallFailure(
+        toolCallId,
+        params.name,
+        allText(content),
+      );
+      return {
+        content,
+        details: {
+          name: params.name,
+          brokerError,
+          ...(logFile ? { logFile } : {}),
+        },
+      };
     }
     const spill = await spillIfNeeded(content as any, toolCallId, dir);
     if (spill.spilled) {
@@ -148,12 +190,18 @@ export async function callBrokerTool(
             type: "text" as const,
             text: `[mcp_call: broker tool '${params.name}' reported an error]`,
           });
+          const logFile = await logMcpCallFailure(
+            toolCallId,
+            params.name,
+            allText(retriedContent),
+          );
           return {
             content: retriedContent,
             details: {
               name: params.name,
               brokerError: retriedBrokerError,
               retried: true,
+              ...(logFile ? { logFile } : {}),
             },
           };
         }
@@ -187,10 +235,23 @@ export async function callBrokerTool(
       } catch (retryErr) {
         const retryMsg =
           retryErr instanceof Error ? retryErr.message : String(retryErr);
-        return errorResult(`mcp_call failed after session retry: ${retryMsg}`);
+        const logFile = await logMcpCallFailure(
+          toolCallId,
+          params.name,
+          `mcp_call failed after session retry: ${retryMsg}`,
+        );
+        return errorResult(
+          `mcp_call failed after session retry: ${retryMsg}`,
+          logFile,
+        );
       }
     }
-    return errorResult(`mcp_call failed: ${message}`);
+    const logFile = await logMcpCallFailure(
+      toolCallId,
+      params.name,
+      `mcp_call failed: ${message}`,
+    );
+    return errorResult(`mcp_call failed: ${message}`, logFile);
   }
 }
 

@@ -1,6 +1,6 @@
 import { after, before, describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -8,6 +8,7 @@ import {
   THRESHOLD_CHARS,
   buildEnvelope,
   joinText,
+  cleanupOldSpilloverFiles,
   spillIfNeeded,
 } from "./spillover.ts";
 
@@ -193,9 +194,10 @@ describe("spillIfNeeded", () => {
     assert.equal(result.spilled, true);
     if (!result.spilled) throw new Error("unreachable");
 
-    // File was written
+    // File was written with owner-only permissions
     const written = await readFile(result.filePath, "utf8");
     assert.equal(written, bigText);
+    assert.equal((await stat(result.filePath)).mode & 0o777, 0o600);
 
     // Details
     assert.equal(result.originalSize, bigText.length);
@@ -286,6 +288,24 @@ describe("spillIfNeeded", () => {
     assert.equal(warn.mock.callCount(), 0);
   });
 
+  test("cleanupOldSpilloverFiles removes old spill files only", async () => {
+    const oldFile = join(scratchDir, "old.txt");
+    const freshFile = join(scratchDir, "fresh.txt");
+    const ignoredFile = join(scratchDir, "old.log");
+    await writeFile(oldFile, "old", "utf8");
+    await writeFile(freshFile, "fresh", "utf8");
+    await writeFile(ignoredFile, "ignored", "utf8");
+    const oldDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    await utimes(oldFile, oldDate, oldDate);
+    await utimes(ignoredFile, oldDate, oldDate);
+
+    await cleanupOldSpilloverFiles(scratchDir);
+
+    await assert.rejects(() => stat(oldFile), { code: "ENOENT" });
+    assert.equal(await readFile(freshFile, "utf8"), "fresh");
+    assert.equal(await readFile(ignoredFile, "utf8"), "ignored");
+  });
+
   test("preview truncated to PREVIEW_BYTES with correct truncated-byte count", async () => {
     const joinedText = "g".repeat(THRESHOLD_CHARS + 1000);
     const content = [{ type: "text" as const, text: joinedText }];
@@ -318,14 +338,18 @@ describe("spillIfNeeded wx flag", () => {
     await rm(scratchDir, { recursive: true, force: true });
   });
 
-  test("second call with same toolCallId falls back (wx flag prevents overwrite)", async () => {
+  test("second call with same toolCallId writes a unique file", async () => {
     const bigText = "h".repeat(THRESHOLD_CHARS + 1);
     const content = [{ type: "text" as const, text: bigText }];
-    // First call succeeds
     const first = await spillIfNeeded(content, "call_wx", scratchDir);
     assert.equal(first.spilled, true);
-    // Second call: file already exists, wx should fail → passthrough
+    if (!first.spilled) throw new Error("unreachable");
+
     const second = await spillIfNeeded(content, "call_wx", scratchDir);
-    assert.equal(second.spilled, false);
+    assert.equal(second.spilled, true);
+    if (!second.spilled) throw new Error("unreachable");
+    assert.notEqual(second.filePath, first.filePath);
+    assert.ok(second.filePath.endsWith("call_wx-1.txt"));
+    assert.equal(await readFile(second.filePath, "utf8"), bigText);
   });
 });

@@ -1,8 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { THRESHOLD_CHARS } from "../_shared/spillover.ts";
 import {
   buildAgentDescription,
   normalizeIntent,
+  spillSubagentOutput,
   validateSpawnAgentSpecs,
 } from "./index.ts";
 import type { AgentDefinition } from "./types.ts";
@@ -74,4 +79,30 @@ test("validateSpawnAgentSpecs: accepts known agents with non-empty intents", () 
   );
 
   assert.deepEqual(errors, []);
+});
+
+// ─── spillSubagentOutput ────────────────────────────────────────────────────
+
+test("spillSubagentOutput spills oversized subagent output", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "subagent-spill-test-"));
+  try {
+    const largeOutput = "subagent output\n".repeat(
+      Math.ceil((THRESHOLD_CHARS + 1) / "subagent output\n".length),
+    );
+
+    const result = await spillSubagentOutput(
+      [{ type: "text", text: largeOutput }],
+      "call/subagent?1",
+      dir,
+    );
+
+    assert.equal(result.details.outputSpilled, true);
+    assert.equal(result.details.originalSize, largeOutput.length);
+    assert.match(result.content[0]!.text, /<persisted-output>/);
+    assert.match(result.content[0]!.text, /call_subagent_1\.txt/);
+    const spillFile = result.details.spillFile as string;
+    assert.equal(await readFile(spillFile, "utf8"), largeOutput);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

@@ -3,6 +3,8 @@ import { VERSION } from "@earendil-works/pi-coding-agent";
 import { loadGitMetadata, type GitMetadata } from "./git.ts";
 import { renderHeader, type HeaderState } from "./render.ts";
 
+export const _startupHeaderDeps = { loadGitMetadata };
+
 export default function (pi: ExtensionAPI) {
   let metadata: GitMetadata = { commits: [] };
   let requestRender: (() => void) | undefined;
@@ -34,11 +36,18 @@ export default function (pi: ExtensionAPI) {
       };
     });
 
-    void loadGitMetadata(pi, ctx.cwd).then((nextMetadata) => {
-      if (currentGeneration !== generation) return;
-      metadata = nextMetadata;
-      requestRender?.();
-    });
+    void _startupHeaderDeps
+      .loadGitMetadata(pi, ctx.cwd)
+      .then((nextMetadata) => {
+        if (currentGeneration !== generation) return;
+        metadata = nextMetadata;
+        requestRender?.();
+      })
+      .catch(() => {
+        if (currentGeneration !== generation) return;
+        metadata = { commits: [] };
+        requestRender?.();
+      });
   });
 
   pi.on("session_shutdown", async () => {

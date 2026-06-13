@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fetchGitHub, parseGitHubUrl } from "./github.ts";
+import {
+  fetchGitHub,
+  isGitHubRateLimitError,
+  parseGitHubUrl,
+} from "./github.ts";
 
 test("parseGitHubUrl returns null for non-URL input", () => {
   assert.equal(parseGitHubUrl("not a url"), null);
@@ -90,6 +94,24 @@ test("parseGitHubUrl parses tree URL with ref but no path", () => {
       ref: "main",
     },
   );
+});
+
+test("isGitHubRateLimitError detects 403/429 and rate-limit bodies", () => {
+  assert.equal(
+    isGitHubRateLimitError(
+      new Error("GitHub API HTTP 403: rate limit exceeded"),
+    ),
+    true,
+  );
+  assert.equal(
+    isGitHubRateLimitError(new Error("HTTP 429 from github.com")),
+    true,
+  );
+  assert.equal(
+    isGitHubRateLimitError(new Error("GitHub API HTTP 403: Forbidden")),
+    false,
+  );
+  assert.equal(isGitHubRateLimitError(new Error("File not found")), false);
 });
 
 test("fetchGitHub rejects immediately when the signal is already aborted", async () => {
