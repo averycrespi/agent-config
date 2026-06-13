@@ -27,7 +27,8 @@ export type AutoRunStopReason =
   | "goal_cleared"
   | "goal_complete"
   | "turn_budget"
-  | "time_budget";
+  | "time_budget"
+  | "provider_error";
 
 export interface GoalAutoRunState {
   status: AutoRunStatus;
@@ -131,7 +132,8 @@ export function isAutoRunStopReason(
     value === "goal_cleared" ||
     value === "goal_complete" ||
     value === "turn_budget" ||
-    value === "time_budget"
+    value === "time_budget" ||
+    value === "provider_error"
   );
 }
 

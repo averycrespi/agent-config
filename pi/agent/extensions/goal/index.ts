@@ -134,6 +134,31 @@ function sendUserMessage(
   if (typeof sender === "function") sender.call(pi, content, options);
 }
 
+function getTerminalProviderError(messages: unknown): string | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  const lastMessage = messages.at(-1) as
+    | { role?: unknown; stopReason?: unknown; errorMessage?: unknown }
+    | undefined;
+  if (lastMessage?.role !== "assistant") return undefined;
+  if (
+    lastMessage.stopReason !== "error" &&
+    lastMessage.stopReason !== "aborted"
+  ) {
+    return undefined;
+  }
+  return typeof lastMessage.errorMessage === "string" &&
+    lastMessage.errorMessage.trim().length > 0
+    ? lastMessage.errorMessage.trim()
+    : `Assistant stopped with ${lastMessage.stopReason}.`;
+}
+
+function summarizeProviderError(message: string): string {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return normalized.length > 240
+    ? `${normalized.slice(0, 237).trimEnd()}...`
+    : normalized;
+}
+
 export function createGoalExtension(options: GoalExtensionOptions = {}) {
   const loadConfig = options.loadConfig ?? loadGoalConfig;
 
@@ -358,7 +383,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       return undefined;
     });
 
-    pi.on("agent_end", async (_event, ctx) => {
+    pi.on("agent_end", async (event: { messages?: unknown }, ctx) => {
       const goal = store.getGoal();
       if (!config.autoRunEnabled) {
         stopAutoRun(
@@ -370,6 +395,17 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       }
       if (!goal || goal.status !== "active") return undefined;
       if (store.getAutoRun()?.status !== "running") return undefined;
+      const terminalProviderError = getTerminalProviderError(event.messages);
+      if (terminalProviderError) {
+        stopAutoRun(
+          ctx,
+          "provider_error",
+          `Goal auto-run stopped after provider error: ${summarizeProviderError(
+            terminalProviderError,
+          )}`,
+        );
+        return undefined;
+      }
       if (typeof (ctx as any).hasPendingMessages === "function") {
         const hasPending = await (ctx as any).hasPendingMessages();
         if (hasPending) return undefined;
