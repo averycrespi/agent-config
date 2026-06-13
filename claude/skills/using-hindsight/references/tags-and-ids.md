@@ -117,11 +117,11 @@ A consequence of `any_strict` being the typical default: **untagged retains are 
 
 ## Self-check before retaining
 
-Before calling `retain`/`sync_retain`, verify:
+Before calling `mcp__mcp-broker__hindsight_retain` / `mcp__mcp-broker__hindsight_sync_retain`, verify:
 
 1. `document_id` is anchored on a stable external identifier (not a title or current content).
 2. `scope:repo` or `scope:global` is in tags; if `scope:repo`, `repo:<base>` is too. Apply the scope decision rule: if recall from a different repo should still find it, use `scope:global`.
 3. `source:`, `origin:`, and `kind:` (one of `semantic` / `episodic` / `procedural`) are in tags.
 4. At least one namespaced caller tag identifies the topic, ticket, or subsystem.
-5. `scope`, `source`, `kind`, `origin` live in the `tags` array — not as top-level retain fields. `update_mode` is only valid on `hindsight_retain` (the async tool); `sync_retain` rejects it.
+5. `scope`, `source`, `kind`, `origin` live in the `tags` array — not as top-level retain fields. `update_mode` is only valid on `mcp__mcp-broker__hindsight_retain` (the async tool); `mcp__mcp-broker__hindsight_sync_retain` rejects it.
 6. Content contains no secrets, tokens, credentials, or `.env`-style assignments.

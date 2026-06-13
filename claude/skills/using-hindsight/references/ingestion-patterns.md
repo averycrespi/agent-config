@@ -6,7 +6,7 @@ Per-source patterns for Hindsight retains. The shared rules below apply to every
 
 - **One document per source artifact.** Hindsight chunks server-side; don't pre-chunk into many small retains.
 - **Strip chrome aggressively.** Drop navigation, breadcrumbs, footers, cookie banners, "related posts", bot/system noise, license boilerplate, source-platform link wrappers, ephemeral dashboard query params (live timestamps, refresh modes), and zero-width / trailing whitespace. Fidelity for retrieval beats completeness.
-- **Refresh by re-retaining** the same `document_id`. `sync_retain` overwrites automatically; on the async `retain` tool, the default is replace and `update_mode: "append"` concatenates.
+- **Refresh by re-retaining** the same `document_id`. `mcp__mcp-broker__hindsight_sync_retain` overwrites automatically; on the async `mcp__mcp-broker__hindsight_retain` tool, the default is replace and `update_mode: "append"` concatenates.
 - **Required tags are always set** — `scope:`, `repo:` (when `scope:repo`), `source:`, `origin:`, `kind:`, plus at least one namespaced caller tag. See `tags-and-ids.md` for values.
 
 ## Canonical retain shape
@@ -29,13 +29,13 @@ This is the shape every per-source pattern below produces. Only the `document_id
 }
 ```
 
-`update_mode` is only valid on `hindsight_retain` (the async batch tool); `hindsight_sync_retain` rejects it. Idempotency is by `document_id`.
+`update_mode` is only valid on `mcp__mcp-broker__hindsight_retain` (the async batch tool); `mcp__mcp-broker__hindsight_sync_retain` rejects it. Idempotency is by `document_id`.
 
 ## Per-source patterns
 
 ### Jira tickets
 
-- **Fetch.** `atlassian_getJiraIssue` (one); `atlassian_searchJiraIssuesUsingJql` then iterate (many).
+- **Fetch.** `mcp__mcp-broker__atlassian_getJiraIssue` (one); `mcp__mcp-broker__atlassian_searchJiraIssuesUsingJql` then iterate (many).
 - **`document_id`.** `ticket:<key>` (e.g., `ticket:abc-123`).
 - **Tags.** `scope:repo` (or `scope:global` if cross-repo — see scope decision rule), `source:external`, `origin:jira`, `kind:semantic`, plus caller tags `ticket:<key>` and `topic:<area>`.
 - **Content.** Summary, description, acceptance criteria, decision-bearing comments.
@@ -43,7 +43,7 @@ This is the shape every per-source pattern below produces. Only the `document_id
 
 ### Confluence pages
 
-- **Fetch.** `atlassian_getConfluencePage`; for a space, `atlassian_getPagesInConfluenceSpace` then iterate.
+- **Fetch.** `mcp__mcp-broker__atlassian_getConfluencePage`; for a space, `mcp__mcp-broker__atlassian_getPagesInConfluenceSpace` then iterate.
 - **`document_id`.** `confluence:<space-key>:<page-id>` — use the page ID, not the title.
 - **Tags.** `scope:global` (typical — most Confluence docs are cross-repo system docs), `source:external`, `origin:confluence`, `kind:semantic` (or `procedural` for runbooks), plus caller tags `topic:<area>` and `system:<name>` when applicable.
 - **Split only when** the page is a large reference doc and recall needs to address sections independently — use `confluence:<space>:<page-id>:<anchor>` sub-IDs.
@@ -83,7 +83,7 @@ This is the shape every per-source pattern below produces. Only the `document_id
 
 ## Bulk ingestion
 
-For many sources in one call, use `hindsight_retain` (async, batch). Call-level `tags` apply to every item; per-item `tags` are merged with them. `scope`/`source`/`kind`/`origin` are tag values, not separate fields.
+For many sources in one call, use `mcp__mcp-broker__hindsight_retain` (async, batch). Call-level `tags` apply to every item; per-item `tags` are merged with them. `scope`/`source`/`kind`/`origin` are tag values, not separate fields.
 
 ```jsonc
 {
@@ -109,4 +109,4 @@ For many sources in one call, use `hindsight_retain` (async, batch). Call-level 
 }
 ```
 
-For very large bulk jobs (50+ sources), dispatch a subagent that fetches and retains in a loop and returns a summary — keeps raw fetch output out of the main context. **Be explicit about whether `retain` is in scope** in the subagent prompt: phrasing like "plan what to ingest" can be read as authorization to retain, and an eager subagent may bulk-ingest unprompted. If you only want exploration, include a "DO NOT call `retain` / `sync_retain` / `delete_*`" boundary.
+For very large bulk jobs (50+ sources), dispatch a subagent that fetches and retains in a loop and returns a summary — keeps raw fetch output out of the main context. **Be explicit about whether retain calls are in scope** in the subagent prompt: phrasing like "plan what to ingest" can be read as authorization to retain, and an eager subagent may bulk-ingest unprompted. If you only want exploration, include a "DO NOT call `mcp__mcp-broker__hindsight_retain` / `mcp__mcp-broker__hindsight_sync_retain` / `mcp__mcp-broker__hindsight_delete_*`" boundary.

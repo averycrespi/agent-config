@@ -32,7 +32,7 @@ Use whichever sources apply:
 - **Codebase:** read `AGENTS.md`, `CLAUDE.md`, `README.md`, design docs, existing `.plans/`, relevant source files, tests, configs, and nearby conventions.
 - **Subagents:** use `spawn_agents` for read-only exploration, localization, convention discovery, risk review, and external-doc research that can run in parallel. Keep subagents read-only and ask for evidence-backed findings with file paths or URLs.
 - **Web:** use `web_search` / `web_fetch` when behavior depends on current external docs, libraries, APIs, standards, or examples.
-- **Memory:** use Hindsight when prior preferences, repo history, recurring decisions, or external context may matter. Hindsight MCP calls must happen in the main context, not in subagents.
+- **Memory:** use Hindsight when prior preferences, repo history, recurring decisions, or external context may matter. Make Hindsight MCP calls in the main context by default; use subagents for memory only when they are explicitly configured with `mcp-broker` access and the prompt authorizes the operation.
 
 Hindsight recall pattern:
 

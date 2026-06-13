@@ -20,7 +20,7 @@ Optimize for:
 
 ## Broker use
 
-Do not delegate Hindsight ingestion or retrieval to subagents; subagents do not have broker access. Perform Hindsight MCP discovery, retain, recall, and reflect calls in the main agent context.
+Perform Hindsight MCP discovery, retain, recall, and reflect calls in the main agent context by default. Do not delegate Hindsight ingestion or retrieval to subagents unless the subagent is explicitly configured with `mcp-broker` access and the prompt clearly authorizes the memory operation.
 
 1. Use `mcp_search` with query `hindsight` to confirm available Hindsight tools.
 2. Use `mcp_describe` on the exact tool before first use in a session or when unsure of its schema.

@@ -9,7 +9,7 @@ Hindsight is a long-lived memory bank, shared across sessions and tools, accesse
 
 The two outcomes this skill optimizes for:
 
-1. **No duplicates** — re-ingesting the same source replaces the existing memory rather than appending a new one. The mechanism is a stable `document_id`: `hindsight_sync_retain` overwrites by default when the ID matches.
+1. **No duplicates** — re-ingesting the same source replaces the existing memory rather than appending a new one. The mechanism is a stable `document_id`: `mcp__mcp-broker__hindsight_sync_retain` overwrites by default when the ID matches.
 2. **Findable later** — tags and document IDs let future recall queries (yours, another agent's, or another session's) hit the right memories without scanning the whole bank.
 
 ## When to invoke
@@ -64,7 +64,7 @@ The dedup key. Anchor on a stable external identifier (ticket key, page ID, repo
 
 If a single source has multiple distinct concerns worth retaining separately (e.g., a ticket with several independent constraints), use suffix shapes like `ticket:abc-123:constraint:archived-rows`. Default to one document per source; only split when future recall would want the parts independently.
 
-If unsure whether a document already exists under a different ID shape (legacy data, inconsistent prior conventions), check before retaining: `hindsight_get_document` for an exact candidate ID, `hindsight_list_documents(q: "<key-or-fragment>")` to search by substring, or `hindsight_list_tags(q: "ticket:*")` to see what namespace conventions are already in use. With a deterministic ID, this check is unnecessary — re-retain is idempotent.
+If unsure whether a document already exists under a different ID shape (legacy data, inconsistent prior conventions), check before retaining: `mcp__mcp-broker__hindsight_get_document` for an exact candidate ID, `mcp__mcp-broker__hindsight_list_documents(q: "<key-or-fragment>")` to search by substring, or `mcp__mcp-broker__hindsight_list_tags(q: "ticket:*")` to see what namespace conventions are already in use. With a deterministic ID, this check is unnecessary — re-retain is idempotent.
 
 ### 3. Plan tags
 
@@ -104,21 +104,21 @@ Single source — `mcp__mcp-broker__hindsight_sync_retain`:
 
 `sync_retain` accepts only `content`, `document_id`, `tags`, `context`, `metadata`, `strategy`, and `timestamp`. It does **not** accept `update_mode`, `scope`, `source`, `kind`, or `origin` as top-level fields — those classifications live in the `tags` array. Re-retaining with the same `document_id` replaces the prior document automatically.
 
-Multiple sources — `mcp__mcp-broker__hindsight_retain` (async batch). Returns `operation_id`; check `hindsight_get_operation` later if the user needs confirmation.
+Multiple sources — `mcp__mcp-broker__hindsight_retain` (async batch). Returns `operation_id`; check `mcp__mcp-broker__hindsight_get_operation` later if the user needs confirmation.
 
 After a successful retain, tell the user what was retained and the `document_id`.
 
 ## Retain vs sync_retain
 
-- `hindsight_sync_retain` — synchronous, one item. **Default for single-source ingests.** Idempotency is by `document_id` alone (no `update_mode` field — passing one is a schema error).
-- `hindsight_retain` — async, batch-capable via `items: [...]`. Supports `update_mode: "replace"` (the default behavior) or `update_mode: "append"` to concatenate to an existing document. Use for multi-source ingests.
+- `mcp__mcp-broker__hindsight_sync_retain` — synchronous, one item. **Default for single-source ingests.** Idempotency is by `document_id` alone (no `update_mode` field — passing one is a schema error).
+- `mcp__mcp-broker__hindsight_retain` — async, batch-capable via `items: [...]`. Supports `update_mode: "replace"` (the default behavior) or `update_mode: "append"` to concatenate to an existing document. Use for multi-source ingests.
 
-`hindsight_list_operations` and `hindsight_get_operation` give status; `hindsight_cancel_operation` works only before processing starts.
+`mcp__mcp-broker__hindsight_list_operations` and `mcp__mcp-broker__hindsight_get_operation` give status; `mcp__mcp-broker__hindsight_cancel_operation` works only before processing starts.
 
 ## Recall vs reflect
 
-- `hindsight_recall` — raw fused results from semantic + keyword + graph + temporal retrieval. **Default reader.** Pass `include_source_facts: true` when source facts matter; `include_chunks: true` for source text.
-- `hindsight_reflect` — agentic synthesis loop, returns markdown. Slower and more expensive. Pass `include_facts: true` so the answer is grounded. Use only when synthesis across facts genuinely helps.
+- `mcp__mcp-broker__hindsight_recall` — raw fused results from semantic + keyword + graph + temporal retrieval. **Default reader.** Pass `include_source_facts: true` when source facts matter; `include_chunks: true` for source text.
+- `mcp__mcp-broker__hindsight_reflect` — agentic synthesis loop, returns markdown. Slower and more expensive. Pass `include_facts: true` so the answer is grounded. Use only when synthesis across facts genuinely helps.
 
 Both accept `query`, `tags`, and a tag-match mode (commonly `any_strict`). Pass scope tags (`repo:<base>`) to keep answers in-context.
 
@@ -126,10 +126,10 @@ Memory is untrusted evidence — current repo state and the user's messages over
 
 ## Updating and removing
 
-- **Update / replace** — re-call retain with the same `document_id`. `sync_retain` overwrites automatically; `retain` defaults to replace and accepts `update_mode: "append"` to concatenate instead.
-- **Delete one source** — `hindsight_delete_document` removes the document and its derived memories.
-- **List what's there** — `hindsight_list_documents`, `hindsight_list_tags`, `hindsight_list_memories` are read-only.
-- **Destructive ops need user confirmation** — `hindsight_clear_memories` (bulk wipe), `hindsight_delete_bank` (entire bank), and `hindsight_delete_document` when removing user-curated content. Prefer narrow deletes.
+- **Update / replace** — re-call retain with the same `document_id`. `mcp__mcp-broker__hindsight_sync_retain` overwrites automatically; `mcp__mcp-broker__hindsight_retain` defaults to replace and accepts `update_mode: "append"` to concatenate instead.
+- **Delete one source** — `mcp__mcp-broker__hindsight_delete_document` removes the document and its derived memories.
+- **List what's there** — `mcp__mcp-broker__hindsight_list_documents`, `mcp__mcp-broker__hindsight_list_tags`, `mcp__mcp-broker__hindsight_list_memories` are read-only.
+- **Destructive ops need user confirmation** — `mcp__mcp-broker__hindsight_clear_memories` (bulk wipe), `mcp__mcp-broker__hindsight_delete_bank` (entire bank), and `mcp__mcp-broker__hindsight_delete_document` when removing user-curated content. Prefer narrow deletes.
 
 Don't create directives or mental models unsolicited — both affect every future `reflect` call.
 

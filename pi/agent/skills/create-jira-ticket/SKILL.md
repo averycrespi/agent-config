@@ -1,6 +1,6 @@
 ---
 name: create-jira-ticket
-description: Use when creating a Jira ticket to plan upcoming work. Guides ticket drafting with clear structure, self-contained context, and testable acceptance criteria, then creates the ticket via the MCP broker's Atlassian namespace.
+description: Use when creating a Jira ticket to plan upcoming work. Guides ticket drafting with clear structure, self-contained context, and testable acceptance criteria, then creates the ticket via the available Jira/Atlassian broker tool.
 ---
 
 # Create Jira Ticket
@@ -62,7 +62,7 @@ Ask if any changes are needed before creating.
 
 ### 5. Create via the MCP Broker
 
-After the user approves the draft, create the ticket through the `mcp-broker` extension's Atlassian namespace:
+After the user approves the draft, create the ticket through the available Jira/Atlassian broker tool:
 
 1. `mcp_search` with a query like `"jira create"` or `"atlassian"` to find the create-issue tool
 2. `mcp_describe` on the candidate tool to read its argument schema

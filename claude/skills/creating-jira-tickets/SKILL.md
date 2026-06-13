@@ -1,6 +1,6 @@
 ---
 name: creating-jira-tickets
-description: Use when creating a Jira ticket to plan upcoming work. Guides ticket drafting with clear structure, self-contained context, and testable acceptance criteria, then creates the ticket via Atlassian MCP.
+description: Use when creating a Jira ticket to plan upcoming work. Guides ticket drafting with clear structure, self-contained context, and testable acceptance criteria, then creates the ticket via the broker-backed Atlassian MCP tool.
 ---
 
 # Creating Jira Tickets
@@ -62,7 +62,7 @@ Ask if any changes are needed before creating.
 
 ### 5. Create in Jira
 
-After the user approves the draft, create the ticket using the Atlassian MCP `createJiraIssue` tool. Report back with the ticket key and link.
+After the user approves the draft, create the ticket using `mcp__mcp-broker__atlassian_createJiraIssue`. Report back with the ticket key and link.
 
 ## Resources
 

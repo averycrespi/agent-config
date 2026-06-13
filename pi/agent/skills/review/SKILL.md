@@ -22,8 +22,8 @@ Supported target modes:
 Matches pattern: `https://github.com/<owner>/<repo>/pull/<number>`
 
 1. Extract `<owner>`, `<repo>`, and `<number>` from the URL.
-2. Use MCP broker GitHub tools for remote PR data. Prefer direct `mcp_call` when the tools are listed in the system prompt; otherwise use `mcp_search` / `mcp_describe` first.
-3. Fetch PR context with `github.pull_request_read`:
+2. Use `mcp_call` for remote PR data, passing exact GitHub broker tool names from the system-prompt menu or `mcp_search` results. Use `mcp_describe` before the first call when the schema is unknown.
+3. Fetch PR context with `name: "github.pull_request_read"`:
    - `method: "get"` for title, body, and metadata
    - `method: "get_diff"` for the unified diff
    - `method: "get_files"` for changed files and add/delete counts

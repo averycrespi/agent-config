@@ -47,9 +47,9 @@ git symbolic-ref --short refs/remotes/origin/HEAD
 
 Fall back to `origin/main`, then `main`, if the default-branch command fails. Use merge-base semantics for local summaries and PR body inputs: `git diff <default-branch>...HEAD` and `git diff --name-only <default-branch>...HEAD`.
 
-Use MCP broker tools for remote Git and GitHub operations. Prefer the broker tools listed in the system prompt; otherwise use `mcp_search` and `mcp_describe` before calling them. Do not use the `gh` CLI or shell remote `git` commands.
+Use `mcp_call` for remote Git and GitHub operations, passing exact broker tool names from the system-prompt menu or `mcp_search` results (for example, `github.list_pull_requests`). Use `mcp_describe` before the first call when the schema is unknown. Do not use the `gh` CLI or shell remote `git` commands.
 
-To detect an existing PR, use GitHub broker tools such as `github.list_pull_requests` or `github.search_pull_requests` when available. If the schema requires repository details, derive owner/repo from `git remote -v` and the current branch from `git branch --show-current`. If broker access is unavailable, say remote PR detection is unavailable and present only local-safe options.
+To detect an existing PR, use GitHub broker tools such as `github.list_pull_requests` or `github.search_pull_requests` when available. If the schema requires repository details, derive owner/repo from `git config --get remote.origin.url` and the current branch from `git branch --show-current`. If broker access is unavailable, say remote PR detection is unavailable and present only local-safe options.
 
 ### 4. Present exactly two options
 
@@ -75,8 +75,8 @@ If remote broker access is unavailable:
 For push/create/update operations:
 
 1. Ensure the working tree is in the expected state. If cleanup edits were made, they should be committed or explicitly left unstaged by user choice.
-2. Push through MCP broker `git` tools such as `git.git_push`, not shell remote git.
-3. Create draft PRs through `github.create_pull_request` with `draft: true` when available; update existing PRs through `github.update_pull_request`.
+2. Push through `mcp_call` using the exact listed git push tool name, such as `git.push`; do not shell out to `git push`.
+3. Create draft PRs through `mcp_call` with the exact listed GitHub create-PR tool, such as `github.create_pull_request`, with `draft: true` when available; update existing PRs through the exact listed update-PR tool, such as `github.update_pull_request`.
 4. Draft PR titles and descriptions from all branch changes relative to the base branch. Follow any existing repository PR template and the Pull Request Titles and Descriptions guidance in `AGENTS.md`.
 
 For keep-as-is, report the current branch name and any unpushed/local-only state discovered.
