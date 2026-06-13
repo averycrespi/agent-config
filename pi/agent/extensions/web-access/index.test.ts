@@ -9,11 +9,6 @@ import extensionDefault from "./index.ts";
 const OLD_ENV = { ...process.env };
 const originalFetch = globalThis.fetch;
 
-const identityTheme = {
-  fg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
-};
-
 function registeredTools(): Map<string, any> {
   const tools = new Map<string, any>();
   const pi = {
