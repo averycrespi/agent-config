@@ -132,8 +132,17 @@ test("git branch lookup does not block initial rendering and refreshes later", a
   const execStub = mock.method(
     _execFile,
     "fn",
-    (_file: string, _args: string[], _options: unknown, cb: Function) => {
-      finishGit = () => cb(null, "feature/async\n");
+    (_file: string, args: string[], _options: unknown, cb: Function) => {
+      const command = args.join(" ");
+      if (command === "rev-parse --abbrev-ref HEAD") {
+        finishGit = () => cb(null, "feature/async\n");
+      } else if (
+        command === "rev-list --left-right --count @{upstream}...HEAD"
+      ) {
+        cb(new Error("no upstream"), "");
+      } else {
+        cb(null, "");
+      }
     },
   );
 
@@ -153,7 +162,7 @@ test("git branch lookup does not block initial rendering and refreshes later", a
 
     assert.ok(
       pi._statuslineCalls.some((call) =>
-        call[0]?.includes("/repo/agent-config [feature/async]"),
+        call[0]?.includes("/repo/agent-config [feature/async ✔]"),
       ),
     );
   } finally {
@@ -167,10 +176,20 @@ test("git branch lookup clears stale branch when later cwd is not a git repo", a
   const execStub = mock.method(
     _execFile,
     "fn",
-    (_file: string, _args: string[], options: any, cb: Function) => {
+    (_file: string, args: string[], options: any, cb: Function) => {
       call += 1;
-      if (options.cwd === "/repo/agent-config") cb(null, "feature/old\n");
-      else cb(new Error("not a git repo"), "");
+      const command = args.join(" ");
+      if (options.cwd !== "/repo/agent-config") {
+        cb(new Error("not a git repo"), "");
+      } else if (command === "rev-parse --abbrev-ref HEAD") {
+        cb(null, "feature/old\n");
+      } else if (
+        command === "rev-list --left-right --count @{upstream}...HEAD"
+      ) {
+        cb(new Error("no upstream"), "");
+      } else {
+        cb(null, "");
+      }
     },
   );
 
@@ -188,7 +207,7 @@ test("git branch lookup clears stale branch when later cwd is not a git repo", a
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(
       pi._statuslineCalls.some((render) =>
-        render[0]?.includes("[feature/old]"),
+        render[0]?.includes("[feature/old ✔]"),
       ),
     );
 

@@ -108,6 +108,55 @@ test("renderFooterLine appends the git branch to the working directory in bracke
   );
 });
 
+test("renderFooterLine appends a clean checkmark for clean git summaries", () => {
+  const line = renderFooterLine(
+    {
+      cwd: "/Users/example/Workspace/agent-config",
+      homeDir: "/Users/example",
+      gitSummary: { ref: "main" },
+      contextUsage: { percent: 42, contextWindow: 200_000 },
+      modelId: "gpt-5-codex",
+      thinking: "medium",
+    } as any,
+    200,
+    theme,
+  );
+
+  assert.equal(
+    stripAnsi(line),
+    "~/Workspace/agent-config [main ✔] · ctx 42%/200k · gpt-5-codex · medium",
+  );
+});
+
+test("renderFooterLine appends compact git summary symbols to the working directory", () => {
+  const line = renderFooterLine(
+    {
+      cwd: "/Users/example/Workspace/agent-config",
+      homeDir: "/Users/example",
+      gitSummary: {
+        ref: "feature/git-summary",
+        ahead: 3,
+        behind: 2,
+        conflicts: 1,
+        staged: 2,
+        changed: 4,
+        untracked: 1,
+        stashes: 2,
+      },
+      contextUsage: { percent: 42, contextWindow: 200_000 },
+      modelId: "gpt-5-codex",
+      thinking: "medium",
+    } as any,
+    200,
+    theme,
+  );
+
+  assert.equal(
+    stripAnsi(line),
+    "~/Workspace/agent-config [feature/git-summary ↓2↑3 ✖1 ●2 ✚4 …1 ⚑2] · ctx 42%/200k · gpt-5-codex · medium",
+  );
+});
+
 test("renderFooterLines right-aligns status segments after the repository segment", () => {
   const lines = renderFooterLines(
     {

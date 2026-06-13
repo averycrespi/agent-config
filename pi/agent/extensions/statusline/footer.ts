@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { GitSummary } from "./git.ts";
 import { formatDuration, type UsageStats } from "./utils.ts";
 
 export type FooterTheme = {
@@ -20,6 +21,7 @@ export type FooterState = {
   modelId?: string;
   thinking?: string;
   gitBranch?: string;
+  gitSummary?: GitSummary;
 };
 
 function collapseHome(cwd: string, homeDir?: string): string {
@@ -29,8 +31,25 @@ function collapseHome(cwd: string, homeDir?: string): string {
   return cwd;
 }
 
+function buildGitSummarySegment(summary: GitSummary): string {
+  const parts = [summary.ref];
+  const tracking = `${summary.behind ? `↓${summary.behind}` : ""}${
+    summary.ahead ? `↑${summary.ahead}` : ""
+  }`;
+  if (tracking) parts.push(tracking);
+  if (summary.conflicts) parts.push(`✖${summary.conflicts}`);
+  if (summary.staged) parts.push(`●${summary.staged}`);
+  if (summary.changed) parts.push(`✚${summary.changed}`);
+  if (summary.untracked) parts.push(`…${summary.untracked}`);
+  if (summary.stashes) parts.push(`⚑${summary.stashes}`);
+  if (parts.length === 1) parts.push("✔");
+  return parts.join(" ");
+}
+
 function buildCwdSegment(state: FooterState): string {
   const cwd = collapseHome(state.cwd, state.homeDir);
+  if (state.gitSummary)
+    return `${cwd} [${buildGitSummarySegment(state.gitSummary)}]`;
   return state.gitBranch ? `${cwd} [${state.gitBranch}]` : cwd;
 }
 
