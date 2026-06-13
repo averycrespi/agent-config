@@ -50,7 +50,7 @@ This is the shape every per-source pattern below produces. Only the `document_id
 
 ### GitHub repos / files / PRs / issues
 
-- **Fetch.** `gh` via Bash or `mcp__mcp-broker__github_*`.
+- **Fetch.** `gh` via Bash or official GitHub MCP tools exposed through the broker, such as `mcp__mcp-broker__github_get_file_contents` and `mcp__mcp-broker__github_pull_request_read`.
 - **`document_id`.** See the shape table in `tags-and-ids.md`. Default to the branch name; use a SHA only for point-in-time snapshots.
 - **Tags.** `scope:global` (or `scope:repo` for current-repo work), `source:external`, `origin:github`, `kind:semantic` (or `episodic` for PR/issue history), plus caller tags `topic:<area>`, `tool:<name>` for tools/libraries, `ticket:<key>` if the PR references a ticket.
 - **Content.** PRs: title, description, diff if small (<400 lines), substantive review comments. Issues: title, body, resolution comments. Files: the body.

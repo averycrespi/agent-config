@@ -12,7 +12,6 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { createManagedLogger } from "../_shared/logging.ts";
 import {
@@ -20,6 +19,7 @@ import {
   countNonEmptyLines,
   firstLine,
   getResultText,
+  getTruncatedText,
   headNonEmptyLines,
   partialElapsed,
   plural,
@@ -38,7 +38,7 @@ const SEARCH_PARAMS = Type.Object({
 
 const DESCRIBE_PARAMS = Type.Object({
   name: Type.String({
-    description: "Exact tool name, e.g. 'github.create_pr'.",
+    description: "Exact tool name, e.g. 'github.create_pull_request'.",
   }),
 });
 
@@ -292,33 +292,31 @@ export function registerTools(
         details: { matchCount: matches.length, totalCount: tools.length },
       };
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       const header = theme.fg("toolTitle", theme.bold("mcp_search"));
       const queryLabel =
         args?.query && args.query.length > 0
           ? theme.fg("accent", `"${args.query}"`)
           : theme.fg("muted", "(all)");
-      return new Text(`${header} ${queryLabel}`, 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        `${header} ${queryLabel}`,
+      ]);
     },
     renderResult(result, { isPartial }, theme, context) {
       if (isPartial) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg(
             "warning",
             `Searching broker tools...${partialElapsed(context)}`,
           ),
-          0,
-          0,
-        );
+        ]);
       }
       clearPartialTimer(context);
       const text = getResultText(result);
       if (context.isError) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("error", firstLine(text) || "mcp_search error"),
-          0,
-          0,
-        );
+        ]);
       }
       const details = result.details as
         | { matchCount?: number; totalCount?: number }
@@ -326,7 +324,9 @@ export function registerTools(
       const matchCount = details?.matchCount ?? 0;
       const totalCount = details?.totalCount ?? 0;
       const summary = `${matchCount} matches of ${totalCount} tools`;
-      return new Text(theme.fg("muted", summary), 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        theme.fg("muted", summary),
+      ]);
     },
   });
 
@@ -371,12 +371,14 @@ export function registerTools(
         },
       };
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       const header = theme.fg("toolTitle", theme.bold("mcp_describe"));
       const nameLabel = args?.name
         ? theme.fg("accent", args.name)
         : theme.fg("muted", "(missing name)");
-      return new Text(`${header} ${nameLabel}`, 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        `${header} ${nameLabel}`,
+      ]);
     },
     renderResult(result, { isPartial }, theme, context) {
       if (isPartial) {
@@ -384,27 +386,25 @@ export function registerTools(
           typeof context.args?.name === "string" && context.args.name.length > 0
             ? context.args.name
             : "broker tool";
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg(
             "warning",
             `Describing ${name}...${partialElapsed(context)}`,
           ),
-          0,
-          0,
-        );
+        ]);
       }
       clearPartialTimer(context);
       const text = getResultText(result);
       if (context.isError) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("error", firstLine(text) || "mcp_describe error"),
-          0,
-          0,
-        );
+        ]);
       }
       const details = result.details as { summary?: string } | undefined;
       const summary = details?.summary ?? "";
-      return new Text(theme.fg("muted", summary), 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        theme.fg("muted", summary),
+      ]);
     },
   });
 
@@ -426,7 +426,7 @@ export function registerTools(
         client.getReadOnly(),
       );
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       const header = theme.fg("toolTitle", theme.bold("mcp_call"));
       const nameLabel = args?.name
         ? theme.fg("accent", args.name)
@@ -438,26 +438,24 @@ export function registerTools(
       const keysLabel = argKeys.length
         ? ` ${theme.fg("muted", `(${argKeys.join(", ")})`)}`
         : "";
-      return new Text(`${header} ${nameLabel}${keysLabel}`, 0, 0);
+      return getTruncatedText(context.lastComponent, [
+        `${header} ${nameLabel}${keysLabel}`,
+      ]);
     },
     renderResult(result, { isPartial }, theme, context) {
       const name = context.args?.name;
       if (isPartial) {
         const subject = name ? `Calling ${name}` : "Calling broker tool";
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("warning", `${subject}...${partialElapsed(context)}`),
-          0,
-          0,
-        );
+        ]);
       }
       clearPartialTimer(context);
       const text = getResultText(result);
       if (context.isError) {
-        return new Text(
+        return getTruncatedText(context.lastComponent, [
           theme.fg("error", firstLine(text) || "mcp_call error"),
-          0,
-          0,
-        );
+        ]);
       }
       const details = result.details as { brokerError?: boolean } | undefined;
       if (details?.brokerError) {
@@ -473,20 +471,22 @@ export function registerTools(
           .map((t) => t.text)
           .join("\n");
         const message = firstLine(underlyingText) || "broker error";
-        return new Text(theme.fg("error", `broker error: ${message}`), 0, 0);
+        return getTruncatedText(context.lastComponent, [
+          theme.fg("error", `broker error: ${message}`),
+        ]);
       }
       const head = headNonEmptyLines(text, CALL_HEAD_LINES);
       if (head.length === 0) {
-        return new Text("", 0, 0);
+        return getTruncatedText(context.lastComponent, []);
       }
       const totalLines = countNonEmptyLines(text);
       const extra = totalLines - head.length;
       const displayLines =
         extra > 0 ? [...head, `... +${plural(extra, "more line")}`] : head;
-      const rendered = displayLines
-        .map((line) => theme.fg("muted", line))
-        .join("\n");
-      return new Text(rendered, 0, 0);
+      return getTruncatedText(
+        context.lastComponent,
+        displayLines.map((line) => theme.fg("muted", line)),
+      );
     },
   });
 }

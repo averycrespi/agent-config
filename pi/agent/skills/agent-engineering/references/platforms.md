@@ -99,7 +99,7 @@ Three configuration scopes:
 - **Project**: in `.claude/settings.json`, checked into the repo.
 - **User**: in `~/.claude/settings.json`.
 
-MCP tools surface to the model as regular tools with provider-prefixed names (e.g. `mcp__github__gh_list_prs`). The Tool Search Tool (see `models.md`) becomes very useful when you have many MCP tools — defer-load avoids 30+ tool schemas in every system prompt.
+MCP tools surface to the model as regular tools with provider-prefixed names (e.g. `mcp__github__list_pull_requests`, or `mcp__mcp-broker__github_list_pull_requests` when GitHub is exposed through a broker server named `mcp-broker`). The Tool Search Tool (see `models.md`) becomes very useful when you have many MCP tools — defer-load avoids 30+ tool schemas in every system prompt.
 
 ### Settings.json
 

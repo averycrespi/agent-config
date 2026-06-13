@@ -23,13 +23,13 @@ Matches pattern: `https://github.com/<owner>/<repo>/pull/<number>`
 
 1. Extract `<owner>`, `<repo>`, and `<number>` from the URL.
 2. Use MCP broker GitHub tools for remote PR data. Prefer direct `mcp_call` when the tools are listed in the system prompt; otherwise use `mcp_search` / `mcp_describe` first.
-3. Fetch PR context:
-   - `github.gh_view_pr` for title, body, and metadata
-   - `github.gh_diff_pr` for file summary and unified diff; request a large `max_bytes` value when needed, up to the tool limit
-   - `github.gh_list_pr_files` for changed files and add/delete counts
-   - `github.gh_list_pr_comments` for conversation comments
-   - `github.gh_list_pr_reviews` for review summaries
-   - `github.gh_list_pr_review_comments` for inline review comments
+3. Fetch PR context with `github.pull_request_read`:
+   - `method: "get"` for title, body, and metadata
+   - `method: "get_diff"` for the unified diff
+   - `method: "get_files"` for changed files and add/delete counts
+   - `method: "get_comments"` for conversation comments
+   - `method: "get_reviews"` for review summaries
+   - `method: "get_review_comments"` for inline review threads/comments
 4. If MCP broker returns a configuration or authentication error, report that remote PR review requires broker access and stop.
 5. If the diff is truncated, continue with available context but mark truncation as a review gap in the final report.
 6. Do not use the `gh` CLI for PR URL mode.
@@ -197,5 +197,5 @@ Review gaps: <none or concise list>
 
 - `review` subagents inherit the active Pi model unless the agent definition overrides it.
 - Remote PR review depends on the `mcp-broker` extension and authenticated GitHub broker tools.
-- Large PR diffs may be truncated by `github.gh_diff_pr`; use changed-file summaries, available full-file context, and review-gap reporting rather than pretending the review is complete.
+- Large PR diffs may be truncated by `github.pull_request_read` with `method: "get_diff"`; use changed-file summaries, available full-file context, and review-gap reporting rather than pretending the review is complete.
 - `spawn_agents` reviewers start with fresh context and read-only tools, so brief them with all relevant context and constraints.
