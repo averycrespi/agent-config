@@ -9,24 +9,28 @@ This repo is opinionated. It provides a structured development workflow, securit
 ### [Claude Code](claude/README.md) → `~/.claude/`
 
 - **Structured development workflow** — `/brainstorming → /writing-plans → /executing-plans → /verifying-work → /completing-work`, a pipeline of skills (adapted from [superpowers](https://github.com/obra/superpowers)) that turns ideas into pull requests with subagent-isolated implementation and parallel reviewers
-- **Reference skills** — TDD discipline, PR review, browser automation (Playwright), Jira ticket creation, frontend design, incident troubleshooting, agent engineering, and more
-- **Security and quality hooks** — Pre-commit secret scanning with [gitleaks](https://github.com/gitleaks/gitleaks); auto-formatting on every write via Prettier, gofmt, rustfmt, or shfmt
-- **Sandbox mode** — Locked-down config for headless or remote environments that redirects `gh` and remote git to MCP tools
+- **Reference skills** — TDD discipline, PR review, browser automation (Playwright), Jira ticket creation, frontend design, incident troubleshooting, skill creation, and more
+- **Security and quality hooks** — Pre-commit secret scanning with [gitleaks](https://github.com/gitleaks/gitleaks); auto-formatting on every write via Prettier for web/Markdown/config files, plus gofmt, rustfmt, and shfmt
+- **Sandbox mode** — Locked-down config for headless or remote environments that hints agents to prefer MCP tools for `gh` and remote git
 - **Custom status line** — Powerline-style display showing model, branch, context window usage, and session rate-limit usage
 
 ### [Pi](pi/README.md) → `~/.pi/agent/`
 
-- **Workflow-aware agent setup** — Pi-specific `AGENTS.md`, model/settings config, and workflow modes for Plan/Execute/Verify advances, plan-scoped `.plans/` tools, and compaction behavior
+- **Workflow-aware agent setup** — Pi-specific `AGENTS.md`, model/settings config, planning/review/completion skills, `/goal` execution steering, and compaction behavior
 - **Custom TypeScript extensions** — Subagent dispatch, MCP broker tools, web search/fetch/PDF/GitHub access, TODO tracking with sticky widget, compact tool rendering, startup header, status line, and interactive `ask_user`
 - **Reusable skills** — Agent engineering, TDD, PR review, Playwright browser automation, Jira ticket creation, frontend design, and skill creation, adapted for Pi conventions and GPT-5.x prose
 - **Delegated subagents** — Definitions for focused exploration, fast research, deep research, and review, loaded dynamically by the `subagents` extension
 - **Extension dev harness** — Colocated TypeScript tests, shared extension helpers, and `make typecheck` / `make test` coverage for Pi extension logic
 
+### [Notes](notes/)
+
+Public essays and working notes about agent harness design, permissions, subagents, planning workflows, and related topics.
+
 ## Companion: [agent-tools](https://github.com/averycrespi/agent-tools)
 
 `agent-config` configures the agent; [`agent-tools`](https://github.com/averycrespi/agent-tools) provides tools for working with AI agents. Two of its tools are explicit integration points for this repo:
 
-- **MCP broker** — credentials-holding proxy that lets sandboxed agents use external tools without ever holding the secrets themselves. Pairs with the `mcp-broker` Pi extension and Claude's sandbox-mode `gh`/git redirection hooks
+- **MCP broker** — credentials-holding proxy that lets sandboxed agents use external tools without ever holding the secrets themselves. Pairs with the `mcp-broker` Pi extension and Claude's sandbox-mode `gh`/git MCP guidance hooks
 - **Sandbox manager (`sb`)** — provisions and manages a Lima-based Linux VM for isolated agent runs. Pairs with the overrides in `claude/sandbox/`
 
 ## Quick Start
@@ -46,6 +50,7 @@ cd agent-config
 brew bundle             # install system dependencies on macOS
 make install-playwright # for the playwright skill
 make stow-claude        # symlink claude/ into ~/.claude/
+make stow-claude-sandbox # symlink claude/ and apply sandbox overrides
 make stow-pi            # symlink pi/agent/ into ~/.pi/agent/
 ```
 

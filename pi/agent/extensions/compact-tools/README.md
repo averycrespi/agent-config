@@ -75,7 +75,7 @@ This extension does not write retained logs or diagnostic files.
 
 ## Non-goals
 
-Intentionally out of scope — this is a minimal, hand-rolled subset tailored to this user's setup:
+Intentionally out of scope — this is a minimal, hand-rolled subset tailored to this configuration:
 
 - **No MCP tool rendering.** MCP tools vary too widely to compact generically.
 - **No edit / write diff customization.** Pi's built-in diff renderer is already reasonable.
