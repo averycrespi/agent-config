@@ -16,8 +16,8 @@ This repo is opinionated. It provides a structured development workflow, securit
 
 ### [Pi](pi/README.md) → `~/.pi/agent/`
 
-- **Workflow-aware agent setup** — Pi-specific `AGENTS.md`, model/settings config, planning/review/completion skills, `/goal` execution steering, and compaction behavior
-- **Custom TypeScript extensions** — Subagent dispatch, MCP broker tools, web search/fetch/PDF/GitHub access, TODO tracking with sticky widget, compact tool rendering, startup header, status line, and interactive `ask_user`
+- **Workflow-aware agent setup** — Pi-specific `AGENTS.md`, model/settings config, planning/review/completion skills, and compaction behavior
+- **Custom TypeScript extensions** — Durable branch-scoped goals with `/goal` steering and bounded auto-run, subagent dispatch, MCP broker tools, web search/fetch/PDF/GitHub access, TODO tracking with sticky widget, compact tool rendering, startup header, status line, and interactive `ask_user`
 - **Reusable skills** — Agent engineering, TDD, PR review, Playwright browser automation, Jira ticket creation, frontend design, and skill creation, adapted for Pi conventions and GPT-5.x prose
 - **Delegated subagents** — Definitions for focused exploration, fast research, deep research, and review, loaded dynamically by the `subagents` extension
 - **Extension dev harness** — Colocated TypeScript tests, shared extension helpers, and `make typecheck` / `make test` coverage for Pi extension logic
