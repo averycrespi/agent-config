@@ -10,6 +10,7 @@ import {
   createGoalStore,
   formatDuration,
   formatGoalState,
+  getAutoRunElapsedMs,
   parsePersistedGoalState,
   type AutoRunStopReason,
   type Goal,
@@ -125,14 +126,14 @@ function autoRunContext(
   autoRun: GoalAutoRunState,
   config: GoalConfig,
 ): string {
-  const elapsedMs = goal.usage?.activeElapsedMs ?? 0;
+  const elapsedMs = getAutoRunElapsedMs(autoRun);
   const remainingContinuations = Math.max(
     0,
     config.autoRunMaxContinuations - autoRun.continuationTurns,
   );
   const maxMs = config.autoRunMaxActiveMinutes * 60_000;
   const remainingMs = Math.max(0, maxMs - elapsedMs);
-  return `\n\nAuto-run is active. Bounds: ${remainingContinuations} continuations remaining, ${formatDuration(remainingMs)} active time remaining. Continue one concrete step toward the goal; do not mark complete unless the completion audit is evidence-backed.`;
+  return `\n\nAuto-run is active. Bounds: ${remainingContinuations} continuations remaining, ${formatDuration(remainingMs)} auto-run time remaining. Continue one concrete step toward the goal; do not mark complete unless the completion audit is evidence-backed.`;
 }
 
 function sendUserMessage(
@@ -232,7 +233,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       if (!goal || !autoRun || autoRun.status !== "running") return undefined;
       if (autoRun.continuationTurns >= config.autoRunMaxContinuations)
         return "turn_budget";
-      const elapsedMs = goal.usage?.activeElapsedMs ?? 0;
+      const elapsedMs = getAutoRunElapsedMs(autoRun);
       if (elapsedMs >= config.autoRunMaxActiveMinutes * 60_000)
         return "time_budget";
       return undefined;
@@ -314,6 +315,44 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
           return;
         }
         persistAndNotify(ctx);
+      },
+    });
+
+    pi.registerCommand("goal-renew", {
+      description:
+        "Renew auto-run for the current active goal without changing the objective.",
+      handler: async (_args, ctx) => {
+        const goal = store.getGoal();
+        if (!goal) {
+          ctx.ui.notify("No goal is set.", "info");
+          return;
+        }
+        if (!config.autoRunEnabled) {
+          ctx.ui.notify(
+            "Goal auto-run is disabled by configuration.",
+            "warning",
+          );
+          return;
+        }
+        if (goal.status !== "active") {
+          ctx.ui.notify(
+            `Goal is ${goal.status}; resume it before renewing auto-run.`,
+            "warning",
+          );
+          return;
+        }
+
+        const wasRunning = store.getAutoRun()?.status === "running";
+        store.startAutoRun();
+        persistAndNotify(
+          ctx,
+          wasRunning
+            ? "Goal auto-run renewed with fresh budgets."
+            : "Goal auto-run renewed.",
+        );
+        sendUserMessage(pi, buildGoalRunPrompt(goal), {
+          deliverAs: "followUp",
+        });
       },
     });
 

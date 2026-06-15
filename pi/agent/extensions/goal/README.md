@@ -10,6 +10,7 @@ The goal extension keeps one branch-scoped durable objective for the current Pi 
 - `/goal-set <objective>` — create or replace the current goal as active without starting auto-run.
 - `/goal-pause` — pause the current goal and stop auto-run.
 - `/goal-resume` — resume a paused or completed goal as active without starting auto-run.
+- `/goal-renew` — renew auto-run for the current active goal without changing the objective.
 - `/goal-clear` — clear the current goal and stop auto-run.
 
 Objectives are trimmed, must be non-empty, and are bounded by `objectiveMaxChars`.
@@ -28,6 +29,8 @@ After each `agent_end`, the extension schedules one follow-up user message when:
 - Pi reports no pending messages, when that API is available
 
 The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, a provider error/abort occurs, or a continuation/time bound is exhausted. Budget exhaustion and provider errors do not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget`, `time_budget`, or `provider_error`.
+
+Use `/goal-renew` to start or restart auto-run for the current active goal without changing the objective. Renewal creates a fresh auto-run session: it resets the continuation count and auto-run time budget, but it does not reset goal usage counters such as active goal time, tokens, or assistant turns.
 
 While auto-run is running, the extension blocks `ask_user` tool calls when that tool is available. Headless continuation cannot answer interactive prompts, so agents should choose the safest reversible default, continue with documented assumptions, or stop and report a blocker instead. This guard is only applied at tool-call time and does not require the `ask_user` tool to be loaded.
 
@@ -95,7 +98,7 @@ Settings live under `extension:goal`. Environment variables override settings. U
 | `showUsage`               |  `true` | `GOAL_SHOW_USAGE`                  | Show observational active time, token, and turn counters in goal output and the widget.                                      |
 | `autoRunEnabled`          |  `true` | `GOAL_AUTO_RUN_ENABLED`            | Allow `/goal <objective>` and continuation scheduling to run automatically.                                                  |
 | `autoRunMaxContinuations` |    `10` | `GOAL_AUTO_RUN_MAX_CONTINUATIONS`  | Maximum continuation prompts scheduled by one auto-run.                                                                      |
-| `autoRunMaxActiveMinutes` |    `60` | `GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES` | Maximum active goal time before auto-run stops.                                                                              |
+| `autoRunMaxActiveMinutes` |    `60` | `GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES` | Maximum active time for one auto-run session before auto-run stops.                                                          |
 
 Boolean environment overrides accept `1`/`true` and `0`/`false`.
 

@@ -22,12 +22,15 @@ const goalWithUsage: Goal = {
   },
 };
 
-const runningAutoRun: GoalAutoRunState = {
-  status: "running",
-  startedAt: 1,
-  updatedAt: 1,
-  continuationTurns: 3,
-};
+function runningAutoRun(): GoalAutoRunState {
+  const startedAt = Date.now() - 20 * 60_000;
+  return {
+    status: "running",
+    startedAt,
+    updatedAt: startedAt,
+    continuationTurns: 3,
+  };
+}
 
 test("renders compact active goal widget within width", () => {
   const lines = renderGoalWidgetLines(baseGoal, 32);
@@ -58,7 +61,7 @@ test("omits completion evidence from complete goal widget", () => {
 test("appends running auto-run details to the usage line", () => {
   const lines = renderGoalWidgetLines(goalWithUsage, 120, undefined, {
     showUsage: true,
-    autoRun: runningAutoRun,
+    autoRun: runningAutoRun(),
     autoRunEnabled: true,
     autoRunMaxContinuations: 10,
     autoRunMaxActiveMinutes: 60,
@@ -73,7 +76,7 @@ test("appends running auto-run details to the usage line", () => {
 test("appends disabled auto-run reasons to the usage line", () => {
   const configDisabled = renderGoalWidgetLines(goalWithUsage, 120, undefined, {
     showUsage: true,
-    autoRun: runningAutoRun,
+    autoRun: runningAutoRun(),
     autoRunEnabled: false,
     autoRunMaxContinuations: 10,
     autoRunMaxActiveMinutes: 60,
@@ -96,7 +99,7 @@ test("appends disabled auto-run reasons to the usage line", () => {
     undefined,
     {
       showUsage: true,
-      autoRun: runningAutoRun,
+      autoRun: runningAutoRun(),
       autoRunEnabled: true,
       autoRunMaxContinuations: 10,
       autoRunMaxActiveMinutes: 60,

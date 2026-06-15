@@ -499,6 +499,15 @@ export function formatUsageLine(goal: Goal): string | undefined {
   return `Usage: ${formatDuration(goal.usage.activeElapsedMs)} active · ${formatTokenCount(goal.usage.totalTokens)} tokens · ${goal.usage.turns} ${turnLabel}`;
 }
 
+export function getAutoRunElapsedMs(
+  autoRun: GoalAutoRunState,
+  now: () => number = () => Date.now(),
+): number {
+  return autoRun.startedAt === undefined
+    ? 0
+    : Math.max(0, now() - autoRun.startedAt);
+}
+
 export function formatAutoRunLine(autoRun: GoalAutoRunState): string {
   if (autoRun.status === "running") {
     const turnLabel = autoRun.continuationTurns === 1 ? "turn" : "turns";

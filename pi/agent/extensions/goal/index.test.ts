@@ -337,6 +337,127 @@ test("agent_end schedules bounded continuation", async () => {
   assert.equal((pi.entries.at(-1)?.data as any).autoRun.continuationTurns, 1);
 });
 
+test("/goal-renew restarts auto-run for the current active goal", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal").handler("Renew existing goal", ctx);
+  await pi.handlers.get("agent_end")({}, ctx);
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.continuationTurns, 1);
+
+  await pi.commands.get("goal-renew").handler("", ctx);
+
+  assert.match(ctx.notifications.at(-1)?.msg, /renewed with fresh budgets/i);
+  assert.equal(
+    (pi.entries.at(-1)?.data as any).goal.objective,
+    "Renew existing goal",
+  );
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "running");
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.continuationTurns, 0);
+  assert.equal(pi.sentMessages.length, 3);
+  assert.deepEqual(pi.sentMessages.at(-1)?.options, { deliverAs: "followUp" });
+});
+
+test("/goal-renew requires an active goal and enabled auto-run", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+
+  await pi.commands.get("goal-renew").handler("", ctx);
+  assert.match(ctx.notifications.at(-1)?.msg, /No goal is set/);
+
+  await pi.commands.get("goal-set").handler("Renew paused goal", ctx);
+  await pi.commands.get("goal-pause").handler("", ctx);
+  await pi.commands.get("goal-renew").handler("", ctx);
+  assert.match(ctx.notifications.at(-1)?.msg, /resume it before renewing/i);
+});
+
+test("agent_end stops auto-run at session time budget", async () => {
+  const pi = makePi();
+  const ctx = makeCtx([
+    {
+      type: "custom",
+      customType: "goal-state",
+      data: {
+        goal: {
+          id: "g1",
+          objective: "Budgeted by auto-run session",
+          status: "active",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        autoRun: {
+          status: "running",
+          startedAt: Date.now() - 61 * 60_000,
+          updatedAt: 1,
+          continuationTurns: 0,
+        },
+      },
+    },
+  ]);
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+
+  await pi.handlers.get("agent_end")({}, ctx);
+
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "stopped");
+  assert.equal(
+    (pi.entries.at(-1)?.data as any).autoRun.stopReason,
+    "time_budget",
+  );
+  assert.equal(pi.sentMessages.length, 0);
+});
+
 test("agent_end stops auto-run after terminal provider error", async () => {
   const pi = makePi();
   const ctx = makeCtx();

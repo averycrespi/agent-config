@@ -1,6 +1,7 @@
 import {
   formatDuration,
   formatUsageLine,
+  getAutoRunElapsedMs,
   type AutoRunStopReason,
   type Goal,
   type GoalAutoRunState,
@@ -77,7 +78,7 @@ function formatAutoRunUsageSuffix(
 
   const maxContinuations = options.autoRunMaxContinuations ?? 0;
   const maxMs = (options.autoRunMaxActiveMinutes ?? 0) * 60_000;
-  const elapsedMs = goal.usage?.activeElapsedMs ?? 0;
+  const elapsedMs = getAutoRunElapsedMs(autoRun);
   const remainingMs = Math.max(0, maxMs - elapsedMs);
   return `auto-run enabled (${autoRun.continuationTurns}/${maxContinuations} continuations, ${formatDuration(remainingMs)} left)`;
 }
