@@ -59,13 +59,19 @@ function renderWidget(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   config: GoalConfig,
-  goal: Goal | undefined,
+  state: { goal?: Goal; autoRun?: GoalAutoRunState },
 ): void {
   setGoalWidget(
     pi,
     ctx,
-    config.showWidget && goal
-      ? createGoalWidget(goal, { showUsage: config.showUsage })
+    config.showWidget && state.goal
+      ? createGoalWidget(state.goal, {
+          showUsage: config.showUsage,
+          autoRun: state.autoRun,
+          autoRunEnabled: config.autoRunEnabled,
+          autoRunMaxContinuations: config.autoRunMaxContinuations,
+          autoRunMaxActiveMinutes: config.autoRunMaxActiveMinutes,
+        })
       : undefined,
   );
 }
@@ -193,7 +199,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
 
     function persistState(ctx: ExtensionContext): void {
       appendState(pi, store.getState());
-      renderWidget(pi, ctx, config, store.getGoal());
+      renderWidget(pi, ctx, config, store.getState());
     }
 
     function persistAndNotify(
@@ -328,15 +334,15 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       await loadRuntimeConfig(ctx);
       restoreFromBranch(store, ctx);
       unsubscribe = store.subscribe((state) =>
-        renderWidget(pi, ctx, config, state.goal),
+        renderWidget(pi, ctx, config, state),
       );
-      renderWidget(pi, ctx, config, store.getGoal());
+      renderWidget(pi, ctx, config, store.getState());
     });
 
     pi.on("session_tree", async (_event, ctx) => {
       await loadRuntimeConfig(ctx);
       restoreFromBranch(store, ctx);
-      renderWidget(pi, ctx, config, store.getGoal());
+      renderWidget(pi, ctx, config, store.getState());
     });
 
     pi.on("input", async (event: { source?: string }, ctx) => {

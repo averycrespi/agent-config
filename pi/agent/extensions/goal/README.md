@@ -70,7 +70,7 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 ## Widget
 
-When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line. Completion evidence is available through `/goal-show` instead of the widget.
+When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line with active time, token/turn counters, and current auto-run state such as `auto-run enabled (3/10 continuations, 40m left)`, `auto-run disabled (user input)`, or `auto-run idle`. Completion evidence is available through `/goal-show` instead of the widget.
 
 ## Compaction
 
