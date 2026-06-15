@@ -23,11 +23,11 @@ After each `agent_end`, the extension schedules one follow-up user message when:
 - a goal exists and is `active`
 - auto-run is `running`
 - `autoRunEnabled` is true
-- `autoRunMaxTurns` and `autoRunMaxActiveMinutes` have not been exhausted
+- `autoRunMaxContinuations` and `autoRunMaxActiveMinutes` have not been exhausted
 - the last assistant message did not end with a provider error or abort
 - Pi reports no pending messages, when that API is available
 
-The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, a provider error/abort occurs, or a turn/time bound is exhausted. Budget exhaustion and provider errors do not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget`, `time_budget`, or `provider_error`.
+The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, a provider error/abort occurs, or a continuation/time bound is exhausted. Budget exhaustion and provider errors do not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget`, `time_budget`, or `provider_error`.
 
 While auto-run is running, the extension blocks `ask_user` tool calls when that tool is available. Headless continuation cannot answer interactive prompts, so agents should choose the safest reversible default, continue with documented assumptions, or stop and report a blocker instead. This guard is only applied at tool-call time and does not require the `ask_user` tool to be loaded.
 
@@ -64,7 +64,7 @@ When the current goal is active and `injectActiveGoal` is enabled, each agent tu
 - checkpoint commit guidance when `checkpointCommits` is enabled
 - a completion audit checklist
 - a warning that proxy signals are insufficient completion evidence
-- remaining auto-run turn/time bounds when auto-run is running
+- remaining auto-run continuation/time bounds when auto-run is running
 
 No goal context is injected when the goal is paused, complete, absent, or injection is disabled. When checkpoint guidance is enabled, the agent is told to create git commits at logical verified checkpoints, stage files by name, and never push unless explicitly asked.
 
@@ -94,7 +94,7 @@ Settings live under `extension:goal`. Environment variables override settings. U
 | `checkpointCommits`       |  `true` | `GOAL_CHECKPOINT_COMMITS`          | Tell the agent to create git commits at logical verified checkpoints while working on an active goal.                        |
 | `showUsage`               |  `true` | `GOAL_SHOW_USAGE`                  | Show observational active time, token, and turn counters in goal output and the widget.                                      |
 | `autoRunEnabled`          |  `true` | `GOAL_AUTO_RUN_ENABLED`            | Allow `/goal <objective>` and continuation scheduling to run automatically.                                                  |
-| `autoRunMaxTurns`         |    `10` | `GOAL_AUTO_RUN_MAX_TURNS`          | Maximum continuation turns scheduled by one auto-run.                                                                        |
+| `autoRunMaxContinuations` |    `10` | `GOAL_AUTO_RUN_MAX_CONTINUATIONS`  | Maximum continuation prompts scheduled by one auto-run.                                                                      |
 | `autoRunMaxActiveMinutes` |    `60` | `GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES` | Maximum active goal time before auto-run stops.                                                                              |
 
 Boolean environment overrides accept `1`/`true` and `0`/`false`.
@@ -112,7 +112,7 @@ Example:
     "checkpointCommits": true,
     "showUsage": true,
     "autoRunEnabled": true,
-    "autoRunMaxTurns": 10,
+    "autoRunMaxContinuations": 10,
     "autoRunMaxActiveMinutes": 60
   }
 }

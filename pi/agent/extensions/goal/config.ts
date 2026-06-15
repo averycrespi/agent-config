@@ -15,7 +15,7 @@ export type GoalConfig = {
   checkpointCommits: boolean;
   showUsage: boolean;
   autoRunEnabled: boolean;
-  autoRunMaxTurns: number;
+  autoRunMaxContinuations: number;
   autoRunMaxActiveMinutes: number;
 };
 
@@ -30,7 +30,7 @@ export const DEFAULT_GOAL_CONFIG: GoalConfig = {
   checkpointCommits: true,
   showUsage: true,
   autoRunEnabled: true,
-  autoRunMaxTurns: 10,
+  autoRunMaxContinuations: 10,
   autoRunMaxActiveMinutes: 60,
 };
 
@@ -136,8 +136,8 @@ function readEnvSettings(
           ),
         }
       : {}),
-    ...(env.GOAL_AUTO_RUN_MAX_TURNS !== undefined
-      ? { autoRunMaxTurns: env.GOAL_AUTO_RUN_MAX_TURNS }
+    ...(env.GOAL_AUTO_RUN_MAX_CONTINUATIONS !== undefined
+      ? { autoRunMaxContinuations: env.GOAL_AUTO_RUN_MAX_CONTINUATIONS }
       : {}),
     ...(env.GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES !== undefined
       ? { autoRunMaxActiveMinutes: env.GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES }
@@ -194,10 +194,10 @@ export function parseGoalConfig(options: {
       typeof merged.autoRunEnabled === "boolean"
         ? merged.autoRunEnabled
         : DEFAULT_GOAL_CONFIG.autoRunEnabled,
-    autoRunMaxTurns: parsePositiveInteger(
-      merged.autoRunMaxTurns,
-      "autoRunMaxTurns",
-      DEFAULT_GOAL_CONFIG.autoRunMaxTurns,
+    autoRunMaxContinuations: parsePositiveInteger(
+      merged.autoRunMaxContinuations,
+      "autoRunMaxContinuations",
+      DEFAULT_GOAL_CONFIG.autoRunMaxContinuations,
       warnings,
     ),
     autoRunMaxActiveMinutes: parsePositiveInteger(

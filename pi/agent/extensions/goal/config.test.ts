@@ -9,7 +9,7 @@ test("parseGoalConfig applies defaults and environment overrides", () => {
     env: {
       GOAL_SHOW_WIDGET: "true",
       GOAL_EVIDENCE_MAX_CHARS: "25",
-      GOAL_AUTO_RUN_MAX_TURNS: "5",
+      GOAL_AUTO_RUN_MAX_CONTINUATIONS: "5",
       GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES: "30",
       GOAL_AUTO_RUN_ENABLED: "false",
     },
@@ -23,7 +23,7 @@ test("parseGoalConfig applies defaults and environment overrides", () => {
   assert.equal(config.checkpointCommits, true);
   assert.equal(config.showUsage, true);
   assert.equal(config.autoRunEnabled, false);
-  assert.equal(config.autoRunMaxTurns, 5);
+  assert.equal(config.autoRunMaxContinuations, 5);
   assert.equal(config.autoRunMaxActiveMinutes, 30);
   assert.deepEqual(warnings, []);
 });
@@ -31,7 +31,7 @@ test("parseGoalConfig applies defaults and environment overrides", () => {
 test("parseGoalConfig rejects invalid numeric config with warning", () => {
   const warnings: string[] = [];
   const config = parseGoalConfig({
-    settings: { objectiveMaxChars: -1, autoRunMaxTurns: 0 },
+    settings: { objectiveMaxChars: -1, autoRunMaxContinuations: 0 },
     env: {
       GOAL_COMPACT_SUMMARY_ENABLED: "maybe",
       GOAL_CHECKPOINT_COMMITS: "false",
@@ -45,10 +45,10 @@ test("parseGoalConfig rejects invalid numeric config with warning", () => {
   assert.equal(config.compactSummaryEnabled, true);
   assert.equal(config.checkpointCommits, false);
   assert.equal(config.showUsage, false);
-  assert.equal(config.autoRunMaxTurns, 10);
+  assert.equal(config.autoRunMaxContinuations, 10);
   assert.equal(config.autoRunMaxActiveMinutes, 60);
   assert.match(warnings.join("\n"), /objectiveMaxChars/);
-  assert.match(warnings.join("\n"), /autoRunMaxTurns/);
+  assert.match(warnings.join("\n"), /autoRunMaxContinuations/);
   assert.match(warnings.join("\n"), /autoRunMaxActiveMinutes/);
   assert.match(warnings.join("\n"), /GOAL_COMPACT_SUMMARY_ENABLED/);
 });
