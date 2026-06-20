@@ -16,6 +16,7 @@ export interface TaskDefinition {
   envFiles?: string[];
   env?: Record<string, string>;
   timeoutMinutes?: number;
+  catchup: boolean;
   handoff: boolean;
   rawFrontmatter: Record<string, unknown>;
 }
@@ -210,6 +211,7 @@ export function parseTaskMarkdown(
     ...(raw.envFiles !== undefined ? { envFiles: envFilesField(raw) } : {}),
     ...(raw.env !== undefined ? { env: envField(raw) } : {}),
     ...(typeof timeout === "number" ? { timeoutMinutes: timeout } : {}),
+    catchup: booleanField(raw, "catchup"),
     handoff: booleanField(raw, "handoff"),
     rawFrontmatter: raw,
   };

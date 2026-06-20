@@ -54,23 +54,25 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 `/tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. Manual runs and scheduled runs share the same `runTask()` path after task lookup.
 
-The scheduler behavior is intentionally non-replaying:
+The scheduler behavior is intentionally coalescing, not replaying:
 
 - Missing `nextRunAt` initializes to the next future occurrence and does not run immediately.
 - Due tasks run only if `nextRunAt` is within the 90-second due window.
-- Missed schedules outside that window advance to the next future occurrence with `lastSkipReason: "missed_schedule"`.
-- There is no catch-up replay for downtime or long-running tasks.
+- Missed schedules outside that window advance to the next future occurrence with `lastSkipReason: "missed_schedule"` unless the task has `catchup: true`.
+- `catchup: true` claims at most one make-up run for a missed window, even if multiple occurrences were missed.
+- `maxCatchupRunsPerTick` caps catchup claims globally per tick; over-cap tasks are reported as `catchup_deferred` and keep their existing `nextRunAt`.
+- Normal due runs are independent of the catchup cap.
 
 Lock sequencing matters:
 
 1. Acquire `scheduler.lock` for the tick.
 2. Read and validate tasks.
-3. For a due task, acquire the per-task lock before advancing `nextRunAt`.
+3. For a due or catchup task, acquire the per-task lock before advancing `nextRunAt`.
 4. Persist the advanced `nextRunAt` while still holding `scheduler.lock`.
 5. Release `scheduler.lock`.
 6. Run claimed tasks while holding their per-task locks.
 
-If a due task is already locked, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time is still inside the grace window. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
+If a due or catchup task is already locked, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
 
 `TickSummary` has scheduler-level `status` and `message` fields. Do not represent scheduler lock contention as a fake task skip; use `status: "locked"`, leave `claimed` and `skipped` empty, and put the lock explanation in `message`. Task-level skips stay in `skipped` with real task IDs.
 

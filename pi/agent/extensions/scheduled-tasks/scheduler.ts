@@ -255,7 +255,16 @@ export async function schedulerTick(
   }
   const claimed: RunSummary[] = [];
   const skipped: TaskSkipSummary[] = [];
-  const toRun: Array<{ task: TaskDefinition; lock?: HeldLock }> = [];
+  const toRun: Array<{
+    task: TaskDefinition;
+    lock?: HeldLock;
+    catchup?: boolean;
+  }> = [];
+  const maxCatchupRuns = Math.max(
+    0,
+    Math.floor(config.maxCatchupRunsPerTick ?? 1),
+  );
+  let catchupRuns = 0;
   try {
     const parsedTasks = await readAllTasks(config.rootDir);
     for (const parsed of parsedTasks) {
@@ -291,17 +300,55 @@ export async function schedulerTick(
           message: `${options.dryRun ? "Dry run: would initialize" : "Initialized"} nextRunAt ${decision.nextRunAt.toISOString()}.`,
         });
       } else if (decision.action === "missed") {
-        if (!options.dryRun)
-          await writeTaskState(config.rootDir, {
-            ...(state ?? { taskId: task.id }),
-            nextRunAt: decision.nextRunAt.toISOString(),
-            lastSkipReason: "missed_schedule",
+        if (!task.catchup) {
+          if (!options.dryRun)
+            await writeTaskState(config.rootDir, {
+              ...(state ?? { taskId: task.id }),
+              nextRunAt: decision.nextRunAt.toISOString(),
+              lastSkipReason: "missed_schedule",
+            });
+          skipped.push({
+            taskId: task.id,
+            status: options.dryRun ? "would_miss" : "missed",
+            message:
+              "Missed schedule outside due window; catchup is not enabled.",
           });
-        skipped.push({
+          continue;
+        }
+        if (catchupRuns >= maxCatchupRuns) {
+          skipped.push({
+            taskId: task.id,
+            status: "catchup_deferred",
+            message:
+              "Catchup deferred because maxCatchupRunsPerTick was reached.",
+          });
+          continue;
+        }
+        if (options.dryRun) {
+          catchupRuns += 1;
+          toRun.push({ task, catchup: true });
+          continue;
+        }
+        const runId = makeRunId(now);
+        const lock = await acquireLock(config.rootDir, task.id, {
           taskId: task.id,
-          status: options.dryRun ? "would_miss" : "missed",
-          message: "Missed schedule outside due window; not catching up.",
+          runId,
         });
+        if (!lock) {
+          skipped.push({
+            taskId: task.id,
+            status: "locked",
+            message: "Task is already running; nextRunAt was not advanced.",
+          });
+          continue;
+        }
+        catchupRuns += 1;
+        await writeTaskState(config.rootDir, {
+          ...(state ?? { taskId: task.id }),
+          nextRunAt: decision.nextRunAt.toISOString(),
+          lastSkipReason: null,
+        });
+        toRun.push({ task, lock, catchup: true });
       } else if (decision.action === "run") {
         if (options.dryRun) {
           toRun.push({ task });
@@ -334,10 +381,12 @@ export async function schedulerTick(
   if (options.dryRun) {
     const summary = tickSummary({
       timestamp,
-      claimed: toRun.map(({ task }) => ({
+      claimed: toRun.map(({ task, catchup }) => ({
         taskId: task.id,
-        status: "would_run",
-        message: "Dry run: would run task.",
+        status: catchup ? "would_catchup" : "would_run",
+        message: catchup
+          ? "Dry run: would run one catchup for missed schedule."
+          : "Dry run: would run task.",
       })),
       skipped,
       dryRun: true,
@@ -345,9 +394,14 @@ export async function schedulerTick(
     await tryRecordTickLog(config.rootDir, summary);
     return summary;
   }
-  for (const { task, lock } of toRun) {
+  for (const { task, lock, catchup } of toRun) {
     if (!lock) continue;
-    claimed.push(await runTask(config, task, { now, heldLock: lock }));
+    const summary = await runTask(config, task, { now, heldLock: lock });
+    claimed.push(
+      catchup && summary.status === "success"
+        ? { ...summary, message: `Catchup run ${summary.runId} success.` }
+        : summary,
+    );
   }
   const summary = tickSummary({ timestamp, claimed, skipped, dryRun: false });
   await tryRecordTickLog(config.rootDir, summary);

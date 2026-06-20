@@ -36,6 +36,7 @@ envFiles:
 env:
   NODE_ENV: production
 timeoutMinutes: 30
+catchup: false
 handoff: false
 ---
 
@@ -49,6 +50,7 @@ Follow these constraints:
 - Keep new or uncertain tasks `enabled: false` unless the user explicitly asks to schedule them.
 - Enabled tasks require a five-field cron `schedule`, an absolute existing `cwd`, and a non-empty body.
 - Keep `tools` as an explicit allowlist. If omitted, the extension's configured `defaultTools` apply.
+- Set `catchup: true` only when one coalesced make-up run is useful after downtime; missed occurrences are not replayed one-by-one and global config caps catchups per tick.
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
 - Use `envFiles` for dotenv-style bulk environment defaults. Relative env file paths resolve against `cwd`, and listed files are required in v1.
 - Use inline `env` for explicit overrides; inline `env` wins over `envFiles`, and scheduled-run marker variables win over both.

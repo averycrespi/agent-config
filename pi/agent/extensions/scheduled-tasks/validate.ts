@@ -97,6 +97,11 @@ export async function validateTask(
   )
     errors.push("envFiles must be a string or array of non-empty strings.");
   if (
+    task.rawFrontmatter.catchup !== undefined &&
+    typeof task.rawFrontmatter.catchup !== "boolean"
+  )
+    errors.push("catchup must be a boolean.");
+  if (
     task.rawFrontmatter.env !== undefined &&
     (!task.rawFrontmatter.env ||
       typeof task.rawFrontmatter.env !== "object" ||

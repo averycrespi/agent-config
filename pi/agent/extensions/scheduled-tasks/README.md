@@ -24,13 +24,14 @@ The extension creates these directories as needed with owner-only permissions wh
 
 Settings are read from `extension:scheduled-tasks` plus environment overrides. Environment variables override settings when set.
 
-| Field                   | Default                          | Environment override                      | Description                                                                                                                              |
-| ----------------------- | -------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `rootDir`               | `~/.pi/scheduled-tasks`          | `SCHEDULED_TASKS_ROOT_DIR`                | Persistent root containing tasks, handoffs, state, sessions, runs, and locks.                                                            |
-| `defaultTimeoutMinutes` | `30`                             | `SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES` | Default child Pi timeout when a task omits `timeoutMinutes`.                                                                             |
-| `defaultTools`          | `["read", "grep", "find", "ls"]` | `SCHEDULED_TASKS_DEFAULT_TOOLS`           | Comma-separated default tool allowlist when a task omits `tools`. Empty means `--no-tools` unless handoff adds `scheduled_task_handoff`. |
-| `piCommand`             | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`              | Executable path or command name used for child Pi runs and the managed cron entrypoint.                                                  |
-| `cronEnvironment`       | `{}`                             | `SCHEDULED_TASKS_CRON_ENVIRONMENT`        | Environment variables scoped to the managed cron `piCommand`; env override is a JSON object of string values.                            |
+| Field                   | Default                          | Environment override                        | Description                                                                                                                              |
+| ----------------------- | -------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `rootDir`               | `~/.pi/scheduled-tasks`          | `SCHEDULED_TASKS_ROOT_DIR`                  | Persistent root containing tasks, handoffs, state, sessions, runs, and locks.                                                            |
+| `defaultTimeoutMinutes` | `30`                             | `SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES`   | Default child Pi timeout when a task omits `timeoutMinutes`.                                                                             |
+| `defaultTools`          | `["read", "grep", "find", "ls"]` | `SCHEDULED_TASKS_DEFAULT_TOOLS`             | Comma-separated default tool allowlist when a task omits `tools`. Empty means `--no-tools` unless handoff adds `scheduled_task_handoff`. |
+| `piCommand`             | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`                | Executable path or command name used for child Pi runs and the managed cron entrypoint.                                                  |
+| `cronEnvironment`       | `{}`                             | `SCHEDULED_TASKS_CRON_ENVIRONMENT`          | Environment variables scoped to the managed cron `piCommand`; env override is a JSON object of string values.                            |
+| `maxCatchupRunsPerTick` | `1`                              | `SCHEDULED_TASKS_MAX_CATCHUP_RUNS_PER_TICK` | Non-negative integer maximum of opt-in missed-schedule catchup runs claimed by one scheduler tick; `0` disables catchup claims.          |
 
 Example:
 
@@ -41,6 +42,7 @@ Example:
     "defaultTimeoutMinutes": 20,
     "defaultTools": ["read", "grep", "bash"],
     "piCommand": "/usr/local/bin/pi",
+    "maxCatchupRunsPerTick": 1,
     "cronEnvironment": {
       "PATH": "/usr/local/bin:/usr/bin:/bin"
     }
@@ -73,6 +75,7 @@ envFiles:
 env:
   NODE_ENV: production
 timeoutMinutes: 30
+catchup: true
 handoff: true
 ---
 
@@ -90,9 +93,10 @@ Rules:
 - `envFiles` may be a string or list of dotenv-style files. Relative paths resolve against `cwd`; listed files are required in v1.
 - Child environment precedence is parent scheduler environment, then `envFiles` in listed order, then inline task `env`, then scheduled-run marker variables.
 - `env` values are written in plain text in task files and are visible in management commands/tools and to agents or sessions with file read access. Env file values are not printed by validation, but they are still visible to child processes and may appear in run output. Task files and env files are not secret storage.
+- `catchup: true` opts a task into one make-up run after a missed schedule; omitted or `false` preserves skip-on-miss behavior.
 - `handoff` is boolean only in v1.
 
-Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `timeoutMinutes`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
+Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `timeoutMinutes`, invalid `catchup`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
 Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
 
@@ -157,9 +161,11 @@ Normal Pi sessions never automatically include handoff content. Handoff content 
 
 ## Scheduler and cron
 
-`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
+`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, and skips missed schedules outside the 90-second due window unless the task opts into catchup. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
 
-`/tasks-tick` returns a scheduler-level summary with `status`, `timestamp`, `dryRun`, `claimed`, and `skipped`. Scheduler lock contention is reported as `status: "locked"` with no fake task ID. Dry-run ticks report what would initialize, miss, or run without writing task state, acquiring task execution locks, spawning child Pi, or writing run artifacts; they still append a compact tick-log entry. If a due task is already running, the scheduler reports a task-level locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
+Catchup is coalesced, not replayed. A task with `catchup: true` runs at most one make-up run when the scheduler notices missed occurrences, even if it missed multiple scheduled times. One tick claims at most `maxCatchupRunsPerTick` catchup runs globally; extra eligible tasks are reported as `catchup_deferred` and keep their existing `nextRunAt` for a later tick. Normal due runs are not limited by the catchup cap.
+
+`/tasks-tick` returns a scheduler-level summary with `status`, `timestamp`, `dryRun`, `claimed`, and `skipped`. Scheduler lock contention is reported as `status: "locked"` with no fake task ID. Dry-run ticks report what would initialize, miss, catch up, defer, or run without writing task state, acquiring task execution locks, spawning child Pi, or writing run artifacts; they still append a compact tick-log entry. If a due task is already running, the scheduler reports a task-level locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
 
 `/tasks-doctor` and `scheduled_tasks({ "action": "doctor" })` report whether the managed crontab block is installed, not installed, or unavailable to inspect. They do not modify crontab.
 
@@ -185,7 +191,7 @@ All configurable values in the cron command are shell-quoted. `piCommand` is tre
 
 - No precheck scripts.
 - No no-agent/script-only jobs.
-- No catch-up replay of missed schedules.
+- No replay of every missed schedule; catchup is opt-in and coalesces missed occurrences into one make-up run.
 - No arbitrary `piArgs` passthrough.
 - No cloud/webhook/GitHub event triggers.
 - No structured task creation/update tool actions.

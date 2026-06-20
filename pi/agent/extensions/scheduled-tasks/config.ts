@@ -16,6 +16,7 @@ export interface ScheduledTasksConfig {
   defaultTools: string[];
   piCommand: string;
   cronEnvironment: Record<string, string>;
+  maxCatchupRunsPerTick?: number;
 }
 
 export const DEFAULT_CONFIG: ScheduledTasksConfig = {
@@ -24,6 +25,7 @@ export const DEFAULT_CONFIG: ScheduledTasksConfig = {
   defaultTools: ["read", "grep", "find", "ls"],
   piCommand: "pi",
   cronEnvironment: {},
+  maxCatchupRunsPerTick: 1,
 };
 
 function parsePositiveNumber(value: unknown): number | undefined {
@@ -32,6 +34,22 @@ function parsePositiveNumber(value: unknown): number | undefined {
   if (typeof value === "string" && value.trim()) {
     const parsed = Number(value);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return undefined;
+}
+
+function parseNonNegativeInteger(value: unknown): number | undefined {
+  if (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    Number.isFinite(value) &&
+    value >= 0
+  )
+    return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed) && Number.isFinite(parsed) && parsed >= 0)
+      return parsed;
   }
   return undefined;
 }
@@ -126,6 +144,15 @@ function envSettings(
     warnings,
   );
   if (cronEnvironment !== undefined) settings.cronEnvironment = cronEnvironment;
+  const maxCatchupRunsPerTick = parseNonNegativeInteger(
+    env.SCHEDULED_TASKS_MAX_CATCHUP_RUNS_PER_TICK,
+  );
+  if (maxCatchupRunsPerTick !== undefined)
+    settings.maxCatchupRunsPerTick = maxCatchupRunsPerTick;
+  else if (env.SCHEDULED_TASKS_MAX_CATCHUP_RUNS_PER_TICK)
+    warnings.push(
+      "Ignoring invalid SCHEDULED_TASKS_MAX_CATCHUP_RUNS_PER_TICK.",
+    );
   return settings;
 }
 
@@ -174,12 +201,22 @@ export function normalizeConfig(
   )
     warnings.push("Invalid cronEnvironment; using default.");
 
+  const maxCatchupRunsPerTick =
+    parseNonNegativeInteger(raw.maxCatchupRunsPerTick) ??
+    DEFAULT_CONFIG.maxCatchupRunsPerTick;
+  if (
+    raw.maxCatchupRunsPerTick !== undefined &&
+    parseNonNegativeInteger(raw.maxCatchupRunsPerTick) === undefined
+  )
+    warnings.push("Invalid maxCatchupRunsPerTick; using default.");
+
   return {
     rootDir: resolveRoot(rootDir),
     defaultTimeoutMinutes,
     defaultTools,
     piCommand,
     cronEnvironment,
+    maxCatchupRunsPerTick,
   };
 }
 

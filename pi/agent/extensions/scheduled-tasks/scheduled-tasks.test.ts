@@ -87,6 +87,7 @@ test("config normalization supports env-shaped values and defaults", () => {
         PATH: "/opt/bin:/usr/bin",
         ASDF_DATA_DIR: "/Users/test/.asdf",
       },
+      maxCatchupRunsPerTick: "2",
     },
     warnings,
   );
@@ -97,7 +98,21 @@ test("config normalization supports env-shaped values and defaults", () => {
     PATH: "/opt/bin:/usr/bin",
     ASDF_DATA_DIR: "/Users/test/.asdf",
   });
+  assert.equal(config.maxCatchupRunsPerTick, 2);
   assert.equal(warnings.length, 0);
+
+  const zeroCatchup = normalizeConfig({ maxCatchupRunsPerTick: 0 });
+  assert.equal(zeroCatchup.maxCatchupRunsPerTick, 0);
+
+  const invalidWarnings: string[] = [];
+  const invalid = normalizeConfig(
+    { maxCatchupRunsPerTick: 1.5 },
+    invalidWarnings,
+  );
+  assert.equal(invalid.maxCatchupRunsPerTick, 1);
+  assert.deepEqual(invalidWarnings, [
+    "Invalid maxCatchupRunsPerTick; using default.",
+  ]);
 });
 
 test("extension contributes management skill only outside scheduled child runs", async () => {
@@ -230,6 +245,15 @@ test("task Markdown parsing accepts a single envFiles string", () => {
   );
   assert.deepEqual(parsed.errors, []);
   assert.deepEqual(parsed.task?.envFiles, [".env"]);
+});
+
+test("task Markdown parsing supports opt-in catchup", () => {
+  const parsed = parseTaskMarkdown(
+    "/tmp/dependency-audit.md",
+    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\ncatchup: true\n---\nCheck dependencies.`,
+  );
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.task?.catchup, true);
 });
 
 test("validator reports errors, warnings, and effective handoff tools", async () => {
@@ -1363,6 +1387,146 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
   assert.equal(tickLog.length, 3);
   assert.equal(tickLog[0].dryRun, true);
   assert.equal(tickLog[2].skipped[0].status, "would_miss");
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler dry-run reports one catchup and defers catchups over the cap", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "catch-a.md"),
+    sampleTask("catch-a", cwd, "catchup: true\n"),
+    "utf8",
+  );
+  await writeFile(
+    join(root, "tasks", "catch-b.md"),
+    sampleTask("catch-b", cwd, "catchup: true\n"),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "catch-a",
+    nextRunAt: "2026-06-19T09:00:00.000Z",
+  });
+  await writeTaskState(root, {
+    taskId: "catch-b",
+    nextRunAt: "2026-06-19T09:00:00.000Z",
+  });
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+    maxCatchupRunsPerTick: 1,
+  };
+
+  const summary = await schedulerTick(config, {
+    dryRun: true,
+    now: new Date("2026-06-19T09:03:00Z"),
+  });
+
+  assert.equal(summary.status, "ok");
+  assert.deepEqual(
+    summary.claimed.map((item) => [item.taskId, item.status]),
+    [["catch-a", "would_catchup"]],
+  );
+  assert.deepEqual(
+    summary.skipped.map((item) => [item.taskId, item.status]),
+    [["catch-b", "catchup_deferred"]],
+  );
+  assert.equal(
+    (await readTaskState(root, "catch-a"))?.nextRunAt,
+    "2026-06-19T09:00:00.000Z",
+  );
+  assert.deepEqual(await readdir(join(root, "runs")), []);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler runs normal due tasks and caps catchup runs", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "catch-a.md"),
+    sampleTask("catch-a", cwd, "catchup: true\n"),
+    "utf8",
+  );
+  await writeFile(
+    join(root, "tasks", "catch-b.md"),
+    sampleTask("catch-b", cwd, "catchup: true\n"),
+    "utf8",
+  );
+  await writeFile(
+    join(root, "tasks", "normal.md"),
+    sampleTask("normal", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "catch-a",
+    nextRunAt: "2026-06-19T09:00:00.000Z",
+  });
+  await writeTaskState(root, {
+    taskId: "catch-b",
+    nextRunAt: "2026-06-19T09:00:00.000Z",
+  });
+  await writeTaskState(root, {
+    taskId: "normal",
+    nextRunAt: "2026-06-19T09:03:00.000Z",
+  });
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+    maxCatchupRunsPerTick: 1,
+  };
+  let spawnCount = 0;
+  mock.method(_spawn, "fn", () => {
+    spawnCount += 1;
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", 0, null);
+    });
+    return child;
+  });
+
+  const summary = await schedulerTick(config, {
+    now: new Date("2026-06-19T09:03:00Z"),
+  });
+
+  assert.equal(summary.status, "ok");
+  assert.equal(spawnCount, 2);
+  assert.deepEqual(
+    summary.claimed.map((item) => [item.taskId, item.status]),
+    [
+      ["catch-a", "success"],
+      ["normal", "success"],
+    ],
+  );
+  assert.match(summary.claimed[0]?.message ?? "", /Catchup run/);
+  assert.deepEqual(
+    summary.skipped.map((item) => [item.taskId, item.status]),
+    [["catch-b", "catchup_deferred"]],
+  );
+  assert.equal(
+    (await readTaskState(root, "catch-a"))?.nextRunAt,
+    "2026-06-19T09:04:00.000Z",
+  );
+  assert.equal(
+    (await readTaskState(root, "catch-b"))?.nextRunAt,
+    "2026-06-19T09:00:00.000Z",
+  );
+  assert.equal(
+    (await readTaskState(root, "normal"))?.nextRunAt,
+    "2026-06-19T09:04:00.000Z",
+  );
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
