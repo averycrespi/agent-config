@@ -11,9 +11,3 @@ No user-facing configuration.
 ## Logging
 
 This extension does not write retained logs or diagnostic files.
-
-## File layout
-
-- `index.ts` — extension entry point, header lifecycle, and async metadata refresh
-- `git.ts` — git metadata loading and parsing
-- `render.ts` — header rendering and truncation rules

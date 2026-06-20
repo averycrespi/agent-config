@@ -59,18 +59,6 @@ Activity widgets are removed when all subagents finish, error, or are aborted.
 
 When loaded, the extension hooks `before_agent_start` to append delegation guidance to the system prompt — when to delegate, the shape of `spawn_agents` (single call covers both single-task and parallel-task cases), and the list of available agent types with their descriptions. This means the guidance only appears when the extension is actually active; it is not hardcoded in `AGENTS.md`.
 
-## How it works
-
-Each spawn:
-
-1. Looks up the agent type config (tools, model, thinking level, system prompt)
-2. Resolves extension short names (e.g. `web-access`) to concrete paths — searched in order: `.pi/extensions/`, `~/.pi/agent/extensions/`, and any roots listed in `settings.json`
-3. Launches `pi --mode json -p --no-session` as a child process with the resolved tool allowlist and extension paths
-4. Streams JSONL events from the child process to track phase, active tool, and current command
-5. Returns the child's final assistant message, or a formatted failure message on non-zero exit
-
-Recursion is blocked by default. Each spawn sets `PI_SUBAGENT_DEPTH` in the child environment (`currentDepth + 1`). The `spawn_agents` tool calls `spawnSubagent` without specifying `maxDepth`, which defaults to `1` — so a subagent (running at depth 1) cannot spawn another subagent. The `MAX_SUBAGENT_DEPTH = 5` constant in `types.ts` is an absolute ceiling, reachable only by direct callers of the programmatic `spawnSubagent` API that explicitly pass a higher `maxDepth`. Aborting the parent tool call sends SIGTERM to child processes with a 2-second grace period before SIGKILL.
-
 ## Configuration
 
 This extension has no `extension:subagents` settings and does not register a `/subagents-config` command. Subagent types are configured by markdown files with YAML frontmatter; see [Agent file format](#agent-file-format). Agent files control the tool allowlist, extensions, model, thinking level, skill/template availability, and child-process environment.
@@ -90,8 +78,8 @@ Retained logs may contain raw subagent output, tool results, command output, and
 
 - `intent` is required for every agent and drives activity titles — keep it short and descriptive
 - Requests are prevalidated before spawning; blank intents or unknown agent types return one recoverable tool error and no subagents are launched
-- Each subagent starts with a fresh context; session inheritance is not supported
-- `review`, `research`, and `deep-research` require the `mcp-broker` extension to be installed and discoverable; if missing, extension resolution fails with "no matching extensions found". `research` and `deep-research` additionally require `web-access`
+- Each subagent starts with a fresh context; session inheritance is not supported through the tool
+- `review`, `research`, and `deep-research` require the `mcp-broker` extension to be installed and discoverable. `research` and `deep-research` additionally require `web-access`
 - Built-in agent types disable skills and prompt templates for tighter, role-specific behavior
 - All agents in a single `spawn_agents` call run concurrently; result order matches input order
 
@@ -134,15 +122,3 @@ Variable values are always strings. The map is merged into the child's environme
 - [Codex subagents docs](https://developers.openai.com/codex/subagents) — explicit subagent workflows that spawn specialized agents in parallel and consolidate results.
 - [nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents) — slash commands (`/run`, `/chain`, `/parallel`), an interactive Agents Manager overlay, reusable chain files (`.chain.md`), and background/foreground execution modes
 - [tintinweb/pi-subagents](https://github.com/tintinweb/pi-subagents) — parallel execution with configurable concurrency limits, a persistent live widget, mid-run steering, custom agent definitions via markdown, and cross-extension communication through event-based RPC
-
-## File layout
-
-- `index.ts` — tool registration and execution orchestration
-- `render.ts` — TUI rendering and rendering-adjacent formatters
-- `api.ts` — curated public export surface for other extensions
-- `API.md` — programmatic integration docs for the `api.ts` surface
-- `loader.ts` — agent discovery and frontmatter parsing
-- `spawn.ts` — child process spawning, CLI argument construction, and result handling
-- `activity.ts` — live activity tracking and UI widget updates
-- `types.ts` — interfaces, schemas, and shared types
-- `utils.ts` — extension path resolution

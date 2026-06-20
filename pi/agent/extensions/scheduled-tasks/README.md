@@ -144,9 +144,9 @@ Normal Pi sessions never automatically include handoff content. Handoff content 
 
 ## Scheduler and cron
 
-`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, validates them, uses the same TypeScript config loader, parser, validator, scheduler, and child-spawn path as manual `/tasks-run`, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
+`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
 
-Dry-run ticks are read-only: `/tasks-tick --dry-run` reports what would initialize, miss, or run without writing state, acquiring task execution locks, spawning child Pi, or writing run artifacts. For real due runs, the scheduler acquires the task lock before advancing `nextRunAt`, persists `nextRunAt` while still holding the scheduler lock, then releases the scheduler lock and runs while holding the task lock. If a due task is already locked, the scheduler reports a locked skip and leaves `nextRunAt` unchanged so later ticks retry while the due time remains inside the grace window.
+Dry-run ticks are read-only: `/tasks-tick --dry-run` reports what would initialize, miss, or run without writing state, acquiring task execution locks, spawning child Pi, or writing run artifacts. If a due task is already running, the scheduler reports a locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
 
 `/tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched. The managed cron line changes to the project cwd captured when the command is run, then invokes Pi directly in non-interactive mode:
 

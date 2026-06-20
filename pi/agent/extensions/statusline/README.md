@@ -48,21 +48,6 @@ Quota-fetch failures are logged once per session under `${tmpdir()}/pi-extension
 
 - `openai-codex` — polls the ChatGPT/Codex usage endpoint
 
-## Adding a new provider
-
-1. Create a new adapter file, e.g. `anthropic.ts`
-2. Export a `ProviderAdapter` (see `utils.ts` for the interface)
-3. Import it in `index.ts` and add it to the `ADAPTERS` array
-
-Each adapter handles provider detection (`handles`) and API-specific fetching (`fetchUsage`), returning a normalized `UsageStats` object.
-
-## File layout
-
-- `index.ts` — extension entry point, event wiring, and footer updates
-- `footer.ts` — single-line footer rendering and truncation rules
-- `codex.ts` — Codex provider adapter
-- `utils.ts` — `ProviderAdapter` interface, `UsageStats` type, and formatting helpers
-
 ## Prior art
 
 - [magicmonty/bash-git-prompt](https://github.com/magicmonty/bash-git-prompt) — compact git prompt symbols for branch tracking, clean/dirty state, conflicts, untracked files, and stashes.

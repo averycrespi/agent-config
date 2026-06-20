@@ -39,9 +39,9 @@ Example:
 
 Routes by URL type:
 
-- **HTML pages** — local extraction via [Readability](https://github.com/mozilla/readability) + [Turndown](https://github.com/mixmark-io/turndown), with [Jina Reader](https://jina.ai/reader) as fallback for JS-rendered pages
+- **HTML pages** — returns cleaned Markdown, with fallback handling for pages that are hard to extract locally
 - **GitHub repos** — shallow-clones the repository and returns the README, file tree, and clone path for further exploration with Pi's built-in tools
-- **PDFs** — extracts text via [unpdf](https://github.com/unjs/unpdf)
+- **PDFs** — returns extracted text and page-count metadata
 
 ## Configuration
 

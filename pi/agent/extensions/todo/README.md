@@ -39,32 +39,11 @@ Examples:
 
 Clears all TODO items in the current session and persists the empty snapshot.
 
-## Data model
+## State and restoration
 
-```ts
-interface TodoItem {
-  id: number;
-  text: string;
-  status: "todo" | "in_progress" | "done" | "blocked";
-  notes?: string;
-}
+TODO IDs stay stable once assigned. If an item is removed, later items keep their existing IDs instead of being renumbered.
 
-interface TodoState {
-  items: TodoItem[];
-  nextTodoId: number;
-}
-```
-
-IDs stay stable once assigned. If an item is removed, later items keep their existing IDs, and reload restores the next ID from persisted state instead of renumbering.
-
-## Persistence model
-
-- Tool-driven mutations persist snapshots in `toolResult.details` using the `{ items, nextTodoId }` state shape.
-- Successful mutating tool actions (`set`, `add`, `update`, `remove`, `clear`) also append the same snapshot shape as a compact custom `todo-state` session entry. `list` and failed mutations do not append snapshots.
-- `/todo-clear` persists the same snapshot shape through a custom session entry because commands do not emit `toolResult` messages.
-- On `session_start` and `session_tree`, the extension scans the current branch and restores the latest valid snapshot.
-
-This keeps normal tool usage aligned with Pi's recommended stateful-tool pattern while making TODO restoration more durable across reloads, branch navigation, and compaction.
+The list is restored from the current Pi session branch on reload, resume, and branch navigation. Navigating to a different branch in the session tree can restore a different TODO list. `/todo-clear` persists the empty list for the current branch.
 
 ## Configuration
 

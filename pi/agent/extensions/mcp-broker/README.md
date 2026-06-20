@@ -102,18 +102,7 @@ When `gh ...` or a remote git operation is detected in bash:
 2. After the bash result lands, a steering message is queued for the agent. It names up to three likely broker tools (fuzzy-matched from the cached tool list against the bash subcommand) and reminds the agent to use `mcp_call`. One steer per turn at most, so back-to-back matches don't pile up.
 3. A UI notification surfaces the hint to the user.
 
-The steer is delivered via `pi.sendMessage` rather than `tool_result` content rewriting because Pi discards `tool_result` content modifications when the underlying tool reports an error — and auth failures (the most common trigger) are exactly that case.
-
-If the broker is unreachable (no cached tool list), the hint falls back to suggesting `mcp_search`. Detection strips quoted substrings before matching, so `git commit -m "fix gh issue"` does not trigger.
-
-## File layout
-
-- `index.ts` — entry point, loads configuration, instantiates `BrokerClient`, wires up tools, guard, and the broker tool menu in the system prompt
-- `config.ts` — settings/env merge and validation
-- `client.ts` — `BrokerClient` wrapping `@modelcontextprotocol/sdk`'s `StreamableHTTPClientTransport`
-- `tools.ts` — `mcp_search`, `mcp_describe`, `mcp_call` definitions
-- `spillover.ts` — re-exports shared large-output spill-to-file logic from `../_shared/spillover.ts`
-- `guard.ts` — bash detection and hidden steer delivery
+If the broker is unreachable, the hint falls back to suggesting `mcp_search`. Detection strips quoted substrings before matching, so `git commit -m "fix gh issue"` does not trigger.
 
 ## Prior art
 
