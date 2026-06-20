@@ -183,14 +183,13 @@ export function normalizeConfig(
   };
 }
 
-export async function loadScheduledTasksConfig(
-  cwd: string,
+export async function loadScheduledTasksConfigFromSettings(
+  options: { cwd: string; agentDir: string },
   warnings: string[] = [],
 ): Promise<ScheduledTasksConfig> {
-  const agentDir = fileURLToPath(new URL("../../../", import.meta.url));
   const { globalSettings, projectSettings } = await readPiSettingsFiles({
-    agentDir,
-    cwd,
+    agentDir: options.agentDir,
+    cwd: options.cwd,
     warnings,
   });
   const globalExtensionSettings = readExtensionSettings(
@@ -218,6 +217,16 @@ export async function loadScheduledTasksConfig(
         environmentSettings.cronEnvironment,
       ),
     },
+    warnings,
+  );
+}
+
+export async function loadScheduledTasksConfig(
+  cwd: string,
+  warnings: string[] = [],
+): Promise<ScheduledTasksConfig> {
+  return loadScheduledTasksConfigFromSettings(
+    { cwd, agentDir: fileURLToPath(new URL("../../", import.meta.url)) },
     warnings,
   );
 }

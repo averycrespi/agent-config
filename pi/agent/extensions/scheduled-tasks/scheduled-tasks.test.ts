@@ -13,7 +13,11 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { registerScheduledTaskCommands, _execFile } from "./commands.ts";
-import { mergeCronEnvironment, normalizeConfig } from "./config.ts";
+import {
+  loadScheduledTasksConfigFromSettings,
+  mergeCronEnvironment,
+  normalizeConfig,
+} from "./config.ts";
 import {
   buildCronBlock,
   installManagedBlock,
@@ -86,6 +90,25 @@ test("config normalization supports env-shaped values and defaults", () => {
     ASDF_DATA_DIR: "/Users/test/.asdf",
   });
   assert.equal(warnings.length, 0);
+});
+
+test("scheduled-tasks config loads global settings from the agent directory", async () => {
+  const agentDir = await mkdtemp(join(tmpdir(), "scheduled-tasks-agent-"));
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-project-"));
+  await writeFile(
+    join(agentDir, "settings.json"),
+    JSON.stringify({
+      "extension:scheduled-tasks": {
+        cronEnvironment: { PATH: "/agent/bin" },
+      },
+    }),
+  );
+
+  const config = await loadScheduledTasksConfigFromSettings({ cwd, agentDir });
+
+  assert.deepEqual(config.cronEnvironment, { PATH: "/agent/bin" });
+  await rm(agentDir, { recursive: true, force: true });
+  await rm(cwd, { recursive: true, force: true });
 });
 
 test("cronEnvironment merges nested maps with later layers overriding keys", () => {
