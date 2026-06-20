@@ -22,7 +22,6 @@ import {
 import { validateTask } from "./validate.ts";
 
 export interface RunOptions {
-  manual?: boolean;
   now?: Date;
   heldLock?: HeldLock;
 }
@@ -143,7 +142,7 @@ export async function manualRunTask(
       status: "not_found",
       message: parsed.errors.join("\n") || "Task not found.",
     };
-  return runTask(config, parsed.task, { manual: true });
+  return runTask(config, parsed.task);
 }
 
 export interface TickSummary {

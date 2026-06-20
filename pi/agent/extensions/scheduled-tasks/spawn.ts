@@ -1,13 +1,21 @@
 import { spawn as _nodeSpawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream as _nodeCreateWriteStream,
+} from "node:fs";
+import { rm } from "node:fs/promises";
+import type { Readable, Writable } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
 import type { ScheduledTasksConfig } from "./config.ts";
 import type { TaskDefinition } from "./task-file.ts";
 import { effectiveTools } from "./validate.ts";
 
 export const _spawn = { fn: _nodeSpawn };
+export const _createWriteStream = { fn: _nodeCreateWriteStream };
 export const _timers = { setTimeout, clearTimeout };
 
 export const OUTPUT_TAIL_BYTES = 1024 * 1024;
+const LINE_BUFFER_BYTES = 64 * 1024;
 
 export interface SpawnPlan {
   command: string;
@@ -87,10 +95,43 @@ function extractSessionFileLine(line: string): string | undefined {
 }
 
 function appendTail(current: string, chunk: string): string {
-  const combined = current + chunk;
-  return combined.length > OUTPUT_TAIL_BYTES
-    ? combined.slice(-OUTPUT_TAIL_BYTES)
-    : combined;
+  let combined = current + chunk;
+  while (Buffer.byteLength(combined) > OUTPUT_TAIL_BYTES) {
+    combined = combined.slice(Math.max(1, combined.length >> 1));
+  }
+  return combined;
+}
+
+function appendLineBuffer(current: string, chunk: string): string {
+  let combined = current + chunk;
+  while (Buffer.byteLength(combined) > LINE_BUFFER_BYTES) {
+    combined = combined.slice(Math.max(1, combined.length >> 1));
+  }
+  return combined;
+}
+
+function writeWithBackpressure(
+  stream: Writable,
+  source: Readable | undefined,
+  text: string,
+): void {
+  if (!stream.write(text) && source) {
+    source.pause();
+    stream.once("drain", () => source.resume());
+  }
+}
+
+function endStream(stream: Writable): Promise<void> {
+  return new Promise((resolve) => stream.end(resolve));
+}
+
+function appendFileToStream(stream: Writable, path: string): Promise<void> {
+  return new Promise((resolve) => {
+    const input = createReadStream(path);
+    input.on("error", () => resolve());
+    input.on("end", () => resolve());
+    input.pipe(stream, { end: false });
+  });
 }
 
 export async function spawnPi(
@@ -107,18 +148,41 @@ export async function spawnPi(
     let stderr = "";
     let stdoutLineBuffer = "";
     let sessionFile: string | undefined;
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
     let timedOut = false;
     let settled = false;
-    const log = createWriteStream(logPath, { mode: 0o600 });
+    const log = _createWriteStream.fn(logPath, { mode: 0o600 });
+    const stderrPath = `${logPath}.stderr.tmp`;
+    const stderrLog = _createWriteStream.fn(stderrPath, { mode: 0o600 });
     log.write(`$ ${plan.command} ${plan.args.join(" ")}\n\n## stdout\n`);
+    const handleStdoutText = (text: string) => {
+      if (!text) return;
+      writeWithBackpressure(log, child.stdout ?? undefined, text);
+      stdout = appendTail(stdout, text);
+      stdoutLineBuffer += text;
+      const lines = stdoutLineBuffer.split(/\r?\n/);
+      stdoutLineBuffer = appendLineBuffer(lines.pop() ?? "", "");
+      for (const line of lines) sessionFile ??= extractSessionFileLine(line);
+    };
+    const handleStderrText = (text: string) => {
+      if (!text) return;
+      writeWithBackpressure(stderrLog, child.stderr ?? undefined, text);
+      stderr = appendTail(stderr, text);
+    };
     const finish = (outcome: SpawnOutcome) => {
       if (settled) return;
       settled = true;
       _timers.clearTimeout(timer);
+      handleStdoutText(stdoutDecoder.end());
+      handleStderrText(stderrDecoder.end());
       if (!sessionFile) sessionFile = extractSessionFileLine(stdoutLineBuffer);
-      log.write("\n\n## stderr\n");
-      log.write(stderr);
-      log.end(() => {
+      void (async () => {
+        await endStream(stderrLog);
+        log.write("\n\n## stderr\n");
+        await appendFileToStream(log, stderrPath);
+        await endStream(log);
+        await rm(stderrPath, { force: true }).catch(() => undefined);
         resolve({
           ...outcome,
           stdout,
@@ -126,7 +190,7 @@ export async function spawnPi(
           timedOut,
           sessionFile,
         });
-      });
+      })();
     };
     const timer = _timers.setTimeout(() => {
       timedOut = true;
@@ -134,18 +198,10 @@ export async function spawnPi(
       _timers.setTimeout(() => child.kill("SIGKILL"), 3_000);
     }, plan.timeoutMs);
     child.stdout?.on("data", (chunk) => {
-      const text = String(chunk);
-      log.write(text);
-      stdout = appendTail(stdout, text);
-      stdoutLineBuffer += text;
-      const lines = stdoutLineBuffer.split(/\r?\n/);
-      stdoutLineBuffer = lines.pop() ?? "";
-      for (const line of lines) sessionFile ??= extractSessionFileLine(line);
+      handleStdoutText(stdoutDecoder.write(chunk));
     });
     child.stderr?.on("data", (chunk) => {
-      const text = String(chunk);
-      log.write(text);
-      stderr = appendTail(stderr, text);
+      handleStderrText(stderrDecoder.write(chunk));
     });
     child.on(
       "error",

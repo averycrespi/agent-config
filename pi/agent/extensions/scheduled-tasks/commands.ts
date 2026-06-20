@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile as _nodeExecFile } from "node:child_process";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -15,7 +14,7 @@ import { manualRunTask, readLatestLogs, schedulerTick } from "./scheduler.ts";
 import { readAllTasks, readTaskFile } from "./task-file.ts";
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
 
-const execFileAsync = promisify(execFile);
+export const _execFile = { fn: _nodeExecFile };
 
 type LoadConfig = (
   cwd: string,
@@ -32,8 +31,11 @@ function notify(
 
 async function currentCrontab(): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("crontab", ["-l"]);
-    return stdout;
+    return await new Promise<string>((resolve, reject) => {
+      _execFile.fn("crontab", ["-l"], (error, stdout) =>
+        error ? reject(error) : resolve(String(stdout ?? "")),
+      );
+    });
   } catch {
     return "";
   }
@@ -41,7 +43,7 @@ async function currentCrontab(): Promise<string> {
 
 async function writeCrontab(content: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = execFile("crontab", ["-"], (error) =>
+    const child = _execFile.fn("crontab", ["-"], (error) =>
       error ? reject(error) : resolve(),
     );
     child.stdin?.end(content);

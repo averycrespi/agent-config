@@ -11,8 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
-import { registerScheduledTaskCommands } from "./commands.ts";
+import { PassThrough, Writable } from "node:stream";
+import { registerScheduledTaskCommands, _execFile } from "./commands.ts";
 import { normalizeConfig } from "./config.ts";
 import {
   buildCronBlock,
@@ -30,7 +30,13 @@ import {
   parseCron,
 } from "./schedule.ts";
 import { readLatestLogs, schedulerTick } from "./scheduler.ts";
-import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
+import {
+  buildSpawnPlan,
+  spawnPi,
+  OUTPUT_TAIL_BYTES,
+  _createWriteStream,
+  _spawn,
+} from "./spawn.ts";
 import { readTaskState, writeTaskState } from "./state.ts";
 import { registerHandoffTool } from "./tools.ts";
 import { parseTaskMarkdown } from "./task-file.ts";
@@ -40,6 +46,11 @@ type StubChild = EventEmitter & {
   stdout: PassThrough;
   stderr: PassThrough;
   kill: (signal: string) => boolean;
+};
+
+type BackpressureStream = Writable & {
+  writes: string[];
+  drainCount: number;
 };
 
 async function tempRoot(): Promise<string> {
@@ -318,14 +329,166 @@ test("spawn streams full logs while keeping bounded output tails", async () => {
     logPath,
   );
   assert.equal(outcome.exitCode, 0);
-  assert.ok(outcome.stdout.length <= 1_048_576);
-  assert.ok(outcome.stderr.length <= 1_048_576);
+  assert.ok(Buffer.byteLength(outcome.stdout) <= OUTPUT_TAIL_BYTES);
+  assert.ok(Buffer.byteLength(outcome.stderr) <= OUTPUT_TAIL_BYTES);
   assert.equal(outcome.stdout.includes("FIRST_PREFIX"), false);
   assert.ok(outcome.stdout.endsWith(last));
   const log = await readFile(logPath, "utf8");
   assert.match(log, /^\$ pi --mode json/);
   assert.ok(log.includes(first.slice(0, 100)));
   assert.ok(log.includes(last.slice(-100)));
+  const stderrHeader = log.indexOf("\n\n## stderr\n");
+  assert.notEqual(stderrHeader, -1);
+  assert.equal(log.slice(0, stderrHeader).includes("errerr"), false);
+  assert.match(log.slice(stderrHeader), /errerr/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn keeps multibyte output tails within the byte limit", async () => {
+  const root = await tempRoot();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  mock.method(_spawn, "fn", () => child);
+  process.nextTick(() => {
+    child.stdout.write(`PREFIX${"é".repeat(OUTPUT_TAIL_BYTES)}`);
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  const outcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "multibyte.log"),
+  );
+  assert.ok(Buffer.byteLength(outcome.stdout) <= OUTPUT_TAIL_BYTES);
+  assert.equal(outcome.stdout.includes("PREFIX"), false);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn applies write-stream backpressure to child pipes", async () => {
+  const root = await tempRoot();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  let paused = 0;
+  let resumed = 0;
+  const originalPause = child.stdout.pause.bind(child.stdout);
+  const originalResume = child.stdout.resume.bind(child.stdout);
+  child.stdout.pause = () => {
+    paused += 1;
+    return originalPause();
+  };
+  child.stdout.resume = () => {
+    resumed += 1;
+    return originalResume();
+  };
+  mock.method(_spawn, "fn", () => child);
+  const log = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback();
+    },
+  }) as BackpressureStream;
+  log.writes = [];
+  log.drainCount = 0;
+  mock.method(log, "write", (chunk: unknown) => {
+    log.writes.push(String(chunk));
+    if (log.drainCount === 0 && String(chunk).includes("payload")) {
+      log.drainCount += 1;
+      process.nextTick(() => log.emit("drain"));
+      return false;
+    }
+    return true;
+  });
+  mock.method(_createWriteStream, "fn", () => log as any);
+  process.nextTick(() => {
+    child.stdout.write("payload");
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "backpressure.log"),
+  );
+  assert.ok(paused > 0);
+  assert.ok(resumed > 0);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn parses complete session lines before bounding later partial stdout", async () => {
+  const root = await tempRoot();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  mock.method(_spawn, "fn", () => child);
+  process.nextTick(() => {
+    child.stdout.write(
+      `{"session_file":"/tmp/session-before-tail.json"}\n${"x".repeat(OUTPUT_TAIL_BYTES + 10_000)}`,
+    );
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  const outcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "line-before-tail.log"),
+  );
+  assert.equal(outcome.sessionFile, "/tmp/session-before-tail.json");
+  assert.ok(Buffer.byteLength(outcome.stdout) <= OUTPUT_TAIL_BYTES);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn preserves multibyte characters split across output chunks", async () => {
+  const root = await tempRoot();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  mock.method(_spawn, "fn", () => child);
+  const encoded = Buffer.from("é");
+  process.nextTick(() => {
+    child.stdout.write(encoded.subarray(0, 1));
+    child.stdout.write(encoded.subarray(1));
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  const outcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "split-multibyte.log"),
+  );
+  assert.equal(outcome.stdout, "é");
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn bounds unterminated stdout line buffering while still parsing later session events", async () => {
+  const root = await tempRoot();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  mock.method(_spawn, "fn", () => child);
+  process.nextTick(() => {
+    child.stdout.write("x".repeat(OUTPUT_TAIL_BYTES + 10_000));
+    child.stdout.write('\n{"session_file":"/tmp/session.json"}\n');
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  const outcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "line-buffer.log"),
+  );
+  assert.equal(outcome.sessionFile, "/tmp/session.json");
+  assert.ok(Buffer.byteLength(outcome.stdout) <= OUTPUT_TAIL_BYTES);
   await rm(root, { recursive: true, force: true });
 });
 
@@ -345,7 +508,7 @@ test("spawn error and nonzero results keep bounded tails", async () => {
     join(root, "runs", "error.log"),
   );
   assert.equal(errorOutcome.error, "spawn failed");
-  assert.ok(errorOutcome.stderr.length <= 1_048_576);
+  assert.ok(Buffer.byteLength(errorOutcome.stderr) <= OUTPUT_TAIL_BYTES);
   assert.equal(errorOutcome.stderr.includes("ERR_PREFIX"), false);
 
   const nonzeroChild = new EventEmitter() as StubChild;
@@ -364,7 +527,7 @@ test("spawn error and nonzero results keep bounded tails", async () => {
     join(root, "runs", "nonzero.log"),
   );
   assert.equal(nonzeroOutcome.exitCode, 2);
-  assert.ok(nonzeroOutcome.stdout.length <= 1_048_576);
+  assert.ok(Buffer.byteLength(nonzeroOutcome.stdout) <= OUTPUT_TAIL_BYTES);
   assert.equal(nonzeroOutcome.stdout.includes("OUT_PREFIX"), false);
   await rm(root, { recursive: true, force: true });
 });
@@ -394,7 +557,7 @@ test("spawn timeout results keep bounded tails", async () => {
     logPath,
   );
   assert.equal(outcome.timedOut, true);
-  assert.ok(outcome.stdout.length <= 1_048_576);
+  assert.ok(Buffer.byteLength(outcome.stdout) <= OUTPUT_TAIL_BYTES);
   await rm(root, { recursive: true, force: true });
 });
 
@@ -556,6 +719,20 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
     (await readTaskState(root, "job"))?.nextRunAt,
     "2026-06-19T09:01:00.000Z",
   );
+
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  const missed = await schedulerTick(config, {
+    dryRun: true,
+    now: new Date("2026-06-19T09:03:00Z"),
+  });
+  assert.equal(missed.skipped[0]?.status, "would_miss");
+  assert.equal(
+    (await readTaskState(root, "job"))?.nextRunAt,
+    "2026-06-19T09:01:00.000Z",
+  );
   assert.equal(spawnCount, 0);
   assert.deepEqual(await readdir(join(root, "runs")), []);
   await rm(cwd, { recursive: true, force: true });
@@ -627,6 +804,59 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
     "2026-06-19T09:04:00.000Z",
   );
   await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("cron commands call crontab through exported wrapper", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const calls: Array<{ command: string; args: string[]; input?: string }> = [];
+  mock.method(
+    _execFile,
+    "fn",
+    (command: string, args: string[], callback: any) => {
+      calls.push({ command, args });
+      if (args[0] === "-l") callback(null, "MAILTO=user@example.com\n", "");
+      else callback(null, "", "");
+      return {
+        stdin: {
+          end(input: string) {
+            calls[calls.length - 1]!.input = input;
+          },
+        },
+      };
+    },
+  );
+  registerScheduledTaskCommands(pi as any, async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  }));
+
+  await registered.get("tasks-install-cron")!.handler("", {
+    cwd: "/tmp/project",
+    ui: { notify() {} },
+  });
+  assert.deepEqual(
+    calls.map((call) => [call.command, call.args]),
+    [
+      ["crontab", ["-l"]],
+      ["crontab", ["-"]],
+    ],
+  );
+  assert.match(calls[1]!.input ?? "", /\/tasks-tick/);
   await rm(root, { recursive: true, force: true });
 });
 
