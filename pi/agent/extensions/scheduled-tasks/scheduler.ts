@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ScheduledTasksConfig } from "./config.ts";
 import { ensureRootLayout, handoffPath, runDir, taskPath } from "./paths.ts";
@@ -267,6 +267,19 @@ export async function schedulerTick(
   return { claimed, skipped, dryRun: false };
 }
 
+async function readFileTail(path: string, maxBytes: number): Promise<string> {
+  const handle = await open(path, "r");
+  try {
+    const stat = await handle.stat();
+    const length = Math.min(stat.size, maxBytes);
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, stat.size - length);
+    return buffer.toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function readLatestLogs(
   config: ScheduledTasksConfig,
   taskId: string,
@@ -281,7 +294,10 @@ export async function readLatestLogs(
   ];
   for (const file of ["result.json", "output.md", "pi.log"]) {
     try {
-      const raw = await readFile(join(dir, file), "utf8");
+      const raw =
+        file === "result.json"
+          ? await readFile(join(dir, file), "utf8")
+          : await readFileTail(join(dir, file), 4000);
       parts.push(`\n## ${file}\n${raw.slice(-4000)}`);
     } catch {
       parts.push(`\n## ${file}\n(unavailable)`);

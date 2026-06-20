@@ -29,8 +29,8 @@ import {
   nextFutureRun,
   parseCron,
 } from "./schedule.ts";
-import { schedulerTick } from "./scheduler.ts";
-import { buildSpawnPlan, _spawn } from "./spawn.ts";
+import { readLatestLogs, schedulerTick } from "./scheduler.ts";
+import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
 import { readTaskState, writeTaskState } from "./state.ts";
 import { registerHandoffTool } from "./tools.ts";
 import { parseTaskMarkdown } from "./task-file.ts";
@@ -285,6 +285,158 @@ test("commands register /tasks-tick with dry-run support instead of legacy dry-r
     },
   });
   assert.match(notifications[0]!.text, /"dryRun": true/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn streams full logs while keeping bounded output tails", async () => {
+  const root = await tempRoot();
+  const logPath = join(root, "runs", "pi.log");
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  mock.method(_spawn, "fn", () => child);
+  const first = `FIRST_PREFIX${"a".repeat(700_000)}`;
+  const last = "b".repeat(700_000);
+  process.nextTick(() => {
+    child.stdout.write(first);
+    child.stdout.write(last);
+    child.stderr.write("err".repeat(400_000));
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  const outcome = await spawnPi(
+    {
+      command: "pi",
+      args: ["--mode", "json"],
+      cwd: root,
+      env: {},
+      timeoutMs: 60_000,
+    },
+    logPath,
+  );
+  assert.equal(outcome.exitCode, 0);
+  assert.ok(outcome.stdout.length <= 1_048_576);
+  assert.ok(outcome.stderr.length <= 1_048_576);
+  assert.equal(outcome.stdout.includes("FIRST_PREFIX"), false);
+  assert.ok(outcome.stdout.endsWith(last));
+  const log = await readFile(logPath, "utf8");
+  assert.match(log, /^\$ pi --mode json/);
+  assert.ok(log.includes(first.slice(0, 100)));
+  assert.ok(log.includes(last.slice(-100)));
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn error and nonzero results keep bounded tails", async () => {
+  const root = await tempRoot();
+  const errorChild = new EventEmitter() as StubChild;
+  errorChild.stdout = new PassThrough();
+  errorChild.stderr = new PassThrough();
+  errorChild.kill = () => true;
+  mock.method(_spawn, "fn", () => errorChild);
+  process.nextTick(() => {
+    errorChild.stderr.write(`ERR_PREFIX${"e".repeat(1_200_000)}`);
+    errorChild.emit("error", new Error("spawn failed"));
+  });
+  const errorOutcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "error.log"),
+  );
+  assert.equal(errorOutcome.error, "spawn failed");
+  assert.ok(errorOutcome.stderr.length <= 1_048_576);
+  assert.equal(errorOutcome.stderr.includes("ERR_PREFIX"), false);
+
+  const nonzeroChild = new EventEmitter() as StubChild;
+  nonzeroChild.stdout = new PassThrough();
+  nonzeroChild.stderr = new PassThrough();
+  nonzeroChild.kill = () => true;
+  mock.method(_spawn, "fn", () => nonzeroChild);
+  process.nextTick(() => {
+    nonzeroChild.stdout.write(`OUT_PREFIX${"o".repeat(1_200_000)}`);
+    nonzeroChild.stdout.end();
+    nonzeroChild.stderr.end();
+    nonzeroChild.emit("close", 2, null);
+  });
+  const nonzeroOutcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "nonzero.log"),
+  );
+  assert.equal(nonzeroOutcome.exitCode, 2);
+  assert.ok(nonzeroOutcome.stdout.length <= 1_048_576);
+  assert.equal(nonzeroOutcome.stdout.includes("OUT_PREFIX"), false);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn timeout results keep bounded tails", async () => {
+  const root = await tempRoot();
+  const logPath = join(root, "runs", "timeout.log");
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = (signal: string) => {
+    if (signal === "SIGTERM")
+      process.nextTick(() => child.emit("close", null, "SIGTERM"));
+    return true;
+  };
+  mock.method(_spawn, "fn", () => child);
+  child.stdout.write("x".repeat(1_200_000));
+
+  const outcome = await spawnPi(
+    {
+      command: "pi",
+      args: [],
+      cwd: root,
+      env: {},
+      timeoutMs: 1,
+    },
+    logPath,
+  );
+  assert.equal(outcome.timedOut, true);
+  assert.ok(outcome.stdout.length <= 1_048_576);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("latest logs show bounded artifact tails", async () => {
+  const root = await tempRoot();
+  const runId = "2026-06-19T09-00-00Z-abcdef";
+  const dir = runDir(root, "job", runId);
+  await mkdir(dir, { recursive: true });
+  await writeTaskState(root, {
+    taskId: "job",
+    lastRunId: runId,
+    lastStatus: "success",
+  });
+  await writeFile(
+    join(dir, "result.json"),
+    JSON.stringify({ status: "success" }),
+    "utf8",
+  );
+  await writeFile(
+    join(dir, "output.md"),
+    `HEAD_OUTPUT${"x".repeat(10_000)}TAIL_OUTPUT`,
+    "utf8",
+  );
+  await writeFile(
+    join(dir, "pi.log"),
+    `HEAD_LOG${"y".repeat(10_000)}TAIL_LOG`,
+    "utf8",
+  );
+
+  const logs = await readLatestLogs(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+    },
+    "job",
+  );
+  assert.match(logs, /TAIL_OUTPUT/);
+  assert.match(logs, /TAIL_LOG/);
+  assert.doesNotMatch(logs, /HEAD_OUTPUT/);
+  assert.doesNotMatch(logs, /HEAD_LOG/);
   await rm(root, { recursive: true, force: true });
 });
 

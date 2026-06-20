@@ -1,11 +1,13 @@
 import { spawn as _nodeSpawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
 import type { ScheduledTasksConfig } from "./config.ts";
 import type { TaskDefinition } from "./task-file.ts";
 import { effectiveTools } from "./validate.ts";
 
 export const _spawn = { fn: _nodeSpawn };
 export const _timers = { setTimeout, clearTimeout };
+
+export const OUTPUT_TAIL_BYTES = 1024 * 1024;
 
 export interface SpawnPlan {
   command: string;
@@ -69,21 +71,26 @@ export function buildSpawnPlan(options: {
   };
 }
 
-function extractSessionFile(stdout: string): string | undefined {
-  for (const line of stdout.split(/\r?\n/)) {
-    try {
-      const event = JSON.parse(line) as {
-        type?: string;
-        sessionFile?: unknown;
-        session_file?: unknown;
-      };
-      const value = event.sessionFile ?? event.session_file;
-      if (typeof value === "string") return value;
-    } catch {
-      // ignore non-json output
-    }
+function extractSessionFileLine(line: string): string | undefined {
+  try {
+    const event = JSON.parse(line) as {
+      type?: string;
+      sessionFile?: unknown;
+      session_file?: unknown;
+    };
+    const value = event.sessionFile ?? event.session_file;
+    if (typeof value === "string") return value;
+  } catch {
+    // ignore non-json output
   }
   return undefined;
+}
+
+function appendTail(current: string, chunk: string): string {
+  const combined = current + chunk;
+  return combined.length > OUTPUT_TAIL_BYTES
+    ? combined.slice(-OUTPUT_TAIL_BYTES)
+    : combined;
 }
 
 export async function spawnPi(
@@ -98,31 +105,27 @@ export async function spawnPi(
     });
     let stdout = "";
     let stderr = "";
+    let stdoutLineBuffer = "";
+    let sessionFile: string | undefined;
     let timedOut = false;
     let settled = false;
-    const finish = async (outcome: SpawnOutcome) => {
+    const log = createWriteStream(logPath, { mode: 0o600 });
+    log.write(`$ ${plan.command} ${plan.args.join(" ")}\n\n## stdout\n`);
+    const finish = (outcome: SpawnOutcome) => {
       if (settled) return;
       settled = true;
       _timers.clearTimeout(timer);
-      await writeFile(
-        logPath,
-        [
-          `$ ${plan.command} ${plan.args.join(" ")}`,
-          "",
-          "## stdout",
+      if (!sessionFile) sessionFile = extractSessionFileLine(stdoutLineBuffer);
+      log.write("\n\n## stderr\n");
+      log.write(stderr);
+      log.end(() => {
+        resolve({
+          ...outcome,
           stdout,
-          "",
-          "## stderr",
           stderr,
-        ].join("\n"),
-        { mode: 0o600 },
-      );
-      resolve({
-        ...outcome,
-        stdout,
-        stderr,
-        timedOut,
-        sessionFile: extractSessionFile(stdout),
+          timedOut,
+          sessionFile,
+        });
       });
     };
     const timer = _timers.setTimeout(() => {
@@ -131,10 +134,18 @@ export async function spawnPi(
       _timers.setTimeout(() => child.kill("SIGKILL"), 3_000);
     }, plan.timeoutMs);
     child.stdout?.on("data", (chunk) => {
-      stdout += String(chunk);
+      const text = String(chunk);
+      log.write(text);
+      stdout = appendTail(stdout, text);
+      stdoutLineBuffer += text;
+      const lines = stdoutLineBuffer.split(/\r?\n/);
+      stdoutLineBuffer = lines.pop() ?? "";
+      for (const line of lines) sessionFile ??= extractSessionFileLine(line);
     });
     child.stderr?.on("data", (chunk) => {
-      stderr += String(chunk);
+      const text = String(chunk);
+      log.write(text);
+      stderr = appendTail(stderr, text);
     });
     child.on(
       "error",

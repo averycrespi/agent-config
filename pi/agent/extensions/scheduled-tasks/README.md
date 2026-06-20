@@ -80,6 +80,7 @@ Rules:
 - Enabled tasks require `schedule` and an absolute existing `cwd`.
 - Runtime state stays in `state/*.json`; task frontmatter is not rewritten by normal runs.
 - `tools` is an explicit allowlist. If omitted, `defaultTools` is used instead of Pi's broad default tools.
+- `env` values are written in plain text in task files and are visible in management commands/tools and to agents or sessions with file read access. Task files are not secret storage.
 - `handoff` is boolean only in v1.
 
 Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `env`, invalid `timeoutMinutes`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
@@ -115,7 +116,7 @@ V1 intentionally omits structured `create` and `update` actions. Create or edit 
 { "action": "update", "content": "Next run should continue from..." }
 ```
 
-If handoff is disabled or the scheduled-run context is invalid, it returns a clear unavailable error.
+If handoff is disabled or the scheduled-run context is invalid, it returns a clear unavailable error. On update, the run marker is derived from `rootDir`, `PI_SCHEDULED_TASK_ID`, and `PI_SCHEDULED_TASK_RUN_ID`; `PI_SCHEDULED_TASK_RUN_DIR` is provided for child convenience but is not trusted for marker writes.
 
 ## Runs and artifacts
 
@@ -137,13 +138,15 @@ Each run writes:
 <root>/runs/<task-id>/<run-id>/pi.log
 ```
 
-`result.json` records task ID, run ID, status, timestamps, child exit/timeout data, discovered session file when available, and whether handoff was updated. Raw logs and outputs can include model/tool output and may contain secrets from the child run; protect the root accordingly.
+`result.json` records task ID, run ID, status, timestamps, child exit/timeout data, discovered session file when available, and whether handoff was updated. Full raw child stdout/stderr is streamed to `pi.log` on disk. `output.md`, scheduler result summaries, and session metadata extraction use bounded in-memory stdout/stderr tails, so very verbose runs may have truncated summaries while `pi.log` keeps the raw process output. `/tasks-logs` and `scheduled_tasks({ "action": "logs" })` read bounded tails from `output.md` and `pi.log` instead of loading entire large artifact files. Raw logs and outputs can include model/tool output and may contain secrets from the child run; protect the root accordingly.
 
 Normal Pi sessions never automatically include handoff content. Handoff content appears only in scheduled-run `prompt.md` when `handoff: true` and a handoff file exists.
 
 ## Scheduler and cron
 
-`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, validates them, uses the same TypeScript scheduler and child-spawn path as manual `/tasks-run`, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs.
+`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, validates them, uses the same TypeScript config loader, parser, validator, scheduler, and child-spawn path as manual `/tasks-run`, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
+
+Dry-run ticks are read-only: `/tasks-tick --dry-run` reports what would initialize, miss, or run without writing state, acquiring task execution locks, spawning child Pi, or writing run artifacts. For real due runs, the scheduler acquires the task lock before advancing `nextRunAt`, persists `nextRunAt` while still holding the scheduler lock, then releases the scheduler lock and runs while holding the task lock. If a due task is already locked, the scheduler reports a locked skip and leaves `nextRunAt` unchanged so later ticks retry while the due time remains inside the grace window.
 
 `/tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched. The managed cron line changes to the project cwd captured when the command is run, then invokes Pi directly in non-interactive mode:
 
