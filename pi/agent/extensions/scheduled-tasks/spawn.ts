@@ -41,6 +41,7 @@ export function buildSpawnPlan(options: {
   runId: string;
   runDir: string;
   promptPath: string;
+  envFileValues?: Record<string, string>;
 }): SpawnPlan {
   const tools = effectiveTools(options.task, options.config);
   const args = [
@@ -63,6 +64,7 @@ export function buildSpawnPlan(options: {
     args,
     cwd: options.task.cwd ?? process.cwd(),
     env: {
+      ...(options.envFileValues ?? {}),
       ...Object.fromEntries(
         Object.entries(options.task.env ?? {}).map(([key, value]) => [
           key,

@@ -15,6 +15,7 @@ import {
   taskPath,
   tickLogPath,
 } from "./paths.ts";
+import { loadTaskEnvFiles } from "./env-files.ts";
 import { renderPrompt } from "./prompt.ts";
 import { decideDue } from "./schedule.ts";
 import { buildSpawnPlan, spawnPi } from "./spawn.ts";
@@ -97,12 +98,22 @@ export async function runTask(
     const prompt = await renderPrompt({ rootDir: config.rootDir, task, runId });
     const promptPath = join(dir, "prompt.md");
     await writeFile(promptPath, prompt.prompt, { mode: 0o600 });
+    const envFileResult = await loadTaskEnvFiles(task);
+    if (envFileResult.issues.length > 0)
+      return {
+        taskId: task.id,
+        status: "validation_failed",
+        message: envFileResult.issues
+          .map((issue) => `envFiles ${issue.path}: ${issue.message}`)
+          .join("\n"),
+      };
     const plan = buildSpawnPlan({
       config,
       task,
       runId,
       runDir: dir,
       promptPath,
+      envFileValues: envFileResult.values,
     });
     const outcome = await spawnPi(plan, join(dir, "pi.log"));
     await writeFile(

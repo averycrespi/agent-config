@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import type { SpawnOptions } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -212,13 +213,23 @@ test("task ID and path helpers reject unsafe IDs and preserve root safety", () =
 test("task Markdown parsing validates frontmatter and body shape", () => {
   const parsed = parseTaskMarkdown(
     "/tmp/dependency-audit.md",
-    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nenv:\n  NODE_ENV: test\ntools:\n  - read\nhandoff: true\n---\nCheck dependencies.`,
+    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nenvFiles:\n  - .env\n  - /tmp/shared.env\nenv:\n  NODE_ENV: test\ntools:\n  - read\nhandoff: true\n---\nCheck dependencies.`,
   );
   assert.deepEqual(parsed.errors, []);
   assert.equal(parsed.task?.id, "dependency-audit");
   assert.equal(parsed.task?.handoff, true);
+  assert.deepEqual(parsed.task?.envFiles, [".env", "/tmp/shared.env"]);
   assert.deepEqual(parsed.task?.env, { NODE_ENV: "test" });
   assert.deepEqual(parsed.task?.tools, ["read"]);
+});
+
+test("task Markdown parsing accepts a single envFiles string", () => {
+  const parsed = parseTaskMarkdown(
+    "/tmp/dependency-audit.md",
+    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nenvFiles: .env\n---\nCheck dependencies.`,
+  );
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parsed.task?.envFiles, [".env"]);
 });
 
 test("validator reports errors, warnings, and effective handoff tools", async () => {
@@ -242,6 +253,86 @@ test("validator reports errors, warnings, and effective handoff tools", async ()
   assert.equal(result.ok, true);
   assert.match(result.warnings.join("\n"), /handoff file does not exist/);
   assert.deepEqual(result.effectiveTools, ["read", "scheduled_task_handoff"]);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("validator requires enabled task envFiles and only warns for disabled tasks", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const root = await tempRoot();
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 30,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+  };
+  const enabled = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "envFiles:\n  - .env.missing\n"),
+  );
+  const enabledResult = await validateTask(
+    enabled.task,
+    config,
+    enabled.errors,
+  );
+  assert.equal(enabledResult.ok, false);
+  assert.match(
+    enabledResult.errors.join("\n"),
+    /envFiles .*\.env\.missing.*not found or unreadable/,
+  );
+
+  const disabled = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask(
+      "job",
+      cwd,
+      "enabled: false\nenvFiles:\n  - .env.missing\n",
+    ).replace("enabled: true\n", ""),
+  );
+  const disabledResult = await validateTask(
+    disabled.task,
+    config,
+    disabled.errors,
+  );
+  assert.equal(disabledResult.ok, true);
+  assert.match(
+    disabledResult.warnings.join("\n"),
+    /envFiles .*\.env\.missing.*not found or unreadable/,
+  );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("validator rejects invalid envFiles syntax and dotenv names without leaking values", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const root = await tempRoot();
+  await writeFile(
+    join(cwd, ".env"),
+    "GOOD=ok\nBAD-NAME=secret-value\n",
+    "utf8",
+  );
+  const parsed = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "envFiles:\n  - .env\n"),
+  );
+  const result = await validateTask(
+    parsed.task,
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 30,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    parsed.errors,
+  );
+  assert.equal(result.ok, false);
+  assert.match(
+    result.errors.join("\n"),
+    /invalid environment variable name: BAD-NAME/,
+  );
+  assert.doesNotMatch(result.errors.join("\n"), /secret-value/);
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
@@ -354,6 +445,51 @@ test("spawn plan builds safe arg arrays and scheduled-run env", async () => {
   assert.ok(plan.args.includes("read,scheduled_task_handoff"));
   assert.equal(plan.env.PI_SCHEDULED_TASK_RUN, "1");
   assert.equal(plan.timeoutMs, 60_000);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn plan merges env files before inline task env and scheduled markers", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const root = await tempRoot();
+  await writeFile(
+    join(cwd, ".env"),
+    'FROM_FILE=one\nDUPLICATE=file\nPI_SCHEDULED_TASK_RUN=bad\nQUOTED="hello world"\n',
+    "utf8",
+  );
+  await writeFile(join(cwd, ".env.local"), "DUPLICATE=later\n", "utf8");
+  const task = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask(
+      "job",
+      cwd,
+      "envFiles:\n  - .env\n  - .env.local\nenv:\n  DUPLICATE: inline\n  INLINE_ONLY: yes\n",
+    ),
+  ).task!;
+  const plan = buildSpawnPlan({
+    config: {
+      rootDir: root,
+      defaultTimeoutMinutes: 7,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    task,
+    runId: "run1",
+    runDir: join(root, "runs", "job", "run1"),
+    promptPath: join(root, "runs", "job", "run1", "prompt.md"),
+    envFileValues: {
+      FROM_FILE: "one",
+      DUPLICATE: "later",
+      QUOTED: "hello world",
+      PI_SCHEDULED_TASK_RUN: "bad",
+    },
+  });
+  assert.equal(plan.env.FROM_FILE, "one");
+  assert.equal(plan.env.QUOTED, "hello world");
+  assert.equal(plan.env.DUPLICATE, "inline");
+  assert.equal(plan.env.INLINE_ONLY, "yes");
+  assert.equal(plan.env.PI_SCHEDULED_TASK_RUN, "1");
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
@@ -1420,9 +1556,10 @@ test("cron commands call crontab through exported wrapper", async () => {
 test("scheduler tick initializes state, claims due work, writes artifacts, and releases locks", async () => {
   const root = await tempRoot();
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(join(cwd, ".env"), "FROM_ENV_FILE=loaded\n", "utf8");
   await writeFile(
     join(root, "tasks", "job.md"),
-    sampleTask("job", cwd),
+    sampleTask("job", cwd, "envFiles:\n  - .env\n"),
     "utf8",
   );
   const config = {
@@ -1443,20 +1580,27 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.kill = () => true;
-  mock.method(_spawn, "fn", () => {
-    process.nextTick(() => {
-      child.stdout.write(
-        '{"type":"message_end","message":{"content":"done"}}\n',
-      );
-      child.stdout.end();
-      child.stderr.end();
-      child.emit("close", 0, null);
-    });
-    return child;
-  });
+  let spawnedEnv: NodeJS.ProcessEnv | undefined;
+  mock.method(
+    _spawn,
+    "fn",
+    (_command: string, _args: readonly string[], options?: SpawnOptions) => {
+      spawnedEnv = options?.env;
+      process.nextTick(() => {
+        child.stdout.write(
+          '{"type":"message_end","message":{"content":"done"}}\n',
+        );
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", 0, null);
+      });
+      return child;
+    },
+  );
   const due = await schedulerTick(config, { now: new Date(state!.nextRunAt!) });
   assert.equal(due.status, "ok");
   assert.equal(due.claimed[0]?.status, "success");
+  assert.equal(spawnedEnv?.FROM_ENV_FILE, "loaded");
   const updated = await readTaskState(root, "job");
   assert.equal(updated?.lastStatus, "success");
   const runId = updated!.lastRunId!;

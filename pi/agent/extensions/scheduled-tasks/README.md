@@ -67,6 +67,9 @@ tools:
   - read
   - grep
   - bash
+envFiles:
+  - .env
+  - .env.scheduled
 env:
   NODE_ENV: production
 timeoutMinutes: 30
@@ -84,10 +87,12 @@ Rules:
 - Enabled tasks require `schedule` and an absolute existing `cwd`.
 - Runtime state stays in `state/*.json`; task frontmatter is not rewritten by normal runs.
 - `tools` is an explicit allowlist. If omitted, `defaultTools` is used instead of Pi's broad default tools.
-- `env` values are written in plain text in task files and are visible in management commands/tools and to agents or sessions with file read access. Task files are not secret storage.
+- `envFiles` may be a string or list of dotenv-style files. Relative paths resolve against `cwd`; listed files are required in v1.
+- Child environment precedence is parent scheduler environment, then `envFiles` in listed order, then inline task `env`, then scheduled-run marker variables.
+- `env` values are written in plain text in task files and are visible in management commands/tools and to agents or sessions with file read access. Env file values are not printed by validation, but they are still visible to child processes and may appear in run output. Task files and env files are not secret storage.
 - `handoff` is boolean only in v1.
 
-Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `env`, invalid `timeoutMinutes`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
+Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `timeoutMinutes`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
 Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
 

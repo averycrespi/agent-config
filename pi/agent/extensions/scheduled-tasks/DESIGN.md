@@ -97,7 +97,7 @@ Each run gets a unique run ID and a run directory:
 - `--tools <effective-tools>` or `--no-tools`
 - `-p @<prompt.md>`
 
-The child environment includes task `env` values plus scheduled-run markers:
+The child environment is merged in this order: parent scheduler environment, parsed task `envFiles` in listed order, inline task `env`, then scheduled-run markers:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>
@@ -107,7 +107,9 @@ PI_SCHEDULED_TASK_RUN_ID=<run-id>
 PI_SCHEDULED_TASK_RUN_DIR=<run-dir>
 ```
 
-These markers are for scoping behavior, not a hard security boundary. Do not add behavior that trusts env vars for authorization without also constraining paths through `paths.ts` and validating the current task file.
+`envFiles` are required in v1. Relative env file paths resolve against task `cwd`; enabled tasks fail validation when a listed file is missing, unreadable, or contains invalid dotenv names. Disabled tasks only warn so drafts can be prepared before their env files exist. Validation must not print env file values.
+
+The scheduled-run markers are for scoping behavior, not a hard security boundary. Do not add behavior that trusts env vars for authorization without also constraining paths through `paths.ts` and validating the current task file.
 
 `spawnPi()` streams full stdout/stderr to `pi.log` and keeps bounded in-memory tails for `output.md`, summaries, and result extraction. Large child output may be truncated in summaries, but the raw log remains on disk. Timeouts send `SIGTERM` first and then `SIGKILL` after a short grace period.
 
@@ -171,7 +173,7 @@ Important persistence rules:
 
 ## Security and safety boundaries
 
-The extension assumes the configured root is local user-controlled storage. It does not try to make task files secret or sandboxed. Task `env` values are plain text and may be visible in task files, commands, tools, child processes, and logs.
+The extension assumes the configured root is local user-controlled storage. It does not try to make task files or env files secret or sandboxed. Task `env` values are plain text and may be visible in task files, commands, tools, child processes, and logs. Env file values are not included in validation messages or tick logs, but child runs can still expose them through process behavior or output.
 
 Security-relevant invariants:
 

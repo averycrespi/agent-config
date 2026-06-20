@@ -13,6 +13,7 @@ export interface TaskDefinition {
   model?: string;
   thinking?: string;
   tools?: string[];
+  envFiles?: string[];
   env?: Record<string, string>;
   timeoutMinutes?: number;
   handoff: boolean;
@@ -139,6 +140,19 @@ function toolsField(raw: Record<string, unknown>): string[] | undefined {
     .map((item) => item.trim());
 }
 
+function envFilesField(raw: Record<string, unknown>): string[] | undefined {
+  const value = raw.envFiles;
+  if (value === undefined) return undefined;
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    )
+    .map((item) => item.trim());
+}
+
 function envField(
   raw: Record<string, unknown>,
 ): Record<string, string> | undefined {
@@ -193,6 +207,7 @@ export function parseTaskMarkdown(
       ? { thinking: stringField(raw, "thinking") }
       : {}),
     ...(raw.tools !== undefined ? { tools: toolsField(raw) } : {}),
+    ...(raw.envFiles !== undefined ? { envFiles: envFilesField(raw) } : {}),
     ...(raw.env !== undefined ? { env: envField(raw) } : {}),
     ...(typeof timeout === "number" ? { timeoutMinutes: timeout } : {}),
     handoff: booleanField(raw, "handoff"),

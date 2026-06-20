@@ -31,6 +31,10 @@ cwd: /absolute/path/to/project
 tools:
   - read
   - grep
+envFiles:
+  - .env
+env:
+  NODE_ENV: production
 timeoutMinutes: 30
 handoff: false
 ---
@@ -46,7 +50,9 @@ Follow these constraints:
 - Enabled tasks require a five-field cron `schedule`, an absolute existing `cwd`, and a non-empty body.
 - Keep `tools` as an explicit allowlist. If omitted, the extension's configured `defaultTools` apply.
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
-- Do not put secrets in `env`; task files, child processes, and run logs can expose values.
+- Use `envFiles` for dotenv-style bulk environment defaults. Relative env file paths resolve against `cwd`, and listed files are required in v1.
+- Use inline `env` for explicit overrides; inline `env` wins over `envFiles`, and scheduled-run marker variables win over both.
+- Do not put secrets in `env` or env files; child processes and run logs can expose values.
 - Use only simple YAML supported by the extension: scalars, arrays with `- item`, and one-level object maps such as `env:`.
 
 ## Safety boundaries

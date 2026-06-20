@@ -2,6 +2,7 @@ import { access, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import type { ScheduledTasksConfig } from "./config.ts";
 import { commandHealth, isValidEnvName } from "./config.ts";
+import { loadTaskEnvFiles } from "./env-files.ts";
 import { handoffPath, isSafeTaskId } from "./paths.ts";
 import { parseCron } from "./schedule.ts";
 import type { TaskDefinition } from "./task-file.ts";
@@ -85,13 +86,33 @@ export async function validateTask(
   )
     errors.push("tools must be an array of non-empty strings.");
   if (
+    task.rawFrontmatter.envFiles !== undefined &&
+    !(
+      (typeof task.rawFrontmatter.envFiles === "string" &&
+        task.rawFrontmatter.envFiles.trim()) ||
+      (Array.isArray(task.rawFrontmatter.envFiles) &&
+        (task.envFiles ?? []).length ===
+          (task.rawFrontmatter.envFiles as unknown[]).length)
+    )
+  )
+    errors.push("envFiles must be a string or array of non-empty strings.");
+  if (
     task.rawFrontmatter.env !== undefined &&
     (!task.rawFrontmatter.env ||
       typeof task.rawFrontmatter.env !== "object" ||
       Array.isArray(task.rawFrontmatter.env))
   )
     errors.push("env must be an object of scalar values.");
-  for (const key of Object.keys(task.env ?? {}))
+  const envFileResult = await loadTaskEnvFiles(task);
+  for (const issue of envFileResult.issues) {
+    const message = `envFiles ${issue.path}: ${issue.message}`;
+    if (task.enabled) errors.push(message);
+    else warnings.push(message);
+  }
+  for (const key of [
+    ...Object.keys(envFileResult.values),
+    ...Object.keys(task.env ?? {}),
+  ])
     if (SENSITIVE_KEY.test(key))
       warnings.push(
         `Env key ${key} looks sensitive; raw logs may expose child process output.`,
