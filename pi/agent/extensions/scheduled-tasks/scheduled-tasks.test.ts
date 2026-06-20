@@ -529,7 +529,7 @@ test("cron block scopes configured environment to the managed Pi command", () =>
   });
   assert.match(
     block,
-    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' 'pi' --mode json --no-session -p '\/tasks-tick'/,
+    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' 'pi' --mode json --no-session -p '\/scheduled-tasks-tick'/,
   );
 });
 
@@ -543,7 +543,7 @@ test("cron install and uninstall preserve unrelated crontab lines and quote Pi c
   assert.match(block, /BEGIN PI SCHEDULED TASKS/);
   assert.match(
     block,
-    /cd '\/tmp\/project with spaces;rm' && '\/opt\/pi bin\/pi' --mode json --no-session -p '\/tasks-tick'/,
+    /cd '\/tmp\/project with spaces;rm' && '\/opt\/pi bin\/pi' --mode json --no-session -p '\/scheduled-tasks-tick'/,
   );
   assert.doesNotMatch(block, /pi-task-scheduler\.mjs|node/);
   const existing = "MAILTO=user@example.com\n";
@@ -592,7 +592,7 @@ async function commandHarness() {
   return { registered, root, notifications, ctx };
 }
 
-test("/tasks-list reports a clear empty state", async () => {
+test("/scheduled-tasks-list reports a clear empty state", async () => {
   const registered = new Map<
     string,
     { handler: (args: string, ctx: any) => Promise<void> }
@@ -616,7 +616,7 @@ test("/tasks-list reports a clear empty state", async () => {
   registerScheduledTaskCommands(pi as any, loadConfig);
 
   const notifications: Array<{ text: string; level: string }> = [];
-  await registered.get("tasks-list")!.handler("", {
+  await registered.get("scheduled-tasks-list")!.handler("", {
     cwd: "/tmp/project",
     ui: {
       notify(text: string, level = "info") {
@@ -629,7 +629,7 @@ test("/tasks-list reports a clear empty state", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-show reports usage for missing task id", async () => {
+test("/scheduled-tasks-show reports usage for missing task id", async () => {
   const registered = new Map<
     string,
     { handler: (args: string, ctx: any) => Promise<void> }
@@ -653,7 +653,7 @@ test("/tasks-show reports usage for missing task id", async () => {
   registerScheduledTaskCommands(pi as any, loadConfig);
 
   const notifications: Array<{ text: string; level: string }> = [];
-  await registered.get("tasks-show")!.handler("   ", {
+  await registered.get("scheduled-tasks-show")!.handler("   ", {
     cwd: "/tmp/project",
     ui: {
       notify(text: string, level = "info") {
@@ -663,13 +663,13 @@ test("/tasks-show reports usage for missing task id", async () => {
   });
 
   assert.deepEqual(notifications[0], {
-    text: "Usage: /tasks-show <task-id>",
+    text: "Usage: /scheduled-tasks-show <task-id>",
     level: "warning",
   });
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-show reports valid missing task as not found", async () => {
+test("/scheduled-tasks-show reports valid missing task as not found", async () => {
   const registered = new Map<
     string,
     { handler: (args: string, ctx: any) => Promise<void> }
@@ -693,7 +693,7 @@ test("/tasks-show reports valid missing task as not found", async () => {
   registerScheduledTaskCommands(pi as any, loadConfig);
 
   const notifications: Array<{ text: string; level: string }> = [];
-  await registered.get("tasks-show")!.handler("foo", {
+  await registered.get("scheduled-tasks-show")!.handler("foo", {
     cwd: "/tmp/project",
     ui: {
       notify(text: string, level = "info") {
@@ -709,7 +709,7 @@ test("/tasks-show reports valid missing task as not found", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-show reports invalid task id without throwing", async () => {
+test("/scheduled-tasks-show reports invalid task id without throwing", async () => {
   const registered = new Map<
     string,
     { handler: (args: string, ctx: any) => Promise<void> }
@@ -733,7 +733,7 @@ test("/tasks-show reports invalid task id without throwing", async () => {
   registerScheduledTaskCommands(pi as any, loadConfig);
 
   const notifications: Array<{ text: string; level: string }> = [];
-  await registered.get("tasks-show")!.handler("../bad", {
+  await registered.get("scheduled-tasks-show")!.handler("../bad", {
     cwd: "/tmp/project",
     ui: {
       notify(text: string, level = "info") {
@@ -747,42 +747,20 @@ test("/tasks-show reports invalid task id without throwing", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-run reports usage for missing task id", async () => {
+test("/scheduled-tasks-run reports usage for missing task id", async () => {
   const { registered, root, notifications, ctx } = await commandHarness();
-  await registered.get("tasks-run")!.handler("", ctx);
+  await registered.get("scheduled-tasks-run")!.handler("", ctx);
 
   assert.deepEqual(notifications[0], {
-    text: "Usage: /tasks-run <task-id>",
+    text: "Usage: /scheduled-tasks-run <task-id>",
     level: "warning",
   });
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-run reports valid missing task as not found", async () => {
+test("/scheduled-tasks-run reports valid missing task as not found", async () => {
   const { registered, root, notifications, ctx } = await commandHarness();
-  await registered.get("tasks-run")!.handler("foo", ctx);
-
-  assert.deepEqual(notifications[0], {
-    text: "Task not found: foo",
-    level: "warning",
-  });
-  await rm(root, { recursive: true, force: true });
-});
-
-test("/tasks-logs reports usage for missing task id", async () => {
-  const { registered, root, notifications, ctx } = await commandHarness();
-  await registered.get("tasks-logs")!.handler("", ctx);
-
-  assert.deepEqual(notifications[0], {
-    text: "Usage: /tasks-logs <task-id>",
-    level: "warning",
-  });
-  await rm(root, { recursive: true, force: true });
-});
-
-test("/tasks-logs reports valid missing task as not found", async () => {
-  const { registered, root, notifications, ctx } = await commandHarness();
-  await registered.get("tasks-logs")!.handler("foo", ctx);
+  await registered.get("scheduled-tasks-run")!.handler("foo", ctx);
 
   assert.deepEqual(notifications[0], {
     text: "Task not found: foo",
@@ -791,18 +769,40 @@ test("/tasks-logs reports valid missing task as not found", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-doctor reports invalid task id without throwing", async () => {
+test("/scheduled-tasks-logs reports usage for missing task id", async () => {
   const { registered, root, notifications, ctx } = await commandHarness();
-  await registered.get("tasks-doctor")!.handler("../bad", ctx);
+  await registered.get("scheduled-tasks-logs")!.handler("", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Usage: /scheduled-tasks-logs <task-id>",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/scheduled-tasks-logs reports valid missing task as not found", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("scheduled-tasks-logs")!.handler("foo", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Task not found: foo",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/scheduled-tasks-doctor reports invalid task id without throwing", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("scheduled-tasks-doctor")!.handler("../bad", ctx);
 
   assert.equal(notifications[0]!.level, "error");
   assert.match(notifications[0]!.text, /Invalid task ID/);
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-doctor reports valid missing task as not found", async () => {
+test("/scheduled-tasks-doctor reports valid missing task as not found", async () => {
   const { registered, root, notifications, ctx } = await commandHarness();
-  await registered.get("tasks-doctor")!.handler("foo", ctx);
+  await registered.get("scheduled-tasks-doctor")!.handler("foo", ctx);
 
   assert.deepEqual(notifications[0], {
     text: "Task not found: foo",
@@ -811,7 +811,7 @@ test("/tasks-doctor reports valid missing task as not found", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("/tasks-doctor reports managed crontab installation status", async () => {
+test("/scheduled-tasks-doctor reports managed crontab installation status", async () => {
   const cases = [
     {
       stdout: buildCronBlock({
@@ -850,7 +850,7 @@ test("/tasks-doctor reports managed crontab installation status", async () => {
       },
     );
 
-    await registered.get("tasks-doctor")!.handler("", ctx);
+    await registered.get("scheduled-tasks-doctor")!.handler("", ctx);
 
     assert.ok(notifications[0]!.text.includes(item.expected));
     assert.ok(notifications[0]!.text.includes("last tick: none"));
@@ -899,7 +899,7 @@ test("scheduled_tasks doctor reports managed crontab status", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("commands register /tasks-tick with dry-run support instead of legacy dry-run command", async () => {
+test("commands register /scheduled-tasks-tick with dry-run support instead of legacy dry-run command", async () => {
   const registered = new Map<
     string,
     { handler: (args: string, ctx: any) => Promise<void> }
@@ -921,11 +921,11 @@ test("commands register /tasks-tick with dry-run support instead of legacy dry-r
     cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
-  assert.ok(registered.has("tasks-tick"));
-  assert.equal(registered.has("tasks-tick-dry-run"), false);
+  assert.ok(registered.has("scheduled-tasks-tick"));
+  assert.equal(registered.has("scheduled-scheduled-tasks-tick-dry-run"), false);
 
   const notifications: Array<{ text: string; level: string }> = [];
-  await registered.get("tasks-tick")!.handler("--dry-run", {
+  await registered.get("scheduled-tasks-tick")!.handler("--dry-run", {
     cwd: "/tmp/project",
     ui: {
       notify(text: string, level = "info") {
@@ -1702,7 +1702,7 @@ test("cron commands call crontab through exported wrapper", async () => {
     cronEnvironment: {},
   }));
 
-  await registered.get("tasks-install-cron")!.handler("", {
+  await registered.get("scheduled-tasks-install-cron")!.handler("", {
     cwd: "/tmp/project",
     ui: { notify() {} },
   });
@@ -1713,7 +1713,7 @@ test("cron commands call crontab through exported wrapper", async () => {
       ["crontab", ["-"]],
     ],
   );
-  assert.match(calls[1]!.input ?? "", /\/tasks-tick/);
+  assert.match(calls[1]!.input ?? "", /\/scheduled-tasks-tick/);
   await rm(root, { recursive: true, force: true });
 });
 

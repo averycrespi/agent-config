@@ -98,18 +98,18 @@ Rules:
 
 Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `timeoutMinutes`, invalid `catchup`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
-Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
+Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
 
 ## Commands
 
-- `/tasks-list` lists task IDs, enabled state, and descriptions.
-- `/tasks-show <task-id>` shows parsed metadata and the Markdown prompt body.
-- `/tasks-run <task-id>` manually starts a fresh scheduled child Pi run.
-- `/tasks-logs <task-id>` shows latest run status, artifact paths, and bounded output/log tails.
-- `/tasks-doctor [task-id]` validates config, root, managed crontab installation status, latest tick status, command health, and task files.
-- `/tasks-tick [--dry-run]` runs one scheduler tick and appends a compact entry to `state/ticks.jsonl`. `--dry-run` reports decisions without mutating task state, acquiring task execution locks, spawning child Pi, or writing run artifacts.
-- `/tasks-install-cron` installs or replaces only the managed crontab block.
-- `/tasks-uninstall-cron` removes only the managed crontab block.
+- `/scheduled-tasks-list` lists task IDs, enabled state, and descriptions.
+- `/scheduled-tasks-show <task-id>` shows parsed metadata and the Markdown prompt body.
+- `/scheduled-tasks-run <task-id>` manually starts a fresh scheduled child Pi run.
+- `/scheduled-tasks-logs <task-id>` shows latest run status, artifact paths, and bounded output/log tails.
+- `/scheduled-tasks-doctor [task-id]` validates config, root, managed crontab installation status, latest tick status, command health, and task files.
+- `/scheduled-tasks-tick [--dry-run]` runs one scheduler tick and appends a compact entry to `state/ticks.jsonl`. `--dry-run` reports decisions without mutating task state, acquiring task execution locks, spawning child Pi, or writing run artifacts.
+- `/scheduled-tasks-install-cron` installs or replaces only the managed crontab block.
+- `/scheduled-tasks-uninstall-cron` removes only the managed crontab block.
 - `/scheduled-tasks-config` shows effective parsed config.
 
 ## Skill and tools
@@ -153,7 +153,7 @@ Each run writes:
 <root>/runs/<task-id>/<run-id>/pi.log
 ```
 
-`result.json` records task ID, run ID, status, timestamps, child exit/timeout data, discovered session file when available, and whether handoff was updated. Full raw child stdout/stderr is streamed to `pi.log` on disk. `output.md`, scheduler result summaries, and session metadata extraction use bounded in-memory stdout/stderr tails, so very verbose runs may have truncated summaries while `pi.log` keeps the raw process output. `/tasks-logs` and `scheduled_tasks({ "action": "logs" })` read bounded tails from `output.md` and `pi.log` instead of loading entire large artifact files. Raw logs and outputs can include model/tool output and may contain secrets from the child run; protect the root accordingly.
+`result.json` records task ID, run ID, status, timestamps, child exit/timeout data, discovered session file when available, and whether handoff was updated. Full raw child stdout/stderr is streamed to `pi.log` on disk. `output.md`, scheduler result summaries, and session metadata extraction use bounded in-memory stdout/stderr tails, so very verbose runs may have truncated summaries while `pi.log` keeps the raw process output. `/scheduled-tasks-logs` and `scheduled_tasks({ "action": "logs" })` read bounded tails from `output.md` and `pi.log` instead of loading entire large artifact files. Raw logs and outputs can include model/tool output and may contain secrets from the child run; protect the root accordingly.
 
 Scheduler ticks append compact JSON entries to `<root>/state/ticks.jsonl`, retained to the latest 1000 entries. Entries include timestamp, scheduler status (`ok` or `locked`), dry-run flag, claimed task summaries, skipped task summaries, and any scheduler-level message. They do not include task prompts, task env values, child stdout/stderr, or full validation output.
 
@@ -161,19 +161,19 @@ Normal Pi sessions never automatically include handoff content. Handoff content 
 
 ## Scheduler and cron
 
-`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, and skips missed schedules outside the 90-second due window unless the task opts into catchup. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
+`/scheduled-tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, and skips missed schedules outside the 90-second due window unless the task opts into catchup. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
 
 Catchup is coalesced, not replayed. A task with `catchup: true` runs at most one make-up run when the scheduler notices missed occurrences, even if it missed multiple scheduled times. One tick claims at most `maxCatchupRunsPerTick` catchup runs globally; extra eligible tasks are reported as `catchup_deferred` and keep their existing `nextRunAt` for a later tick. Normal due runs are not limited by the catchup cap.
 
-`/tasks-tick` returns a scheduler-level summary with `status`, `timestamp`, `dryRun`, `claimed`, and `skipped`. Scheduler lock contention is reported as `status: "locked"` with no fake task ID. Dry-run ticks report what would initialize, miss, catch up, defer, or run without writing task state, acquiring task execution locks, spawning child Pi, or writing run artifacts; they still append a compact tick-log entry. If a due task is already running, the scheduler reports a task-level locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
+`/scheduled-tasks-tick` returns a scheduler-level summary with `status`, `timestamp`, `dryRun`, `claimed`, and `skipped`. Scheduler lock contention is reported as `status: "locked"` with no fake task ID. Dry-run ticks report what would initialize, miss, catch up, defer, or run without writing task state, acquiring task execution locks, spawning child Pi, or writing run artifacts; they still append a compact tick-log entry. If a due task is already running, the scheduler reports a task-level locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
 
-`/tasks-doctor` and `scheduled_tasks({ "action": "doctor" })` report whether the managed crontab block is installed, not installed, or unavailable to inspect. They do not modify crontab.
+`/scheduled-tasks-doctor` and `scheduled_tasks({ "action": "doctor" })` report whether the managed crontab block is installed, not installed, or unavailable to inspect. They do not modify crontab.
 
-`/tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched. The managed cron line changes to the project cwd captured when the command is run, then invokes Pi directly in non-interactive mode:
+`/scheduled-tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched. The managed cron line changes to the project cwd captured when the command is run, then invokes Pi directly in non-interactive mode:
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 

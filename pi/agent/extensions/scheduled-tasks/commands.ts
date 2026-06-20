@@ -100,7 +100,7 @@ export function registerScheduledTaskCommands(
     return { config, warnings };
   }
 
-  pi.registerCommand("tasks-list", {
+  pi.registerCommand("scheduled-tasks-list", {
     description:
       "List scheduled task IDs, enabled state, next run, and last status.",
     handler: async (_args, ctx) => {
@@ -121,10 +121,10 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-show", {
+  pi.registerCommand("scheduled-tasks-show", {
     description: "Show parsed scheduled task metadata and prompt body.",
     handler: async (args, ctx) => {
-      const taskId = taskIdArg(args, "tasks-show", ctx);
+      const taskId = taskIdArg(args, "scheduled-tasks-show", ctx);
       if (!taskId) return;
       const { config } = await configFor(ctx);
       const path = await existingTaskPath(config, taskId, ctx);
@@ -144,10 +144,10 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-run", {
+  pi.registerCommand("scheduled-tasks-run", {
     description: "Manually spawn a scheduled child Pi run for a task.",
     handler: async (args, ctx) => {
-      const taskId = taskIdArg(args, "tasks-run", ctx);
+      const taskId = taskIdArg(args, "scheduled-tasks-run", ctx);
       if (!taskId) return;
       const { config } = await configFor(ctx);
       if (!(await existingTaskPath(config, taskId, ctx))) return;
@@ -160,10 +160,10 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-logs", {
+  pi.registerCommand("scheduled-tasks-logs", {
     description: "Show latest scheduled task run logs and artifact paths.",
     handler: async (args, ctx) => {
-      const taskId = taskIdArg(args, "tasks-logs", ctx);
+      const taskId = taskIdArg(args, "scheduled-tasks-logs", ctx);
       if (!taskId) return;
       const { config } = await configFor(ctx);
       if (!(await existingTaskPath(config, taskId, ctx))) return;
@@ -171,7 +171,7 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-doctor", {
+  pi.registerCommand("scheduled-tasks-doctor", {
     description: "Validate scheduled task files and scheduler health.",
     handler: async (args, ctx) => {
       const { config, warnings } = await configFor(ctx);
@@ -205,7 +205,7 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-install-cron", {
+  pi.registerCommand("scheduled-tasks-install-cron", {
     description: "Install or update the managed scheduled-tasks crontab block.",
     handler: async (_args, ctx) => {
       const { config } = await configFor(ctx);
@@ -222,7 +222,7 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-uninstall-cron", {
+  pi.registerCommand("scheduled-tasks-uninstall-cron", {
     description: "Remove only the managed scheduled-tasks crontab block.",
     handler: async (_args, ctx) => {
       await writeCrontab(uninstallManagedBlock(await readCurrentCrontab()));
@@ -230,7 +230,7 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-tick", {
+  pi.registerCommand("scheduled-tasks-tick", {
     description:
       "Run one scheduled-tasks scheduler tick. Use --dry-run to inspect without mutating.",
     handler: async (args, ctx) => {

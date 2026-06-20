@@ -23,7 +23,7 @@ export function buildCronBlock(options: {
     "json",
     "--no-session",
     "-p",
-    shellQuote("/tasks-tick"),
+    shellQuote("/scheduled-tasks-tick"),
   ].join(" ");
   return [CRON_BEGIN, `* * * * * ${command}`, CRON_END].join("\n");
 }

@@ -16,7 +16,7 @@ This file is for future agents changing the extension. The user-facing contract 
 - `spawn.ts` builds the child Pi argv/env and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
 - `state.ts` persists scheduler state and run results as atomically replaced JSON files.
 - `locks.ts` implements advisory file locks via exclusive create. There is no stale-lock recovery or force-unlock command in v1.
-- `commands.ts` registers slash commands, including doctor, cron install/uninstall, and `/tasks-tick`.
+- `commands.ts` registers slash commands, including doctor, cron install/uninstall, and `/scheduled-tasks-tick`.
 - `tools.ts` registers agent tools with compact TUI renderers and text results that agents can recover from.
 
 ## Persistent layout
@@ -52,7 +52,7 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 ## Scheduler semantics
 
-`/tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. Manual runs and scheduled runs share the same `runTask()` path after task lookup.
+`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. Manual runs and scheduled runs share the same `runTask()` path after task lookup.
 
 The scheduler behavior is intentionally coalescing, not replaying:
 
@@ -133,9 +133,9 @@ Keep the handoff model narrow. It exists to make recurrence intentional and audi
 
 Slash commands are for interactive users:
 
-- `/tasks-list`, `/tasks-show`, `/tasks-doctor`
-- `/tasks-run`, `/tasks-logs`, `/tasks-tick [--dry-run]`
-- `/tasks-install-cron`, `/tasks-uninstall-cron`
+- `/scheduled-tasks-list`, `/scheduled-tasks-show`, `/scheduled-tasks-doctor`
+- `/scheduled-tasks-run`, `/scheduled-tasks-logs`, `/scheduled-tasks-tick [--dry-run]`
+- `/scheduled-tasks-install-cron`, `/scheduled-tasks-uninstall-cron`
 - `/scheduled-tasks-config` from the shared config helper
 
 Agent tools are deliberately smaller:
@@ -151,11 +151,11 @@ V1 intentionally does not expose structured create/update/delete task actions. A
 
 Doctor surfaces inspect crontab status by reading `crontab -l` and checking only for the marked managed block. They report installed, not installed, or unavailable without mutating crontab.
 
-`/tasks-install-cron` owns one marked crontab block and leaves unrelated entries untouched. The block captures the project cwd at install time and invokes the configured Pi command directly:
+`/scheduled-tasks-install-cron` owns one marked crontab block and leaves unrelated entries untouched. The block captures the project cwd at install time and invokes the configured Pi command directly:
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
