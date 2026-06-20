@@ -12,7 +12,7 @@ All persistent data lives under one configurable root directory:
 <root>/
   tasks/       # <task-id>.md definitions
   handoffs/    # <task-id>.md optional cross-run memory
-  state/       # <task-id>.json scheduler state
+  state/       # <task-id>.json scheduler state plus ticks.jsonl
   sessions/    # child Pi session directories by task
   runs/        # run artifacts by task/run ID
   locks/       # scheduler and per-task locks
@@ -48,7 +48,7 @@ Example:
 }
 ```
 
-Run `/scheduled-tasks-config` to inspect the effective parsed config. The extension writes no retained diagnostic logs outside the configured root, but run artifacts may include raw child output.
+Run `/scheduled-tasks-config` to inspect the effective parsed config. The extension writes no retained diagnostic logs outside the configured root, but `state/ticks.jsonl` records bounded scheduler tick history and run artifacts may include raw child output.
 
 ## Task files
 
@@ -97,8 +97,8 @@ Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_
 - `/tasks-show <task-id>` shows parsed metadata and the Markdown prompt body.
 - `/tasks-run <task-id>` manually starts a fresh scheduled child Pi run.
 - `/tasks-logs <task-id>` shows latest run status, artifact paths, and bounded output/log tails.
-- `/tasks-doctor [task-id]` validates config, root, managed crontab installation status, command health, and task files.
-- `/tasks-tick [--dry-run]` runs one scheduler tick. `--dry-run` reports decisions without mutating scheduler state, acquiring task execution locks, spawning child Pi, or writing run artifacts.
+- `/tasks-doctor [task-id]` validates config, root, managed crontab installation status, latest tick status, command health, and task files.
+- `/tasks-tick [--dry-run]` runs one scheduler tick and appends a compact entry to `state/ticks.jsonl`. `--dry-run` reports decisions without mutating task state, acquiring task execution locks, spawning child Pi, or writing run artifacts.
 - `/tasks-install-cron` installs or replaces only the managed crontab block.
 - `/tasks-uninstall-cron` removes only the managed crontab block.
 - `/scheduled-tasks-config` shows effective parsed config.
@@ -146,13 +146,15 @@ Each run writes:
 
 `result.json` records task ID, run ID, status, timestamps, child exit/timeout data, discovered session file when available, and whether handoff was updated. Full raw child stdout/stderr is streamed to `pi.log` on disk. `output.md`, scheduler result summaries, and session metadata extraction use bounded in-memory stdout/stderr tails, so very verbose runs may have truncated summaries while `pi.log` keeps the raw process output. `/tasks-logs` and `scheduled_tasks({ "action": "logs" })` read bounded tails from `output.md` and `pi.log` instead of loading entire large artifact files. Raw logs and outputs can include model/tool output and may contain secrets from the child run; protect the root accordingly.
 
+Scheduler ticks append compact JSON entries to `<root>/state/ticks.jsonl`, retained to the latest 1000 entries. Entries include timestamp, scheduler status (`ok` or `locked`), dry-run flag, claimed task summaries, skipped task summaries, and any scheduler-level message. They do not include task prompts, task env values, child stdout/stderr, or full validation output.
+
 Normal Pi sessions never automatically include handoff content. Handoff content appears only in scheduled-run `prompt.md` when `handoff: true` and a handoff file exists.
 
 ## Scheduler and cron
 
 `/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
 
-Dry-run ticks are read-only: `/tasks-tick --dry-run` reports what would initialize, miss, or run without writing state, acquiring task execution locks, spawning child Pi, or writing run artifacts. If a due task is already running, the scheduler reports a locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
+`/tasks-tick` returns a scheduler-level summary with `status`, `timestamp`, `dryRun`, `claimed`, and `skipped`. Scheduler lock contention is reported as `status: "locked"` with no fake task ID. Dry-run ticks report what would initialize, miss, or run without writing task state, acquiring task execution locks, spawning child Pi, or writing run artifacts; they still append a compact tick-log entry. If a due task is already running, the scheduler reports a task-level locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
 
 `/tasks-doctor` and `scheduled_tasks({ "action": "doctor" })` report whether the managed crontab block is installed, not installed, or unavailable to inspect. They do not modify crontab.
 

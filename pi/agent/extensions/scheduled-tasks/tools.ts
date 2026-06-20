@@ -11,7 +11,12 @@ import {
 import type { ScheduledTasksConfig } from "./config.ts";
 import { formatCrontabStatus, getCrontabStatus } from "./crontab.ts";
 import { handoffPath, runDir, taskPath } from "./paths.ts";
-import { manualRunTask, readLatestLogs } from "./scheduler.ts";
+import {
+  formatLatestTick,
+  manualRunTask,
+  readLatestLogs,
+  readLatestTickLog,
+} from "./scheduler.ts";
 import { readAllTasks, readTaskFile } from "./task-file.ts";
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
 
@@ -159,6 +164,7 @@ export function registerScheduledTasksTool(
         }
         case "doctor": {
           const crontabStatus = await getCrontabStatus();
+          const latestTick = await readLatestTickLog(config.rootDir);
           const issues = await validateConfig(config);
           const parsed = params.task_id
             ? [await readTaskFile(taskPath(config.rootDir, params.task_id))]
@@ -170,11 +176,12 @@ export function registerScheduledTasksTool(
             [
               `rootDir: ${config.rootDir}`,
               formatCrontabStatus(crontabStatus),
+              formatLatestTick(latestTick),
               ...issues.map((issue) => `${issue.severity}: ${issue.message}`),
               "",
               ...results.map(formatValidation),
             ].join("\n"),
-            { crontabStatus, issues, tasks: results },
+            { crontabStatus, latestTick, issues, tasks: results },
           );
         }
       }

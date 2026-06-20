@@ -26,7 +26,13 @@ import {
   uninstallManagedBlock,
 } from "./cron.ts";
 import { acquireLock } from "./locks.ts";
-import { ensureRootLayout, isInside, isSafeTaskId, runDir } from "./paths.ts";
+import {
+  ensureRootLayout,
+  isInside,
+  isSafeTaskId,
+  runDir,
+  tickLogPath,
+} from "./paths.ts";
 import { renderPrompt } from "./prompt.ts";
 import {
   cronMatches,
@@ -687,6 +693,7 @@ test("/tasks-doctor reports managed crontab installation status", async () => {
     await registered.get("tasks-doctor")!.handler("", ctx);
 
     assert.ok(notifications[0]!.text.includes(item.expected));
+    assert.ok(notifications[0]!.text.includes("last tick: none"));
     await rm(root, { recursive: true, force: true });
     mock.restoreAll();
   }
@@ -727,6 +734,7 @@ test("scheduled_tasks doctor reports managed crontab status", async () => {
   );
 
   assert.match(result.content[0].text, /cron: not installed/);
+  assert.match(result.content[0].text, /last tick: none/);
   assert.equal(result.details.crontabStatus.status, "not_installed");
   await rm(root, { recursive: true, force: true });
 });
@@ -1175,6 +1183,8 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
     dryRun: true,
     now: new Date("2026-06-19T09:00:00Z"),
   });
+  assert.equal(initialized.status, "ok");
+  assert.equal(initialized.timestamp, "2026-06-19T09:00:00.000Z");
   assert.equal(initialized.skipped[0]?.status, "would_initialize");
   assert.equal(await readTaskState(root, "job"), undefined);
   assert.deepEqual(await readdir(join(root, "runs")), []);
@@ -1187,6 +1197,7 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
     dryRun: true,
     now: new Date("2026-06-19T09:01:00Z"),
   });
+  assert.equal(due.status, "ok");
   assert.equal(due.claimed[0]?.status, "would_run");
   assert.equal(
     (await readTaskState(root, "job"))?.nextRunAt,
@@ -1201,6 +1212,7 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
     dryRun: true,
     now: new Date("2026-06-19T09:03:00Z"),
   });
+  assert.equal(missed.status, "ok");
   assert.equal(missed.skipped[0]?.status, "would_miss");
   assert.equal(
     (await readTaskState(root, "job"))?.nextRunAt,
@@ -1208,7 +1220,76 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
   );
   assert.equal(spawnCount, 0);
   assert.deepEqual(await readdir(join(root, "runs")), []);
+  const tickLog = (await readFile(tickLogPath(root), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(tickLog.length, 3);
+  assert.equal(tickLog[0].dryRun, true);
+  assert.equal(tickLog[2].skipped[0].status, "would_miss");
   await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler lock reports scheduler-level locked status without fake task id", async () => {
+  const root = await tempRoot();
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+  };
+  const held = await acquireLock(root, "scheduler");
+  assert.ok(held);
+
+  const locked = await schedulerTick(config, {
+    now: new Date("2026-06-19T09:00:00Z"),
+  });
+
+  assert.equal(locked.status, "locked");
+  assert.equal(locked.message, "Scheduler lock is already held.");
+  assert.deepEqual(locked.claimed, []);
+  assert.deepEqual(locked.skipped, []);
+  const latest = JSON.parse(
+    (await readFile(tickLogPath(root), "utf8")).trim().split("\n").at(-1)!,
+  );
+  assert.equal(latest.status, "locked");
+  assert.equal(latest.taskId, undefined);
+
+  await held.release();
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler tick log is retained to the latest 1000 entries", async () => {
+  const root = await tempRoot();
+  const oldEntries = Array.from({ length: 1005 }, (_, index) =>
+    JSON.stringify({
+      timestamp: `2026-06-18T00:${String(index % 60).padStart(2, "0")}:00.000Z`,
+      status: "ok",
+      claimed: [],
+      skipped: [],
+      dryRun: false,
+    }),
+  );
+  await writeFile(tickLogPath(root), `${oldEntries.join("\n")}\n`, "utf8");
+
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+  };
+  await schedulerTick(config, { now: new Date("2026-06-19T09:00:00Z") });
+
+  const lines = (await readFile(tickLogPath(root), "utf8")).trim().split("\n");
+  assert.equal(lines.length, 1000);
+  assert.equal(JSON.parse(lines.at(-1)!).timestamp, "2026-06-19T09:00:00.000Z");
+  assert.equal(
+    JSON.parse(lines[0]!).timestamp,
+    JSON.parse(oldEntries[6]!).timestamp,
+  );
   await rm(root, { recursive: true, force: true });
 });
 
@@ -1237,6 +1318,7 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
   const locked = await schedulerTick(config, {
     now: new Date("2026-06-19T09:01:30Z"),
   });
+  assert.equal(locked.status, "ok");
   assert.equal(locked.skipped[0]?.status, "locked");
   assert.equal(
     (await readTaskState(root, "job"))?.nextRunAt,
@@ -1353,6 +1435,7 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
   const first = await schedulerTick(config, {
     now: new Date("2026-06-19T09:00:00Z"),
   });
+  assert.equal(first.status, "ok");
   assert.equal(first.skipped[0]?.status, "initialized");
   const state = await readTaskState(root, "job");
   assert.ok(state?.nextRunAt);
@@ -1372,6 +1455,7 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
     return child;
   });
   const due = await schedulerTick(config, { now: new Date(state!.nextRunAt!) });
+  assert.equal(due.status, "ok");
   assert.equal(due.claimed[0]?.status, "success");
   const updated = await readTaskState(root, "job");
   assert.equal(updated?.lastStatus, "success");
@@ -1386,6 +1470,11 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
     ).status,
     "success",
   );
+  const latestTick = JSON.parse(
+    (await readFile(tickLogPath(root), "utf8")).trim().split("\n").at(-1)!,
+  );
+  assert.equal(latestTick.claimed[0].runId, runId);
+  assert.equal(latestTick.status, "ok");
   const relocked = await acquireLock(root, "job");
   assert.ok(relocked);
   await relocked.release();

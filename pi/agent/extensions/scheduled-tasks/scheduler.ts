@@ -1,7 +1,20 @@
-import { mkdir, open, readFile, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import type { ScheduledTasksConfig } from "./config.ts";
-import { ensureRootLayout, handoffPath, runDir, taskPath } from "./paths.ts";
+import {
+  ensureRootLayout,
+  handoffPath,
+  runDir,
+  taskPath,
+  tickLogPath,
+} from "./paths.ts";
 import { renderPrompt } from "./prompt.ts";
 import { decideDue } from "./schedule.ts";
 import { buildSpawnPlan, spawnPi } from "./spawn.ts";
@@ -145,10 +158,70 @@ export async function manualRunTask(
   return runTask(config, parsed.task);
 }
 
+export interface TaskSkipSummary {
+  taskId: string;
+  status: string;
+  message: string;
+}
+
 export interface TickSummary {
+  timestamp: string;
+  status: "ok" | "locked";
+  message?: string;
   claimed: RunSummary[];
-  skipped: RunSummary[];
+  skipped: TaskSkipSummary[];
   dryRun: boolean;
+}
+
+const TICK_LOG_RETAIN = 1000;
+
+async function trimTickLog(path: string): Promise<void> {
+  const raw = await readFile(path, "utf8");
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  if (lines.length <= TICK_LOG_RETAIN) return;
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmp, `${lines.slice(-TICK_LOG_RETAIN).join("\n")}\n`, {
+    mode: 0o600,
+  });
+  await rename(tmp, path);
+}
+
+async function recordTickLog(
+  rootDir: string,
+  summary: TickSummary,
+): Promise<void> {
+  const path = tickLogPath(rootDir);
+  await appendFile(path, `${JSON.stringify(summary)}\n`, { mode: 0o600 });
+  await trimTickLog(path);
+}
+
+async function tryRecordTickLog(
+  rootDir: string,
+  summary: TickSummary,
+): Promise<void> {
+  try {
+    await recordTickLog(rootDir, summary);
+  } catch {
+    // Tick logging must not make scheduler execution fail.
+  }
+}
+
+function tickSummary(options: {
+  timestamp: string;
+  status?: TickSummary["status"];
+  message?: string;
+  claimed?: RunSummary[];
+  skipped?: TaskSkipSummary[];
+  dryRun: boolean;
+}): TickSummary {
+  return {
+    timestamp: options.timestamp,
+    status: options.status ?? "ok",
+    ...(options.message ? { message: options.message } : {}),
+    claimed: options.claimed ?? [],
+    skipped: options.skipped ?? [],
+    dryRun: options.dryRun,
+  };
 }
 
 export async function schedulerTick(
@@ -156,22 +229,21 @@ export async function schedulerTick(
   options: { dryRun?: boolean; now?: Date } = {},
 ): Promise<TickSummary> {
   await ensureRootLayout(config.rootDir);
-  const schedulerLock = await acquireLock(config.rootDir, "scheduler");
-  if (!schedulerLock)
-    return {
-      claimed: [],
-      skipped: [
-        {
-          taskId: "scheduler",
-          status: "locked",
-          message: "Scheduler lock is already held.",
-        },
-      ],
-      dryRun: !!options.dryRun,
-    };
   const now = options.now ?? new Date();
+  const timestamp = now.toISOString();
+  const schedulerLock = await acquireLock(config.rootDir, "scheduler");
+  if (!schedulerLock) {
+    const summary = tickSummary({
+      timestamp,
+      status: "locked",
+      message: "Scheduler lock is already held.",
+      dryRun: !!options.dryRun,
+    });
+    await tryRecordTickLog(config.rootDir, summary);
+    return summary;
+  }
   const claimed: RunSummary[] = [];
-  const skipped: RunSummary[] = [];
+  const skipped: TaskSkipSummary[] = [];
   const toRun: Array<{ task: TaskDefinition; lock?: HeldLock }> = [];
   try {
     const parsedTasks = await readAllTasks(config.rootDir);
@@ -249,7 +321,8 @@ export async function schedulerTick(
     await schedulerLock.release();
   }
   if (options.dryRun) {
-    return {
+    const summary = tickSummary({
+      timestamp,
       claimed: toRun.map(({ task }) => ({
         taskId: task.id,
         status: "would_run",
@@ -257,13 +330,39 @@ export async function schedulerTick(
       })),
       skipped,
       dryRun: true,
-    };
+    });
+    await tryRecordTickLog(config.rootDir, summary);
+    return summary;
   }
   for (const { task, lock } of toRun) {
     if (!lock) continue;
     claimed.push(await runTask(config, task, { now, heldLock: lock }));
   }
-  return { claimed, skipped, dryRun: false };
+  const summary = tickSummary({ timestamp, claimed, skipped, dryRun: false });
+  await tryRecordTickLog(config.rootDir, summary);
+  return summary;
+}
+
+export async function readLatestTickLog(
+  rootDir: string,
+): Promise<TickSummary | undefined> {
+  try {
+    const raw = await readFile(tickLogPath(rootDir), "utf8");
+    const latest = raw.split(/\r?\n/).filter(Boolean).at(-1);
+    if (!latest) return undefined;
+    const parsed = JSON.parse(latest) as TickSummary;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    if (parsed.status !== "ok" && parsed.status !== "locked") return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+export function formatLatestTick(summary: TickSummary | undefined): string {
+  if (!summary) return "last tick: none";
+  const counts = `claimed=${summary.claimed.length} skipped=${summary.skipped.length}`;
+  return `last tick: ${summary.timestamp} ${summary.status}, ${counts}${summary.dryRun ? " dry-run" : ""}${summary.message ? ` — ${summary.message}` : ""}`;
 }
 
 async function readFileTail(path: string, maxBytes: number): Promise<string> {

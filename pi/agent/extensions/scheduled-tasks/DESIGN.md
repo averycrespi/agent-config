@@ -27,7 +27,7 @@ All extension-owned data is rooted under the configured `rootDir`:
 <root>/
   tasks/       # Markdown task definitions: <task-id>.md
   handoffs/    # Optional cross-run memory: <task-id>.md
-  state/       # Scheduler state JSON: <task-id>.json
+  state/       # Scheduler state JSON plus ticks.jsonl
   sessions/    # Child Pi session dirs, one per task ID
   runs/        # Run artifacts: <task-id>/<run-id>/...
   locks/       # scheduler.lock and <task-id>.lock
@@ -39,7 +39,7 @@ All extension-owned data is rooted under the configured `rootDir`:
 
 Task files are `<root>/tasks/<task-id>.md` with YAML frontmatter plus a Markdown body. The filename is authoritative: an optional `id` frontmatter field must match the filename. Task IDs are constrained to letters, numbers, underscores, and hyphens so IDs can safely map to predictable files under the root.
 
-Task frontmatter is declarative configuration, not mutable state. Normal runs do not rewrite task files. Runtime state such as `nextRunAt`, `lastRunId`, and `lastStatus` belongs in `state/<task-id>.json`.
+Task frontmatter is declarative configuration, not mutable state. Normal runs do not rewrite task files. Runtime state such as `nextRunAt`, `lastRunId`, and `lastStatus` belongs in `state/<task-id>.json`. Scheduler tick history belongs in `state/ticks.jsonl`.
 
 Enabled scheduled execution requires:
 
@@ -70,7 +70,11 @@ Lock sequencing matters:
 5. Release `scheduler.lock`.
 6. Run claimed tasks while holding their per-task locks.
 
-If a due task is already locked, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time is still inside the grace window. Dry-run ticks are read-only: they do not write state, acquire task execution locks, spawn child Pi, or write run artifacts.
+If a due task is already locked, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time is still inside the grace window. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
+
+`TickSummary` has scheduler-level `status` and `message` fields. Do not represent scheduler lock contention as a fake task skip; use `status: "locked"`, leave `claimed` and `skipped` empty, and put the lock explanation in `message`. Task-level skips stay in `skipped` with real task IDs.
+
+Each tick appends one compact JSON object to `state/ticks.jsonl`, retained to the latest 1000 entries. Tick entries may include task IDs, run IDs, run dirs, statuses, skip reasons, timestamps, and dry-run status. They must not include task prompts, task env values, child stdout/stderr, or full validation output. Tick logging is best-effort and must not fail scheduler execution.
 
 ## Child Pi execution
 
@@ -163,6 +167,7 @@ Important persistence rules:
 - Do not delete or rewrite run artifacts as part of normal inspection.
 - Preserve `result.json` as the compact machine-readable run summary.
 - Keep raw child output in bounded inspection surfaces; read tails instead of loading entire large logs.
+- Keep tick-log entries compact and bounded; do not duplicate per-run artifacts into `state/ticks.jsonl`.
 
 ## Security and safety boundaries
 

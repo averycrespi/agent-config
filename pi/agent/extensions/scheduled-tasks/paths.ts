@@ -82,6 +82,10 @@ export function statePath(rootDir: string, taskId: string): string {
   return join(getRootPaths(rootDir).state, `${taskId}.json`);
 }
 
+export function tickLogPath(rootDir: string): string {
+  return join(getRootPaths(rootDir).state, "ticks.jsonl");
+}
+
 export function taskSessionDir(rootDir: string, taskId: string): string {
   assertSafeTaskId(taskId);
   return join(getRootPaths(rootDir).sessions, taskId);

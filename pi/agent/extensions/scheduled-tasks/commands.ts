@@ -17,7 +17,13 @@ import {
   writeCrontab,
 } from "./crontab.ts";
 import { ensureRootLayout, isSafeTaskId, taskPath } from "./paths.ts";
-import { manualRunTask, readLatestLogs, schedulerTick } from "./scheduler.ts";
+import {
+  formatLatestTick,
+  manualRunTask,
+  readLatestLogs,
+  readLatestTickLog,
+  schedulerTick,
+} from "./scheduler.ts";
 import {
   readAllTasks,
   readTaskFile,
@@ -177,6 +183,7 @@ export function registerScheduledTaskCommands(
       const lines = [
         `rootDir: ${config.rootDir}`,
         formatCrontabStatus(await getCrontabStatus()),
+        formatLatestTick(await readLatestTickLog(config.rootDir)),
         ...warnings.map((warning) => `config warning: ${warning}`),
       ];
       for (const issue of await validateConfig(config))
