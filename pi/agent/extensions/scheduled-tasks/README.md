@@ -103,7 +103,9 @@ Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_
 - `/tasks-uninstall-cron` removes only the managed crontab block.
 - `/scheduled-tasks-config` shows effective parsed config.
 
-## Tools
+## Skill and tools
+
+The extension bundles a `manage-scheduled-tasks` skill for normal Pi sessions. Use it when asking Pi to create, edit, validate, manually run, or debug scheduled task Markdown files. The skill teaches the file-editing workflow that is intentionally not exposed as structured tool actions.
 
 `scheduled_tasks` is available in normal Pi sessions:
 
@@ -111,7 +113,7 @@ Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_
 { "action": "list" | "read" | "validate" | "run" | "logs" | "doctor", "task_id": "dependency-audit" }
 ```
 
-V1 intentionally omits structured `create` and `update` actions. Create or edit task Markdown using normal file tools, then validate.
+V1 intentionally omits structured `create` and `update` actions. Create or edit task Markdown using normal file tools, then validate. The bundled skill is loaded only outside scheduled child runs.
 
 `scheduled_task_handoff` is registered only in scheduled child runs. It is scoped by `PI_SCHEDULED_TASK_ID` and can read or update only that task's handoff file:
 

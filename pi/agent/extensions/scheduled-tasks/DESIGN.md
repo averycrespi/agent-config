@@ -6,7 +6,7 @@ This file is for future agents changing the extension. The user-facing contract 
 
 ## V1 architecture
 
-- `index.ts` wires the extension into Pi. Normal Pi sessions get the `scheduled_tasks` management tool. Scheduled child sessions, detected by `PI_SCHEDULED_TASK_RUN=1`, get only the scoped `scheduled_task_handoff` tool.
+- `index.ts` wires the extension into Pi. Normal Pi sessions get the `scheduled_tasks` management tool and the bundled `manage-scheduled-tasks` skill. Scheduled child sessions, detected by `PI_SCHEDULED_TASK_RUN=1`, get only the scoped `scheduled_task_handoff` tool.
 - `config.ts` loads settings from Pi extension settings plus environment overrides, normalizes `rootDir`, validates defaults, and exposes command health checks.
 - `paths.ts` owns the root layout and all safe path builders. Callers should pass task IDs, not arbitrary paths, when addressing tasks, handoffs, state, runs, or locks.
 - `task-file.ts` parses the limited Markdown/YAML task format. It does not use a general YAML dependency; supported syntax is deliberately simple and covered by validation.
@@ -134,6 +134,8 @@ Agent tools are deliberately smaller:
 
 - `scheduled_tasks`: list/read/validate/run/logs/doctor for existing task files.
 - `scheduled_task_handoff`: read/update only during scheduled child runs.
+
+The bundled `manage-scheduled-tasks` skill is contributed through `resources_discover` only for normal sessions. Keep it colocated with the extension so task-authoring guidance evolves with the parser and validator. Do not load it inside scheduled child runs; child runs should focus on the task prompt and optional handoff, not task management.
 
 V1 intentionally does not expose structured create/update/delete task actions. Agents should edit Markdown files with normal file tools, then run validation. This keeps task definitions inspectable and avoids inventing a second task-definition API.
 

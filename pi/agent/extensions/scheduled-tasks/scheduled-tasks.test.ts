@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
+import scheduledTasksExtension from "./index.ts";
 import { registerScheduledTaskCommands, _execFile } from "./commands.ts";
 import {
   loadScheduledTasksConfigFromSettings,
@@ -90,6 +91,71 @@ test("config normalization supports env-shaped values and defaults", () => {
     ASDF_DATA_DIR: "/Users/test/.asdf",
   });
   assert.equal(warnings.length, 0);
+});
+
+test("extension contributes management skill only outside scheduled child runs", async () => {
+  const registrations = {
+    commands: [] as string[],
+    tools: [] as string[],
+    events: new Map<string, (...args: any[]) => any>(),
+  };
+  const pi = {
+    registerCommand(name: string) {
+      registrations.commands.push(name);
+    },
+    registerTool(tool: { name: string }) {
+      registrations.tools.push(tool.name);
+    },
+    on(name: string, handler: (...args: any[]) => any) {
+      registrations.events.set(name, handler);
+    },
+  };
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.PI_SCHEDULED_TASK_RUN;
+    scheduledTasksExtension(pi as any);
+    const discovered = registrations.events.get("resources_discover")?.({
+      cwd: process.cwd(),
+      reason: "startup",
+    });
+
+    assert.deepEqual(registrations.tools, ["scheduled_tasks"]);
+    assert.equal(discovered?.skillPaths.length, 1);
+    assert.match(
+      discovered.skillPaths[0],
+      /scheduled-tasks\/skills\/manage-scheduled-tasks\/SKILL\.md$/,
+    );
+  } finally {
+    process.env = previousEnv;
+  }
+
+  const childRegistrations = {
+    tools: [] as string[],
+    events: new Map<string, (...args: any[]) => any>(),
+  };
+  const childPi = {
+    registerCommand() {},
+    registerTool(tool: { name: string }) {
+      childRegistrations.tools.push(tool.name);
+    },
+    on(name: string, handler: (...args: any[]) => any) {
+      childRegistrations.events.set(name, handler);
+    },
+  };
+  const childPreviousEnv = { ...process.env };
+  try {
+    process.env.PI_SCHEDULED_TASK_RUN = "1";
+    scheduledTasksExtension(childPi as any);
+    const discovered = childRegistrations.events.get("resources_discover")?.({
+      cwd: process.cwd(),
+      reason: "startup",
+    });
+
+    assert.deepEqual(childRegistrations.tools, ["scheduled_task_handoff"]);
+    assert.equal(discovered, undefined);
+  } finally {
+    process.env = childPreviousEnv;
+  }
 });
 
 test("scheduled-tasks config loads global settings from the agent directory", async () => {
