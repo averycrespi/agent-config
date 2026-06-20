@@ -187,16 +187,6 @@ This extension owns recurring Pi execution inside the current user's Pi environm
 
 If future work needs those capabilities, prefer integrating with dedicated tools rather than expanding scheduled-tasks into a general orchestrator.
 
-## V1 non-goals
-
-- No precheck scripts.
-- No script-only/no-agent jobs.
-- No catch-up replay of missed schedules.
-- No arbitrary `piArgs` passthrough.
-- No cloud, webhook, or GitHub event triggers.
-- No structured task creation/update tool actions.
-- No stale-lock reclamation or force-unlock command.
-
 ## Change guidance for future agents
 
 When changing scheduled-tasks:
