@@ -24,19 +24,19 @@ The v1 feature should be intentionally conservative: markdown-defined Pi runs on
 ## Acceptance Criteria
 
 - AC-1: A new directory extension exists at `pi/agent/extensions/scheduled-tasks/` with an `index.ts`, README, tests for meaningful pure logic, and a `pi-task-scheduler.mjs` CLI helper entrypoint.
-- AC-2: The extension loads configuration from `extension:scheduled-tasks` settings plus environment overrides, creates/uses a configurable root directory, and registers `/scheduled-tasks-config` showing effective parsed config.
+- AC-2: The extension loads configuration from `extension:scheduled-tasks` settings plus environment overrides, creates/uses a configurable root directory, supports explicit defaults for timeouts/tools and scheduler executable paths, and registers `/scheduled-tasks-config` showing effective parsed config.
 - AC-3: Task files under `<root>/tasks/*.md` parse YAML frontmatter plus Markdown body, reject unsafe task IDs, require `enabled: true` before scheduled execution, keep volatile runtime state out of task frontmatter, and are validated/linted by a shared validator used by doctor commands, tools, and scheduler ticks.
 - AC-4: The v1 root layout is implemented and documented: `tasks/`, `handoffs/`, `state/`, `sessions/`, `runs/`, and `locks/`.
 - AC-5: `/tasks-list`, `/tasks-show <task-id>`, `/tasks-run <task-id>`, `/tasks-logs <task-id>`, `/tasks-doctor [task-id]`, `/tasks-install-cron`, and `/tasks-uninstall-cron` are registered and work in normal Pi sessions.
 - AC-6: A single management tool named `scheduled_tasks` supports action-style operations for normal sessions: `list`, `read`, `validate`, `run`, `logs`, and `doctor`, with snake_case schema fields and recoverable validation errors returned in tool result text. V1 does not implement structured `create` or `update` actions; task creation/editing happens by normal Markdown file edits followed by validation.
 - AC-7: A separate env-gated `scheduled_task_handoff` tool is available only during scheduled child runs for tasks with `handoff: true`, is scoped to the current task from `PI_SCHEDULED_TASK_ID`, and can read/update that task's handoff file atomically. For `handoff: false` or omitted, the tool is unavailable or returns a clear unavailable error, and no handoff prompt section is rendered.
 - AC-8: Normal Pi sessions never automatically include task handoff content and do not expose the scheduled-run handoff context unless explicitly inspecting a task through commands/tools.
-- AC-9: `/tasks-run <task-id>` and scheduler ticks spawn a child `pi` process rather than executing the task in the current session, set scheduled-run env vars, use a task-specific session dir, render an exact `prompt.md`, and write run artifacts.
+- AC-9: `/tasks-run <task-id>` and scheduler ticks spawn a child Pi process rather than executing the task in the current session, set scheduled-run env vars, use a task-specific session dir, compute a safe effective tool allowlist, render an exact `prompt.md`, and write run artifacts.
 - AC-10: Each run creates `<root>/runs/<task-id>/<run-id>/prompt.md`, `output.md` when available, `result.json`, and `pi.log` or equivalent raw execution log. `result.json` includes task ID, run ID, status, start/end timestamps, child exit/timeout status, session file if discoverable, and whether handoff was updated.
 - AC-11: The scheduler uses a single tick entrypoint (`pi-task-scheduler.mjs tick`) that scans due enabled tasks, uses scheduler/task locks to prevent duplicate and overlapping runs, initializes missing `nextRunAt` deterministically, advances `nextRunAt` when claiming scheduled work, and updates `state/<task-id>.json` after completion.
 - AC-12: V1 does not implement precheck scripts, no-agent/script-only jobs, or catch-up runs. Missed schedules are not replayed; state may record a missed/skipped reason and computes the next future run according to the documented due-window semantics.
-- AC-13: `/tasks-install-cron` and `/tasks-uninstall-cron` modify only a clearly marked managed crontab block, shell-quote configurable paths/env values safely, and leave unrelated crontab entries untouched.
-- AC-14: The `pi-task-scheduler.mjs` helper has a concrete runtime loading strategy that works from Node without relying on Pi extension loading, and a local smoke check such as `node pi/agent/extensions/scheduled-tasks/pi-task-scheduler.mjs --help` or `tick --dry-run` passes.
+- AC-13: `/tasks-install-cron` and `/tasks-uninstall-cron` modify only a clearly marked managed crontab block, use the configured/resolved Node executable path, shell-quote configurable paths/env values safely, and leave unrelated crontab entries untouched.
+- AC-14: The `pi-task-scheduler.mjs` helper has a concrete runtime loading strategy that works from Node without relying on Pi extension loading or dev-only dependencies, and a local smoke check such as `node pi/agent/extensions/scheduled-tasks/pi-task-scheduler.mjs --help` or `tick --dry-run` passes.
 - AC-15: The README documents user behavior, configuration, environment overrides, task file format, root layout, commands, tools, scheduled-run env vars, cron behavior, logs/artifacts, security defaults, v1 non-goals, and prior art.
 - AC-16: `make typecheck` and `make test` pass. If formatting/linting is affected, `npm run format:check` and `npm run lint` pass or failures are reported with evidence.
 
@@ -88,6 +88,22 @@ Manual runs and cron runs share the same child-process execution path. The child
 - D12: **No precheck/no-agent/catch-up in v1.** Deferring these avoids premature security and scheduler complexity.
 - D13: **Enabled is explicit.** Omitted `enabled` means disabled for scheduled execution, so half-authored task files do not run unattended.
 - D14: **`cwd` is required for enabled scheduled tasks.** Unattended file/tool behavior should be explicit. Manual doctor/read can still inspect disabled tasks without a valid `cwd`.
+- D15: **Tool permissions use an explicit effective allowlist.** Task `tools` never fall through to Pi's broad default tool set. If a task omits `tools`, use configured `defaultTools`; when `handoff: true`, automatically add `scheduled_task_handoff` to the effective child allowlist.
+- D16: **Cron commands use resolved executable paths.** `/tasks-install-cron` should use the configured/resolved Node command for the scheduler helper, and child runs should use configurable `piCommand` rather than assuming cron's PATH contains `node` and `pi`.
+
+## Configuration
+
+Use shared config helpers and document every user-facing field with an environment override:
+
+| Field                   | Default                          | Environment override                      | Description                                                                                                                                                               |
+| ----------------------- | -------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rootDir`               | `~/.pi/scheduled-tasks`          | `SCHEDULED_TASKS_ROOT_DIR`                | Persistent root containing tasks, handoffs, state, sessions, runs, and locks.                                                                                             |
+| `defaultTimeoutMinutes` | `30`                             | `SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES` | Default child Pi timeout when a task omits `timeoutMinutes`.                                                                                                              |
+| `defaultTools`          | `["read", "grep", "find", "ls"]` | `SCHEDULED_TASKS_DEFAULT_TOOLS`           | Comma-separated default tool allowlist used when a task omits `tools`. An empty array means spawn with `--no-tools` unless `handoff: true` adds `scheduled_task_handoff`. |
+| `piCommand`             | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`              | Executable path or command name used for child Pi runs. Treat as a command path, not a shell string.                                                                      |
+| `nodeCommand`           | `process.execPath`               | `SCHEDULED_TASKS_NODE_COMMAND`            | Executable path or command name inserted into the managed cron line for `pi-task-scheduler.mjs`. Treat as a command path, not a shell string.                             |
+
+`/scheduled-tasks-config` and `/tasks-doctor` should show resolved config. `/tasks-doctor` should additionally report whether `piCommand` and `nodeCommand` appear executable/resolvable in the current environment and warn when they rely on PATH.
 
 ## Frontmatter Shape
 
@@ -120,7 +136,7 @@ Field notes:
 - `enabled`: must be `true` for scheduled tick execution.
 - `schedule`: required for enabled scheduled tasks; support standard 5-field cron expressions in v1 unless implementation chooses to add safe simple aliases with tests.
 - `cwd`: required for enabled tasks; must be an absolute existing directory.
-- `model`, `thinking`, `tools`: optional Pi execution options mapped to named CLI flags.
+- `model`, `thinking`, `tools`: optional Pi execution options mapped to named CLI flags. If `tools` is omitted, use config `defaultTools` rather than Pi's built-in defaults.
 - `env`: optional child-process env additions; never render values into prompts/logs without masking.
 - `timeoutMinutes`: optional per-task override of global default.
 - `handoff`: boolean only in v1.
@@ -140,10 +156,10 @@ Implement one shared task validator and use it everywhere task correctness matte
 
 Validation result shape should distinguish:
 
-- **Errors**: invalid YAML/frontmatter, unsafe or mismatched task ID, missing Markdown body, enabled task missing `schedule` or absolute existing `cwd`, invalid cron expression, invalid `tools`/`thinking`/`model` shape, invalid `env` object, invalid `timeoutMinutes`, or root path escape.
-- **Warnings**: disabled task, missing description, handoff enabled but file absent, no tools specified, sensitive-looking env keys configured, or stale/missing state that can be regenerated.
+- **Errors**: invalid YAML/frontmatter, unsafe or mismatched task ID, missing Markdown body, enabled task missing `schedule` or absolute existing `cwd`, invalid cron expression, invalid `tools`/`thinking`/`model` shape, invalid `env` object, invalid `timeoutMinutes`, invalid configured command/default tool values, or root path escape.
+- **Warnings**: disabled task, missing description, handoff enabled but file absent, no task-specific tools specified so config `defaultTools` will be used, sensitive-looking env keys configured, command paths relying on PATH, or stale/missing state that can be regenerated.
 
-Validation output should be both human-readable and machine-readable in tool `details` so agents can fix task files and re-run validation.
+Validation output should be both human-readable and machine-readable in tool `details` so agents can fix task files and re-run validation. Per-task validation/doctor output should include the resolved effective tool allowlist, including an explicit note that `scheduled_task_handoff` is added automatically when `handoff: true`.
 
 ## Persistent Root Layout
 
@@ -295,18 +311,27 @@ Do not include raw environment variable values, unrelated state, all previous ru
 
 ## Child Pi Spawn
 
-Map frontmatter/config to Pi CLI flags:
+Map frontmatter/config to Pi CLI flags using an argument array, not shell string concatenation:
 
 ```text
-pi --session-dir <root>/sessions/<task-id> \
+<piCommand> --mode json \
+   --session-dir <root>/sessions/<task-id> \
    --name "scheduled: <task-id> <run-id>" \
    [--model <model>] \
    [--thinking <level>] \
-   [--tools <comma-list>] \
+   [--tools <effective-comma-list> | --no-tools] \
    -p @<run-dir>/prompt.md
 ```
 
-Use the task `cwd` as the child process working directory. Apply task `env` only to the child process environment and mask sensitive-looking keys in logs/doctor output.
+Effective tools:
+
+- If task `tools` is present, start with that list.
+- If task `tools` is omitted, start with config `defaultTools` instead of Pi's built-in defaults.
+- If `handoff: true`, add `scheduled_task_handoff` to the effective allowlist automatically, even when task `tools` is explicit.
+- If the effective allowlist is empty after this logic, pass `--no-tools`.
+- Do not mutate the task file when adding implicit/default tools; report the effective list in doctor/validate output.
+
+Use the task `cwd` as the child process working directory. Apply task `env` only to the child process environment and mask sensitive-looking keys in logs/doctor output. Use `--mode json` so the scheduler can parse structured events, capture final output, and discover session metadata when available.
 
 Timeout behavior:
 
@@ -352,18 +377,20 @@ Use one managed crontab block, not one line per task:
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * SCHEDULED_TASKS_ROOT_DIR='<shell-quoted-root>' node '<shell-quoted-extension-path>/pi-task-scheduler.mjs' tick
+* * * * * SCHEDULED_TASKS_ROOT_DIR='<shell-quoted-root>' SCHEDULED_TASKS_PI_COMMAND='<shell-quoted-pi-command>' '<shell-quoted-node-command>' '<shell-quoted-extension-path>/pi-task-scheduler.mjs' tick
 # END PI SCHEDULED TASKS
 ```
 
 Implementation notes:
 
-- The exact env var name should match config env overrides; prefer `SCHEDULED_TASKS_ROOT_DIR` for config and let the helper resolve effective config.
-- Shell-quote every configurable value inserted into the cron command, including root paths, helper paths, and any future command path. Paths with spaces must work, and metacharacters must not be executable as shell syntax. Add tests for spaces and shell metacharacters in root/helper paths.
+- The exact env var names should match config env overrides; use `SCHEDULED_TASKS_ROOT_DIR` for root and `SCHEDULED_TASKS_PI_COMMAND` for the child Pi executable so the helper can resolve effective config under cron.
+- Use config `nodeCommand` for the command that executes `pi-task-scheduler.mjs`; default it to `process.execPath` at install time rather than a bare `node` assumption.
+- Shell-quote every configurable value inserted into the cron command, including root paths, helper paths, `nodeCommand`, `piCommand`, and any future command path. Paths with spaces must work, and metacharacters must not be executable as shell syntax. Add tests for spaces and shell metacharacters in root/helper/command paths.
+- Treat `nodeCommand` and `piCommand` as executable paths or command names, not arbitrary shell snippets. Spawn child Pi with `child_process.spawn(command, args, ...)`, never by concatenating a shell command.
 - Preserve unrelated crontab content exactly.
 - `/tasks-install-cron` should replace only an existing managed block or append a new one.
 - `/tasks-uninstall-cron` should remove only the managed block.
-- `/tasks-doctor` should report whether the managed block is installed and points at the expected helper/root.
+- `/tasks-doctor` should report whether the managed block is installed and points at the expected helper/root/node/pi command values.
 
 ## Suggested Implementation Files
 
@@ -380,11 +407,11 @@ Implementation notes:
 - `pi/agent/extensions/scheduled-tasks/scheduler.ts`: tick/manual run orchestration shared by extension commands and CLI helper.
 - `pi/agent/extensions/scheduled-tasks/tools.ts`: `scheduled_tasks` and `scheduled_task_handoff` definitions and renderers.
 - `pi/agent/extensions/scheduled-tasks/commands.ts`: slash command handlers and task ID completions.
-- `pi/agent/extensions/scheduled-tasks/pi-task-scheduler.mjs`: Node CLI entrypoint for cron. It must be runnable directly with `node`; use a concrete strategy such as a small JS wrapper that registers a TypeScript runtime loader and imports `scheduler-cli.ts`, or implement the CLI/runtime boundary in JavaScript modules imported by TypeScript. If using a runtime loader such as `tsx`, make it a runtime dependency or otherwise ensure it is available wherever the cron helper runs.
+- `pi/agent/extensions/scheduled-tasks/pi-task-scheduler.mjs`: Node CLI entrypoint for cron. It must be runnable directly with `node`; use a concrete strategy such as a small JS wrapper that registers a TypeScript runtime loader and imports `scheduler-cli.ts`, or implement the CLI/runtime boundary in JavaScript modules imported by TypeScript. If using a runtime loader such as `tsx`, make it a runtime dependency or otherwise ensure it is available wherever the cron helper runs; do not rely on dev-only dependencies for cron execution.
 - `pi/agent/extensions/scheduled-tasks/README.md`: user-facing docs.
 - `pi/agent/extensions/scheduled-tasks/*.test.ts`: colocated pure logic tests.
 
-If adding a dependency for YAML/frontmatter parsing, prefer an existing dependency already available in the repo/package-lock if suitable. Otherwise add the smallest justified runtime dependency and update lockfile.
+If adding dependencies for YAML/frontmatter parsing, cron expression parsing, or TypeScript runtime loading, add them as direct runtime `dependencies` unless they are used only by tests/build-time code. Do not rely on transitive or dev-only packages for scheduler/runtime behavior. If avoiding dependencies, implement small internal parsers with focused tests for the supported v1 subset.
 
 ## Documentation Impact
 
@@ -392,14 +419,14 @@ Add `pi/agent/extensions/scheduled-tasks/README.md` with:
 
 - Overview and v1 scope.
 - Root layout.
-- Configuration table with defaults and env overrides.
+- Configuration table with defaults and env overrides, including `rootDir`, `defaultTimeoutMinutes`, `defaultTools`, `piCommand`, and `nodeCommand`.
 - Task file/frontmatter format.
 - Task validation/linting behavior, including errors versus warnings and how `/tasks-doctor` and `scheduled_tasks({ action: "validate" })` report them.
-- Handoff behavior and scheduled-run env gating.
+- Handoff behavior, scheduled-run env gating, and automatic inclusion of `scheduled_task_handoff` in effective child tools when `handoff: true`.
 - Commands and tools, including that v1 omits structured `create`/`update` tool actions and expects normal Markdown file edits followed by validation.
 - Manual run and cron installation behavior.
 - Run artifacts/log locations, retention/deletion behavior, and raw output sensitivity warning.
-- Security defaults and limitations.
+- Security defaults and limitations, including that omitted task `tools` uses `defaultTools` rather than Pi's broad default tool set.
 - Explicit non-goals: no precheck/no-agent/catch-up in v1.
 - `## Prior art` linking Hermes cron and Claude scheduled tasks/routines with one-sentence influence notes.
 
@@ -410,26 +437,29 @@ No top-level README update is required unless the implementation changes reposit
 - V1: `make typecheck` passes.
 - V2: `make test` passes, including scheduled-tasks tests.
 - V3: If implementation touches formatting/lintable TypeScript/Markdown, `npm run format:check` and `npm run lint` pass or failures are explicitly reported.
-- V4: Unit tests cover config/env parsing, task ID validation, task frontmatter parsing, validator errors/warnings, root path safety, prompt rendering with and without handoff, schedule next-run behavior, state claim/update behavior, lock behavior, spawn args/env construction, and tool validation.
+- V4: Unit tests cover config/env parsing, task ID validation, task frontmatter parsing, validator errors/warnings, root path safety, prompt rendering with and without handoff, effective tool allowlist construction including default tools and implicit `scheduled_task_handoff`, schedule next-run behavior, state claim/update behavior, lock behavior, spawn args/env construction, and tool validation.
 - V5: Integration-style test with a temp root and mocked child spawn proves a scheduler tick creates a run dir, renders `prompt.md`, writes `result.json`, updates `state/*.json`, and releases locks.
 - V6: Command/tool behavior is verified without a real LLM by invoking pure handlers or exported helpers where practical.
 - V7: Manual inspection or test proves normal mode does not include handoff content and scheduled-run mode exposes only scoped `scheduled_task_handoff` behavior.
-- V8: Cron install/uninstall tests prove unrelated crontab content is preserved while the managed block is added/replaced/removed and configurable paths/env values are shell-quoted safely, including paths with spaces and shell metacharacters.
-- V9: A CLI helper smoke check proves `pi-task-scheduler.mjs` is runnable directly with Node in this repo, at least for `--help` or `tick --dry-run`.
+- V8: Cron install/uninstall tests prove unrelated crontab content is preserved while the managed block is added/replaced/removed and configurable paths/env values are shell-quoted safely, including root/helper/node/pi paths with spaces and shell metacharacters.
+- V9: A CLI helper smoke check proves `pi-task-scheduler.mjs` is runnable directly with Node in this repo, at least for `--help` or `tick --dry-run`, and does not depend on dev-only packages for runtime behavior.
 
 ## Risks and Mitigations
 
 - **Risk: Handoff content leaks into normal sessions and confuses the model.** Mitigation: only include handoff in rendered scheduled-run prompts and only register/enable `scheduled_task_handoff` when scheduled-run env validates and the current task has `handoff: true`.
+- **Risk: `handoff: true` tasks cannot update handoff because `--tools` hides extension tools.** Mitigation: compute an effective child tool allowlist and automatically add `scheduled_task_handoff` whenever handoff is enabled.
+- **Risk: Omitted task `tools` silently grants Pi's broad default tool set.** Mitigation: omitted task tools use config `defaultTools`; pass `--tools <effective-list>` or `--no-tools` explicitly for every child run.
 - **Risk: Cron or manual run starts duplicate task executions.** Mitigation: scheduler and per-task locks, plus claim `nextRunAt` before child spawn.
 - **Risk: Task files become noisy due to runtime updates.** Mitigation: runtime state in `state/*.json`; task files remain desired configuration and prompt only.
 - **Risk: Arbitrary paths or task IDs escape the root.** Mitigation: strict slug IDs, safe ID-to-path helpers, reject slashes/dot-dot/absolute path-derived IDs, validate env IDs against parsed task files, and keep root selection under `SCHEDULED_TASKS_ROOT_DIR` rather than a similarly named singular `PI_SCHEDULED_TASK_ROOT`.
 - **Risk: Child Pi run hangs indefinitely.** Mitigation: timeout with SIGTERM/SIGKILL and failure result.
 - **Risk: Logs contain secrets.** Mitigation: mask configured env in doctor/log summaries, write files owner-only where practical, document that raw `pi.log` may include raw tool output.
 - **Risk: Crontab management damages unrelated user entries.** Mitigation: operate only on a marked managed block and test add/update/remove behavior.
-- **Risk: Cron command injection through configurable paths.** Mitigation: shell-quote all cron command values and test roots/helper paths containing spaces, quotes, semicolons, `$`, backticks, and other metacharacters.
+- **Risk: Cron command injection through configurable paths.** Mitigation: shell-quote all cron command values, treat command settings as executable paths rather than shell snippets, and test roots/helper/node/pi paths containing spaces, quotes, semicolons, `$`, backticks, and other metacharacters.
+- **Risk: Cron has a sparse PATH and cannot find `node` or `pi`.** Mitigation: default `nodeCommand` to `process.execPath`, provide `piCommand`/`nodeCommand` config with env overrides, include both in the managed cron block, and report command resolution in doctor output.
 - **Risk: Scheduler due semantics accidentally become catch-up behavior.** Mitigation: define fixed v1 due-window semantics, initialize missing state to the next future occurrence without immediate execution, and test missed schedules.
-- **Risk: YAML/frontmatter parser adds dependency complexity.** Mitigation: prefer existing dependency; otherwise add a minimal dependency with tests and lockfile update.
-- **Risk: `pi-task-scheduler.mjs` import/loading path is brittle under stow.** Mitigation: make the helper directly runnable with Node using an explicit loader or JavaScript runtime boundary, include any loader as a runtime dependency if required, and verify via a local `node ... --help` or dry-run command.
+- **Risk: YAML/frontmatter/cron parsing adds dependency complexity.** Mitigation: add direct runtime dependencies for parser/runtime-loader packages actually used by scheduled-task runtime code, or implement minimal internal parsers with focused tests for the v1 subset.
+- **Risk: `pi-task-scheduler.mjs` import/loading path is brittle under stow.** Mitigation: make the helper directly runnable with Node using an explicit loader or JavaScript runtime boundary, include any loader as a runtime dependency if required, avoid dev-only runtime dependencies, and verify via a local `node ... --help` or dry-run command.
 
 ## Assumptions
 
@@ -437,11 +467,11 @@ No top-level README update is required unless the implementation changes reposit
 - A task must have an absolute existing `cwd` to run when enabled or manually executed.
 - Manual runs are allowed for disabled tasks if their execution config is otherwise valid, because manual invocation is explicit. If implementation chooses to require `enabled: true` for manual runs too, document that stricter behavior and adjust tests.
 - The scheduler may run tasks serially in v1; same-task overlap prevention is mandatory, cross-task parallelism is not.
-- The child Pi executable is available as `pi` on PATH in the environment where cron/manual commands run, unless config later adds an explicit `piCommand` field.
+- `piCommand` may default to `pi`, but users can set `SCHEDULED_TASKS_PI_COMMAND` or config `piCommand` to an absolute path for cron environments with sparse PATH.
 
 ## Handoff Summary
 
-Implement `pi/agent/extensions/scheduled-tasks/` as a conservative v1 scheduled-task system. Use Markdown task definitions, a shared validator/linter, a mountable persistent root via `SCHEDULED_TASKS_ROOT_DIR`, fresh child Pi sessions per run, env-gated scoped handoff files via `PI_SCHEDULED_TASK_*` run-context vars, short `/tasks-*` commands, a unified `scheduled_tasks` management/validation tool without structured create/update actions, a separate `scheduled_task_handoff` tool, and a `pi-task-scheduler.mjs` cron helper. Do not add precheck scripts, no-agent mode, catch-up behavior, arbitrary Pi args, or destructive cleanup in v1.
+Implement `pi/agent/extensions/scheduled-tasks/` as a conservative v1 scheduled-task system. Use Markdown task definitions, a shared validator/linter, a mountable persistent root via `SCHEDULED_TASKS_ROOT_DIR`, explicit default/effective child tool allowlists, fresh child Pi sessions per run, env-gated scoped handoff files via `PI_SCHEDULED_TASK_*` run-context vars, short `/tasks-*` commands, a unified `scheduled_tasks` management/validation tool without structured create/update actions, a separate `scheduled_task_handoff` tool that is automatically included for `handoff: true` runs, configurable `piCommand`/`nodeCommand`, and a `pi-task-scheduler.mjs` cron helper that does not rely on dev-only runtime dependencies. Do not add precheck scripts, no-agent mode, catch-up behavior, arbitrary Pi args, or destructive cleanup in v1.
 
 Suggested `/goal` objective:
 
