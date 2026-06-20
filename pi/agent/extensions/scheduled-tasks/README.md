@@ -30,6 +30,7 @@ Settings are read from `extension:scheduled-tasks` plus environment overrides. E
 | `defaultTimeoutMinutes` | `30`                             | `SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES` | Default child Pi timeout when a task omits `timeoutMinutes`.                                                                             |
 | `defaultTools`          | `["read", "grep", "find", "ls"]` | `SCHEDULED_TASKS_DEFAULT_TOOLS`           | Comma-separated default tool allowlist when a task omits `tools`. Empty means `--no-tools` unless handoff adds `scheduled_task_handoff`. |
 | `piCommand`             | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`              | Executable path or command name used for child Pi runs and the managed cron entrypoint.                                                  |
+| `cronEnvironment`       | `{}`                             | `SCHEDULED_TASKS_CRON_ENVIRONMENT`        | Environment variables scoped to the managed cron `piCommand`; env override is a JSON object of string values.                            |
 
 Example:
 
@@ -39,7 +40,10 @@ Example:
     "rootDir": "~/pi-scheduled",
     "defaultTimeoutMinutes": 20,
     "defaultTools": ["read", "grep", "bash"],
-    "piCommand": "/usr/local/bin/pi"
+    "piCommand": "/usr/local/bin/pi",
+    "cronEnvironment": {
+      "PATH": "/usr/local/bin:/usr/bin:/bin"
+    }
   }
 }
 ```
@@ -152,11 +156,11 @@ Dry-run ticks are read-only: `/tasks-tick --dry-run` reports what would initiali
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && '<pi>' --mode json --no-session -p '/tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
-All configurable values in the cron command are shell-quoted. `piCommand` is treated as an executable path or command name, not a shell snippet.
+All configurable values in the cron command are shell-quoted. `piCommand` is treated as an executable path or command name, not a shell snippet. `cronEnvironment` is merged key-by-key across default, global, project, and environment config layers, then emitted inline after `cd ... && env`, so values apply only to the managed Pi process and its children, not to unrelated crontab entries. Do not put secrets in `cronEnvironment`; crontab entries are not secret storage.
 
 ## Security defaults and limitations
 

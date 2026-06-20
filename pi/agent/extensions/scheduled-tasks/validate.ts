@@ -1,7 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import type { ScheduledTasksConfig } from "./config.ts";
-import { commandHealth } from "./config.ts";
+import { commandHealth, isValidEnvName } from "./config.ts";
 import { handoffPath, isSafeTaskId } from "./paths.ts";
 import { parseCron } from "./schedule.ts";
 import type { TaskDefinition } from "./task-file.ts";
@@ -157,6 +157,23 @@ export async function validateConfig(
       issues.push({
         severity: health.ok ? "warning" : "error",
         message: `${name}: ${health.warning}`,
+      });
+  }
+  for (const [key, value] of Object.entries(config.cronEnvironment)) {
+    if (!isValidEnvName(key))
+      issues.push({
+        severity: "error",
+        message: `cronEnvironment contains invalid environment variable name: ${key}`,
+      });
+    if (/TOKEN|SECRET|PASSWORD|KEY/i.test(key))
+      issues.push({
+        severity: "warning",
+        message: `cronEnvironment key ${key} looks sensitive; crontab entries are not secret storage.`,
+      });
+    if (typeof value !== "string")
+      issues.push({
+        severity: "error",
+        message: `cronEnvironment ${key} must be a string value.`,
       });
   }
   return issues;

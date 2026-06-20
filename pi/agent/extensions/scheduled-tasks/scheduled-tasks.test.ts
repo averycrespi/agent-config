@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { registerScheduledTaskCommands, _execFile } from "./commands.ts";
-import { normalizeConfig } from "./config.ts";
+import { mergeCronEnvironment, normalizeConfig } from "./config.ts";
 import {
   buildCronBlock,
   installManagedBlock,
@@ -71,13 +71,36 @@ test("config normalization supports env-shaped values and defaults", () => {
       defaultTimeoutMinutes: "5",
       defaultTools: "read,bash",
       piCommand: "/bin/pi",
+      cronEnvironment: {
+        PATH: "/opt/bin:/usr/bin",
+        ASDF_DATA_DIR: "/Users/test/.asdf",
+      },
     },
     warnings,
   );
   assert.equal(config.defaultTimeoutMinutes, 5);
   assert.deepEqual(config.defaultTools, ["read", "bash"]);
   assert.equal(config.piCommand, "/bin/pi");
+  assert.deepEqual(config.cronEnvironment, {
+    PATH: "/opt/bin:/usr/bin",
+    ASDF_DATA_DIR: "/Users/test/.asdf",
+  });
   assert.equal(warnings.length, 0);
+});
+
+test("cronEnvironment merges nested maps with later layers overriding keys", () => {
+  assert.deepEqual(
+    mergeCronEnvironment(
+      { PATH: "/global/bin", ASDF_DATA_DIR: "/global/asdf" },
+      { PATH: "/project/bin" },
+      { ASDF_NODEJS_VERSION: "25.9.0" },
+    ),
+    {
+      PATH: "/project/bin",
+      ASDF_DATA_DIR: "/global/asdf",
+      ASDF_NODEJS_VERSION: "25.9.0",
+    },
+  );
 });
 
 test("task ID and path helpers reject unsafe IDs and preserve root safety", () => {
@@ -117,6 +140,7 @@ test("validator reports errors, warnings, and effective handoff tools", async ()
       defaultTimeoutMinutes: 30,
       defaultTools: ["read"],
       piCommand: "pi",
+      cronEnvironment: {},
     },
     parsed.errors,
   );
@@ -221,6 +245,7 @@ test("spawn plan builds safe arg arrays and scheduled-run env", async () => {
       defaultTimeoutMinutes: 7,
       defaultTools: ["read"],
       piCommand: "pi",
+      cronEnvironment: {},
     },
     task,
     runId: "run1",
@@ -238,11 +263,27 @@ test("spawn plan builds safe arg arrays and scheduled-run env", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+test("cron block scopes configured environment to the managed Pi command", () => {
+  const block = buildCronBlock({
+    projectCwd: "/tmp/project",
+    piCommand: "pi",
+    cronEnvironment: {
+      PATH: "/asdf shims:/usr/bin",
+      ASDF_DATA_DIR: "/Users/test/.asdf",
+    },
+  });
+  assert.match(
+    block,
+    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' 'pi' --mode json --no-session -p '\/tasks-tick'/,
+  );
+});
+
 test("cron install and uninstall preserve unrelated crontab lines and quote Pi command entrypoint", () => {
   assert.equal(shellQuote("/tmp/a b;$(x)'y"), `'/tmp/a b;$(x)'"'"'y'`);
   const block = buildCronBlock({
     projectCwd: "/tmp/project with spaces;rm",
     piCommand: "/opt/pi bin/pi",
+    cronEnvironment: {},
   });
   assert.match(block, /BEGIN PI SCHEDULED TASKS/);
   assert.match(
@@ -281,6 +322,7 @@ async function commandHarness() {
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
   const notifications: Array<{ text: string; level: string }> = [];
@@ -314,6 +356,7 @@ test("/tasks-list reports a clear empty state", async () => {
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
 
@@ -350,6 +393,7 @@ test("/tasks-show reports usage for missing task id", async () => {
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
 
@@ -389,6 +433,7 @@ test("/tasks-show reports valid missing task as not found", async () => {
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
 
@@ -428,6 +473,7 @@ test("/tasks-show reports invalid task id without throwing", async () => {
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
 
@@ -529,6 +575,7 @@ test("commands register /tasks-tick with dry-run support instead of legacy dry-r
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   });
   registerScheduledTaskCommands(pi as any, loadConfig);
   assert.ok(registered.has("tasks-tick"));
@@ -841,6 +888,7 @@ test("latest logs show bounded artifact tails", async () => {
       defaultTimeoutMinutes: 1,
       defaultTools: ["read"],
       piCommand: "pi",
+      cronEnvironment: {},
     },
     "job",
   );
@@ -877,6 +925,7 @@ test("handoff updates derive run marker path from root task and run IDs", async 
       defaultTimeoutMinutes: 1,
       defaultTools: ["read"],
       piCommand: "pi",
+      cronEnvironment: {},
     }),
   );
   const previousEnv = { ...process.env };
@@ -939,6 +988,7 @@ test("scheduler dry-run reports decisions without mutating state, artifacts, or 
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   };
   let spawnCount = 0;
   mock.method(_spawn, "fn", () => {
@@ -1000,6 +1050,7 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   };
   await writeTaskState(root, {
     taskId: "job",
@@ -1091,6 +1142,7 @@ test("cron commands call crontab through exported wrapper", async () => {
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   }));
 
   await registered.get("tasks-install-cron")!.handler("", {
@@ -1121,6 +1173,7 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
+    cronEnvironment: {},
   };
   const first = await schedulerTick(config, {
     now: new Date("2026-06-19T09:00:00Z"),

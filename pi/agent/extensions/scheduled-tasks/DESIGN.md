@@ -143,11 +143,11 @@ V1 intentionally does not expose structured create/update/delete task actions. A
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && '<pi>' --mode json --no-session -p '/tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
-Configurable values are shell-quoted. `piCommand` is treated as an executable path or command name, not as a shell snippet. Future cron changes should preserve the managed-block boundary so uninstall remains safe.
+Configurable values are shell-quoted. `piCommand` is treated as an executable path or command name, not as a shell snippet. `cronEnvironment` is emitted inline after `cd ... && env` so configured variables are scoped to the managed Pi process and do not bleed into unrelated crontab entries. Future cron changes should preserve the managed-block boundary and inline environment scoping so uninstall remains safe and the extension does not alter global cron behavior.
 
 ## State and atomicity
 

@@ -15,6 +15,7 @@ export interface ScheduledTasksConfig {
   defaultTimeoutMinutes: number;
   defaultTools: string[];
   piCommand: string;
+  cronEnvironment: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG: ScheduledTasksConfig = {
@@ -22,6 +23,7 @@ export const DEFAULT_CONFIG: ScheduledTasksConfig = {
   defaultTimeoutMinutes: 30,
   defaultTools: ["read", "grep", "find", "ls"],
   piCommand: "pi",
+  cronEnvironment: {},
 };
 
 function parsePositiveNumber(value: unknown): number | undefined {
@@ -32,6 +34,52 @@ function parsePositiveNumber(value: unknown): number | undefined {
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
   return undefined;
+}
+
+export function isValidEnvName(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+function parseCronEnvironment(
+  value: unknown,
+): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const entries = Object.entries(value);
+  const parsed: Record<string, string> = {};
+  for (const [key, item] of entries) {
+    if (!isValidEnvName(key) || typeof item !== "string") return undefined;
+    parsed[key] = item;
+  }
+  return parsed;
+}
+
+function parseCronEnvironmentJson(
+  value: string | undefined,
+  warnings: string[],
+): Record<string, string> | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = parseCronEnvironment(JSON.parse(value));
+    if (parsed) return parsed;
+  } catch {
+    // warning below
+  }
+  warnings.push(
+    "Ignoring invalid SCHEDULED_TASKS_CRON_ENVIRONMENT; expected a JSON object of string environment values.",
+  );
+  return undefined;
+}
+
+export function mergeCronEnvironment(
+  ...values: unknown[]
+): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const value of values) {
+    const parsed = parseCronEnvironment(value);
+    if (parsed) Object.assign(merged, parsed);
+  }
+  return merged;
 }
 
 function parseTools(value: unknown): string[] | undefined {
@@ -73,6 +121,11 @@ function envSettings(
   if (tools !== undefined) settings.defaultTools = tools;
   if (env.SCHEDULED_TASKS_PI_COMMAND)
     settings.piCommand = env.SCHEDULED_TASKS_PI_COMMAND;
+  const cronEnvironment = parseCronEnvironmentJson(
+    env.SCHEDULED_TASKS_CRON_ENVIRONMENT,
+    warnings,
+  );
+  if (cronEnvironment !== undefined) settings.cronEnvironment = cronEnvironment;
   return settings;
 }
 
@@ -113,11 +166,20 @@ export function normalizeConfig(
       ? raw.piCommand.trim()
       : DEFAULT_CONFIG.piCommand;
 
+  const cronEnvironment =
+    parseCronEnvironment(raw.cronEnvironment) ?? DEFAULT_CONFIG.cronEnvironment;
+  if (
+    raw.cronEnvironment !== undefined &&
+    parseCronEnvironment(raw.cronEnvironment) === undefined
+  )
+    warnings.push("Invalid cronEnvironment; using default.");
+
   return {
     rootDir: resolveRoot(rootDir),
     defaultTimeoutMinutes,
     defaultTools,
     piCommand,
+    cronEnvironment,
   };
 }
 
@@ -131,13 +193,33 @@ export async function loadScheduledTasksConfig(
     cwd,
     warnings,
   });
+  const globalExtensionSettings = readExtensionSettings(
+    globalSettings,
+    EXTENSION_NAME,
+  );
+  const projectExtensionSettings = readExtensionSettings(
+    projectSettings,
+    EXTENSION_NAME,
+  );
+  const environmentSettings = envSettings(process.env, warnings);
   const merged = mergeExtensionConfig({
     defaults: DEFAULT_CONFIG as unknown as Record<string, unknown>,
-    globalSettings: readExtensionSettings(globalSettings, EXTENSION_NAME),
-    projectSettings: readExtensionSettings(projectSettings, EXTENSION_NAME),
-    envSettings: envSettings(process.env, warnings),
+    globalSettings: globalExtensionSettings,
+    projectSettings: projectExtensionSettings,
+    envSettings: environmentSettings,
   });
-  return normalizeConfig(merged, warnings);
+  return normalizeConfig(
+    {
+      ...merged,
+      cronEnvironment: mergeCronEnvironment(
+        DEFAULT_CONFIG.cronEnvironment,
+        globalExtensionSettings.cronEnvironment,
+        projectExtensionSettings.cronEnvironment,
+        environmentSettings.cronEnvironment,
+      ),
+    },
+    warnings,
+  );
 }
 
 export async function commandHealth(

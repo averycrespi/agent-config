@@ -8,11 +8,16 @@ export function shellQuote(value: string): string {
 export function buildCronBlock(options: {
   projectCwd: string;
   piCommand: string;
+  cronEnvironment?: Record<string, string>;
 }): string {
+  const envArgs = Object.entries(options.cronEnvironment ?? {}).map(
+    ([key, value]) => `${key}=${shellQuote(value)}`,
+  );
   const command = [
     "cd",
     shellQuote(options.projectCwd),
     "&&",
+    ...(envArgs.length ? ["env", ...envArgs] : []),
     shellQuote(options.piCommand),
     "--mode",
     "json",

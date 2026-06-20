@@ -221,6 +221,7 @@ export function registerScheduledTaskCommands(
         buildCronBlock({
           projectCwd: ctx.cwd,
           piCommand: config.piCommand,
+          cronEnvironment: config.cronEnvironment,
         }),
       );
       await writeCrontab(next);
