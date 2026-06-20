@@ -1,6 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
@@ -19,7 +19,7 @@ import { renderPrompt } from "./prompt.ts";
 import { decideDue, nextFutureRun, parseCron } from "./schedule.ts";
 import { schedulerTick } from "./scheduler.ts";
 import { buildSpawnPlan, _spawn } from "./spawn.ts";
-import { readTaskState } from "./state.ts";
+import { readTaskState, writeTaskState } from "./state.ts";
 import { parseTaskMarkdown } from "./task-file.ts";
 import { effectiveTools, validateTask } from "./validate.ts";
 
@@ -263,6 +263,121 @@ test("commands register /tasks-tick with dry-run support instead of legacy dry-r
     },
   });
   assert.match(notifications[0]!.text, /"dryRun": true/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler dry-run reports decisions without mutating state, artifacts, or spawning", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  };
+  let spawnCount = 0;
+  mock.method(_spawn, "fn", () => {
+    spawnCount += 1;
+    throw new Error("dry-run must not spawn");
+  });
+
+  const initialized = await schedulerTick(config, {
+    dryRun: true,
+    now: new Date("2026-06-19T09:00:00Z"),
+  });
+  assert.equal(initialized.skipped[0]?.status, "would_initialize");
+  assert.equal(await readTaskState(root, "job"), undefined);
+  assert.deepEqual(await readdir(join(root, "runs")), []);
+
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  const due = await schedulerTick(config, {
+    dryRun: true,
+    now: new Date("2026-06-19T09:01:00Z"),
+  });
+  assert.equal(due.claimed[0]?.status, "would_run");
+  assert.equal(
+    (await readTaskState(root, "job"))?.nextRunAt,
+    "2026-06-19T09:01:00.000Z",
+  );
+  assert.equal(spawnCount, 0);
+  assert.deepEqual(await readdir(join(root, "runs")), []);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler locked due tasks keep nextRunAt for retries until grace expires", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  };
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  const held = await acquireLock(root, "job");
+  assert.ok(held);
+
+  const locked = await schedulerTick(config, {
+    now: new Date("2026-06-19T09:01:30Z"),
+  });
+  assert.equal(locked.skipped[0]?.status, "locked");
+  assert.equal(
+    (await readTaskState(root, "job"))?.nextRunAt,
+    "2026-06-19T09:01:00.000Z",
+  );
+
+  await held.release();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  mock.method(_spawn, "fn", () => {
+    process.nextTick(() => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", 0, null);
+    });
+    return child;
+  });
+  const retried = await schedulerTick(config, {
+    now: new Date("2026-06-19T09:02:00Z"),
+  });
+  assert.equal(retried.claimed[0]?.status, "success");
+  assert.equal(
+    (await readTaskState(root, "job"))?.nextRunAt,
+    "2026-06-19T09:03:00.000Z",
+  );
+
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  const missed = await schedulerTick(config, {
+    now: new Date("2026-06-19T09:03:00Z"),
+  });
+  assert.equal(missed.skipped[0]?.status, "missed");
+  assert.equal(
+    (await readTaskState(root, "job"))?.nextRunAt,
+    "2026-06-19T09:04:00.000Z",
+  );
+  await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
 

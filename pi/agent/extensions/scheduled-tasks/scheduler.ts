@@ -5,7 +5,7 @@ import { ensureRootLayout, handoffPath, runDir, taskPath } from "./paths.ts";
 import { renderPrompt } from "./prompt.ts";
 import { decideDue } from "./schedule.ts";
 import { buildSpawnPlan, spawnPi } from "./spawn.ts";
-import { acquireLock } from "./locks.ts";
+import { acquireLock, type HeldLock } from "./locks.ts";
 import {
   makeRunId,
   readTaskState,
@@ -24,6 +24,7 @@ import { validateTask } from "./validate.ts";
 export interface RunOptions {
   manual?: boolean;
   now?: Date;
+  heldLock?: HeldLock;
 }
 
 export interface RunSummary {
@@ -48,25 +49,30 @@ export async function runTask(
 ): Promise<RunSummary> {
   await ensureRootLayout(config.rootDir);
   const validation = await validateTask(task, config);
-  if (!validation.ok)
+  if (!validation.ok) {
+    await options.heldLock?.release();
     return {
       taskId: task.id,
       status: "validation_failed",
       message: validation.errors.join("\n"),
     };
+  }
   if (!task.cwd) {
+    await options.heldLock?.release();
     return {
       taskId: task.id,
       status: "validation_failed",
       message: "cwd is required to run a scheduled task.",
     };
   }
-  const runId = makeRunId(options.now);
+  const runId = options.heldLock?.metadata.runId ?? makeRunId(options.now);
   const dir = runDir(config.rootDir, task.id, runId);
-  const lock = await acquireLock(config.rootDir, task.id, {
-    taskId: task.id,
-    runId,
-  });
+  const lock =
+    options.heldLock ??
+    (await acquireLock(config.rootDir, task.id, {
+      taskId: task.id,
+      runId,
+    }));
   if (!lock)
     return {
       taskId: task.id,
@@ -167,7 +173,7 @@ export async function schedulerTick(
   const now = options.now ?? new Date();
   const claimed: RunSummary[] = [];
   const skipped: RunSummary[] = [];
-  const toRun: TaskDefinition[] = [];
+  const toRun: Array<{ task: TaskDefinition; lock?: HeldLock }> = [];
   try {
     const parsedTasks = await readAllTasks(config.rootDir);
     for (const parsed of parsedTasks) {
@@ -191,34 +197,53 @@ export async function schedulerTick(
         now,
       });
       if (decision.action === "initialize") {
-        await writeTaskState(config.rootDir, {
-          ...(state ?? { taskId: task.id }),
-          nextRunAt: decision.nextRunAt.toISOString(),
-          lastSkipReason: null,
-        });
+        if (!options.dryRun)
+          await writeTaskState(config.rootDir, {
+            ...(state ?? { taskId: task.id }),
+            nextRunAt: decision.nextRunAt.toISOString(),
+            lastSkipReason: null,
+          });
         skipped.push({
           taskId: task.id,
-          status: "initialized",
-          message: `Initialized nextRunAt ${decision.nextRunAt.toISOString()}.`,
+          status: options.dryRun ? "would_initialize" : "initialized",
+          message: `${options.dryRun ? "Dry run: would initialize" : "Initialized"} nextRunAt ${decision.nextRunAt.toISOString()}.`,
         });
       } else if (decision.action === "missed") {
-        await writeTaskState(config.rootDir, {
-          ...(state ?? { taskId: task.id }),
-          nextRunAt: decision.nextRunAt.toISOString(),
-          lastSkipReason: "missed_schedule",
-        });
+        if (!options.dryRun)
+          await writeTaskState(config.rootDir, {
+            ...(state ?? { taskId: task.id }),
+            nextRunAt: decision.nextRunAt.toISOString(),
+            lastSkipReason: "missed_schedule",
+          });
         skipped.push({
           taskId: task.id,
-          status: "missed",
+          status: options.dryRun ? "would_miss" : "missed",
           message: "Missed schedule outside due window; not catching up.",
         });
       } else if (decision.action === "run") {
+        if (options.dryRun) {
+          toRun.push({ task });
+          continue;
+        }
+        const runId = makeRunId(now);
+        const lock = await acquireLock(config.rootDir, task.id, {
+          taskId: task.id,
+          runId,
+        });
+        if (!lock) {
+          skipped.push({
+            taskId: task.id,
+            status: "locked",
+            message: "Task is already running; nextRunAt was not advanced.",
+          });
+          continue;
+        }
         await writeTaskState(config.rootDir, {
           ...(state ?? { taskId: task.id }),
           nextRunAt: decision.nextRunAt.toISOString(),
           lastSkipReason: null,
         });
-        toRun.push(task);
+        toRun.push({ task, lock });
       }
     }
   } finally {
@@ -226,16 +251,19 @@ export async function schedulerTick(
   }
   if (options.dryRun) {
     return {
-      claimed: toRun.map((task) => ({
+      claimed: toRun.map(({ task }) => ({
         taskId: task.id,
-        status: "due",
+        status: "would_run",
         message: "Dry run: would run task.",
       })),
       skipped,
       dryRun: true,
     };
   }
-  for (const task of toRun) claimed.push(await runTask(config, task, { now }));
+  for (const { task, lock } of toRun) {
+    if (!lock) continue;
+    claimed.push(await runTask(config, task, { now, heldLock: lock }));
+  }
   return { claimed, skipped, dryRun: false };
 }
 
