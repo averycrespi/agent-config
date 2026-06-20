@@ -77,6 +77,7 @@ Preferred structure:
 
 - `index.ts` — extension entry point
 - `README.md` — user-facing behavior, configuration, and usage
+- `DESIGN.md` — agent-focused architecture notes, invariants, boundaries, and change guidance
 - `API.md` — optional programmatic integration docs for other extensions
 - `api.ts` — optional curated public export surface referenced by `API.md`
 - `*.test.ts` — colocated tests for meaningful logic
@@ -90,8 +91,12 @@ Repo-specific structure rules:
 
 Documentation split:
 
-- Keep `README.md` focused on what the extension does for users and agents.
-- Include a `## Prior art` section when an extension has meaningful public inspirations, adjacent projects, or conceptual antecedents. Link to resources or similar work, describe the specific influence in one sentence, and omit the section when there is no applicable public prior art. Verify newly discovered links with the user before adding them.
+- `README.md` answers "How do I use this extension?" Its audience is users and agents operating the extension. Document user-visible behavior, commands/tools, configuration, logging, usage examples, limitations, troubleshooting, and prior art. Keep implementation details out unless they affect usage, safety, or configuration.
+- `DESIGN.md` answers "How should I change this extension safely?" Its audience is future coding agents and maintainers. Document architecture, module responsibilities, data/state model, lifecycle flows, invariants, safety/security boundaries, non-goals, and change guidance. Explain why the extension is shaped the way it is and what must remain true when modifying it.
+- Avoid duplicating the README in `DESIGN.md`. If information belongs to both audiences, put the user-facing contract in `README.md` and put only the design implication or invariant in `DESIGN.md`. For example, README lists a command's syntax; DESIGN explains which module owns command dispatch and what state that command may mutate.
+- Include `DESIGN.md` for every non-trivial extension. It may be omitted only for tiny wrapper/config-only extensions where architecture would be obvious from `README.md` and `index.ts`.
+- A good `DESIGN.md` starts with a short purpose statement, then uses concise H2 sections such as `Architecture`, `State`, `Lifecycle`, `Tools and commands`, `Security and boundaries`, `Non-goals`, and `Change guidance`. Prefer concrete file/module names and invariants over vague prose.
+- Include a `## Prior art` section in `README.md` when an extension has meaningful public inspirations, adjacent projects, or conceptual antecedents. Link to resources or similar work, describe the specific influence in one sentence, and omit the section when there is no applicable public prior art. Verify newly discovered links with the user before adding them.
 - If an extension exposes reusable code to other extensions, document imports, exports, types, and usage contracts in `API.md` instead of the README.
 - Treat `api.ts` as the stable public surface. Anything not exported there should usually be treated as internal.
 
