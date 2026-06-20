@@ -16,7 +16,7 @@ This file is for future agents changing the extension. The user-facing contract 
 - `spawn.ts` builds the child Pi argv/env and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
 - `state.ts` persists scheduler state and run results as atomically replaced JSON files.
 - `locks.ts` implements advisory file locks via exclusive create. There is no stale-lock recovery or force-unlock command in v1.
-- `commands.ts` registers slash commands, including cron install/uninstall and `/tasks-tick`.
+- `commands.ts` registers slash commands, including doctor, cron install/uninstall, and `/tasks-tick`.
 - `tools.ts` registers agent tools with compact TUI renderers and text results that agents can recover from.
 
 ## Persistent layout
@@ -140,6 +140,8 @@ The bundled `manage-scheduled-tasks` skill is contributed through `resources_dis
 V1 intentionally does not expose structured create/update/delete task actions. Agents should edit Markdown files with normal file tools, then run validation. This keeps task definitions inspectable and avoids inventing a second task-definition API.
 
 ## Cron integration
+
+Doctor surfaces inspect crontab status by reading `crontab -l` and checking only for the marked managed block. They report installed, not installed, or unavailable without mutating crontab.
 
 `/tasks-install-cron` owns one marked crontab block and leaves unrelated entries untouched. The block captures the project cwd at install time and invokes the configured Pi command directly:
 

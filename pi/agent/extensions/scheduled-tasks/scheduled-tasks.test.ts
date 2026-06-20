@@ -43,7 +43,7 @@ import {
   _spawn,
 } from "./spawn.ts";
 import { readTaskState, writeTaskState } from "./state.ts";
-import { registerHandoffTool } from "./tools.ts";
+import { registerHandoffTool, registerScheduledTasksTool } from "./tools.ts";
 import { parseTaskMarkdown } from "./task-file.ts";
 import { effectiveTools, validateTask } from "./validate.ts";
 
@@ -642,6 +642,92 @@ test("/tasks-doctor reports valid missing task as not found", async () => {
     text: "Task not found: foo",
     level: "warning",
   });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-doctor reports managed crontab installation status", async () => {
+  const cases = [
+    {
+      stdout: buildCronBlock({
+        projectCwd: "/tmp/project",
+        piCommand: "pi",
+        cronEnvironment: {},
+      }),
+      error: null,
+      stderr: "",
+      expected: "cron: installed",
+    },
+    {
+      stdout: "MAILTO=user@example.com\n",
+      error: null,
+      stderr: "",
+      expected: "cron: not installed",
+    },
+    {
+      stdout: "",
+      error: Object.assign(new Error("spawn crontab ENOENT"), {
+        code: "ENOENT",
+      }),
+      stderr: "",
+      expected: "cron: unavailable (crontab exited ENOENT)",
+    },
+  ];
+
+  for (const item of cases) {
+    const { registered, root, notifications, ctx } = await commandHarness();
+    mock.method(
+      _execFile,
+      "fn",
+      (_command: string, _args: string[], callback: any) => {
+        callback(item.error, item.stdout, item.stderr);
+        return { stdin: { end() {} } };
+      },
+    );
+
+    await registered.get("tasks-doctor")!.handler("", ctx);
+
+    assert.ok(notifications[0]!.text.includes(item.expected));
+    await rm(root, { recursive: true, force: true });
+    mock.restoreAll();
+  }
+});
+
+test("scheduled_tasks doctor reports managed crontab status", async () => {
+  const root = await tempRoot();
+  const registered: Array<{ execute: (...args: any[]) => Promise<any> }> = [];
+  registerScheduledTasksTool(
+    {
+      registerTool(tool: { execute: (...args: any[]) => Promise<any> }) {
+        registered.push(tool);
+      },
+    } as any,
+    async () => ({
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    }),
+  );
+  mock.method(
+    _execFile,
+    "fn",
+    (_command: string, _args: string[], callback: any) => {
+      callback(null, "MAILTO=user@example.com\n", "");
+      return { stdin: { end() {} } };
+    },
+  );
+
+  const result = await registered[0]!.execute(
+    "call-1",
+    { action: "doctor" },
+    undefined,
+    undefined,
+    { cwd: "/tmp/project" },
+  );
+
+  assert.match(result.content[0].text, /cron: not installed/);
+  assert.equal(result.details.crontabStatus.status, "not_installed");
   await rm(root, { recursive: true, force: true });
 });
 

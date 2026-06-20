@@ -1,4 +1,3 @@
-import { execFile as _nodeExecFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import type {
   ExtensionAPI,
@@ -10,6 +9,13 @@ import {
   installManagedBlock,
   uninstallManagedBlock,
 } from "./cron.ts";
+import {
+  _execFile,
+  formatCrontabStatus,
+  getCrontabStatus,
+  readCurrentCrontab,
+  writeCrontab,
+} from "./crontab.ts";
 import { ensureRootLayout, isSafeTaskId, taskPath } from "./paths.ts";
 import { manualRunTask, readLatestLogs, schedulerTick } from "./scheduler.ts";
 import {
@@ -19,7 +25,7 @@ import {
 } from "./task-file.ts";
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
 
-export const _execFile = { fn: _nodeExecFile };
+export { _execFile };
 
 type LoadConfig = (
   cwd: string,
@@ -76,27 +82,6 @@ async function existingTaskPath(
     notify(ctx, `Unable to access task file: ${message}`, "error");
     return undefined;
   }
-}
-
-async function currentCrontab(): Promise<string> {
-  try {
-    return await new Promise<string>((resolve, reject) => {
-      _execFile.fn("crontab", ["-l"], (error, stdout) =>
-        error ? reject(error) : resolve(String(stdout ?? "")),
-      );
-    });
-  } catch {
-    return "";
-  }
-}
-
-async function writeCrontab(content: string): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = _execFile.fn("crontab", ["-"], (error) =>
-      error ? reject(error) : resolve(),
-    );
-    child.stdin?.end(content);
-  });
 }
 
 export function registerScheduledTaskCommands(
@@ -191,6 +176,7 @@ export function registerScheduledTaskCommands(
       }
       const lines = [
         `rootDir: ${config.rootDir}`,
+        formatCrontabStatus(await getCrontabStatus()),
         ...warnings.map((warning) => `config warning: ${warning}`),
       ];
       for (const issue of await validateConfig(config))
@@ -217,7 +203,7 @@ export function registerScheduledTaskCommands(
     handler: async (_args, ctx) => {
       const { config } = await configFor(ctx);
       const next = installManagedBlock(
-        await currentCrontab(),
+        await readCurrentCrontab(),
         buildCronBlock({
           projectCwd: ctx.cwd,
           piCommand: config.piCommand,
@@ -232,7 +218,7 @@ export function registerScheduledTaskCommands(
   pi.registerCommand("tasks-uninstall-cron", {
     description: "Remove only the managed scheduled-tasks crontab block.",
     handler: async (_args, ctx) => {
-      await writeCrontab(uninstallManagedBlock(await currentCrontab()));
+      await writeCrontab(uninstallManagedBlock(await readCurrentCrontab()));
       notify(ctx, "Removed managed Pi scheduled-tasks crontab block.");
     },
   });

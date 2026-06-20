@@ -97,7 +97,7 @@ Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_
 - `/tasks-show <task-id>` shows parsed metadata and the Markdown prompt body.
 - `/tasks-run <task-id>` manually starts a fresh scheduled child Pi run.
 - `/tasks-logs <task-id>` shows latest run status, artifact paths, and bounded output/log tails.
-- `/tasks-doctor [task-id]` validates config, root, command health, and task files.
+- `/tasks-doctor [task-id]` validates config, root, managed crontab installation status, command health, and task files.
 - `/tasks-tick [--dry-run]` runs one scheduler tick. `--dry-run` reports decisions without mutating scheduler state, acquiring task execution locks, spawning child Pi, or writing run artifacts.
 - `/tasks-install-cron` installs or replaces only the managed crontab block.
 - `/tasks-uninstall-cron` removes only the managed crontab block.
@@ -153,6 +153,8 @@ Normal Pi sessions never automatically include handoff content. Handoff content 
 `/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs. Cron expressions use standard five-field day-of-month/day-of-week behavior: if one field is unrestricted, the restricted field controls matching; if both are restricted, either field may match.
 
 Dry-run ticks are read-only: `/tasks-tick --dry-run` reports what would initialize, miss, or run without writing state, acquiring task execution locks, spawning child Pi, or writing run artifacts. If a due task is already running, the scheduler reports a locked skip and leaves `nextRunAt` unchanged so later ticks can retry while the due time remains inside the grace window.
+
+`/tasks-doctor` and `scheduled_tasks({ "action": "doctor" })` report whether the managed crontab block is installed, not installed, or unavailable to inspect. They do not modify crontab.
 
 `/tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched. The managed cron line changes to the project cwd captured when the command is run, then invokes Pi directly in non-interactive mode:
 
