@@ -262,6 +262,254 @@ test("cron install and uninstall preserve unrelated crontab lines and quote Pi c
   assert.equal(removed, existing);
 });
 
+async function commandHarness() {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const loadConfig = async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  });
+  registerScheduledTaskCommands(pi as any, loadConfig);
+  const notifications: Array<{ text: string; level: string }> = [];
+  const ctx = {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  };
+  return { registered, root, notifications, ctx };
+}
+
+test("/tasks-list reports a clear empty state", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const loadConfig = async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  });
+  registerScheduledTaskCommands(pi as any, loadConfig);
+
+  const notifications: Array<{ text: string; level: string }> = [];
+  await registered.get("tasks-list")!.handler("", {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  });
+
+  assert.equal(notifications[0]!.text, "No tasks found.");
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-show reports usage for missing task id", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const loadConfig = async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  });
+  registerScheduledTaskCommands(pi as any, loadConfig);
+
+  const notifications: Array<{ text: string; level: string }> = [];
+  await registered.get("tasks-show")!.handler("   ", {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  });
+
+  assert.deepEqual(notifications[0], {
+    text: "Usage: /tasks-show <task-id>",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-show reports valid missing task as not found", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const loadConfig = async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  });
+  registerScheduledTaskCommands(pi as any, loadConfig);
+
+  const notifications: Array<{ text: string; level: string }> = [];
+  await registered.get("tasks-show")!.handler("foo", {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  });
+
+  assert.deepEqual(notifications[0], {
+    text: "Task not found: foo",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-show reports invalid task id without throwing", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const loadConfig = async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  });
+  registerScheduledTaskCommands(pi as any, loadConfig);
+
+  const notifications: Array<{ text: string; level: string }> = [];
+  await registered.get("tasks-show")!.handler("../bad", {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  });
+
+  assert.equal(notifications[0]!.level, "error");
+  assert.match(notifications[0]!.text, /Invalid task ID/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-run reports usage for missing task id", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("tasks-run")!.handler("", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Usage: /tasks-run <task-id>",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-run reports valid missing task as not found", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("tasks-run")!.handler("foo", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Task not found: foo",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-logs reports usage for missing task id", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("tasks-logs")!.handler("", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Usage: /tasks-logs <task-id>",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-logs reports valid missing task as not found", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("tasks-logs")!.handler("foo", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Task not found: foo",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-doctor reports invalid task id without throwing", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("tasks-doctor")!.handler("../bad", ctx);
+
+  assert.equal(notifications[0]!.level, "error");
+  assert.match(notifications[0]!.text, /Invalid task ID/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/tasks-doctor reports valid missing task as not found", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  await registered.get("tasks-doctor")!.handler("foo", ctx);
+
+  assert.deepEqual(notifications[0], {
+    text: "Task not found: foo",
+    level: "warning",
+  });
+  await rm(root, { recursive: true, force: true });
+});
+
 test("commands register /tasks-tick with dry-run support instead of legacy dry-run command", async () => {
   const registered = new Map<
     string,

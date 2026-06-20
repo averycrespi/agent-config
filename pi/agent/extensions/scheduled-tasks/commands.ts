@@ -1,4 +1,5 @@
 import { execFile as _nodeExecFile } from "node:child_process";
+import { access } from "node:fs/promises";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -9,9 +10,13 @@ import {
   installManagedBlock,
   uninstallManagedBlock,
 } from "./cron.ts";
-import { ensureRootLayout, taskPath } from "./paths.ts";
+import { ensureRootLayout, isSafeTaskId, taskPath } from "./paths.ts";
 import { manualRunTask, readLatestLogs, schedulerTick } from "./scheduler.ts";
-import { readAllTasks, readTaskFile } from "./task-file.ts";
+import {
+  readAllTasks,
+  readTaskFile,
+  type ParsedTaskFile,
+} from "./task-file.ts";
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
 
 export const _execFile = { fn: _nodeExecFile };
@@ -27,6 +32,50 @@ function notify(
   level: "info" | "warning" | "error" = "info",
 ) {
   ctx.ui.notify(text, level);
+}
+
+const TASK_ID_RULES =
+  "Use letters, numbers, underscores, or hyphens; no slashes or dots.";
+
+function taskIdArg(
+  args: string,
+  command: string,
+  ctx: ExtensionCommandContext,
+): string | undefined {
+  const taskId = args.trim();
+  if (!taskId) {
+    notify(ctx, `Usage: /${command} <task-id>`, "warning");
+    return undefined;
+  }
+  if (!isSafeTaskId(taskId)) {
+    notify(ctx, `Invalid task ID. ${TASK_ID_RULES}`, "error");
+    return undefined;
+  }
+  return taskId;
+}
+
+async function existingTaskPath(
+  config: ScheduledTasksConfig,
+  taskId: string,
+  ctx: ExtensionCommandContext,
+): Promise<string | undefined> {
+  const path = taskPath(config.rootDir, taskId);
+  try {
+    await access(path);
+    return path;
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (code === "ENOENT") {
+      notify(ctx, `Task not found: ${taskId}`, "warning");
+      return undefined;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    notify(ctx, `Unable to access task file: ${message}`, "error");
+    return undefined;
+  }
 }
 
 async function currentCrontab(): Promise<string> {
@@ -67,7 +116,9 @@ export function registerScheduledTaskCommands(
       const { config } = await configFor(ctx);
       await ensureRootLayout(config.rootDir);
       const tasks = await readAllTasks(config.rootDir);
-      const lines = ["Scheduled tasks:"];
+      const lines = tasks.some((parsed) => parsed.task)
+        ? ["Scheduled tasks:"]
+        : ["No tasks found."];
       for (const parsed of tasks) {
         const task = parsed.task;
         if (!task) continue;
@@ -82,9 +133,12 @@ export function registerScheduledTaskCommands(
   pi.registerCommand("tasks-show", {
     description: "Show parsed scheduled task metadata and prompt body.",
     handler: async (args, ctx) => {
-      const taskId = args.trim();
+      const taskId = taskIdArg(args, "tasks-show", ctx);
+      if (!taskId) return;
       const { config } = await configFor(ctx);
-      const parsed = await readTaskFile(taskPath(config.rootDir, taskId));
+      const path = await existingTaskPath(config, taskId, ctx);
+      if (!path) return;
+      const parsed = await readTaskFile(path);
       if (!parsed.task)
         return notify(
           ctx,
@@ -102,8 +156,10 @@ export function registerScheduledTaskCommands(
   pi.registerCommand("tasks-run", {
     description: "Manually spawn a scheduled child Pi run for a task.",
     handler: async (args, ctx) => {
-      const taskId = args.trim();
+      const taskId = taskIdArg(args, "tasks-run", ctx);
+      if (!taskId) return;
       const { config } = await configFor(ctx);
+      if (!(await existingTaskPath(config, taskId, ctx))) return;
       const result = await manualRunTask(config, taskId);
       notify(
         ctx,
@@ -116,8 +172,11 @@ export function registerScheduledTaskCommands(
   pi.registerCommand("tasks-logs", {
     description: "Show latest scheduled task run logs and artifact paths.",
     handler: async (args, ctx) => {
+      const taskId = taskIdArg(args, "tasks-logs", ctx);
+      if (!taskId) return;
       const { config } = await configFor(ctx);
-      notify(ctx, await readLatestLogs(config, args.trim()));
+      if (!(await existingTaskPath(config, taskId, ctx))) return;
+      notify(ctx, await readLatestLogs(config, taskId));
     },
   });
 
@@ -127,15 +186,23 @@ export function registerScheduledTaskCommands(
       const { config, warnings } = await configFor(ctx);
       await ensureRootLayout(config.rootDir);
       const taskId = args.trim();
+      if (taskId && !isSafeTaskId(taskId)) {
+        return notify(ctx, `Invalid task ID. ${TASK_ID_RULES}`, "error");
+      }
       const lines = [
         `rootDir: ${config.rootDir}`,
         ...warnings.map((warning) => `config warning: ${warning}`),
       ];
       for (const issue of await validateConfig(config))
         lines.push(`${issue.severity}: ${issue.message}`);
-      const parsed = taskId
-        ? [await readTaskFile(taskPath(config.rootDir, taskId))]
-        : await readAllTasks(config.rootDir);
+      let parsed: ParsedTaskFile[];
+      if (taskId) {
+        const path = await existingTaskPath(config, taskId, ctx);
+        if (!path) return;
+        parsed = [await readTaskFile(path)];
+      } else {
+        parsed = await readAllTasks(config.rootDir);
+      }
       for (const item of parsed)
         lines.push(
           "",
