@@ -4,6 +4,8 @@ export interface CronExpression {
   dayOfMonth: Set<number>;
   month: Set<number>;
   dayOfWeek: Set<number>;
+  dayOfMonthUnrestricted: boolean;
+  dayOfWeekUnrestricted: boolean;
 }
 
 const RANGES = [
@@ -60,16 +62,24 @@ export function parseCron(expression: string): CronExpression | undefined {
     dayOfMonth: parsed[2]!,
     month: parsed[3]!,
     dayOfWeek: parsed[4]!,
+    dayOfMonthUnrestricted: parts[2] === "*",
+    dayOfWeekUnrestricted: parts[4] === "*",
   };
 }
 
 export function cronMatches(cron: CronExpression, date: Date): boolean {
+  const dayOfMonthMatches = cron.dayOfMonth.has(date.getUTCDate());
+  const dayOfWeekMatches = cron.dayOfWeek.has(date.getUTCDay());
+  const dayMatches = cron.dayOfMonthUnrestricted
+    ? dayOfWeekMatches
+    : cron.dayOfWeekUnrestricted
+      ? dayOfMonthMatches
+      : dayOfMonthMatches || dayOfWeekMatches;
   return (
     cron.minute.has(date.getUTCMinutes()) &&
     cron.hour.has(date.getUTCHours()) &&
-    cron.dayOfMonth.has(date.getUTCDate()) &&
     cron.month.has(date.getUTCMonth() + 1) &&
-    cron.dayOfWeek.has(date.getUTCDay())
+    dayMatches
   );
 }
 

@@ -9,7 +9,7 @@ import {
   firstLine,
 } from "../_shared/render.ts";
 import type { ScheduledTasksConfig } from "./config.ts";
-import { handoffPath, taskPath } from "./paths.ts";
+import { handoffPath, runDir, taskPath } from "./paths.ts";
 import { manualRunTask, readLatestLogs } from "./scheduler.ts";
 import { readAllTasks, readTaskFile } from "./task-file.ts";
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
@@ -239,12 +239,26 @@ export function registerHandoffTool(
       if (typeof params.content !== "string")
         return errorResult("content is required for update.");
       await atomicWrite(path, params.content);
-      const runDir = process.env.PI_SCHEDULED_TASK_RUN_DIR;
-      if (runDir)
-        await writeFile(join(runDir, "handoff-updated"), "1", {
-          mode: 0o600,
-        }).catch(() => undefined);
-      return textResult("Updated scheduled task handoff.");
+      const runId = process.env.PI_SCHEDULED_TASK_RUN_ID;
+      let markerWarning = "";
+      if (runId) {
+        try {
+          await writeFile(
+            join(runDir(config.rootDir, taskId, runId), "handoff-updated"),
+            "1",
+            {
+              mode: 0o600,
+            },
+          );
+        } catch {
+          markerWarning =
+            " Handoff marker was not written because the run ID or run directory was invalid.";
+        }
+      } else {
+        markerWarning =
+          " Handoff marker was not written because PI_SCHEDULED_TASK_RUN_ID is missing.";
+      }
+      return textResult(`Updated scheduled task handoff.${markerWarning}`);
     },
   });
 }

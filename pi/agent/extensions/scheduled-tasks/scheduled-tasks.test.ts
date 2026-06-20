@@ -1,6 +1,13 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
@@ -16,10 +23,16 @@ import {
 import { acquireLock } from "./locks.ts";
 import { ensureRootLayout, isInside, isSafeTaskId, runDir } from "./paths.ts";
 import { renderPrompt } from "./prompt.ts";
-import { decideDue, nextFutureRun, parseCron } from "./schedule.ts";
+import {
+  cronMatches,
+  decideDue,
+  nextFutureRun,
+  parseCron,
+} from "./schedule.ts";
 import { schedulerTick } from "./scheduler.ts";
 import { buildSpawnPlan, _spawn } from "./spawn.ts";
 import { readTaskState, writeTaskState } from "./state.ts";
+import { registerHandoffTool } from "./tools.ts";
 import { parseTaskMarkdown } from "./task-file.ts";
 import { effectiveTools, validateTask } from "./validate.ts";
 
@@ -143,6 +156,15 @@ test("effective tool allowlist uses defaults and implicit handoff tool", () => {
   );
 });
 
+test("cron DOM and DOW fields use standard OR semantics when both are restricted", () => {
+  const cron = parseCron("0 9 15 * 1");
+  assert.ok(cron);
+  assert.equal(cronMatches(cron, new Date("2026-06-15T09:00:00Z")), true);
+  assert.equal(cronMatches(cron, new Date("2026-06-22T09:00:00Z")), true);
+  assert.equal(cronMatches(cron, new Date("2026-07-15T09:00:00Z")), true);
+  assert.equal(cronMatches(cron, new Date("2026-06-16T09:00:00Z")), false);
+});
+
 test("cron schedule computes next future runs and missed due decisions", () => {
   assert.ok(parseCron("*/5 * * * *"));
   const next = nextFutureRun("0 9 * * 1", new Date("2026-06-19T09:00:00Z"));
@@ -264,6 +286,81 @@ test("commands register /tasks-tick with dry-run support instead of legacy dry-r
   });
   assert.match(notifications[0]!.text, /"dryRun": true/);
   await rm(root, { recursive: true, force: true });
+});
+
+test("handoff updates derive run marker path from root task and run IDs", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "handoff: true\n"),
+    "utf8",
+  );
+  const safeRunId = "2026-06-19T09-00-00Z-abcdef";
+  const safeRunDir = runDir(root, "job", safeRunId);
+  const maliciousRunDir = await mkdtemp(
+    join(tmpdir(), "scheduled-tasks-bad-run-"),
+  );
+  await mkdir(safeRunDir, { recursive: true });
+  const registered: Array<{ execute: (...args: any[]) => Promise<any> }> = [];
+  registerHandoffTool(
+    {
+      registerTool(tool: { execute: (...args: any[]) => Promise<any> }) {
+        registered.push(tool);
+      },
+    } as any,
+    async () => ({
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+    }),
+  );
+  const previousEnv = { ...process.env };
+  try {
+    process.env.PI_SCHEDULED_TASK_RUN = "1";
+    process.env.PI_SCHEDULED_TASK_ID = "job";
+    process.env.PI_SCHEDULED_TASK_RUN_ID = safeRunId;
+    process.env.PI_SCHEDULED_TASK_RUN_DIR = maliciousRunDir;
+    const result = await registered[0]!.execute(
+      "call-1",
+      { action: "update", content: "new handoff" },
+      undefined,
+      undefined,
+      { cwd },
+    );
+    assert.match(result.content[0].text, /Updated scheduled task handoff/);
+    assert.equal(
+      await readFile(join(root, "handoffs", "job.md"), "utf8"),
+      "new handoff",
+    );
+    assert.equal(
+      await readFile(join(safeRunDir, "handoff-updated"), "utf8"),
+      "1",
+    );
+    await assert.rejects(
+      readFile(join(maliciousRunDir, "handoff-updated"), "utf8"),
+    );
+
+    process.env.PI_SCHEDULED_TASK_RUN_ID = "../bad";
+    const invalid = await registered[0]!.execute(
+      "call-2",
+      { action: "update", content: "still updates" },
+      undefined,
+      undefined,
+      { cwd },
+    );
+    assert.match(invalid.content[0].text, /Updated scheduled task handoff/);
+    assert.equal(
+      await readFile(join(root, "handoffs", "job.md"), "utf8"),
+      "still updates",
+    );
+  } finally {
+    process.env = previousEnv;
+    await rm(maliciousRunDir, { recursive: true, force: true });
+    await rm(cwd, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("scheduler dry-run reports decisions without mutating state, artifacts, or spawning", async () => {
