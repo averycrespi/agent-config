@@ -57,11 +57,26 @@ export function buildSpawnPlan(options: {
   if (tools.length > 0) args.push("--tools", tools.join(","));
   else args.push("--no-tools");
   args.push("-p", `@${options.promptPath}`);
+  const command =
+    options.task.executionShell === "bash-login"
+      ? "bash"
+      : options.config.piCommand;
+  const spawnArgs =
+    options.task.executionShell === "bash-login"
+      ? [
+          "--login",
+          "-c",
+          'exec "$@"',
+          "bash",
+          options.config.piCommand,
+          ...args,
+        ]
+      : args;
   const timeoutMinutes =
     options.task.timeoutMinutes ?? options.config.defaultTimeoutMinutes;
   return {
-    command: options.config.piCommand,
-    args,
+    command,
+    args: spawnArgs,
     cwd: options.task.cwd ?? process.cwd(),
     env: {
       ...(options.envFileValues ?? {}),

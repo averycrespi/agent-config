@@ -2,6 +2,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { getRootPaths, isSafeTaskId } from "./paths.ts";
 
+export type ExecutionShell = "bash-login";
+
 export interface TaskDefinition {
   id: string;
   path: string;
@@ -15,6 +17,7 @@ export interface TaskDefinition {
   tools?: string[];
   envFiles?: string[];
   env?: Record<string, string>;
+  executionShell?: ExecutionShell | string;
   timeoutMinutes?: number;
   catchup: boolean;
   handoff: boolean;
@@ -210,6 +213,9 @@ export function parseTaskMarkdown(
     ...(raw.tools !== undefined ? { tools: toolsField(raw) } : {}),
     ...(raw.envFiles !== undefined ? { envFiles: envFilesField(raw) } : {}),
     ...(raw.env !== undefined ? { env: envField(raw) } : {}),
+    ...(stringField(raw, "executionShell")
+      ? { executionShell: stringField(raw, "executionShell") }
+      : {}),
     ...(typeof timeout === "number" ? { timeoutMinutes: timeout } : {}),
     catchup: booleanField(raw, "catchup"),
     handoff: booleanField(raw, "handoff"),

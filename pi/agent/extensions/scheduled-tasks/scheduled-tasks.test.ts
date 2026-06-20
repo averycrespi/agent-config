@@ -256,6 +256,15 @@ test("task Markdown parsing supports opt-in catchup", () => {
   assert.equal(parsed.task?.catchup, true);
 });
 
+test("task Markdown parsing supports bash login execution shell", () => {
+  const parsed = parseTaskMarkdown(
+    "/tmp/dependency-audit.md",
+    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nexecutionShell: bash-login\n---\nCheck dependencies.`,
+  );
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.task?.executionShell, "bash-login");
+});
+
 test("validator reports errors, warnings, and effective handoff tools", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
   const root = await tempRoot();
@@ -277,6 +286,33 @@ test("validator reports errors, warnings, and effective handoff tools", async ()
   assert.equal(result.ok, true);
   assert.match(result.warnings.join("\n"), /handoff file does not exist/);
   assert.deepEqual(result.effectiveTools, ["read", "scheduled_task_handoff"]);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("validator rejects unsupported execution shell values", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const root = await tempRoot();
+  const parsed = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "executionShell: zsh-login\n"),
+  );
+  const result = await validateTask(
+    parsed.task,
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 30,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    parsed.errors,
+  );
+  assert.equal(result.ok, false);
+  assert.match(
+    result.errors.join("\n"),
+    /executionShell must be one of: bash-login/,
+  );
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
@@ -469,6 +505,42 @@ test("spawn plan builds safe arg arrays and scheduled-run env", async () => {
   assert.ok(plan.args.includes("read,scheduled_task_handoff"));
   assert.equal(plan.env.PI_SCHEDULED_TASK_RUN, "1");
   assert.equal(plan.timeoutMs, 60_000);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn plan runs Pi through bash login shell when requested", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const root = await tempRoot();
+  const task = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "executionShell: bash-login\n"),
+  ).task!;
+  const plan = buildSpawnPlan({
+    config: {
+      rootDir: root,
+      defaultTimeoutMinutes: 7,
+      defaultTools: ["read"],
+      piCommand: "/opt/pi bin/pi",
+      cronEnvironment: {},
+    },
+    task,
+    runId: "run1",
+    runDir: join(root, "runs", "job", "run1"),
+    promptPath: join(root, "runs", "job", "run1", "prompt.md"),
+    envFileValues: { FROM_FILE: "one" },
+  });
+  assert.equal(plan.command, "bash");
+  assert.deepEqual(plan.args.slice(0, 5), [
+    "--login",
+    "-c",
+    'exec "$@"',
+    "bash",
+    "/opt/pi bin/pi",
+  ]);
+  assert.deepEqual(plan.args.slice(5, 7), ["--mode", "json"]);
+  assert.equal(plan.env.FROM_FILE, "one");
+  assert.equal(plan.env.PI_SCHEDULED_TASK_RUN, "1");
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });

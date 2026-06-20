@@ -35,6 +35,7 @@ envFiles:
   - .env
 env:
   NODE_ENV: production
+executionShell: bash-login
 timeoutMinutes: 30
 catchup: false
 handoff: false
@@ -54,6 +55,7 @@ Follow these constraints:
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
 - Use `envFiles` for dotenv-style bulk environment defaults. Relative env file paths resolve against `cwd`, and listed files are required in v1.
 - Use inline `env` for explicit overrides; inline `env` wins over `envFiles`, and scheduled-run marker variables win over both.
+- Use `executionShell: bash-login` only when the task needs bash login startup files for development environment setup; omit it for direct Pi execution. Task env is present when bash starts, but shell startup files may change it.
 - Do not put secrets in `env` or env files; child processes and run logs can expose values.
 - Use only simple YAML supported by the extension: scalars, arrays with `- item`, and one-level object maps such as `env:`.
 

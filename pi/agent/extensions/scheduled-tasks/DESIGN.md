@@ -13,7 +13,7 @@ This file is for future agents changing the extension. The user-facing contract 
 - `validate.ts` separates parse/runtime errors from warnings and computes effective tool permissions.
 - `schedule.ts` owns five-field cron parsing, cron matching, next-run search, and due/missed/initialize decisions.
 - `scheduler.ts` owns manual runs, scheduler ticks, run artifact creation, lock sequencing, and latest-log reads.
-- `spawn.ts` builds the child Pi argv/env and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
+- `spawn.ts` builds the child Pi argv/env, optionally wraps child Pi execution in a supported shell mode, and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
 - `state.ts` persists scheduler state and run results as atomically replaced JSON files.
 - `locks.ts` implements advisory file locks via exclusive create. There is no stale-lock recovery or force-unlock command in v1.
 - `commands.ts` registers slash commands, including doctor, cron install/uninstall, and `/scheduled-tasks-tick`.
@@ -99,7 +99,9 @@ Each run gets a unique run ID and a run directory:
 - `--tools <effective-tools>` or `--no-tools`
 - `-p @<prompt.md>`
 
-The child environment is merged in this order: parent scheduler environment, parsed task `envFiles` in listed order, inline task `env`, then scheduled-run markers:
+By default the spawn plan runs `piCommand` directly. If a task sets `executionShell: bash-login`, the plan runs `bash --login -c 'exec "$@"' bash <piCommand> ...` so login shell startup files can initialize the environment before Pi starts. Keep shell support narrow and fixed; do not turn `executionShell` into an arbitrary command or shell-snippet passthrough.
+
+The child environment is merged in this order before spawning either Pi directly or the optional login shell: parent scheduler environment, parsed task `envFiles` in listed order, inline task `env`, then scheduled-run markers:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>
@@ -182,6 +184,7 @@ Security-relevant invariants:
 - Route all task-addressed paths through `paths.ts` safe builders.
 - Keep task ID validation strict; do not permit slashes, dots, or arbitrary relative paths.
 - Spawn child Pi with argv arrays, not shell concatenation.
+- Keep shell execution modes fixed and argument-position based; never evaluate task-provided shell snippets.
 - Treat `piCommand` as a command/path only.
 - Keep management tooling unavailable inside scheduled child runs.
 - Keep handoff tooling scoped to the current task and disabled outside child runs.

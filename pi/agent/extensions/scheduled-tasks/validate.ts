@@ -22,6 +22,7 @@ export interface ValidationResult {
 }
 
 const THINKING = new Set(["low", "medium", "high", "none", "minimal"]);
+const EXECUTION_SHELL = new Set(["bash-login"]);
 const SENSITIVE_KEY = /(token|secret|password|key|credential)/i;
 
 export function effectiveTools(
@@ -78,6 +79,12 @@ export async function validateTask(
     errors.push("model must be a non-empty string.");
   if (task.thinking !== undefined && !THINKING.has(task.thinking))
     warnings.push(`Unrecognized thinking value: ${task.thinking}`);
+  if (
+    task.rawFrontmatter.executionShell !== undefined &&
+    (typeof task.rawFrontmatter.executionShell !== "string" ||
+      !EXECUTION_SHELL.has(task.rawFrontmatter.executionShell))
+  )
+    errors.push("executionShell must be one of: bash-login.");
   if (
     task.rawFrontmatter.tools !== undefined &&
     (!Array.isArray(task.rawFrontmatter.tools) ||

@@ -74,6 +74,7 @@ envFiles:
   - .env.scheduled
 env:
   NODE_ENV: production
+executionShell: bash-login
 timeoutMinutes: 30
 catchup: true
 handoff: true
@@ -93,10 +94,11 @@ Rules:
 - `envFiles` may be a string or list of dotenv-style files. Relative paths resolve against `cwd`; listed files are required in v1.
 - Child environment precedence is parent scheduler environment, then `envFiles` in listed order, then inline task `env`, then scheduled-run marker variables.
 - `env` values are written in plain text in task files and are visible in management commands/tools and to agents or sessions with file read access. Env file values are not printed by validation, but they are still visible to child processes and may appear in run output. Task files and env files are not secret storage.
+- `executionShell: bash-login` runs the child Pi process through `bash --login`, allowing shell startup files to initialize development environments before Pi starts. Omit it for direct argv-array execution. Task `envFiles`, inline `env`, and scheduled-run markers are still present when bash starts, but shell startup files may mutate or override them.
 - `catchup: true` opts a task into one make-up run after a missed schedule; omitted or `false` preserves skip-on-miss behavior.
 - `handoff` is boolean only in v1.
 
-Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `timeoutMinutes`, invalid `catchup`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
+Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `executionShell`, invalid `timeoutMinutes`, invalid `catchup`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
 Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
 
@@ -135,7 +137,7 @@ If handoff is disabled or the scheduled-run context is invalid, it returns a cle
 
 ## Runs and artifacts
 
-Manual runs and scheduler ticks share the same child Pi spawn path. Child runs set:
+Manual runs and scheduler ticks share the same child Pi spawn path. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec "$@"' bash <piCommand> ...`, preserving Pi arguments while allowing bash login startup files to run first. Child runs set:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>
@@ -182,7 +184,7 @@ All configurable values in the cron command are shell-quoted. `piCommand` is tre
 ## Security defaults and limitations
 
 - Task IDs and paths are constrained to the configured root layout.
-- Child Pi is spawned with an argument array, not shell concatenation.
+- Child Pi is spawned with an argument array, not shell concatenation. When `executionShell: bash-login` is enabled, bash receives a fixed wrapper and the Pi command plus arguments are passed positionally.
 - Tool permissions use an explicit effective allowlist.
 - Handoff tooling is env-gated and current-task scoped; the env vars activate behavior but are not treated as a security boundary.
 - No force-unlock or destructive cleanup commands are provided in v1.
