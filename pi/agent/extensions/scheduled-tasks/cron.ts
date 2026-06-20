@@ -6,17 +6,19 @@ export function shellQuote(value: string): string {
 }
 
 export function buildCronBlock(options: {
-  rootDir: string;
+  projectCwd: string;
   piCommand: string;
-  nodeCommand: string;
-  helperPath: string;
 }): string {
   const command = [
-    `SCHEDULED_TASKS_ROOT_DIR=${shellQuote(options.rootDir)}`,
-    `SCHEDULED_TASKS_PI_COMMAND=${shellQuote(options.piCommand)}`,
-    shellQuote(options.nodeCommand),
-    shellQuote(options.helperPath),
-    "tick",
+    "cd",
+    shellQuote(options.projectCwd),
+    "&&",
+    shellQuote(options.piCommand),
+    "--mode",
+    "json",
+    "--no-session",
+    "-p",
+    shellQuote("/tasks-tick"),
   ].join(" ");
   return [CRON_BEGIN, `* * * * * ${command}`, CRON_END].join("\n");
 }

@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -148,16 +147,11 @@ export function registerScheduledTaskCommands(
     description: "Install or update the managed scheduled-tasks crontab block.",
     handler: async (_args, ctx) => {
       const { config } = await configFor(ctx);
-      const helperPath = fileURLToPath(
-        new URL("./pi-task-scheduler.mjs", import.meta.url),
-      );
       const next = installManagedBlock(
         await currentCrontab(),
         buildCronBlock({
-          rootDir: config.rootDir,
+          projectCwd: ctx.cwd,
           piCommand: config.piCommand,
-          nodeCommand: config.nodeCommand,
-          helperPath,
         }),
       );
       await writeCrontab(next);
@@ -173,13 +167,19 @@ export function registerScheduledTaskCommands(
     },
   });
 
-  pi.registerCommand("tasks-tick-dry-run", {
-    description: "Run a scheduler dry run for debugging.",
-    handler: async (_args, ctx) => {
+  pi.registerCommand("tasks-tick", {
+    description:
+      "Run one scheduled-tasks scheduler tick. Use --dry-run to inspect without mutating.",
+    handler: async (args, ctx) => {
       const { config } = await configFor(ctx);
+      const dryRun = args
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .includes("--dry-run");
       notify(
         ctx,
-        JSON.stringify(await schedulerTick(config, { dryRun: true }), null, 2),
+        JSON.stringify(await schedulerTick(config, { dryRun }), null, 2),
       );
     },
   });

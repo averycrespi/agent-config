@@ -151,10 +151,7 @@ export async function validateConfig(
       severity: "error",
       message: "defaultTools must contain non-empty tool names.",
     });
-  for (const [name, command] of [
-    ["piCommand", config.piCommand],
-    ["nodeCommand", config.nodeCommand],
-  ] as const) {
+  for (const [name, command] of [["piCommand", config.piCommand]] as const) {
     const health = await commandHealth(command);
     if (health.warning)
       issues.push({

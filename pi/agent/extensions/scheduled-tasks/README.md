@@ -29,8 +29,7 @@ Settings are read from `extension:scheduled-tasks` plus environment overrides. E
 | `rootDir`               | `~/.pi/scheduled-tasks`          | `SCHEDULED_TASKS_ROOT_DIR`                | Persistent root containing tasks, handoffs, state, sessions, runs, and locks.                                                            |
 | `defaultTimeoutMinutes` | `30`                             | `SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES` | Default child Pi timeout when a task omits `timeoutMinutes`.                                                                             |
 | `defaultTools`          | `["read", "grep", "find", "ls"]` | `SCHEDULED_TASKS_DEFAULT_TOOLS`           | Comma-separated default tool allowlist when a task omits `tools`. Empty means `--no-tools` unless handoff adds `scheduled_task_handoff`. |
-| `piCommand`             | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`              | Executable path or command name used for child Pi runs.                                                                                  |
-| `nodeCommand`           | `process.execPath`               | `SCHEDULED_TASKS_NODE_COMMAND`            | Executable path or command name inserted into the managed cron line.                                                                     |
+| `piCommand`             | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`              | Executable path or command name used for child Pi runs and the managed cron entrypoint.                                                  |
 
 Example:
 
@@ -40,8 +39,7 @@ Example:
     "rootDir": "~/pi-scheduled",
     "defaultTimeoutMinutes": 20,
     "defaultTools": ["read", "grep", "bash"],
-    "piCommand": "/usr/local/bin/pi",
-    "nodeCommand": "/usr/local/bin/node"
+    "piCommand": "/usr/local/bin/pi"
   }
 }
 ```
@@ -95,6 +93,7 @@ Use `/tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_
 - `/tasks-run <task-id>` manually starts a fresh scheduled child Pi run.
 - `/tasks-logs <task-id>` shows latest run status, artifact paths, and bounded output/log tails.
 - `/tasks-doctor [task-id]` validates config, root, command health, and task files.
+- `/tasks-tick [--dry-run]` runs one scheduler tick. `--dry-run` reports decisions without mutating scheduler state, acquiring task execution locks, spawning child Pi, or writing run artifacts.
 - `/tasks-install-cron` installs or replaces only the managed crontab block.
 - `/tasks-uninstall-cron` removes only the managed crontab block.
 - `/scheduled-tasks-config` shows effective parsed config.
@@ -144,17 +143,17 @@ Normal Pi sessions never automatically include handoff content. Handoff content 
 
 ## Scheduler and cron
 
-`pi-task-scheduler.mjs tick` is the single cron entrypoint. It scans enabled tasks, validates them, uses scheduler/task locks, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and advances `nextRunAt` before claiming work. Missed runs are not replayed.
+`/tasks-tick` is the single scheduler entrypoint for cron. It scans enabled tasks, validates them, uses the same TypeScript scheduler and child-spawn path as manual `/tasks-run`, initializes missing `nextRunAt` to the next future occurrence without immediate execution, skips missed schedules outside the 90-second due window, and does not replay missed runs.
 
-`/tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched:
+`/tasks-install-cron` manages one marked block and leaves unrelated crontab entries untouched. The managed cron line changes to the project cwd captured when the command is run, then invokes Pi directly in non-interactive mode:
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * SCHEDULED_TASKS_ROOT_DIR='<root>' SCHEDULED_TASKS_PI_COMMAND='<pi>' '<node>' '<extension>/pi-task-scheduler.mjs' tick
+* * * * * cd '<project-cwd>' && '<pi>' --mode json --no-session -p '/tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
-All configurable values in the cron command are shell-quoted. `piCommand` and `nodeCommand` are treated as executable paths or command names, not shell snippets.
+All configurable values in the cron command are shell-quoted. `piCommand` is treated as an executable path or command name, not a shell snippet.
 
 ## Security defaults and limitations
 

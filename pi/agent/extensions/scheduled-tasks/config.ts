@@ -15,7 +15,6 @@ export interface ScheduledTasksConfig {
   defaultTimeoutMinutes: number;
   defaultTools: string[];
   piCommand: string;
-  nodeCommand: string;
 }
 
 export const DEFAULT_CONFIG: ScheduledTasksConfig = {
@@ -23,7 +22,6 @@ export const DEFAULT_CONFIG: ScheduledTasksConfig = {
   defaultTimeoutMinutes: 30,
   defaultTools: ["read", "grep", "find", "ls"],
   piCommand: "pi",
-  nodeCommand: process.execPath,
 };
 
 function parsePositiveNumber(value: unknown): number | undefined {
@@ -75,8 +73,6 @@ function envSettings(
   if (tools !== undefined) settings.defaultTools = tools;
   if (env.SCHEDULED_TASKS_PI_COMMAND)
     settings.piCommand = env.SCHEDULED_TASKS_PI_COMMAND;
-  if (env.SCHEDULED_TASKS_NODE_COMMAND)
-    settings.nodeCommand = env.SCHEDULED_TASKS_NODE_COMMAND;
   return settings;
 }
 
@@ -116,17 +112,12 @@ export function normalizeConfig(
     typeof raw.piCommand === "string" && raw.piCommand.trim()
       ? raw.piCommand.trim()
       : DEFAULT_CONFIG.piCommand;
-  const nodeCommand =
-    typeof raw.nodeCommand === "string" && raw.nodeCommand.trim()
-      ? raw.nodeCommand.trim()
-      : DEFAULT_CONFIG.nodeCommand;
 
   return {
     rootDir: resolveRoot(rootDir),
     defaultTimeoutMinutes,
     defaultTools,
     piCommand,
-    nodeCommand,
   };
 }
 

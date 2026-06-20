@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import { registerScheduledTaskCommands } from "./commands.ts";
 import { normalizeConfig } from "./config.ts";
 import {
   buildCronBlock,
@@ -46,14 +47,12 @@ test("config normalization supports env-shaped values and defaults", () => {
       defaultTimeoutMinutes: "5",
       defaultTools: "read,bash",
       piCommand: "/bin/pi",
-      nodeCommand: "/bin/node",
     },
     warnings,
   );
   assert.equal(config.defaultTimeoutMinutes, 5);
   assert.deepEqual(config.defaultTools, ["read", "bash"]);
   assert.equal(config.piCommand, "/bin/pi");
-  assert.equal(config.nodeCommand, "/bin/node");
   assert.equal(warnings.length, 0);
 });
 
@@ -94,7 +93,6 @@ test("validator reports errors, warnings, and effective handoff tools", async ()
       defaultTimeoutMinutes: 30,
       defaultTools: ["read"],
       piCommand: "pi",
-      nodeCommand: process.execPath,
     },
     parsed.errors,
   );
@@ -190,7 +188,6 @@ test("spawn plan builds safe arg arrays and scheduled-run env", async () => {
       defaultTimeoutMinutes: 7,
       defaultTools: ["read"],
       piCommand: "pi",
-      nodeCommand: process.execPath,
     },
     task,
     runId: "run1",
@@ -208,23 +205,65 @@ test("spawn plan builds safe arg arrays and scheduled-run env", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("cron install and uninstall preserve unrelated crontab lines and quote metacharacters", () => {
+test("cron install and uninstall preserve unrelated crontab lines and quote Pi command entrypoint", () => {
   assert.equal(shellQuote("/tmp/a b;$(x)'y"), `'/tmp/a b;$(x)'"'"'y'`);
   const block = buildCronBlock({
-    rootDir: "/tmp/root with spaces;rm",
-    piCommand: "pi",
-    nodeCommand: "/usr/bin/node",
-    helperPath: "/tmp/helper path/pi-task-scheduler.mjs",
+    projectCwd: "/tmp/project with spaces;rm",
+    piCommand: "/opt/pi bin/pi",
   });
   assert.match(block, /BEGIN PI SCHEDULED TASKS/);
-  assert.match(block, /'\/tmp\/root with spaces;rm'/);
+  assert.match(
+    block,
+    /cd '\/tmp\/project with spaces;rm' && '\/opt\/pi bin\/pi' --mode json --no-session -p '\/tasks-tick'/,
+  );
+  assert.doesNotMatch(block, /pi-task-scheduler\.mjs|node/);
   const existing = "MAILTO=user@example.com\n";
   const installed = installManagedBlock(existing, block);
   assert.match(installed, /^MAILTO=user@example.com/m);
-  const replaced = installManagedBlock(installed, block.replace("pi'", "pi2'"));
+  const replaced = installManagedBlock(
+    installed,
+    block.replace("/opt/pi bin/pi", "/opt/pi2"),
+  );
   assert.equal((replaced.match(/BEGIN PI SCHEDULED TASKS/g) ?? []).length, 1);
   const removed = uninstallManagedBlock(replaced);
   assert.equal(removed, existing);
+});
+
+test("commands register /tasks-tick with dry-run support instead of legacy dry-run command", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const loadConfig = async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+  });
+  registerScheduledTaskCommands(pi as any, loadConfig);
+  assert.ok(registered.has("tasks-tick"));
+  assert.equal(registered.has("tasks-tick-dry-run"), false);
+
+  const notifications: Array<{ text: string; level: string }> = [];
+  await registered.get("tasks-tick")!.handler("--dry-run", {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  });
+  assert.match(notifications[0]!.text, /"dryRun": true/);
+  await rm(root, { recursive: true, force: true });
 });
 
 test("scheduler tick initializes state, claims due work, writes artifacts, and releases locks", async () => {
@@ -240,7 +279,6 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
     defaultTimeoutMinutes: 1,
     defaultTools: ["read"],
     piCommand: "pi",
-    nodeCommand: process.execPath,
   };
   const first = await schedulerTick(config, {
     now: new Date("2026-06-19T09:00:00Z"),
