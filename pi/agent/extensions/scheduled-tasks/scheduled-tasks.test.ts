@@ -26,11 +26,12 @@ import {
   shellQuote,
   uninstallManagedBlock,
 } from "./cron.ts";
-import { acquireLock } from "./locks.ts";
+import { acquireLock, readLock } from "./locks.ts";
 import {
   ensureRootLayout,
   isInside,
   isSafeTaskId,
+  lockPath,
   runDir,
   tickLogPath,
 } from "./paths.ts";
@@ -41,7 +42,7 @@ import {
   nextFutureRun,
   parseCron,
 } from "./schedule.ts";
-import { readLatestLogs, schedulerTick } from "./scheduler.ts";
+import { readLatestLogs, runClaimedTask, schedulerTick } from "./scheduler.ts";
 import {
   buildSpawnPlan,
   spawnPi,
@@ -49,7 +50,12 @@ import {
   _createWriteStream,
   _spawn,
 } from "./spawn.ts";
-import { readTaskState, writeTaskState } from "./state.ts";
+import {
+  readRunLifecycle,
+  readTaskState,
+  writeRunLifecycle,
+  writeTaskState,
+} from "./state.ts";
 import { registerHandoffTool, registerScheduledTasksTool } from "./tools.ts";
 import { parseTaskMarkdown } from "./task-file.ts";
 import { effectiveTools, validateTask } from "./validate.ts";
@@ -88,6 +94,7 @@ test("config normalization supports env-shaped values and defaults", () => {
         ASDF_DATA_DIR: "/Users/test/.asdf",
       },
       maxCatchupRunsPerTick: "2",
+      maxConcurrentScheduledRuns: "4",
     },
     warnings,
   );
@@ -99,6 +106,7 @@ test("config normalization supports env-shaped values and defaults", () => {
     ASDF_DATA_DIR: "/Users/test/.asdf",
   });
   assert.equal(config.maxCatchupRunsPerTick, 2);
+  assert.equal(config.maxConcurrentScheduledRuns, 4);
   assert.equal(warnings.length, 0);
 
   const zeroCatchup = normalizeConfig({ maxCatchupRunsPerTick: 0 });
@@ -106,12 +114,14 @@ test("config normalization supports env-shaped values and defaults", () => {
 
   const invalidWarnings: string[] = [];
   const invalid = normalizeConfig(
-    { maxCatchupRunsPerTick: 1.5 },
+    { maxCatchupRunsPerTick: 1.5, maxConcurrentScheduledRuns: 0 },
     invalidWarnings,
   );
   assert.equal(invalid.maxCatchupRunsPerTick, 1);
+  assert.equal(invalid.maxConcurrentScheduledRuns, 3);
   assert.deepEqual(invalidWarnings, [
     "Invalid maxCatchupRunsPerTick; using default.",
+    "Invalid maxConcurrentScheduledRuns; using default.",
   ]);
 });
 
@@ -437,29 +447,33 @@ test("effective tool allowlist uses defaults and implicit handoff tool", () => {
   );
 });
 
-test("cron DOM and DOW fields use standard OR semantics when both are restricted", () => {
+test("cron DOM and DOW fields use standard OR semantics in local time", () => {
   const cron = parseCron("0 9 15 * 1");
   assert.ok(cron);
-  assert.equal(cronMatches(cron, new Date("2026-06-15T09:00:00Z")), true);
-  assert.equal(cronMatches(cron, new Date("2026-06-22T09:00:00Z")), true);
-  assert.equal(cronMatches(cron, new Date("2026-07-15T09:00:00Z")), true);
-  assert.equal(cronMatches(cron, new Date("2026-06-16T09:00:00Z")), false);
+  assert.equal(cronMatches(cron, new Date(2026, 5, 15, 9, 0)), true);
+  assert.equal(cronMatches(cron, new Date(2026, 5, 22, 9, 0)), true);
+  assert.equal(cronMatches(cron, new Date(2026, 6, 15, 9, 0)), true);
+  assert.equal(cronMatches(cron, new Date(2026, 5, 16, 9, 0)), false);
 });
 
-test("cron schedule computes next future runs and missed due decisions", () => {
+test("cron schedule computes next future runs and missed due decisions in local time", () => {
   assert.ok(parseCron("*/5 * * * *"));
-  const next = nextFutureRun("0 9 * * 1", new Date("2026-06-19T09:00:00Z"));
-  assert.equal(next?.toISOString(), "2026-06-22T09:00:00.000Z");
+  const next = nextFutureRun("0 9 * * 1", new Date(2026, 5, 19, 9, 0));
+  assert.equal(next?.getFullYear(), 2026);
+  assert.equal(next?.getMonth(), 5);
+  assert.equal(next?.getDate(), 22);
+  assert.equal(next?.getHours(), 9);
+  assert.equal(next?.getMinutes(), 0);
   assert.deepEqual(
-    decideDue({ schedule: "* * * * *", now: new Date("2026-06-19T09:00:00Z") })
+    decideDue({ schedule: "* * * * *", now: new Date(2026, 5, 19, 9, 0) })
       .action,
     "initialize",
   );
   assert.deepEqual(
     decideDue({
       schedule: "* * * * *",
-      nextRunAt: "2026-06-19T08:58:00.000Z",
-      now: new Date("2026-06-19T09:00:00Z"),
+      nextRunAt: new Date(2026, 5, 19, 8, 58).toISOString(),
+      now: new Date(2026, 5, 19, 9, 0),
     }).action,
     "missed",
   );
@@ -1077,7 +1091,7 @@ test("spawn keeps multibyte output tails within the byte limit", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("spawn applies write-stream backpressure to child pipes", async () => {
+test("spawn applies write-stream backpressure to child pipes", async (t) => {
   const root = await tempRoot();
   const child = new EventEmitter() as StubChild;
   child.stdout = new PassThrough();
@@ -1103,7 +1117,7 @@ test("spawn applies write-stream backpressure to child pipes", async () => {
   }) as BackpressureStream;
   log.writes = [];
   log.drainCount = 0;
-  mock.method(log, "write", (chunk: unknown) => {
+  t.mock.method(log, "write", (chunk: unknown) => {
     log.writes.push(String(chunk));
     if (log.drainCount === 0 && String(chunk).includes("payload")) {
       log.drainCount += 1;
@@ -1112,7 +1126,7 @@ test("spawn applies write-stream backpressure to child pipes", async () => {
     }
     return true;
   });
-  mock.method(_createWriteStream, "fn", () => log as any);
+  t.mock.method(_createWriteStream, "fn", () => log as any);
   process.nextTick(() => {
     child.stdout.write("payload");
     child.stdout.end();
@@ -1239,6 +1253,37 @@ test("spawn error and nonzero results keep bounded tails", async () => {
   assert.equal(nonzeroOutcome.exitCode, 2);
   assert.ok(Buffer.byteLength(nonzeroOutcome.stdout) <= OUTPUT_TAIL_BYTES);
   assert.equal(nonzeroOutcome.stdout.includes("OUT_PREFIX"), false);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("spawn write-stream errors resolve as failed outcomes", async (t) => {
+  const root = await tempRoot();
+  const child = new EventEmitter() as StubChild;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => true;
+  t.mock.method(_spawn, "fn", () => child);
+  t.mock.method(_createWriteStream, "fn", () => {
+    const stream = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback(new Error("disk full"));
+      },
+    });
+    return stream as any;
+  });
+  process.nextTick(() => {
+    child.stdout.write("payload");
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0, null);
+  });
+
+  const outcome = await spawnPi(
+    { command: "pi", args: [], cwd: root, env: {}, timeoutMs: 60_000 },
+    join(root, "runs", "stream-error.log"),
+  );
+
+  assert.equal(outcome.error, "disk full");
   await rm(root, { recursive: true, force: true });
 });
 
@@ -1516,7 +1561,7 @@ test("scheduler dry-run reports one catchup and defers catchups over the cap", a
   await rm(root, { recursive: true, force: true });
 });
 
-test("scheduler runs normal due tasks and caps catchup runs", async () => {
+test("scheduler launches normal due tasks and caps catchup runs", async () => {
   const root = await tempRoot();
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
   await writeFile(
@@ -1555,19 +1600,32 @@ test("scheduler runs normal due tasks and caps catchup runs", async () => {
     maxCatchupRunsPerTick: 1,
   };
   let spawnCount = 0;
-  mock.method(_spawn, "fn", () => {
-    spawnCount += 1;
-    const child = new EventEmitter() as StubChild;
-    child.stdout = new PassThrough();
-    child.stderr = new PassThrough();
-    child.kill = () => true;
-    process.nextTick(() => {
-      child.stdout.end();
-      child.stderr.end();
-      child.emit("close", 0, null);
-    });
-    return child;
-  });
+  let unrefCount = 0;
+  const launchCalls: Array<{
+    args: readonly string[];
+    options?: SpawnOptions;
+  }> = [];
+  mock.method(
+    _spawn,
+    "fn",
+    (_command: string, args: readonly string[], options?: SpawnOptions) => {
+      spawnCount += 1;
+      launchCalls.push({ args, options });
+      const child = new EventEmitter() as StubChild & { unref: () => void };
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.kill = () => true;
+      child.unref = () => {
+        unrefCount += 1;
+      };
+      process.nextTick(() => {
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", 0, null);
+      });
+      return child;
+    },
+  );
 
   const summary = await schedulerTick(config, {
     now: new Date("2026-06-19T09:03:00Z"),
@@ -1575,14 +1633,27 @@ test("scheduler runs normal due tasks and caps catchup runs", async () => {
 
   assert.equal(summary.status, "ok");
   assert.equal(spawnCount, 2);
+  assert.equal(unrefCount, 2);
+  assert.deepEqual(launchCalls[0]?.args.slice(0, 4), [
+    "--mode",
+    "json",
+    "--no-session",
+    "-p",
+  ]);
+  assert.match(
+    String(launchCalls[0]?.args.at(-1)),
+    /\/scheduled-tasks-run-claimed catch-a /,
+  );
+  assert.equal(launchCalls[0]?.options?.detached, true);
+  assert.equal(launchCalls[0]?.options?.stdio, "ignore");
   assert.deepEqual(
     summary.claimed.map((item) => [item.taskId, item.status]),
     [
-      ["catch-a", "success"],
-      ["normal", "success"],
+      ["catch-a", "launched"],
+      ["normal", "launched"],
     ],
   );
-  assert.match(summary.claimed[0]?.message ?? "", /Catchup run/);
+  assert.match(summary.claimed[0]?.message ?? "", /Launched catchup run/);
   assert.deepEqual(
     summary.skipped.map((item) => [item.taskId, item.status]),
     [["catch-b", "catchup_deferred"]],
@@ -1713,7 +1784,7 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
   const retried = await schedulerTick(config, {
     now: new Date("2026-06-19T09:02:00Z"),
   });
-  assert.equal(retried.claimed[0]?.status, "success");
+  assert.equal(retried.claimed[0]?.status, "launched");
   assert.equal(
     (await readTaskState(root, "job"))?.nextRunAt,
     "2026-06-19T09:03:00.000Z",
@@ -1731,6 +1802,293 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
     (await readTaskState(root, "job"))?.nextRunAt,
     "2026-06-19T09:04:00.000Z",
   );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("task lock release does not delete a newer recovered lock", async () => {
+  const root = await tempRoot();
+  const held = await acquireLock(root, "job", { taskId: "job", runId: "old" });
+  assert.ok(held);
+  await writeFile(
+    lockPath(root, "job"),
+    `${JSON.stringify({ ...held.metadata, runId: "newer" }, null, 2)}\n`,
+    "utf8",
+  );
+
+  await held.release();
+
+  assert.equal((await readLock(root, "job"))?.runId, "newer");
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler launch failure writes terminal lifecycle and releases the task lock", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("error", new Error("cannot launch")));
+    return child;
+  });
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.equal(summary.claimed[0]?.status, "launch_failed");
+  const runId = summary.claimed[0]!.runId!;
+  assert.equal(
+    (await readRunLifecycle(root, "job", runId))?.status,
+    "launch_failed",
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(join(root, "runs", "job", runId, "result.json"), "utf8"),
+    ).status,
+    "launch_failed",
+  );
+  assert.equal(await readLock(root, "job"), undefined);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler enforces global active scheduled-run concurrency without advancing deferred tasks", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  for (const taskId of ["a", "b"]) {
+    await writeFile(
+      join(root, "tasks", `${taskId}.md`),
+      sampleTask(taskId, cwd),
+      "utf8",
+    );
+    await writeTaskState(root, {
+      taskId,
+      nextRunAt: "2026-06-19T09:01:00.000Z",
+    });
+  }
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    return child;
+  });
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+      maxConcurrentScheduledRuns: 1,
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.deepEqual(
+    summary.claimed.map((item) => item.status),
+    ["launched"],
+  );
+  assert.deepEqual(
+    summary.skipped.map((item) => item.status),
+    ["concurrency_deferred"],
+  );
+  assert.equal(
+    (await readTaskState(root, "b"))?.nextRunAt,
+    "2026-06-19T09:01:00.000Z",
+  );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler blocks corrupt task state instead of treating it as missing", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeFile(join(root, "state", "job.json"), "{not json", "utf8");
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.equal(summary.skipped[0]?.status, "corrupt_state");
+  assert.deepEqual(summary.claimed, []);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler blocks corrupt run metadata referenced by task state", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const runId = "2026-06-18T09-00-00Z-badbad";
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+    lastRunId: runId,
+  });
+  await mkdir(join(root, "runs", "job", runId), { recursive: true });
+  await writeFile(join(root, "runs", "job", runId, "run.json"), "{bad", "utf8");
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.equal(summary.skipped[0]?.status, "corrupt_run_metadata");
+  assert.deepEqual(summary.claimed, []);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler recovers stale task locks and marks prior lifecycle", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  const oldRunId = "2026-06-18T09-00-00Z-stale";
+  const stale = await acquireLock(root, "job", {
+    taskId: "job",
+    runId: oldRunId,
+  });
+  assert.ok(stale);
+  await writeFile(
+    lockPath(root, "job"),
+    `${JSON.stringify({ ...stale.metadata, startedAt: "2026-06-18T09:00:00.000Z" }, null, 2)}\n`,
+    "utf8",
+  );
+  await writeRunLifecycle(root, {
+    taskId: "job",
+    runId: oldRunId,
+    status: "running",
+    claimedAt: "2026-06-18T09:00:00.000Z",
+    startedAt: "2026-06-18T09:00:00.000Z",
+  });
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    return child;
+  });
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.equal(summary.claimed[0]?.status, "launched");
+  assert.equal(
+    (await readRunLifecycle(root, "job", oldRunId))?.status,
+    "stale_recovered",
+  );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("claimed runner executes the task snapshot even after source mutation", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", 0, null);
+    });
+    return child;
+  });
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+  };
+  const summary = await schedulerTick(config, {
+    now: new Date("2026-06-19T09:01:00Z"),
+  });
+  const runId = summary.claimed[0]!.runId!;
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd).replace("Do the work.", "Mutated source."),
+    "utf8",
+  );
+
+  await runClaimedTask(config, "job", runId);
+
+  const prompt = await readFile(
+    join(root, "runs", "job", runId, "prompt.md"),
+    "utf8",
+  );
+  assert.match(prompt, /Do the work\./);
+  assert.doesNotMatch(prompt, /Mutated source/);
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
@@ -1812,16 +2170,16 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
   assert.equal(first.skipped[0]?.status, "initialized");
   const state = await readTaskState(root, "job");
   assert.ok(state?.nextRunAt);
-  const child = new EventEmitter() as StubChild;
-  child.stdout = new PassThrough();
-  child.stderr = new PassThrough();
-  child.kill = () => true;
   let spawnedEnv: NodeJS.ProcessEnv | undefined;
   mock.method(
     _spawn,
     "fn",
     (_command: string, _args: readonly string[], options?: SpawnOptions) => {
       spawnedEnv = options?.env;
+      const child = new EventEmitter() as StubChild;
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.kill = () => true;
       process.nextTick(() => {
         child.stdout.write(
           '{"type":"message_end","message":{"content":"done"}}\n',
@@ -1835,14 +2193,32 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
   );
   const due = await schedulerTick(config, { now: new Date(state!.nextRunAt!) });
   assert.equal(due.status, "ok");
-  assert.equal(due.claimed[0]?.status, "success");
+  assert.equal(due.claimed[0]?.status, "launched");
+  const runId = due.claimed[0]!.runId!;
+  assert.equal(
+    (await readRunLifecycle(root, "job", runId))?.status,
+    "launched",
+  );
+  assert.match(
+    await readFile(join(root, "runs", "job", runId, "task.md"), "utf8"),
+    /envFiles:/,
+  );
+
+  const finished = await runClaimedTask(config, "job", runId);
+  assert.equal(finished.status, "success");
   assert.equal(spawnedEnv?.FROM_ENV_FILE, "loaded");
   const updated = await readTaskState(root, "job");
   assert.equal(updated?.lastStatus, "success");
-  const runId = updated!.lastRunId!;
+  assert.equal(updated?.lastRunId, runId);
   assert.match(
     await readFile(join(root, "runs", "job", runId, "prompt.md"), "utf8"),
     /# Scheduled task run/,
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(join(root, "runs", "job", runId, "run.json"), "utf8"),
+    ).status,
+    "success",
   );
   assert.equal(
     JSON.parse(

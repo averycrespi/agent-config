@@ -19,9 +19,11 @@ import {
 import { ensureRootLayout, isSafeTaskId, taskPath } from "./paths.ts";
 import {
   formatLatestTick,
+  formatTaskRuntimeStatus,
   manualRunTask,
   readLatestLogs,
   readLatestTickLog,
+  runClaimedTask,
   schedulerTick,
 } from "./scheduler.ts";
 import {
@@ -160,6 +162,35 @@ export function registerScheduledTaskCommands(
     },
   });
 
+  pi.registerCommand("scheduled-tasks-run-claimed", {
+    description: "Internal runner for an already claimed scheduled task run.",
+    handler: async (args, ctx) => {
+      const [taskId, runId, ...extra] = args
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      if (!taskId || !runId || extra.length > 0) {
+        notify(
+          ctx,
+          "Usage: /scheduled-tasks-run-claimed <task-id> <run-id>",
+          "warning",
+        );
+        return;
+      }
+      if (!isSafeTaskId(taskId)) {
+        notify(ctx, `Invalid task ID. ${TASK_ID_RULES}`, "error");
+        return;
+      }
+      const { config } = await configFor(ctx);
+      const result = await runClaimedTask(config, taskId, runId);
+      notify(
+        ctx,
+        `${result.status}: ${result.message}${result.runDir ? `\n${result.runDir}` : ""}`,
+        result.status === "success" ? "info" : "warning",
+      );
+    },
+  });
+
   pi.registerCommand("scheduled-tasks-logs", {
     description: "Show latest scheduled task run logs and artifact paths.",
     handler: async (args, ctx) => {
@@ -196,11 +227,14 @@ export function registerScheduledTaskCommands(
       } else {
         parsed = await readAllTasks(config.rootDir);
       }
-      for (const item of parsed)
+      for (const item of parsed) {
         lines.push(
           "",
           formatValidation(await validateTask(item.task, config, item.errors)),
         );
+        if (item.task)
+          lines.push(await formatTaskRuntimeStatus(config, item.task.id));
+      }
       notify(ctx, lines.join("\n"));
     },
   });

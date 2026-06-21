@@ -17,6 +17,7 @@ export interface ScheduledTasksConfig {
   piCommand: string;
   cronEnvironment: Record<string, string>;
   maxCatchupRunsPerTick?: number;
+  maxConcurrentScheduledRuns?: number;
 }
 
 export const DEFAULT_CONFIG: ScheduledTasksConfig = {
@@ -26,6 +27,7 @@ export const DEFAULT_CONFIG: ScheduledTasksConfig = {
   piCommand: "pi",
   cronEnvironment: {},
   maxCatchupRunsPerTick: 1,
+  maxConcurrentScheduledRuns: 3,
 };
 
 function parsePositiveNumber(value: unknown): number | undefined {
@@ -52,6 +54,11 @@ function parseNonNegativeInteger(value: unknown): number | undefined {
       return parsed;
   }
   return undefined;
+}
+
+function parsePositiveInteger(value: unknown): number | undefined {
+  const parsed = parseNonNegativeInteger(value);
+  return parsed && parsed > 0 ? parsed : undefined;
 }
 
 export function isValidEnvName(value: string): boolean {
@@ -153,6 +160,15 @@ function envSettings(
     warnings.push(
       "Ignoring invalid SCHEDULED_TASKS_MAX_CATCHUP_RUNS_PER_TICK.",
     );
+  const maxConcurrentScheduledRuns = parsePositiveInteger(
+    env.SCHEDULED_TASKS_MAX_CONCURRENT_SCHEDULED_RUNS,
+  );
+  if (maxConcurrentScheduledRuns !== undefined)
+    settings.maxConcurrentScheduledRuns = maxConcurrentScheduledRuns;
+  else if (env.SCHEDULED_TASKS_MAX_CONCURRENT_SCHEDULED_RUNS)
+    warnings.push(
+      "Ignoring invalid SCHEDULED_TASKS_MAX_CONCURRENT_SCHEDULED_RUNS.",
+    );
   return settings;
 }
 
@@ -210,6 +226,15 @@ export function normalizeConfig(
   )
     warnings.push("Invalid maxCatchupRunsPerTick; using default.");
 
+  const maxConcurrentScheduledRuns =
+    parsePositiveInteger(raw.maxConcurrentScheduledRuns) ??
+    DEFAULT_CONFIG.maxConcurrentScheduledRuns;
+  if (
+    raw.maxConcurrentScheduledRuns !== undefined &&
+    parsePositiveInteger(raw.maxConcurrentScheduledRuns) === undefined
+  )
+    warnings.push("Invalid maxConcurrentScheduledRuns; using default.");
+
   return {
     rootDir: resolveRoot(rootDir),
     defaultTimeoutMinutes,
@@ -217,6 +242,7 @@ export function normalizeConfig(
     piCommand,
     cronEnvironment,
     maxCatchupRunsPerTick,
+    maxConcurrentScheduledRuns,
   };
 }
 

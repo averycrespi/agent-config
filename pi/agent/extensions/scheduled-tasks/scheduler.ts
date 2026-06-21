@@ -3,10 +3,12 @@ import {
   mkdir,
   open,
   readFile,
+  readdir,
   rename,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import type { SpawnOptions } from "node:child_process";
 import type { ScheduledTasksConfig } from "./config.ts";
 import {
   ensureRootLayout,
@@ -18,17 +20,28 @@ import {
 import { loadTaskEnvFiles } from "./env-files.ts";
 import { renderPrompt } from "./prompt.ts";
 import { decideDue } from "./schedule.ts";
-import { buildSpawnPlan, spawnPi } from "./spawn.ts";
-import { acquireLock, type HeldLock } from "./locks.ts";
+import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
+import {
+  acquireLock,
+  lockFromMetadata,
+  readLock,
+  type HeldLock,
+  type LockMetadata,
+} from "./locks.ts";
 import {
   makeRunId,
+  readRunLifecycleStrict,
   readTaskState,
+  readTaskStateStrict,
   recordRunState,
+  type RunLifecycle,
   type RunResult,
+  writeRunLifecycle,
   writeRunResult,
   writeTaskState,
 } from "./state.ts";
 import {
+  parseTaskMarkdown,
   readAllTasks,
   readTaskFile,
   type TaskDefinition,
@@ -38,6 +51,7 @@ import { validateTask } from "./validate.ts";
 export interface RunOptions {
   now?: Date;
   heldLock?: HeldLock;
+  lifecycle?: RunLifecycle;
 }
 
 export interface RunSummary {
@@ -50,9 +64,56 @@ export interface RunSummary {
 
 function statusFromOutcome(
   outcome: Awaited<ReturnType<typeof spawnPi>>,
-): RunResult["status"] {
+): "success" | "failed" | "timeout" {
   if (outcome.timedOut) return "timeout";
+  if (outcome.error) return "failed";
   return outcome.exitCode === 0 ? "success" : "failed";
+}
+
+function terminalResultFromLifecycle(lifecycle: RunLifecycle): RunResult {
+  const status =
+    lifecycle.status === "timeout" ||
+    lifecycle.status === "success" ||
+    lifecycle.status === "launch_failed" ||
+    lifecycle.status === "orphaned" ||
+    lifecycle.status === "stale_recovered"
+      ? lifecycle.status
+      : "failed";
+  return {
+    taskId: lifecycle.taskId,
+    runId: lifecycle.runId,
+    status,
+    startedAt: lifecycle.startedAt ?? lifecycle.claimedAt,
+    endedAt: lifecycle.endedAt ?? new Date().toISOString(),
+    exitCode: lifecycle.exitCode ?? null,
+    signal: lifecycle.signal ?? null,
+    timedOut: lifecycle.timedOut ?? false,
+    ...(lifecycle.sessionFile ? { sessionFile: lifecycle.sessionFile } : {}),
+    handoffUpdated: lifecycle.handoffUpdated ?? false,
+    ...(lifecycle.error ? { error: lifecycle.error } : {}),
+  };
+}
+
+async function writeLifecycleAndResult(
+  rootDir: string,
+  lifecycle: RunLifecycle,
+): Promise<void> {
+  await writeRunLifecycle(rootDir, lifecycle);
+  if (
+    [
+      "success",
+      "failed",
+      "timeout",
+      "launch_failed",
+      "orphaned",
+      "stale_recovered",
+    ].includes(lifecycle.status)
+  ) {
+    await writeRunResult(
+      join(runDir(rootDir, lifecycle.taskId, lifecycle.runId), "result.json"),
+      terminalResultFromLifecycle(lifecycle),
+    );
+  }
 }
 
 export async function runTask(
@@ -93,20 +154,42 @@ export async function runTask(
       message: "Task is already running.",
     };
   const startedAt = new Date().toISOString();
+  let lifecycle: RunLifecycle = options.lifecycle ?? {
+    taskId: task.id,
+    runId,
+    status: "running",
+    claimedAt: startedAt,
+  };
   try {
     await mkdir(dir, { recursive: true, mode: 0o700 });
+    lifecycle = {
+      ...lifecycle,
+      status: "running",
+      startedAt,
+    };
+    await writeRunLifecycle(config.rootDir, lifecycle);
     const prompt = await renderPrompt({ rootDir: config.rootDir, task, runId });
     const promptPath = join(dir, "prompt.md");
     await writeFile(promptPath, prompt.prompt, { mode: 0o600 });
     const envFileResult = await loadTaskEnvFiles(task);
-    if (envFileResult.issues.length > 0)
-      return {
-        taskId: task.id,
-        status: "validation_failed",
-        message: envFileResult.issues
+    if (envFileResult.issues.length > 0) {
+      const failed = {
+        ...lifecycle,
+        status: "failed" as const,
+        endedAt: new Date().toISOString(),
+        error: envFileResult.issues
           .map((issue) => `envFiles ${issue.path}: ${issue.message}`)
           .join("\n"),
       };
+      await writeLifecycleAndResult(config.rootDir, failed);
+      await recordRunState(config.rootDir, terminalResultFromLifecycle(failed));
+      return {
+        taskId: task.id,
+        runId,
+        status: "validation_failed",
+        message: failed.error ?? "validation failed",
+      };
+    }
     const plan = buildSpawnPlan({
       config,
       task,
@@ -142,6 +225,17 @@ export async function runTask(
       ...(outcome.error ? { error: outcome.error } : {}),
     };
     await writeRunResult(join(dir, "result.json"), result);
+    await writeRunLifecycle(config.rootDir, {
+      ...lifecycle,
+      status: statusFromOutcome(outcome),
+      endedAt: result.endedAt,
+      exitCode: result.exitCode,
+      signal: result.signal,
+      timedOut: result.timedOut,
+      ...(result.sessionFile ? { sessionFile: result.sessionFile } : {}),
+      handoffUpdated,
+      ...(result.error ? { error: result.error } : {}),
+    });
     await recordRunState(config.rootDir, result);
     return {
       taskId: task.id,
@@ -169,6 +263,57 @@ export async function manualRunTask(
   return runTask(config, parsed.task);
 }
 
+export async function runClaimedTask(
+  config: ScheduledTasksConfig,
+  taskId: string,
+  runId: string,
+): Promise<RunSummary> {
+  await ensureRootLayout(config.rootDir);
+  const lifecycleResult = await readRunLifecycleStrict(
+    config.rootDir,
+    taskId,
+    runId,
+  );
+  if (!lifecycleResult.ok)
+    return {
+      taskId,
+      runId,
+      status: lifecycleResult.missing ? "not_found" : "corrupt_run_metadata",
+      message: lifecycleResult.missing
+        ? "Claimed run metadata was not found."
+        : lifecycleResult.error,
+    };
+  const lockMetadata = await readLock(config.rootDir, taskId);
+  if (!lockMetadata || lockMetadata.runId !== runId)
+    return {
+      taskId,
+      runId,
+      status: "lock_mismatch",
+      message: "Task lock does not match the claimed run.",
+    };
+  const snapshot = await readFile(
+    join(runDir(config.rootDir, taskId, runId), "task.md"),
+    "utf8",
+  ).catch((error) => {
+    throw new Error(
+      `Unable to read claimed task snapshot: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  const parsed = parseTaskMarkdown(taskPath(config.rootDir, taskId), snapshot);
+  if (!parsed.task || parsed.errors.length > 0)
+    return {
+      taskId,
+      runId,
+      status: "validation_failed",
+      message: parsed.errors.join("\n") || "Invalid task snapshot.",
+    };
+  const heldLock = lockFromMetadata(config.rootDir, taskId, lockMetadata);
+  return runTask(config, parsed.task, {
+    heldLock,
+    lifecycle: lifecycleResult.value,
+  });
+}
+
 export interface TaskSkipSummary {
   taskId: string;
   status: string;
@@ -185,6 +330,11 @@ export interface TickSummary {
 }
 
 const TICK_LOG_RETAIN = 1000;
+const SCHEDULER_LOCK_STALE_MS = 5 * 60_000;
+const TASK_LOCK_CUSHION_MS = 5 * 60_000;
+const SAME_HOST_DEAD_PID_FLOOR_MS = 30_000;
+const LAUNCH_TIMEOUT_MS = 1_000;
+const ACTIVE_STATUSES = new Set(["claimed", "launched", "running"]);
 
 async function trimTickLog(path: string): Promise<void> {
   const raw = await readFile(path, "utf8");
@@ -235,6 +385,222 @@ function tickSummary(options: {
   };
 }
 
+function taskStaleMs(
+  task: TaskDefinition,
+  config: ScheduledTasksConfig,
+): number {
+  return (
+    (task.timeoutMinutes ?? config.defaultTimeoutMinutes) * 60_000 +
+    TASK_LOCK_CUSHION_MS
+  );
+}
+
+async function markRecoveredRun(
+  config: ScheduledTasksConfig,
+  metadata: LockMetadata,
+  status: "orphaned" | "stale_recovered",
+  reason: string,
+): Promise<void> {
+  if (!metadata.taskId || !metadata.runId) return;
+  const existing = await readRunLifecycleStrict(
+    config.rootDir,
+    metadata.taskId,
+    metadata.runId,
+  );
+  if (!existing.ok) return;
+  if (!ACTIVE_STATUSES.has(existing.value.status)) return;
+  await writeLifecycleAndResult(config.rootDir, {
+    ...existing.value,
+    status,
+    endedAt: new Date().toISOString(),
+    recoveredAt: new Date().toISOString(),
+    error: reason,
+  });
+}
+
+async function countActiveScheduledRuns(rootDir: string): Promise<number> {
+  let count = 0;
+  let taskDirs: string[] = [];
+  try {
+    taskDirs = await readdir(join(rootDir, "runs"));
+  } catch {
+    return 0;
+  }
+  for (const taskId of taskDirs) {
+    let runIds: string[] = [];
+    try {
+      runIds = await readdir(join(rootDir, "runs", taskId));
+    } catch {
+      continue;
+    }
+    for (const runId of runIds) {
+      const lifecycle = await readRunLifecycleStrict(rootDir, taskId, runId);
+      if (lifecycle.ok && ACTIVE_STATUSES.has(lifecycle.value.status))
+        count += 1;
+    }
+  }
+  return count;
+}
+
+async function launchClaimedRunner(options: {
+  config: ScheduledTasksConfig;
+  taskId: string;
+  runId: string;
+}): Promise<{ ok: true; pid?: number } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (
+      result: { ok: true; pid?: number } | { ok: false; error: string },
+    ) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(
+      () =>
+        finish({ ok: false, error: "Timed out waiting for runner launch." }),
+      LAUNCH_TIMEOUT_MS,
+    );
+    let child: ReturnType<typeof _spawn.fn>;
+    try {
+      child = _spawn.fn(
+        options.config.piCommand,
+        [
+          "--mode",
+          "json",
+          "--no-session",
+          "-p",
+          `/scheduled-tasks-run-claimed ${options.taskId} ${options.runId}`,
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            SCHEDULED_TASKS_ROOT_DIR: options.config.rootDir,
+          },
+          detached: true,
+          stdio: "ignore",
+        } as SpawnOptions,
+      );
+    } catch (error) {
+      finish({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    child.once("error", (error) =>
+      finish({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    child.once("spawn", () => {
+      child.unref?.();
+      finish({ ok: true, pid: child.pid });
+    });
+    process.nextTick(() => {
+      if (!settled) {
+        child.unref?.();
+        finish({ ok: true, pid: child.pid });
+      }
+    });
+  });
+}
+
+async function claimAndLaunch(options: {
+  config: ScheduledTasksConfig;
+  task: TaskDefinition;
+  rawTask: string;
+  state: Awaited<ReturnType<typeof readTaskState>>;
+  nextRunAt: string;
+  now: Date;
+}): Promise<RunSummary> {
+  const { config, task, rawTask, state, nextRunAt, now } = options;
+  const runId = makeRunId(now);
+  const lock = await acquireLock(
+    config.rootDir,
+    task.id,
+    { taskId: task.id, runId },
+    {
+      staleAfterMs: taskStaleMs(task, config),
+      sameHostDeadPidAfterMs: SAME_HOST_DEAD_PID_FLOOR_MS,
+      onRecover: (metadata, reason) =>
+        markRecoveredRun(config, metadata, "stale_recovered", reason),
+    },
+  );
+  if (!lock)
+    return {
+      taskId: task.id,
+      status: "locked",
+      message: "Task is already running; nextRunAt was not advanced.",
+    };
+  const dir = runDir(config.rootDir, task.id, runId);
+  const claimedAt = new Date().toISOString();
+  try {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(join(dir, "task.md"), rawTask, { mode: 0o600 });
+    await writeRunLifecycle(config.rootDir, {
+      taskId: task.id,
+      runId,
+      status: "claimed",
+      claimedAt,
+    });
+    await writeTaskState(config.rootDir, {
+      ...(state ?? { taskId: task.id }),
+      nextRunAt,
+      lastSkipReason: null,
+    });
+    const launch = await launchClaimedRunner({
+      config,
+      taskId: task.id,
+      runId,
+    });
+    if (!launch.ok) {
+      const lifecycle: RunLifecycle = {
+        taskId: task.id,
+        runId,
+        status: "launch_failed",
+        claimedAt,
+        endedAt: new Date().toISOString(),
+        error: launch.error,
+      };
+      await writeLifecycleAndResult(config.rootDir, lifecycle);
+      await recordRunState(
+        config.rootDir,
+        terminalResultFromLifecycle(lifecycle),
+      );
+      await lock.release();
+      return {
+        taskId: task.id,
+        runId,
+        status: "launch_failed",
+        message: launch.error,
+        runDir: dir,
+      };
+    }
+    await writeRunLifecycle(config.rootDir, {
+      taskId: task.id,
+      runId,
+      status: "launched",
+      claimedAt,
+      launchedAt: new Date().toISOString(),
+      ...(launch.pid ? { runnerPid: launch.pid } : {}),
+    });
+    return {
+      taskId: task.id,
+      runId,
+      status: "launched",
+      message: `Launched claimed run ${runId}.`,
+      runDir: dir,
+    };
+  } catch (error) {
+    await lock.release();
+    throw error;
+  }
+}
+
 export async function schedulerTick(
   config: ScheduledTasksConfig,
   options: { dryRun?: boolean; now?: Date } = {},
@@ -242,7 +608,15 @@ export async function schedulerTick(
   await ensureRootLayout(config.rootDir);
   const now = options.now ?? new Date();
   const timestamp = now.toISOString();
-  const schedulerLock = await acquireLock(config.rootDir, "scheduler");
+  const schedulerLock = await acquireLock(
+    config.rootDir,
+    "scheduler",
+    {},
+    {
+      staleAfterMs: SCHEDULER_LOCK_STALE_MS,
+      now,
+    },
+  );
   if (!schedulerLock) {
     const summary = tickSummary({
       timestamp,
@@ -255,16 +629,18 @@ export async function schedulerTick(
   }
   const claimed: RunSummary[] = [];
   const skipped: TaskSkipSummary[] = [];
-  const toRun: Array<{
-    task: TaskDefinition;
-    lock?: HeldLock;
-    catchup?: boolean;
-  }> = [];
   const maxCatchupRuns = Math.max(
     0,
     Math.floor(config.maxCatchupRunsPerTick ?? 1),
   );
+  const maxConcurrent = Math.max(
+    1,
+    Math.floor(config.maxConcurrentScheduledRuns ?? 3),
+  );
   let catchupRuns = 0;
+  let activeRuns = options.dryRun
+    ? 0
+    : await countActiveScheduledRuns(config.rootDir);
   try {
     const parsedTasks = await readAllTasks(config.rootDir);
     for (const parsed of parsedTasks) {
@@ -281,7 +657,31 @@ export async function schedulerTick(
         continue;
       }
       if (!task.enabled || !task.schedule) continue;
-      const state = await readTaskState(config.rootDir, task.id);
+      const stateResult = await readTaskStateStrict(config.rootDir, task.id);
+      if (!stateResult.ok && !stateResult.missing) {
+        skipped.push({
+          taskId: task.id,
+          status: "corrupt_state",
+          message: stateResult.error,
+        });
+        continue;
+      }
+      const state = stateResult.ok ? stateResult.value : undefined;
+      if (state?.lastRunId) {
+        const lifecycle = await readRunLifecycleStrict(
+          config.rootDir,
+          task.id,
+          state.lastRunId,
+        );
+        if (!lifecycle.ok && !lifecycle.missing) {
+          skipped.push({
+            taskId: task.id,
+            status: "corrupt_run_metadata",
+            message: lifecycle.error,
+          });
+          continue;
+        }
+      }
       const decision = decideDue({
         schedule: task.schedule,
         nextRunAt: state?.nextRunAt,
@@ -299,7 +699,10 @@ export async function schedulerTick(
           status: options.dryRun ? "would_initialize" : "initialized",
           message: `${options.dryRun ? "Dry run: would initialize" : "Initialized"} nextRunAt ${decision.nextRunAt.toISOString()}.`,
         });
-      } else if (decision.action === "missed") {
+        continue;
+      }
+      if (decision.action === "wait") continue;
+      if (decision.action === "missed") {
         if (!task.catchup) {
           if (!options.dryRun)
             await writeTaskState(config.rootDir, {
@@ -324,86 +727,55 @@ export async function schedulerTick(
           });
           continue;
         }
-        if (options.dryRun) {
-          catchupRuns += 1;
-          toRun.push({ task, catchup: true });
-          continue;
-        }
-        const runId = makeRunId(now);
-        const lock = await acquireLock(config.rootDir, task.id, {
-          taskId: task.id,
-          runId,
-        });
-        if (!lock) {
-          skipped.push({
-            taskId: task.id,
-            status: "locked",
-            message: "Task is already running; nextRunAt was not advanced.",
-          });
-          continue;
-        }
         catchupRuns += 1;
-        await writeTaskState(config.rootDir, {
-          ...(state ?? { taskId: task.id }),
-          nextRunAt: decision.nextRunAt.toISOString(),
-          lastSkipReason: null,
-        });
-        toRun.push({ task, lock, catchup: true });
-      } else if (decision.action === "run") {
-        if (options.dryRun) {
-          toRun.push({ task });
-          continue;
-        }
-        const runId = makeRunId(now);
-        const lock = await acquireLock(config.rootDir, task.id, {
-          taskId: task.id,
-          runId,
-        });
-        if (!lock) {
-          skipped.push({
-            taskId: task.id,
-            status: "locked",
-            message: "Task is already running; nextRunAt was not advanced.",
-          });
-          continue;
-        }
-        await writeTaskState(config.rootDir, {
-          ...(state ?? { taskId: task.id }),
-          nextRunAt: decision.nextRunAt.toISOString(),
-          lastSkipReason: null,
-        });
-        toRun.push({ task, lock });
       }
+      if (options.dryRun) {
+        claimed.push({
+          taskId: task.id,
+          status: decision.action === "missed" ? "would_catchup" : "would_run",
+          message:
+            decision.action === "missed"
+              ? "Dry run: would run one catchup for missed schedule."
+              : "Dry run: would run task.",
+        });
+        continue;
+      }
+      if (activeRuns >= maxConcurrent) {
+        skipped.push({
+          taskId: task.id,
+          status: "concurrency_deferred",
+          message:
+            "Deferred because maxConcurrentScheduledRuns was reached; nextRunAt was not advanced.",
+        });
+        continue;
+      }
+      const rawTask = await readFile(task.path, "utf8");
+      const summary = await claimAndLaunch({
+        config,
+        task,
+        rawTask,
+        state,
+        nextRunAt: decision.nextRunAt.toISOString(),
+        now,
+      });
+      if (summary.status === "launched") activeRuns += 1;
+      if (summary.status === "locked") skipped.push(summary);
+      else
+        claimed.push(
+          decision.action === "missed" && summary.status === "launched"
+            ? { ...summary, message: `Launched catchup run ${summary.runId}.` }
+            : summary,
+        );
     }
   } finally {
     await schedulerLock.release();
   }
-  if (options.dryRun) {
-    const summary = tickSummary({
-      timestamp,
-      claimed: toRun.map(({ task, catchup }) => ({
-        taskId: task.id,
-        status: catchup ? "would_catchup" : "would_run",
-        message: catchup
-          ? "Dry run: would run one catchup for missed schedule."
-          : "Dry run: would run task.",
-      })),
-      skipped,
-      dryRun: true,
-    });
-    await tryRecordTickLog(config.rootDir, summary);
-    return summary;
-  }
-  for (const { task, lock, catchup } of toRun) {
-    if (!lock) continue;
-    const summary = await runTask(config, task, { now, heldLock: lock });
-    claimed.push(
-      catchup && summary.status === "success"
-        ? { ...summary, message: `Catchup run ${summary.runId} success.` }
-        : summary,
-    );
-  }
-  const summary = tickSummary({ timestamp, claimed, skipped, dryRun: false });
+  const summary = tickSummary({
+    timestamp,
+    claimed,
+    skipped,
+    dryRun: !!options.dryRun,
+  });
   await tryRecordTickLog(config.rootDir, summary);
   return summary;
 }
@@ -443,6 +815,25 @@ async function readFileTail(path: string, maxBytes: number): Promise<string> {
   }
 }
 
+export async function formatTaskRuntimeStatus(
+  config: ScheduledTasksConfig,
+  taskId: string,
+): Promise<string> {
+  const state = await readTaskState(config.rootDir, taskId);
+  if (!state?.lastRunId) return `runtime ${taskId}: no runs recorded`;
+  const lifecycle = await readRunLifecycleStrict(
+    config.rootDir,
+    taskId,
+    state.lastRunId,
+  );
+  const status = lifecycle.ok
+    ? lifecycle.value.status
+    : lifecycle.missing
+      ? (state.lastStatus ?? "unknown")
+      : `run metadata error: ${lifecycle.error}`;
+  return `runtime ${taskId}: lastRunId=${state.lastRunId} status=${status}`;
+}
+
 export async function readLatestLogs(
   config: ScheduledTasksConfig,
   taskId: string,
@@ -450,15 +841,25 @@ export async function readLatestLogs(
   const state = await readTaskState(config.rootDir, taskId);
   if (!state?.lastRunId) return `No runs recorded for ${taskId}.`;
   const dir = runDir(config.rootDir, taskId, state.lastRunId);
+  const lifecycle = await readRunLifecycleStrict(
+    config.rootDir,
+    taskId,
+    state.lastRunId,
+  );
+  const status = lifecycle.ok
+    ? lifecycle.value.status
+    : lifecycle.missing
+      ? (state.lastStatus ?? "unknown")
+      : `run metadata error: ${lifecycle.error}`;
   const parts = [
     `Latest run: ${state.lastRunId}`,
-    `Status: ${state.lastStatus ?? "unknown"}`,
+    `Status: ${status}`,
     `Artifacts: ${dir}`,
   ];
-  for (const file of ["result.json", "output.md", "pi.log"]) {
+  for (const file of ["run.json", "result.json", "output.md", "pi.log"]) {
     try {
       const raw =
-        file === "result.json"
+        file === "result.json" || file === "run.json"
           ? await readFile(join(dir, file), "utf8")
           : await readFileTail(join(dir, file), 4000);
       parts.push(`\n## ${file}\n${raw.slice(-4000)}`);

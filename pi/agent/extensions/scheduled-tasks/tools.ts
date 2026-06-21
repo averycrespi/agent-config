@@ -13,6 +13,7 @@ import { formatCrontabStatus, getCrontabStatus } from "./crontab.ts";
 import { handoffPath, runDir, taskPath } from "./paths.ts";
 import {
   formatLatestTick,
+  formatTaskRuntimeStatus,
   manualRunTask,
   readLatestLogs,
   readLatestTickLog,
@@ -172,6 +173,13 @@ export function registerScheduledTasksTool(
           const results = await Promise.all(
             parsed.map((item) => validateTask(item.task, config, item.errors)),
           );
+          const runtime = await Promise.all(
+            parsed.map((item) =>
+              item.task
+                ? formatTaskRuntimeStatus(config, item.task.id)
+                : Promise.resolve(undefined),
+            ),
+          );
           return textResult(
             [
               `rootDir: ${config.rootDir}`,
@@ -179,9 +187,12 @@ export function registerScheduledTasksTool(
               formatLatestTick(latestTick),
               ...issues.map((issue) => `${issue.severity}: ${issue.message}`),
               "",
-              ...results.map(formatValidation),
+              ...results.flatMap((result, index) => [
+                formatValidation(result),
+                ...(runtime[index] ? [runtime[index]!] : []),
+              ]),
             ].join("\n"),
-            { crontabStatus, latestTick, issues, tasks: results },
+            { crontabStatus, latestTick, issues, tasks: results, runtime },
           );
         }
       }

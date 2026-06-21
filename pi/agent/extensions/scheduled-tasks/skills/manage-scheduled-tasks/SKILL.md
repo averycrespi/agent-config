@@ -14,8 +14,8 @@ Use this skill to manage Markdown-defined Pi scheduled tasks. The `scheduled_tas
 3. Create or edit only `<rootDir>/tasks/<task-id>.md` for task definitions.
 4. Validate after every create or edit with `scheduled_tasks` action `validate` and the task ID.
 5. Fix validation errors before enabling or manually running a task.
-6. Use `scheduled_tasks` action `run` only after validation passes or when explicitly debugging a failing task.
-7. Use `scheduled_tasks` action `logs` after a manual or scheduled run to inspect results.
+6. Use `scheduled_tasks` action `run` only after validation passes or when explicitly debugging a failing task. Manual runs are synchronous and do not advance scheduler `nextRunAt`.
+7. Use `scheduled_tasks` action `logs` after a manual or scheduled run to inspect results. Scheduled tick summaries report launch outcomes such as `launched`; final success/failure appears later in logs and lifecycle artifacts.
 
 ## Task file rules
 
@@ -51,7 +51,7 @@ Follow these constraints:
 - Keep new or uncertain tasks `enabled: false` unless the user explicitly asks to schedule them.
 - Enabled tasks require a five-field cron `schedule`, an absolute existing `cwd`, and a non-empty body.
 - Keep `tools` as an explicit allowlist. If omitted, the extension's configured `defaultTools` apply.
-- Set `catchup: true` only when one coalesced make-up run is useful after downtime; missed occurrences are not replayed one-by-one and global config caps catchups per tick.
+- Set `catchup: true` only when one coalesced make-up run is useful after downtime; missed occurrences are not replayed one-by-one and global config caps catchups per tick. Active scheduled runs are also capped globally by `maxConcurrentScheduledRuns`.
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
 - Use `envFiles` for dotenv-style bulk environment defaults. Relative env file paths resolve against `cwd`, and listed files are required in v1.
 - Use inline `env` for explicit overrides; inline `env` wins over `envFiles`, and scheduled-run marker variables win over both.

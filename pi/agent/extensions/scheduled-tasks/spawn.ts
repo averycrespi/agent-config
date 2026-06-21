@@ -139,7 +139,10 @@ function writeWithBackpressure(
 }
 
 function endStream(stream: Writable): Promise<void> {
-  return new Promise((resolve) => stream.end(resolve));
+  return new Promise((resolve) => {
+    stream.once("error", () => resolve());
+    stream.end(resolve);
+  });
 }
 
 function appendFileToStream(stream: Writable, path: string): Promise<void> {
@@ -169,10 +172,10 @@ export async function spawnPi(
     const stderrDecoder = new StringDecoder("utf8");
     let timedOut = false;
     let settled = false;
+    let streamError: string | undefined;
     const log = _createWriteStream.fn(logPath, { mode: 0o600 });
     const stderrPath = `${logPath}.stderr.tmp`;
     const stderrLog = _createWriteStream.fn(stderrPath, { mode: 0o600 });
-    log.write(`$ ${plan.command} ${plan.args.join(" ")}\n\n## stdout\n`);
     const handleStdoutText = (text: string) => {
       if (!text) return;
       writeWithBackpressure(log, child.stdout ?? undefined, text);
@@ -206,6 +209,9 @@ export async function spawnPi(
           stderr,
           timedOut,
           sessionFile,
+          ...((outcome.error ?? streamError)
+            ? { error: outcome.error ?? streamError }
+            : {}),
         });
       })();
     };
@@ -214,6 +220,20 @@ export async function spawnPi(
       child.kill("SIGTERM");
       _timers.setTimeout(() => child.kill("SIGKILL"), 3_000);
     }, plan.timeoutMs);
+    const failFromStream = (error: Error) => {
+      streamError = error.message;
+      finish({
+        exitCode: null,
+        signal: null,
+        timedOut,
+        stdout,
+        stderr,
+        error: error.message,
+      });
+    };
+    log.once("error", failFromStream);
+    stderrLog.once("error", failFromStream);
+    log.write(`$ ${plan.command} ${plan.args.join(" ")}\n\n## stdout\n`);
     child.stdout?.on("data", (chunk) => {
       handleStdoutText(stdoutDecoder.write(chunk));
     });

@@ -1,7 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { statePath } from "./paths.ts";
+import { runDir, statePath } from "./paths.ts";
 
 export interface TaskState {
   taskId: string;
@@ -15,7 +15,14 @@ export interface TaskState {
 export interface RunResult {
   taskId: string;
   runId: string;
-  status: "success" | "failed" | "timeout" | "skipped";
+  status:
+    | "success"
+    | "failed"
+    | "timeout"
+    | "skipped"
+    | "launch_failed"
+    | "orphaned"
+    | "stale_recovered";
   startedAt: string;
   endedAt: string;
   exitCode: number | null;
@@ -26,6 +33,40 @@ export interface RunResult {
   error?: string;
 }
 
+export type RunLifecycleStatus =
+  | "claimed"
+  | "launched"
+  | "running"
+  | "success"
+  | "failed"
+  | "timeout"
+  | "launch_failed"
+  | "orphaned"
+  | "stale_recovered";
+
+export interface RunLifecycle {
+  taskId: string;
+  runId: string;
+  status: RunLifecycleStatus;
+  claimedAt: string;
+  launchedAt?: string;
+  startedAt?: string;
+  endedAt?: string;
+  runnerPid?: number;
+  exitCode?: number | null;
+  signal?: string | null;
+  timedOut?: boolean;
+  sessionFile?: string;
+  handoffUpdated?: boolean;
+  error?: string;
+  recoveredAt?: string;
+}
+
+export type JsonReadResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; missing: true }
+  | { ok: false; missing: false; error: string };
+
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
@@ -33,18 +74,41 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   await rename(tmp, path);
 }
 
+function parseTaskState(raw: unknown, taskId: string): TaskState | undefined {
+  if (!raw || typeof raw !== "object" || (raw as TaskState).taskId !== taskId)
+    return undefined;
+  return raw as TaskState;
+}
+
+export async function readTaskStateStrict(
+  rootDir: string,
+  taskId: string,
+): Promise<JsonReadResult<TaskState>> {
+  try {
+    const parsed = JSON.parse(
+      await readFile(statePath(rootDir, taskId), "utf8"),
+    );
+    const state = parseTaskState(parsed, taskId);
+    return state
+      ? { ok: true, value: state }
+      : { ok: false, missing: false, error: "Task state metadata is invalid." };
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
+    if (code === "ENOENT") return { ok: false, missing: true };
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, missing: false, error: message };
+  }
+}
+
 export async function readTaskState(
   rootDir: string,
   taskId: string,
 ): Promise<TaskState | undefined> {
-  try {
-    const raw = JSON.parse(await readFile(statePath(rootDir, taskId), "utf8"));
-    if (!raw || typeof raw !== "object" || raw.taskId !== taskId)
-      return undefined;
-    return raw as TaskState;
-  } catch {
-    return undefined;
-  }
+  const result = await readTaskStateStrict(rootDir, taskId);
+  return result.ok ? result.value : undefined;
 }
 
 export async function writeTaskState(
@@ -52,6 +116,66 @@ export async function writeTaskState(
   state: TaskState,
 ): Promise<void> {
   await writeJsonAtomic(statePath(rootDir, state.taskId), state);
+}
+
+export function runLifecyclePath(
+  rootDir: string,
+  taskId: string,
+  runId: string,
+): string {
+  return join(runDir(rootDir, taskId, runId), "run.json");
+}
+
+export async function readRunLifecycleStrict(
+  rootDir: string,
+  taskId: string,
+  runId: string,
+): Promise<JsonReadResult<RunLifecycle>> {
+  try {
+    const parsed = JSON.parse(
+      await readFile(runLifecyclePath(rootDir, taskId, runId), "utf8"),
+    );
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      (parsed as RunLifecycle).taskId !== taskId ||
+      (parsed as RunLifecycle).runId !== runId ||
+      typeof (parsed as RunLifecycle).status !== "string"
+    )
+      return {
+        ok: false,
+        missing: false,
+        error: "Run lifecycle metadata is invalid.",
+      };
+    return { ok: true, value: parsed as RunLifecycle };
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
+    if (code === "ENOENT") return { ok: false, missing: true };
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, missing: false, error: message };
+  }
+}
+
+export async function readRunLifecycle(
+  rootDir: string,
+  taskId: string,
+  runId: string,
+): Promise<RunLifecycle | undefined> {
+  const result = await readRunLifecycleStrict(rootDir, taskId, runId);
+  return result.ok ? result.value : undefined;
+}
+
+export async function writeRunLifecycle(
+  rootDir: string,
+  lifecycle: RunLifecycle,
+): Promise<void> {
+  await writeJsonAtomic(
+    runLifecyclePath(rootDir, lifecycle.taskId, lifecycle.runId),
+    lifecycle,
+  );
 }
 
 export async function recordRunState(

@@ -12,10 +12,10 @@ This file is for future agents changing the extension. The user-facing contract 
 - `task-file.ts` parses the limited Markdown/YAML task format. It does not use a general YAML dependency; supported syntax is deliberately simple and covered by validation.
 - `validate.ts` separates parse/runtime errors from warnings and computes effective tool permissions.
 - `schedule.ts` owns five-field cron parsing, cron matching, next-run search, and due/missed/initialize decisions.
-- `scheduler.ts` owns manual runs, scheduler ticks, run artifact creation, lock sequencing, and latest-log reads.
+- `scheduler.ts` owns synchronous manual runs, fast scheduled claim-and-launch ticks, the internal claimed-runner path, run artifact creation, lock sequencing, stale-lock recovery, and latest-log reads.
 - `spawn.ts` builds the child Pi argv/env, optionally wraps child Pi execution in a supported shell mode, and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
-- `state.ts` persists scheduler state and run results as atomically replaced JSON files.
-- `locks.ts` implements advisory file locks via exclusive create. There is no stale-lock recovery or force-unlock command in v1.
+- `state.ts` persists scheduler state, durable run lifecycle metadata, and final run results as atomically replaced JSON files.
+- `locks.ts` implements advisory file locks via exclusive create, compare-before-delete release, and conservative stale-lock recovery helpers. There is no user-facing force-unlock command in v1.
 - `commands.ts` registers slash commands, including doctor, cron install/uninstall, and `/scheduled-tasks-tick`.
 - `tools.ts` registers agent tools with compact TUI renderers and text results that agents can recover from.
 
@@ -52,7 +52,7 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 ## Scheduler semantics
 
-`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. Manual runs and scheduled runs share the same `runTask()` path after task lookup.
+`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and stay synchronous for debugging; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command.
 
 The scheduler behavior is intentionally coalescing, not replaying:
 
@@ -62,17 +62,19 @@ The scheduler behavior is intentionally coalescing, not replaying:
 - `catchup: true` claims at most one make-up run for a missed window, even if multiple occurrences were missed.
 - `maxCatchupRunsPerTick` caps catchup claims globally per tick; over-cap tasks are reported as `catchup_deferred` and keep their existing `nextRunAt`.
 - Normal due runs are independent of the catchup cap.
+- `maxConcurrentScheduledRuns` caps active scheduled runners globally across ticks. Active lifecycle statuses are `claimed`, `launched`, and `running`; over-cap tasks are reported as `concurrency_deferred` and keep `nextRunAt` unchanged.
 
 Lock sequencing matters:
 
-1. Acquire `scheduler.lock` for the tick.
+1. Acquire `scheduler.lock` for the tick. Scheduler locks may be recovered after 5 minutes because they should only protect claiming.
 2. Read and validate tasks.
-3. For a due or catchup task, acquire the per-task lock before advancing `nextRunAt`.
-4. Persist the advanced `nextRunAt` while still holding `scheduler.lock`.
-5. Release `scheduler.lock`.
-6. Run claimed tasks while holding their per-task locks.
+3. For a due or catchup task, acquire the per-task lock before advancing `nextRunAt`. Task locks may be recovered after task timeout plus a 5-minute cushion, or after a 30-second floor for same-host dead PIDs.
+4. Under the task lock, create `<run-dir>/task.md`, write initial `run.json`, and persist the advanced `nextRunAt`.
+5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and update `run.json` to `launched`, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
+6. Release `scheduler.lock` promptly; do not await final child task completion in the tick.
+7. The claimed runner validates `run.json` and the task lock metadata, executes the `task.md` snapshot via `runTask()`, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
 
-If a due or catchup task is already locked, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
+If a due or catchup task is already locked and not stale, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. If stale recovery removes a prior task lock, mark the prior active lifecycle `stale_recovered` before launching replacement work. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
 
 `TickSummary` has scheduler-level `status` and `message` fields. Do not represent scheduler lock contention as a fake task skip; use `status: "locked"`, leave `claimed` and `skipped` empty, and put the lock explanation in `message`. Task-level skips stay in `skipped` with real task IDs.
 
@@ -84,11 +86,15 @@ Each run gets a unique run ID and a run directory:
 
 ```text
 <root>/runs/<task-id>/<run-id>/
+  task.md
+  run.json
   prompt.md
   output.md
   result.json
   pi.log
 ```
+
+The scheduler writes `task.md` at claim time. The claimed runner parses that snapshot via the original task ID path so later edits to `tasks/<task-id>.md` cannot alter already-claimed work. `run.json` records lifecycle transitions: `claimed`, `launched`, `running`, terminal success/failure/timeout, `launch_failed`, and stale recovery statuses. Preserve `result.json` as final compatibility output.
 
 `renderPrompt()` writes the exact prompt used by the child run to `prompt.md`. The child Pi process is spawned with an argument array, not a shell string. `buildSpawnPlan()` sets:
 
@@ -115,7 +121,7 @@ PI_SCHEDULED_TASK_RUN_DIR=<run-dir>
 
 The scheduled-run markers are for scoping behavior, not a hard security boundary. Do not add behavior that trusts env vars for authorization without also constraining paths through `paths.ts` and validating the current task file.
 
-`spawnPi()` streams full stdout/stderr to `pi.log` and keeps bounded in-memory tails for `output.md`, summaries, and result extraction. Large child output may be truncated in summaries, but the raw log remains on disk. Timeouts send `SIGTERM` first and then `SIGKILL` after a short grace period.
+`spawnPi()` streams full stdout/stderr to `pi.log` and keeps bounded in-memory tails for `output.md`, summaries, and result extraction. Large child output may be truncated in summaries, but the raw log remains on disk. Timeouts send `SIGTERM` first and then `SIGKILL` after a short grace period. Spawn and log-stream failures must resolve to a failed run outcome with durable lifecycle/result metadata; never leave a run indefinitely `running` when the process or artifact stream has already failed.
 
 ## Tool permissions and handoff
 
@@ -136,7 +142,7 @@ Keep the handoff model narrow. It exists to make recurrence intentional and audi
 Slash commands are for interactive users:
 
 - `/scheduled-tasks-list`, `/scheduled-tasks-show`, `/scheduled-tasks-doctor`
-- `/scheduled-tasks-run`, `/scheduled-tasks-logs`, `/scheduled-tasks-tick [--dry-run]`
+- `/scheduled-tasks-run`, internal `/scheduled-tasks-run-claimed`, `/scheduled-tasks-logs`, `/scheduled-tasks-tick [--dry-run]`
 - `/scheduled-tasks-install-cron`, `/scheduled-tasks-uninstall-cron`
 - `/scheduled-tasks-config` from the shared config helper
 
@@ -171,8 +177,9 @@ Important persistence rules:
 
 - Do not store scheduler state in task frontmatter.
 - Do not delete or rewrite run artifacts as part of normal inspection.
-- Preserve `result.json` as the compact machine-readable run summary.
+- Preserve `run.json` as durable lifecycle metadata and `result.json` as the compact final machine-readable run summary.
 - Keep raw child output in bounded inspection surfaces; read tails instead of loading entire large logs.
+- Treat corrupt state or run lifecycle metadata as blocking for the affected task/run. Surface it in tick or doctor/log output rather than silently overwriting it as missing.
 - Keep tick-log entries compact and bounded; do not duplicate per-run artifacts into `state/ticks.jsonl`.
 
 ## Security and safety boundaries
@@ -188,6 +195,7 @@ Security-relevant invariants:
 - Treat `piCommand` as a command/path only.
 - Keep management tooling unavailable inside scheduled child runs.
 - Keep handoff tooling scoped to the current task and disabled outside child runs.
+- Release task locks only when current lock metadata still matches the holder. An old stale runner must not delete a newer task lock.
 - Avoid force-unlock or destructive cleanup features unless their failure modes are designed explicitly.
 
 ## Extension boundaries

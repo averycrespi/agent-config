@@ -68,24 +68,24 @@ export function parseCron(expression: string): CronExpression | undefined {
 }
 
 export function cronMatches(cron: CronExpression, date: Date): boolean {
-  const dayOfMonthMatches = cron.dayOfMonth.has(date.getUTCDate());
-  const dayOfWeekMatches = cron.dayOfWeek.has(date.getUTCDay());
+  const dayOfMonthMatches = cron.dayOfMonth.has(date.getDate());
+  const dayOfWeekMatches = cron.dayOfWeek.has(date.getDay());
   const dayMatches = cron.dayOfMonthUnrestricted
     ? dayOfWeekMatches
     : cron.dayOfWeekUnrestricted
       ? dayOfMonthMatches
       : dayOfMonthMatches || dayOfWeekMatches;
   return (
-    cron.minute.has(date.getUTCMinutes()) &&
-    cron.hour.has(date.getUTCHours()) &&
-    cron.month.has(date.getUTCMonth() + 1) &&
+    cron.minute.has(date.getMinutes()) &&
+    cron.hour.has(date.getHours()) &&
+    cron.month.has(date.getMonth() + 1) &&
     dayMatches
   );
 }
 
 function truncateToMinute(date: Date): Date {
   const result = new Date(date);
-  result.setUTCSeconds(0, 0);
+  result.setSeconds(0, 0);
   return result;
 }
 
@@ -98,7 +98,7 @@ export function nextFutureRun(
   const candidate = truncateToMinute(new Date(after.getTime() + 60_000));
   for (let i = 0; i < 366 * 24 * 60; i += 1) {
     if (cronMatches(cron, candidate)) return new Date(candidate);
-    candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
+    candidate.setMinutes(candidate.getMinutes() + 1);
   }
   return undefined;
 }
