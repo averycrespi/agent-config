@@ -182,9 +182,9 @@ export async function recordRunState(
   rootDir: string,
   result: RunResult,
 ): Promise<void> {
-  const prior = (await readTaskState(rootDir, result.taskId)) ?? {
-    taskId: result.taskId,
-  };
+  const priorResult = await readTaskStateStrict(rootDir, result.taskId);
+  if (!priorResult.ok && !priorResult.missing) return;
+  const prior = priorResult.ok ? priorResult.value : { taskId: result.taskId };
   await writeTaskState(rootDir, {
     ...prior,
     lastRunAt: result.startedAt,

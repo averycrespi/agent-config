@@ -222,6 +222,7 @@ export async function spawnPi(
     }, plan.timeoutMs);
     const failFromStream = (error: Error) => {
       streamError = error.message;
+      child.kill("SIGTERM");
       finish({
         exitCode: null,
         signal: null,
