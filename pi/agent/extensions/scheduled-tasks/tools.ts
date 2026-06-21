@@ -176,7 +176,7 @@ export function registerScheduledTasksTool(
           const runtime = await Promise.all(
             parsed.map((item) =>
               item.task
-                ? formatTaskRuntimeStatus(config, item.task.id)
+                ? formatTaskRuntimeStatus(config, item.task.id, item.task)
                 : Promise.resolve(undefined),
             ),
           );

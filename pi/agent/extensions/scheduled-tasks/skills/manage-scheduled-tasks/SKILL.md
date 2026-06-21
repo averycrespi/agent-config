@@ -53,6 +53,7 @@ Follow these constraints:
 - Keep `tools` as an explicit allowlist. If omitted, the extension's configured `defaultTools` apply.
 - Set `catchup: true` only when one coalesced make-up run is useful after downtime; missed occurrences are not replayed one-by-one and global config caps catchups per tick. Active scheduled runs are also capped globally by `maxConcurrentScheduledRuns`.
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
+- Write task prompts to be idempotent where practical: inspect current external state before creating tickets, branches, reports, deployments, or other irreversible changes, because crash recovery may retry work and cron-style systems cannot promise exact-once execution.
 - Use `envFiles` for dotenv-style bulk environment defaults. Relative env file paths resolve against `cwd`, and listed files are required in v1.
 - Use inline `env` for explicit overrides; inline `env` wins over `envFiles`, and scheduled-run marker variables win over both.
 - Use `executionShell: bash-login` only when the task needs bash login startup files for development environment setup; omit it for direct Pi execution. Task env is present when bash starts, but shell startup files may change it.

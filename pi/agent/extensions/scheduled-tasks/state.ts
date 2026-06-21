@@ -53,6 +53,9 @@ export interface RunLifecycle {
   startedAt?: string;
   endedAt?: string;
   runnerPid?: number;
+  lockAdoptedAt?: string;
+  lockPid?: number;
+  lockHostname?: string;
   exitCode?: number | null;
   signal?: string | null;
   timedOut?: boolean;

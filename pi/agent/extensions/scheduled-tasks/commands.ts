@@ -233,7 +233,9 @@ export function registerScheduledTaskCommands(
           formatValidation(await validateTask(item.task, config, item.errors)),
         );
         if (item.task)
-          lines.push(await formatTaskRuntimeStatus(config, item.task.id));
+          lines.push(
+            await formatTaskRuntimeStatus(config, item.task.id, item.task),
+          );
       }
       notify(ctx, lines.join("\n"));
     },

@@ -9,7 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
@@ -904,6 +904,54 @@ test("/scheduled-tasks-doctor reports valid missing task as not found", async ()
     text: "Task not found: foo",
     level: "warning",
   });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("/scheduled-tasks-doctor reports task lock diagnostics", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  const runId = "2026-06-19T09-00-00Z-doctor";
+  await writeTaskState(root, { taskId: "job", lastRunId: runId });
+  await writeRunLifecycle(root, {
+    taskId: "job",
+    runId,
+    status: "running",
+    claimedAt: "2026-06-19T09:00:00.000Z",
+    startedAt: "2026-06-19T09:00:00.000Z",
+  });
+  const lock = await acquireLock(root, "job", { taskId: "job", runId });
+  assert.ok(lock);
+  await writeFile(
+    lockPath(root, "job"),
+    `${JSON.stringify({ ...lock.metadata, pid: -1, startedAt: "2000-01-01T00:00:00.000Z" }, null, 2)}\n`,
+    "utf8",
+  );
+  mock.method(
+    _execFile,
+    "fn",
+    (_command: string, _args: string[], callback: any) => {
+      callback(null, "MAILTO=user@example.com\n", "");
+      return { stdin: { end() {} } };
+    },
+  );
+
+  await registered.get("scheduled-tasks-doctor")!.handler("job", ctx);
+
+  assert.match(
+    notifications[0]!.text,
+    new RegExp(`runtime job: lastRunId=${runId} status=running`),
+  );
+  assert.match(notifications[0]!.text, new RegExp(`lock job: runId=${runId}`));
+  assert.match(notifications[0]!.text, /pid=-1/);
+  assert.match(notifications[0]!.text, new RegExp(`hostname=${hostname()}`));
+  assert.match(notifications[0]!.text, /lifecycle=running/);
+  assert.match(notifications[0]!.text, /recoverable=yes/);
+  await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
 
@@ -2596,6 +2644,10 @@ test("claimed runner adopts the task lock before executing", async () => {
   try {
     await runnerStarted;
     assert.equal((await readLock(root, "job"))?.pid, process.pid);
+    const adoptedLifecycle = await readRunLifecycle(root, "job", runId);
+    assert.equal(adoptedLifecycle?.lockPid, process.pid);
+    assert.equal(adoptedLifecycle?.lockHostname, hostname());
+    assert.match(adoptedLifecycle?.lockAdoptedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
 
     const summary = await schedulerTick(config, {
       now: new Date("2026-06-19T09:01:00Z"),

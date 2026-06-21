@@ -67,7 +67,7 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-async function shouldRecoverLock(
+export async function getLockRecoverReason(
   metadata: LockMetadata | undefined,
   policy: StaleLockPolicy,
 ): Promise<string | undefined> {
@@ -151,7 +151,7 @@ export async function recoverLockIfStale(
   stalePolicy: StaleLockPolicy,
 ): Promise<boolean> {
   const existing = await readLock(rootDir, name);
-  const recoverReason = await shouldRecoverLock(existing, stalePolicy);
+  const recoverReason = await getLockRecoverReason(existing, stalePolicy);
   if (!existing || !recoverReason) return false;
   await stalePolicy.onRecover?.(existing, recoverReason);
   return releaseLockIfMatches(rootDir, name, existing);

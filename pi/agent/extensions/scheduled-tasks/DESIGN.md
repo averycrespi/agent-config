@@ -72,11 +72,11 @@ Lock sequencing matters:
 4. Under the task lock, create `<run-dir>/task.md`, write initial `run.json`, and persist the advanced `nextRunAt`.
 5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and update `run.json` to `launched`, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
 6. Release `scheduler.lock` promptly; do not await final child task completion in the tick.
-7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, executes the `task.md` snapshot via `runTask()`, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
+7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, records `lockAdoptedAt`, `lockPid`, and `lockHostname` in `run.json`, executes the `task.md` snapshot via `runTask()`, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
 
 If a due or catchup task is already locked and not stale, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. Same-host dead-PID recovery must evaluate the adopted runner PID, not the scheduler tick PID; otherwise a normal exited tick could make a healthy detached run look stale. If stale recovery removes a prior task lock, mark the prior active lifecycle `stale_recovered` before launching replacement work. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
 
-`TickSummary` has scheduler-level `status` and `message` fields. Do not represent scheduler lock contention as a fake task skip; use `status: "locked"`, leave `claimed` and `skipped` empty, and put the lock explanation in `message`. Task-level skips stay in `skipped` with real task IDs.
+`TickSummary` has scheduler-level `status` and `message` fields. Do not represent scheduler lock contention as a fake task skip; use `status: "locked"`, leave `claimed` and `skipped` empty, and put the lock explanation in `message`. Task-level skips stay in `skipped` with real task IDs. Doctor surfaces should show current task-lock diagnostics using the same stale-recovery policy as scheduler ticks: run ID, PID, hostname, age, lifecycle status, and whether recovery would currently be allowed.
 
 Each tick appends one compact JSON object to `state/ticks.jsonl`, retained to the latest 1000 entries. Tick entries may include task IDs, run IDs, run dirs, statuses, skip reasons, timestamps, and dry-run status. They must not include task prompts, task env values, child stdout/stderr, or full validation output. Tick logging is best-effort and must not fail scheduler execution.
 
@@ -94,7 +94,7 @@ Each run gets a unique run ID and a run directory:
   pi.log
 ```
 
-The scheduler writes `task.md` at claim time. The claimed runner parses that snapshot via the original task ID path so later edits to `tasks/<task-id>.md` cannot alter already-claimed work. `run.json` records lifecycle transitions: `claimed`, `launched`, `running`, terminal success/failure/timeout, `launch_failed`, and stale recovery statuses. Preserve `result.json` as final compatibility output.
+The scheduler writes `task.md` at claim time. The claimed runner parses that snapshot via the original task ID path so later edits to `tasks/<task-id>.md` cannot alter already-claimed work. `run.json` records lifecycle transitions: `claimed`, `launched`, `running`, terminal success/failure/timeout, `launch_failed`, stale recovery statuses, and lock-adoption audit fields. Preserve `result.json` as final compatibility output.
 
 `renderPrompt()` writes the exact prompt used by the child run to `prompt.md`. The child Pi process is spawned with an argument array, not a shell string. `buildSpawnPlan()` sets:
 
@@ -185,6 +185,11 @@ Important persistence rules:
 ## Security and safety boundaries
 
 The extension assumes the configured root is local user-controlled storage. It does not try to make task files or env files secret or sandboxed. Task `env` values are plain text and may be visible in task files, commands, tools, child processes, and logs. Env file values are not included in validation messages or tick logs, but child runs can still expose them through process behavior or output.
+
+Reliability-relevant invariants:
+
+- Scheduled task prompts should be written to tolerate at-least-once execution. The scheduler minimizes duplicates, but exact-once execution is not a promise across crashes, stale recovery, host sleep, clock jumps, manual state edits, or filesystem anomalies.
+- Tasks that perform irreversible external actions should inspect current state before writing and should make duplicate-safe decisions where practical.
 
 Security-relevant invariants:
 

@@ -25,6 +25,7 @@ import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
 import {
   acquireLock,
   adoptLock,
+  getLockRecoverReason,
   readLock,
   recoverLockIfStale,
   type HeldLock,
@@ -328,6 +329,13 @@ export async function runClaimedTask(
       status: "lock_mismatch",
       message: "Task lock changed before the claimed runner could adopt it.",
     };
+  const adoptedLifecycle: RunLifecycle = {
+    ...lifecycleResult.value,
+    lockAdoptedAt: heldLock.metadata.startedAt,
+    lockPid: heldLock.metadata.pid,
+    lockHostname: heldLock.metadata.hostname,
+  };
+  await writeRunLifecycle(config.rootDir, adoptedLifecycle);
   let snapshot: string;
   try {
     snapshot = await readFile(
@@ -336,20 +344,20 @@ export async function runClaimedTask(
     );
   } catch (error) {
     const message = `Unable to read claimed task snapshot: ${error instanceof Error ? error.message : String(error)}`;
-    await failClaimedLifecycle(config, lifecycleResult.value, message);
+    await failClaimedLifecycle(config, adoptedLifecycle, message);
     await heldLock.release();
     return { taskId, runId, status: "validation_failed", message };
   }
   const parsed = parseTaskMarkdown(taskPath(config.rootDir, taskId), snapshot);
   if (!parsed.task || parsed.errors.length > 0) {
     const message = parsed.errors.join("\n") || "Invalid task snapshot.";
-    await failClaimedLifecycle(config, lifecycleResult.value, message);
+    await failClaimedLifecycle(config, adoptedLifecycle, message);
     await heldLock.release();
     return { taskId, runId, status: "validation_failed", message };
   }
   return runTask(config, parsed.task, {
     heldLock,
-    lifecycle: lifecycleResult.value,
+    lifecycle: adoptedLifecycle,
   });
 }
 
@@ -934,28 +942,79 @@ async function readFileTail(path: string, maxBytes: number): Promise<string> {
   }
 }
 
+function lockAgeMs(metadata: LockMetadata, now = new Date()): string {
+  const startedMs = new Date(metadata.startedAt).getTime();
+  if (Number.isNaN(startedMs)) return "invalid";
+  return String(Math.max(0, now.getTime() - startedMs));
+}
+
+async function formatTaskLockStatus(
+  config: ScheduledTasksConfig,
+  task: TaskDefinition,
+): Promise<string> {
+  const metadata = await readLock(config.rootDir, task.id);
+  if (!metadata) return `lock ${task.id}: none`;
+  const lifecycleStatus = metadata.runId
+    ? await readRunLifecycleStrict(
+        config.rootDir,
+        task.id,
+        metadata.runId,
+      ).then((result) =>
+        result.ok
+          ? result.value.status
+          : result.missing
+            ? "missing"
+            : `metadata_error=${result.error}`,
+      )
+    : "none";
+  const recoverReason = await getLockRecoverReason(metadata, {
+    staleAfterMs: taskStaleMs(task, config),
+    sameHostDeadPidAfterMs: SAME_HOST_DEAD_PID_FLOOR_MS,
+  });
+  return [
+    `lock ${task.id}:`,
+    `runId=${metadata.runId ?? "none"}`,
+    `pid=${metadata.pid}`,
+    `hostname=${metadata.hostname}`,
+    `ageMs=${lockAgeMs(metadata)}`,
+    `lifecycle=${lifecycleStatus}`,
+    `recoverable=${recoverReason ? `yes (${recoverReason})` : "no"}`,
+  ].join(" ");
+}
+
 export async function formatTaskRuntimeStatus(
   config: ScheduledTasksConfig,
   taskId: string,
+  task?: TaskDefinition,
 ): Promise<string> {
   const stateResult = await readTaskStateStrict(config.rootDir, taskId);
-  if (!stateResult.ok)
-    return stateResult.missing
+  let runtime: string;
+  if (!stateResult.ok) {
+    runtime = stateResult.missing
       ? `runtime ${taskId}: no runs recorded`
       : `runtime ${taskId}: state metadata error: ${stateResult.error}`;
-  const state = stateResult.value;
-  if (!state.lastRunId) return `runtime ${taskId}: no runs recorded`;
-  const lifecycle = await readRunLifecycleStrict(
-    config.rootDir,
-    taskId,
-    state.lastRunId,
-  );
-  const status = lifecycle.ok
-    ? lifecycle.value.status
-    : lifecycle.missing
-      ? (state.lastStatus ?? "unknown")
-      : `run metadata error: ${lifecycle.error}`;
-  return `runtime ${taskId}: lastRunId=${state.lastRunId} status=${status}`;
+  } else {
+    const state = stateResult.value;
+    const lastRunId = state.lastRunId;
+    if (!lastRunId) {
+      runtime = `runtime ${taskId}: no runs recorded`;
+    } else {
+      const lifecycle = await readRunLifecycleStrict(
+        config.rootDir,
+        taskId,
+        lastRunId,
+      );
+      const status = lifecycle.ok
+        ? lifecycle.value.status
+        : lifecycle.missing
+          ? (state.lastStatus ?? "unknown")
+          : `run metadata error: ${lifecycle.error}`;
+      runtime = `runtime ${taskId}: lastRunId=${lastRunId} status=${status}`;
+    }
+  }
+  return task
+    ? `${runtime}\n${await formatTaskLockStatus(config, task)}`
+    : runtime;
 }
 
 export async function readLatestLogs(
