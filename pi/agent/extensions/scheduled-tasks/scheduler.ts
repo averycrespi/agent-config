@@ -24,8 +24,9 @@ import { decideDue } from "./schedule.ts";
 import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
 import {
   acquireLock,
-  lockFromMetadata,
+  adoptLock,
   readLock,
+  recoverLockIfStale,
   type HeldLock,
   type LockMetadata,
 } from "./locks.ts";
@@ -308,14 +309,25 @@ export async function runClaimedTask(
         : lifecycleResult.error,
     };
   const lockMetadata = await readLock(config.rootDir, taskId);
-  if (!lockMetadata || lockMetadata.runId !== runId)
+  if (
+    !lockMetadata ||
+    lockMetadata.taskId !== taskId ||
+    lockMetadata.runId !== runId
+  )
     return {
       taskId,
       runId,
       status: "lock_mismatch",
       message: "Task lock does not match the claimed run.",
     };
-  const heldLock = lockFromMetadata(config.rootDir, taskId, lockMetadata);
+  const heldLock = await adoptLock(config.rootDir, taskId, lockMetadata);
+  if (!heldLock)
+    return {
+      taskId,
+      runId,
+      status: "lock_mismatch",
+      message: "Task lock changed before the claimed runner could adopt it.",
+    };
   let snapshot: string;
   try {
     snapshot = await readFile(
@@ -469,6 +481,22 @@ async function countActiveScheduledRuns(rootDir: string): Promise<number> {
   return count;
 }
 
+async function recoverStaleTaskLocks(options: {
+  config: ScheduledTasksConfig;
+  tasks: TaskDefinition[];
+  now: Date;
+}): Promise<void> {
+  for (const task of options.tasks) {
+    await recoverLockIfStale(options.config.rootDir, task.id, {
+      staleAfterMs: taskStaleMs(task, options.config),
+      sameHostDeadPidAfterMs: SAME_HOST_DEAD_PID_FLOOR_MS,
+      now: options.now,
+      onRecover: (metadata, reason) =>
+        markRecoveredRun(options.config, metadata, "stale_recovered", reason),
+    });
+  }
+}
+
 async function launchClaimedRunner(options: {
   config: ScheduledTasksConfig;
   taskId: string;
@@ -537,6 +565,7 @@ async function writeTaskStateWithLock(options: {
   patch: Partial<Awaited<ReturnType<typeof readTaskState>>> & {
     nextRunAt: string;
   };
+  now: Date;
 }): Promise<boolean> {
   const lock = await acquireLock(
     options.config.rootDir,
@@ -545,6 +574,7 @@ async function writeTaskStateWithLock(options: {
     {
       staleAfterMs: taskStaleMs(options.task, options.config),
       sameHostDeadPidAfterMs: SAME_HOST_DEAD_PID_FLOOR_MS,
+      now: options.now,
       onRecover: (metadata, reason) =>
         markRecoveredRun(options.config, metadata, "stale_recovered", reason),
     },
@@ -578,6 +608,7 @@ async function claimAndLaunch(options: {
     {
       staleAfterMs: taskStaleMs(task, config),
       sameHostDeadPidAfterMs: SAME_HOST_DEAD_PID_FLOOR_MS,
+      now,
       onRecover: (metadata, reason) =>
         markRecoveredRun(config, metadata, "stale_recovered", reason),
     },
@@ -702,11 +733,19 @@ export async function schedulerTick(
     Math.floor(config.maxConcurrentScheduledRuns ?? 3),
   );
   let catchupRuns = 0;
-  let activeRuns = options.dryRun
-    ? 0
-    : await countActiveScheduledRuns(config.rootDir);
+  let activeRuns = 0;
   try {
     const parsedTasks = await readAllTasks(config.rootDir);
+    if (!options.dryRun) {
+      await recoverStaleTaskLocks({
+        config,
+        tasks: parsedTasks.flatMap((parsed) =>
+          parsed.task ? [parsed.task] : [],
+        ),
+        now,
+      });
+      activeRuns = await countActiveScheduledRuns(config.rootDir);
+    }
     for (const parsed of parsedTasks) {
       const task = parsed.task;
       if (!task) continue;
@@ -763,6 +802,7 @@ export async function schedulerTick(
               nextRunAt: decision.nextRunAt.toISOString(),
               lastSkipReason: null,
             },
+            now,
           });
           if (!wrote) {
             status = "locked";
@@ -787,6 +827,7 @@ export async function schedulerTick(
                 nextRunAt: decision.nextRunAt.toISOString(),
                 lastSkipReason: "missed_schedule",
               },
+              now,
             });
             if (!wrote) {
               status = "locked";

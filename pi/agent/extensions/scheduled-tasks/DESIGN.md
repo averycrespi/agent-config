@@ -62,7 +62,7 @@ The scheduler behavior is intentionally coalescing, not replaying:
 - `catchup: true` claims at most one make-up run for a missed window, even if multiple occurrences were missed.
 - `maxCatchupRunsPerTick` caps catchup claims globally per tick; over-cap tasks are reported as `catchup_deferred` and keep their existing `nextRunAt`.
 - Normal due runs are independent of the catchup cap.
-- `maxConcurrentScheduledRuns` caps active scheduled runners globally across ticks. Active lifecycle statuses are `claimed`, `launched`, and `running`; over-cap tasks are reported as `concurrency_deferred` and keep `nextRunAt` unchanged.
+- `maxConcurrentScheduledRuns` caps active scheduled runners globally across ticks. Active lifecycle statuses are `claimed`, `launched`, and `running`; over-cap tasks are reported as `concurrency_deferred` and keep `nextRunAt` unchanged. Stale task-lock recovery runs before active-run counting so expired locks do not permanently consume the global cap.
 
 Lock sequencing matters:
 
@@ -72,9 +72,9 @@ Lock sequencing matters:
 4. Under the task lock, create `<run-dir>/task.md`, write initial `run.json`, and persist the advanced `nextRunAt`.
 5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and update `run.json` to `launched`, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
 6. Release `scheduler.lock` promptly; do not await final child task completion in the tick.
-7. The claimed runner validates `run.json` and the task lock metadata, executes the `task.md` snapshot via `runTask()`, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
+7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, executes the `task.md` snapshot via `runTask()`, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
 
-If a due or catchup task is already locked and not stale, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. If stale recovery removes a prior task lock, mark the prior active lifecycle `stale_recovered` before launching replacement work. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
+If a due or catchup task is already locked and not stale, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. Same-host dead-PID recovery must evaluate the adopted runner PID, not the scheduler tick PID; otherwise a normal exited tick could make a healthy detached run look stale. If stale recovery removes a prior task lock, mark the prior active lifecycle `stale_recovered` before launching replacement work. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
 
 `TickSummary` has scheduler-level `status` and `message` fields. Do not represent scheduler lock contention as a fake task skip; use `status: "locked"`, leave `claimed` and `skipped` empty, and put the lock explanation in `message`. Task-level skips stay in `skipped` with real task IDs.
 
@@ -121,7 +121,7 @@ PI_SCHEDULED_TASK_RUN_DIR=<run-dir>
 
 The scheduled-run markers are for scoping behavior, not a hard security boundary. Do not add behavior that trusts env vars for authorization without also constraining paths through `paths.ts` and validating the current task file.
 
-`spawnPi()` streams full stdout/stderr to `pi.log` and keeps bounded in-memory tails for `output.md`, summaries, and result extraction. Large child output may be truncated in summaries, but the raw log remains on disk. Timeouts send `SIGTERM` first and then `SIGKILL` after a short grace period. Spawn and log-stream failures must resolve to a failed run outcome with durable lifecycle/result metadata; never leave a run indefinitely `running` when the process or artifact stream has already failed.
+`spawnPi()` streams full stdout/stderr to `pi.log` and keeps bounded in-memory tails for `output.md`, summaries, and result extraction. Large child output may be truncated in summaries, but the raw log remains on disk. Timeouts and log-stream failures send `SIGTERM` first and then `SIGKILL` after a short grace period. Spawn and log-stream failures must resolve to a failed run outcome with durable lifecycle/result metadata; never leave a run indefinitely `running` when the process or artifact stream has already failed.
 
 ## Tool permissions and handoff
 
@@ -195,6 +195,7 @@ Security-relevant invariants:
 - Treat `piCommand` as a command/path only.
 - Keep management tooling unavailable inside scheduled child runs.
 - Keep handoff tooling scoped to the current task and disabled outside child runs.
+- Claimed runners must adopt task locks to their own PID before execution; stale recovery must not key active detached runs to the scheduler tick PID.
 - Release task locks only when current lock metadata still matches the holder. An old stale runner must not delete a newer task lock.
 - Avoid force-unlock or destructive cleanup features unless their failure modes are designed explicitly.
 

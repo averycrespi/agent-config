@@ -16,6 +16,7 @@ export const _timers = { setTimeout, clearTimeout };
 
 export const OUTPUT_TAIL_BYTES = 1024 * 1024;
 const LINE_BUFFER_BYTES = 64 * 1024;
+const KILL_ESCALATION_MS = 3_000;
 
 export interface SpawnPlan {
   command: string;
@@ -173,6 +174,7 @@ export async function spawnPi(
     let timedOut = false;
     let settled = false;
     let streamError: string | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
     const log = _createWriteStream.fn(logPath, { mode: 0o600 });
     const stderrPath = `${logPath}.stderr.tmp`;
     const stderrLog = _createWriteStream.fn(stderrPath, { mode: 0o600 });
@@ -194,6 +196,7 @@ export async function spawnPi(
       if (settled) return;
       settled = true;
       _timers.clearTimeout(timer);
+      if (killTimer) _timers.clearTimeout(killTimer);
       handleStdoutText(stdoutDecoder.end());
       handleStderrText(stderrDecoder.end());
       if (!sessionFile) sessionFile = extractSessionFileLine(stdoutLineBuffer);
@@ -218,19 +221,26 @@ export async function spawnPi(
     const timer = _timers.setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
-      _timers.setTimeout(() => child.kill("SIGKILL"), 3_000);
+      killTimer = _timers.setTimeout(
+        () => child.kill("SIGKILL"),
+        KILL_ESCALATION_MS,
+      );
     }, plan.timeoutMs);
     const failFromStream = (error: Error) => {
+      if (settled || streamError) return;
       streamError = error.message;
       child.kill("SIGTERM");
-      finish({
-        exitCode: null,
-        signal: null,
-        timedOut,
-        stdout,
-        stderr,
-        error: error.message,
-      });
+      killTimer = _timers.setTimeout(() => {
+        child.kill("SIGKILL");
+        finish({
+          exitCode: null,
+          signal: "SIGKILL",
+          timedOut,
+          stdout,
+          stderr,
+          error: error.message,
+        });
+      }, KILL_ESCALATION_MS);
     };
     log.once("error", failFromStream);
     stderrLog.once("error", failFromStream);

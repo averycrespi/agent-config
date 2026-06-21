@@ -1,4 +1,4 @@
-import { open, readFile, rm } from "node:fs/promises";
+import { open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { lockPath } from "./paths.ts";
 
@@ -35,8 +35,22 @@ function metadataMatches(
     current.pid === expected.pid &&
     current.hostname === expected.hostname &&
     current.startedAt === expected.startedAt &&
+    current.taskId === expected.taskId &&
     current.runId === expected.runId
   );
+}
+
+async function writeLockAtomic(
+  rootDir: string,
+  name: string,
+  metadata: LockMetadata,
+): Promise<void> {
+  const path = lockPath(rootDir, name);
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(metadata, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  await rename(tmp, path);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -112,6 +126,37 @@ export async function releaseLockIfMatches(
   return true;
 }
 
+export async function adoptLock(
+  rootDir: string,
+  name: string,
+  expected: LockMetadata,
+): Promise<HeldLock | undefined> {
+  const current = await readLock(rootDir, name);
+  if (!metadataMatches(current, expected)) return undefined;
+  const metadata: LockMetadata = {
+    ...expected,
+    pid: process.pid,
+    hostname: hostname(),
+    startedAt: new Date().toISOString(),
+  };
+  await writeLockAtomic(rootDir, name, metadata);
+  const adopted = await readLock(rootDir, name);
+  if (!metadataMatches(adopted, metadata)) return undefined;
+  return heldLock(rootDir, name, metadata);
+}
+
+export async function recoverLockIfStale(
+  rootDir: string,
+  name: string,
+  stalePolicy: StaleLockPolicy,
+): Promise<boolean> {
+  const existing = await readLock(rootDir, name);
+  const recoverReason = await shouldRecoverLock(existing, stalePolicy);
+  if (!existing || !recoverReason) return false;
+  await stalePolicy.onRecover?.(existing, recoverReason);
+  return releaseLockIfMatches(rootDir, name, existing);
+}
+
 export async function acquireLock(
   rootDir: string,
   name: string,
@@ -139,11 +184,8 @@ export async function acquireLock(
     return heldLock(rootDir, name, metadata);
   } catch {
     if (!stalePolicy) return undefined;
-    const existing = await readLock(rootDir, name);
-    const recoverReason = await shouldRecoverLock(existing, stalePolicy);
-    if (!existing || !recoverReason) return undefined;
-    await stalePolicy.onRecover?.(existing, recoverReason);
-    await releaseLockIfMatches(rootDir, name, existing);
+    const recovered = await recoverLockIfStale(rootDir, name, stalePolicy);
+    if (!recovered) return undefined;
     return acquireLock(rootDir, name, extra);
   }
 }
