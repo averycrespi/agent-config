@@ -555,14 +555,9 @@ test("spawn plan runs Pi through bash login shell when requested", async () => {
     envFileValues: { FROM_FILE: "one" },
   });
   assert.equal(plan.command, "bash");
-  assert.deepEqual(plan.args.slice(0, 5), [
-    "--login",
-    "-c",
-    'exec "$@"',
-    "bash",
-    "/opt/pi bin/pi",
-  ]);
-  assert.deepEqual(plan.args.slice(5, 7), ["--mode", "json"]);
+  assert.deepEqual(plan.args.slice(0, 2), ["--login", "-c"]);
+  assert.match(plan.args[2] ?? "", /^exec '\/opt\/pi bin\/pi' '--mode' 'json'/);
+  assert.match(plan.args[2] ?? "", /'@.*prompt\.md'$/);
   assert.equal(plan.env.FROM_FILE, "one");
   assert.equal(plan.env.PI_SCHEDULED_TASK_RUN, "1");
   await rm(cwd, { recursive: true, force: true });

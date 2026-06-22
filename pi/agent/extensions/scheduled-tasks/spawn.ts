@@ -36,6 +36,14 @@ export interface SpawnOutcome {
   sessionFile?: string;
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function shellExecCommand(command: string, args: string[]): string {
+  return ["exec", shellQuote(command), ...args.map(shellQuote)].join(" ");
+}
+
 export function buildSpawnPlan(options: {
   config: ScheduledTasksConfig;
   task: TaskDefinition;
@@ -64,14 +72,7 @@ export function buildSpawnPlan(options: {
       : options.config.piCommand;
   const spawnArgs =
     options.task.executionShell === "bash-login"
-      ? [
-          "--login",
-          "-c",
-          'exec "$@"',
-          "bash",
-          options.config.piCommand,
-          ...args,
-        ]
+      ? ["--login", "-c", shellExecCommand(options.config.piCommand, args)]
       : args;
   const timeoutMinutes =
     options.task.timeoutMinutes ?? options.config.defaultTimeoutMinutes;

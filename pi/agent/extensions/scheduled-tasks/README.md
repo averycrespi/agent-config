@@ -139,7 +139,7 @@ If handoff is disabled or the scheduled-run context is invalid, it returns a cle
 
 ## Runs and artifacts
 
-Manual runs and claimed scheduled runners share the same child Pi spawn path. Manual `/scheduled-tasks-run` stays synchronous for debugging. Scheduled ticks are claim-and-launch operations: they claim due work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, and return without waiting for final task success or failure. The detached runner adopts the task lock by rewriting lock metadata to its own process PID before executing, so same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec "$@"' bash <piCommand> ...`, preserving Pi arguments while allowing bash login startup files to run first. Child runs set:
+Manual runs and claimed scheduled runners share the same child Pi spawn path. Manual `/scheduled-tasks-run` stays synchronous for debugging. Scheduled ticks are claim-and-launch operations: they claim due work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, and return without waiting for final task success or failure. The detached runner adopts the task lock by rewriting lock metadata to its own process PID before executing, so same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>
@@ -194,7 +194,7 @@ All configurable values in the cron command are shell-quoted. `piCommand` is tre
 ## Security defaults and limitations
 
 - Task IDs and paths are constrained to the configured root layout.
-- Child Pi is spawned with an argument array, not shell concatenation. When `executionShell: bash-login` is enabled, bash receives a fixed wrapper and the Pi command plus arguments are passed positionally.
+- Child Pi is spawned with an argument array by default. When `executionShell: bash-login` is enabled, bash receives a fixed, shell-quoted `exec` command for the Pi command and generated arguments; task files cannot provide arbitrary shell snippets.
 - Tool permissions use an explicit effective allowlist.
 - Handoff tooling is env-gated and current-task scoped; the env vars activate behavior but are not treated as a security boundary.
 - No force-unlock or destructive cleanup commands are provided in v1; stale lock recovery is automatic and conservative.

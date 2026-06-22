@@ -105,7 +105,7 @@ The scheduler writes `task.md` at claim time. The claimed runner parses that sna
 - `--tools <effective-tools>` or `--no-tools`
 - `-p @<prompt.md>`
 
-By default the spawn plan runs `piCommand` directly. If a task sets `executionShell: bash-login`, the plan runs `bash --login -c 'exec "$@"' bash <piCommand> ...` so login shell startup files can initialize the environment before Pi starts. Keep shell support narrow and fixed; do not turn `executionShell` into an arbitrary command or shell-snippet passthrough.
+By default the spawn plan runs `piCommand` directly. If a task sets `executionShell: bash-login`, the plan runs `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'` so login shell startup files can initialize the environment before Pi starts without depending on positional parameters that startup files may mutate. Keep shell support narrow and fixed; do not turn `executionShell` into an arbitrary command or shell-snippet passthrough.
 
 The child environment is merged in this order before spawning either Pi directly or the optional login shell: parent scheduler environment, parsed task `envFiles` in listed order, inline task `env`, then scheduled-run markers:
 
