@@ -158,7 +158,7 @@ export function registerScheduledTaskCommands(
       notify(
         ctx,
         `${result.status}: ${result.message}${result.runDir ? `\n${result.runDir}` : ""}`,
-        result.status === "success" ? "info" : "warning",
+        ["success", "launched"].includes(result.status) ? "info" : "warning",
       );
     },
   });

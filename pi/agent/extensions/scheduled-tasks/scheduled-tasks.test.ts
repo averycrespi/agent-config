@@ -44,6 +44,7 @@ import {
 } from "./schedule.ts";
 import {
   formatTaskRuntimeStatus,
+  manualRunTask,
   readLatestLogs,
   runClaimedTask,
   schedulerTick,
@@ -860,44 +861,30 @@ test("/scheduled-tasks-run reports valid missing task as not found", async () =>
   await rm(root, { recursive: true, force: true });
 });
 
-test("/scheduled-tasks-run acknowledges before child run completes", async () => {
+test("/scheduled-tasks-run acknowledges after launching detached child", async () => {
   const { registered, root, notifications, ctx } = await commandHarness();
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
   await writeFile(join(root, "tasks", "job.md"), sampleTask("job", cwd));
-  let closeChild: (() => void) | undefined;
   mock.method(_spawn, "fn", () => {
     const child = new EventEmitter() as StubChild;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    closeChild = () => {
-      child.stdout.end();
-      child.stderr.end();
-      child.emit("close", 0, null);
-    };
+    process.nextTick(() => child.emit("spawn"));
     return child;
   });
 
-  const run = registered.get("scheduled-tasks-run")!.handler("job", ctx);
-  for (
-    let attempts = 0;
-    notifications.length === 0 && attempts < 20;
-    attempts += 1
-  ) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
+  await registered.get("scheduled-tasks-run")!.handler("job", ctx);
 
   assert.deepEqual(notifications[0], {
     text: "Starting scheduled task run: job",
     level: "info",
   });
-  for (let attempts = 0; !closeChild && attempts < 1000; attempts += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.ok(closeChild);
-  closeChild();
-  await run;
-  assert.match(notifications.at(-1)?.text ?? "", /^success: Run /);
+  assert.match(
+    notifications.at(-1)?.text ?? "",
+    /^launched: Launched claimed run /,
+  );
+  assert.equal(notifications.at(-1)?.level, "info");
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
@@ -1115,6 +1102,82 @@ test("commands register /scheduled-tasks-tick with dry-run support instead of le
     },
   });
   assert.match(notifications[0]!.text, /"dryRun": true/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test("manual run launches claimed runner asynchronously without advancing nextRunAt", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const taskMarkdown = sampleTask("job", cwd);
+  await writeFile(join(root, "tasks", "job.md"), taskMarkdown, "utf8");
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T10:00:00.000Z",
+  });
+  let spawnedArgs: string[] | undefined;
+  mock.method(_spawn, "fn", (_command: string, args: string[]) => {
+    spawnedArgs = args;
+    const child = new EventEmitter() as StubChild & { pid: number };
+    child.pid = 12345;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("spawn"));
+    return child;
+  });
+
+  const summary = await manualRunTask(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    "job",
+  );
+
+  assert.equal(summary.status, "launched");
+  assert.ok(summary.runId);
+  assert.deepEqual(spawnedArgs, [
+    "--mode",
+    "json",
+    "--no-session",
+    "-p",
+    `/scheduled-tasks-run-claimed job ${summary.runId}`,
+  ]);
+  assert.equal(
+    await readFile(
+      join(runDir(root, "job", summary.runId!), "task.md"),
+      "utf8",
+    ),
+    taskMarkdown,
+  );
+  const state = await readTaskState(root, "job");
+  assert.equal(state?.taskId, "job");
+  assert.equal(state?.nextRunAt, "2026-06-19T10:00:00.000Z");
+  assert.equal(state?.lastRunId, summary.runId);
+  assert.equal(state?.lastStatus, "launched");
+  assert.equal(state?.lastSkipReason, null);
+  assert.ok(state?.lastRunAt);
+  assert.equal(
+    (await readRunLifecycle(root, "job", summary.runId!))?.status,
+    "launched",
+  );
+  assert.match(
+    await readLatestLogs(
+      {
+        rootDir: root,
+        defaultTimeoutMinutes: 1,
+        defaultTools: ["read"],
+        piCommand: "pi",
+        cronEnvironment: {},
+      },
+      "job",
+    ),
+    /Status: launched/,
+  );
+  await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
 

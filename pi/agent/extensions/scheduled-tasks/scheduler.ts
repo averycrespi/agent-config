@@ -46,7 +46,6 @@ import {
 import {
   parseTaskMarkdown,
   readAllTasks,
-  readTaskFile,
   type TaskDefinition,
 } from "./task-file.ts";
 import { validateTask } from "./validate.ts";
@@ -279,14 +278,48 @@ export async function manualRunTask(
   config: ScheduledTasksConfig,
   taskId: string,
 ): Promise<RunSummary> {
-  const parsed = await readTaskFile(taskPath(config.rootDir, taskId));
+  await ensureRootLayout(config.rootDir);
+  let rawTask: string;
+  try {
+    rawTask = await readFile(taskPath(config.rootDir, taskId), "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      taskId,
+      status: "not_found",
+      message: `Unable to read task file: ${message}`,
+    };
+  }
+  const parsed = parseTaskMarkdown(taskPath(config.rootDir, taskId), rawTask);
   if (!parsed.task)
     return {
       taskId,
       status: "not_found",
       message: parsed.errors.join("\n") || "Task not found.",
     };
-  return runTask(config, parsed.task);
+  const validation = await validateTask(parsed.task, config, parsed.errors);
+  if (!validation.ok)
+    return {
+      taskId,
+      status: "validation_failed",
+      message: validation.errors.join("\n"),
+    };
+  const stateResult = await readTaskStateStrict(config.rootDir, taskId);
+  if (!stateResult.ok && !stateResult.missing)
+    return {
+      taskId,
+      status: "corrupt_state",
+      message: stateResult.error,
+    };
+  const state = stateResult.ok ? stateResult.value : undefined;
+  return claimAndLaunch({
+    config,
+    task: parsed.task,
+    rawTask,
+    state,
+    nextRunAt: state?.nextRunAt,
+    now: new Date(),
+  });
 }
 
 export async function runClaimedTask(
@@ -570,9 +603,7 @@ async function writeTaskStateWithLock(options: {
   config: ScheduledTasksConfig;
   task: TaskDefinition;
   state: Awaited<ReturnType<typeof readTaskState>>;
-  patch: Partial<Awaited<ReturnType<typeof readTaskState>>> & {
-    nextRunAt: string;
-  };
+  patch: Partial<Awaited<ReturnType<typeof readTaskState>>>;
   now: Date;
 }): Promise<boolean> {
   const lock = await acquireLock(
@@ -604,7 +635,7 @@ async function claimAndLaunch(options: {
   task: TaskDefinition;
   rawTask: string;
   state: Awaited<ReturnType<typeof readTaskState>>;
-  nextRunAt: string;
+  nextRunAt?: string;
   now: Date;
 }): Promise<RunSummary> {
   const { config, task, rawTask, state, nextRunAt, now } = options;
@@ -640,7 +671,7 @@ async function claimAndLaunch(options: {
     });
     await writeTaskState(config.rootDir, {
       ...(state ?? { taskId: task.id }),
-      nextRunAt,
+      ...(nextRunAt ? { nextRunAt } : {}),
       lastRunAt: claimedAt,
       lastRunId: runId,
       lastStatus: "claimed",
@@ -685,7 +716,7 @@ async function claimAndLaunch(options: {
     });
     await writeTaskState(config.rootDir, {
       ...(state ?? { taskId: task.id }),
-      nextRunAt,
+      ...(nextRunAt ? { nextRunAt } : {}),
       lastRunAt: launchedAt,
       lastRunId: runId,
       lastStatus: "launched",

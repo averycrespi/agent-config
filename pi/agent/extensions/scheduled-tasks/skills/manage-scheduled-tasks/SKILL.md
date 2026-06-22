@@ -14,8 +14,8 @@ Use this skill to manage Markdown-defined Pi scheduled tasks. The `scheduled_tas
 3. Create or edit only `<rootDir>/tasks/<task-id>.md` for task definitions.
 4. Validate after every create or edit with `scheduled_tasks` action `validate` and the task ID.
 5. Fix validation errors before enabling or manually running a task.
-6. Use `scheduled_tasks` action `run` only after validation passes or when explicitly debugging a failing task. Manual runs are synchronous and do not advance scheduler `nextRunAt`.
-7. Use `scheduled_tasks` action `logs` after a manual or scheduled run to inspect results. Scheduled tick summaries report launch outcomes such as `launched`; final success/failure appears later in logs and lifecycle artifacts.
+6. Use `scheduled_tasks` action `run` only after validation passes or when explicitly debugging a failing task. Manual runs launch asynchronously and do not advance scheduler `nextRunAt`.
+7. Use `scheduled_tasks` action `logs` after a manual or scheduled run to inspect results. Run summaries report launch outcomes such as `launched`; final success/failure appears later in logs and lifecycle artifacts.
 
 ## Task file rules
 

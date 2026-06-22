@@ -107,7 +107,7 @@ Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validat
 
 - `/scheduled-tasks-list` lists task IDs, enabled state, and descriptions.
 - `/scheduled-tasks-show <task-id>` shows parsed metadata and the Markdown prompt body.
-- `/scheduled-tasks-run <task-id>` manually starts a fresh scheduled child Pi run synchronously for debugging. Manual runs do not advance `nextRunAt`.
+- `/scheduled-tasks-run <task-id>` manually claims and launches a fresh detached scheduled child Pi run for debugging. It returns after launch; final success or failure is visible later in logs and lifecycle artifacts. Manual runs do not advance `nextRunAt`.
 - `/scheduled-tasks-run-claimed <task-id> <run-id>` is an internal detached runner entrypoint. It is launched by scheduler ticks for an existing claimed run; do not call it for normal manual runs.
 - `/scheduled-tasks-logs <task-id>` shows latest run status, artifact paths, and bounded output/log tails.
 - `/scheduled-tasks-doctor [task-id]` validates config, root, managed crontab installation status, latest tick status, command health, task files, last runtime state, and current task-lock diagnostics.
@@ -139,7 +139,7 @@ If handoff is disabled or the scheduled-run context is invalid, it returns a cle
 
 ## Runs and artifacts
 
-Manual runs and claimed scheduled runners share the same child Pi spawn path. Manual `/scheduled-tasks-run` stays synchronous for debugging. Scheduled ticks are claim-and-launch operations: they claim due work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, and return without waiting for final task success or failure. The detached runner adopts the task lock by rewriting lock metadata to its own process PID before executing, so same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
+Manual runs and scheduled ticks share the same claim-and-launch path: they claim work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, and return without waiting for final task success or failure. The detached runner adopts the task lock by rewriting lock metadata to its own process PID before executing, so same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>

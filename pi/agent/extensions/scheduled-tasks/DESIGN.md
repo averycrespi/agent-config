@@ -12,7 +12,7 @@ This file is for future agents changing the extension. The user-facing contract 
 - `task-file.ts` parses the limited Markdown/YAML task format. It does not use a general YAML dependency; supported syntax is deliberately simple and covered by validation.
 - `validate.ts` separates parse/runtime errors from warnings and computes effective tool permissions.
 - `schedule.ts` owns five-field cron parsing, cron matching, next-run search, and due/missed/initialize decisions.
-- `scheduler.ts` owns synchronous manual runs, fast scheduled claim-and-launch ticks, the internal claimed-runner path, run artifact creation, lock sequencing, stale-lock recovery, and latest-log reads.
+- `scheduler.ts` owns manual and scheduled claim-and-launch flows, the internal claimed-runner path, run artifact creation, lock sequencing, stale-lock recovery, and latest-log reads.
 - `spawn.ts` builds the child Pi argv/env, optionally wraps child Pi execution in a supported shell mode, and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
 - `state.ts` persists scheduler state, durable run lifecycle metadata, and final run results as atomically replaced JSON files.
 - `locks.ts` implements advisory file locks via exclusive create, compare-before-delete release, and conservative stale-lock recovery helpers. There is no user-facing force-unlock command in v1.
@@ -52,7 +52,7 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 ## Scheduler semantics
 
-`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and stay synchronous for debugging; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command.
+`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command.
 
 The scheduler behavior is intentionally coalescing, not replaying:
 
