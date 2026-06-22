@@ -153,6 +153,7 @@ export function registerScheduledTaskCommands(
       if (!taskId) return;
       const { config } = await configFor(ctx);
       if (!(await existingTaskPath(config, taskId, ctx))) return;
+      notify(ctx, `Starting scheduled task run: ${taskId}`);
       const result = await manualRunTask(config, taskId);
       notify(
         ctx,

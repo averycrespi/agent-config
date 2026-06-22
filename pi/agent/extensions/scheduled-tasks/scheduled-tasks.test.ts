@@ -860,6 +860,48 @@ test("/scheduled-tasks-run reports valid missing task as not found", async () =>
   await rm(root, { recursive: true, force: true });
 });
 
+test("/scheduled-tasks-run acknowledges before child run completes", async () => {
+  const { registered, root, notifications, ctx } = await commandHarness();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(join(root, "tasks", "job.md"), sampleTask("job", cwd));
+  let closeChild: (() => void) | undefined;
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    closeChild = () => {
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", 0, null);
+    };
+    return child;
+  });
+
+  const run = registered.get("scheduled-tasks-run")!.handler("job", ctx);
+  for (
+    let attempts = 0;
+    notifications.length === 0 && attempts < 20;
+    attempts += 1
+  ) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.deepEqual(notifications[0], {
+    text: "Starting scheduled task run: job",
+    level: "info",
+  });
+  for (let attempts = 0; !closeChild && attempts < 1000; attempts += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(closeChild);
+  closeChild();
+  await run;
+  assert.match(notifications.at(-1)?.text ?? "", /^success: Run /);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
 test("/scheduled-tasks-logs reports usage for missing task id", async () => {
   const { registered, root, notifications, ctx } = await commandHarness();
   await registered.get("scheduled-tasks-logs")!.handler("", ctx);
