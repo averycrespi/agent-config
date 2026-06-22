@@ -11,8 +11,8 @@ What outcome this epic achieves and why it matters. One to three sentences.
 - Grouped by theme if the epic spans multiple areas
 
 ## Success Criteria
-- [ ] High-level, measurable outcomes (not task-level acceptance criteria)
-- [ ] e.g., "Users can complete checkout without leaving the app"
+- High-level, measurable outcomes (not task-level acceptance criteria)
+- e.g., "Users can complete checkout without leaving the app"
 
 ## Out of Scope
 - What is explicitly excluded from this epic
@@ -35,9 +35,9 @@ As a [user type], I want [capability] so that [benefit].
 - Requirement 2
 
 ## Acceptance Criteria
-- [ ] Criterion 1 (binary, testable)
-- [ ] Criterion 2
-- [ ] Criterion 3
+- Criterion 1 (binary, testable)
+- Criterion 2
+- Criterion 3
 
 ## Technical Notes
 - Affected modules/files: `path/to/module`
@@ -60,8 +60,8 @@ Why this work is needed and what was wrong or missing before.
 - Concrete deliverables
 
 ## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
+- Criterion 1
+- Criterion 2
 
 ## Technical Notes
 - Affected modules/files: `path/to/module`
@@ -92,8 +92,8 @@ What happens instead. Include error messages, screenshots, or logs.
 - Frequency: always/intermittent
 
 ## Acceptance Criteria
-- [ ] The described scenario produces the expected behavior
-- [ ] No regression in related functionality
+- The described scenario produces the expected behavior
+- No regression in related functionality
 
 ## Technical Notes
 - Suspected root cause if known
@@ -105,12 +105,12 @@ What happens instead. Include error messages, screenshots, or logs.
 
 ## Acceptance Criteria Formats
 
-Use **checklist format** for most tickets — it is concise and easy to scan:
+Use a **bulleted list** for most tickets — it is concise and easy to scan:
 
 ```
-- [ ] User sees confirmation toast after saving
-- [ ] Form validates email format before submission
-- [ ] API returns 404 for nonexistent resources
+- User sees confirmation toast after saving
+- Form validates email format before submission
+- API returns 404 for nonexistent resources
 ```
 
 Use **Given-When-Then** for complex behavioral scenarios where preconditions matter:
