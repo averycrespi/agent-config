@@ -51,6 +51,7 @@ Follow these constraints:
 - Keep new or uncertain tasks `enabled: false` unless the user explicitly asks to schedule them.
 - Enabled tasks require a five-field cron `schedule`, an absolute existing `cwd`, and a non-empty body.
 - Keep `tools` as an explicit allowlist. If omitted, the extension's configured `defaultTools` apply.
+- When a task uses MCP broker tools (`mcp_search`, `mcp_describe`, or `mcp_call`), also include readonly filesystem tools `read`, `ls`, `find`, and `grep` unless there is a specific reason not to. Broker results can spill large outputs to local files, and scheduled runs need these tools to inspect spillover paths and local diagnostics.
 - Set `catchup: true` only when one coalesced make-up run is useful after downtime; missed occurrences are not replayed one-by-one and global config caps catchups per tick. Active scheduled runs are also capped globally by `maxConcurrentScheduledRuns`.
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
 - Write task prompts to be idempotent where practical: inspect current external state before creating tickets, branches, reports, deployments, or other irreversible changes, because crash recovery may retry work and cron-style systems cannot promise exact-once execution.
