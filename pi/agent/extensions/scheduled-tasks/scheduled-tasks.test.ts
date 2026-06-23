@@ -940,7 +940,11 @@ test("/scheduled-tasks-doctor reports task lock diagnostics", async () => {
     "utf8",
   );
   const runId = "2026-06-19T09-00-00Z-doctor";
-  await writeTaskState(root, { taskId: "job", lastRunId: runId });
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T10:00:00.000Z",
+    lastRunId: runId,
+  });
   await writeRunLifecycle(root, {
     taskId: "job",
     runId,
@@ -968,9 +972,13 @@ test("/scheduled-tasks-doctor reports task lock diagnostics", async () => {
 
   assert.match(
     notifications[0]!.text,
-    new RegExp(`runtime job: lastRunId=${runId} status=running`),
+    new RegExp(`- runtime: lastRunId=${runId} status=running`),
   );
-  assert.match(notifications[0]!.text, new RegExp(`lock job: runId=${runId}`));
+  assert.match(
+    notifications[0]!.text,
+    /- nextRunAt: 2026-06-19T10:00:00\.000Z/,
+  );
+  assert.match(notifications[0]!.text, new RegExp(`- lock: runId=${runId}`));
   assert.match(notifications[0]!.text, /pid=-1/);
   assert.match(notifications[0]!.text, new RegExp(`hostname=${hostname()}`));
   assert.match(notifications[0]!.text, /lifecycle=running/);
@@ -1029,6 +1037,16 @@ test("/scheduled-tasks-doctor reports managed crontab installation status", asyn
 
 test("scheduled_tasks doctor reports managed crontab status", async () => {
   const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T10:00:00.000Z",
+  });
   const registered: Array<{ execute: (...args: any[]) => Promise<any> }> = [];
   registerScheduledTasksTool(
     {
@@ -1063,7 +1081,12 @@ test("scheduled_tasks doctor reports managed crontab status", async () => {
 
   assert.match(result.content[0].text, /cron: not installed/);
   assert.match(result.content[0].text, /last tick: none/);
+  assert.match(
+    result.content[0].text,
+    /- nextRunAt: 2026-06-19T10:00:00\.000Z/,
+  );
   assert.equal(result.details.crontabStatus.status, "not_installed");
+  await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
 

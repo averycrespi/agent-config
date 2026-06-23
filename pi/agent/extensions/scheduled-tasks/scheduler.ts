@@ -20,7 +20,7 @@ import {
 } from "./paths.ts";
 import { loadTaskEnvFiles } from "./env-files.ts";
 import { renderPrompt } from "./prompt.ts";
-import { decideDue } from "./schedule.ts";
+import { decideDue, nextFutureRun } from "./schedule.ts";
 import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
 import {
   acquireLock,
@@ -979,12 +979,32 @@ function lockAgeMs(metadata: LockMetadata, now = new Date()): string {
   return String(Math.max(0, now.getTime() - startedMs));
 }
 
+function formatNextScheduledRun(
+  task: TaskDefinition,
+  stateResult: Awaited<ReturnType<typeof readTaskStateStrict>>,
+): string | undefined {
+  if (!task.enabled) return undefined;
+  if (!task.schedule) return "- nextRunAt: unavailable (missing schedule)";
+  if (stateResult.ok && stateResult.value.nextRunAt) {
+    const next = new Date(stateResult.value.nextRunAt);
+    return Number.isNaN(next.getTime())
+      ? "- nextRunAt: unavailable (invalid state value)"
+      : `- nextRunAt: ${next.toISOString()}`;
+  }
+  if (!stateResult.ok && !stateResult.missing)
+    return "- nextRunAt: unavailable (state metadata error)";
+  const next = nextFutureRun(task.schedule, new Date());
+  return next
+    ? `- nextRunAt: ${next.toISOString()} (not initialized)`
+    : "- nextRunAt: unavailable (invalid schedule)";
+}
+
 async function formatTaskLockStatus(
   config: ScheduledTasksConfig,
   task: TaskDefinition,
 ): Promise<string> {
   const metadata = await readLock(config.rootDir, task.id);
-  if (!metadata) return `lock ${task.id}: none`;
+  if (!metadata) return "- lock: none";
   const lifecycleStatus = metadata.runId
     ? await readRunLifecycleStrict(
         config.rootDir,
@@ -1003,7 +1023,7 @@ async function formatTaskLockStatus(
     sameHostDeadPidAfterMs: SAME_HOST_DEAD_PID_FLOOR_MS,
   });
   return [
-    `lock ${task.id}:`,
+    "- lock:",
     `runId=${metadata.runId ?? "none"}`,
     `pid=${metadata.pid}`,
     `hostname=${metadata.hostname}`,
@@ -1022,13 +1042,13 @@ export async function formatTaskRuntimeStatus(
   let runtime: string;
   if (!stateResult.ok) {
     runtime = stateResult.missing
-      ? `runtime ${taskId}: no runs recorded`
-      : `runtime ${taskId}: state metadata error: ${stateResult.error}`;
+      ? "runtime: no runs recorded"
+      : `runtime: state metadata error: ${stateResult.error}`;
   } else {
     const state = stateResult.value;
     const lastRunId = state.lastRunId;
     if (!lastRunId) {
-      runtime = `runtime ${taskId}: no runs recorded`;
+      runtime = "runtime: no runs recorded";
     } else {
       const lifecycle = await readRunLifecycleStrict(
         config.rootDir,
@@ -1040,12 +1060,17 @@ export async function formatTaskRuntimeStatus(
         : lifecycle.missing
           ? (state.lastStatus ?? "unknown")
           : `run metadata error: ${lifecycle.error}`;
-      runtime = `runtime ${taskId}: lastRunId=${lastRunId} status=${status}`;
+      runtime = `runtime: lastRunId=${lastRunId} status=${status}`;
     }
   }
-  return task
-    ? `${runtime}\n${await formatTaskLockStatus(config, task)}`
-    : runtime;
+  if (!task) return runtime.replace("runtime:", `runtime ${taskId}:`);
+  runtime = `- ${runtime}`;
+  const nextRun = formatNextScheduledRun(task, stateResult);
+  return [
+    runtime,
+    ...(nextRun ? [nextRun] : []),
+    await formatTaskLockStatus(config, task),
+  ].join("\n");
 }
 
 export async function readLatestLogs(
