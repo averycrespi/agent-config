@@ -9,6 +9,7 @@ const ENV_NAMES = [
   "MCP_BROKER_ENDPOINT",
   "MCP_BROKER_AUTH_TOKEN",
   "MCP_BROKER_READONLY",
+  "MCP_BROKER_APPROVAL_TIMEOUT_MS",
   "PI_CODING_AGENT_DIR",
 ] as const;
 
@@ -27,18 +28,21 @@ test("readEnvSettings maps broker environment overrides", () => {
   process.env.MCP_BROKER_ENDPOINT = " https://broker.example.com ";
   process.env.MCP_BROKER_AUTH_TOKEN = " token ";
   process.env.MCP_BROKER_READONLY = "1";
+  process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS = "30000";
 
   assert.deepEqual(readEnvSettings(), {
     endpoint: "https://broker.example.com",
     authToken: "token",
     readOnly: true,
+    approvalTimeoutMs: 30000,
   });
 });
 
-test("readEnvSettings ignores invalid readonly environment values", () => {
+test("readEnvSettings ignores invalid readonly and timeout environment values", () => {
   delete process.env.MCP_BROKER_ENDPOINT;
   delete process.env.MCP_BROKER_AUTH_TOKEN;
   process.env.MCP_BROKER_READONLY = "sometimes";
+  process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS = "0";
 
   assert.deepEqual(readEnvSettings(), {});
 });
@@ -47,6 +51,7 @@ test("loadMcpBrokerConfig surfaces invalid settings warnings", async () => {
   delete process.env.MCP_BROKER_ENDPOINT;
   delete process.env.MCP_BROKER_AUTH_TOKEN;
   delete process.env.MCP_BROKER_READONLY;
+  delete process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS;
 
   const root = join(
     tmpdir(),
@@ -66,6 +71,7 @@ test("loadMcpBrokerConfig surfaces invalid settings warnings", async () => {
       endpoint: undefined,
       authToken: undefined,
       readOnly: false,
+      approvalTimeoutMs: 600000,
     });
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /Ignoring invalid JSON settings file/);
@@ -78,6 +84,7 @@ test("loadMcpBrokerConfig merges global, project, and env settings", async () =>
   delete process.env.MCP_BROKER_ENDPOINT;
   delete process.env.MCP_BROKER_AUTH_TOKEN;
   delete process.env.MCP_BROKER_READONLY;
+  delete process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS;
 
   const root = join(
     tmpdir(),
@@ -97,6 +104,7 @@ test("loadMcpBrokerConfig merges global, project, and env settings", async () =>
           endpoint: "https://global.example.com",
           authToken: "global-token",
           readOnly: false,
+          approvalTimeoutMs: 120000,
         },
       }),
     );
@@ -106,16 +114,19 @@ test("loadMcpBrokerConfig merges global, project, and env settings", async () =>
         "extension:mcp-broker": {
           endpoint: "https://project.example.com",
           readOnly: true,
+          approvalTimeoutMs: 300000,
         },
       }),
     );
     process.env.MCP_BROKER_AUTH_TOKEN = "env-token";
     process.env.MCP_BROKER_READONLY = "0";
+    process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS = "450000";
 
     assert.deepEqual(await loadMcpBrokerConfig(cwd), {
       endpoint: "https://project.example.com",
       authToken: "env-token",
       readOnly: false,
+      approvalTimeoutMs: 450000,
     });
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -16,7 +16,7 @@ Typical agent flow:
 2. `mcp_describe` for any candidate that looks right. Returns the full description and JSON Schema for `arguments`.
 3. `mcp_call` with the exact name and an arguments object matching the schema.
 
-Broker connect and tool-list operations use an explicit 15-second network timeout. Tool calls that require human approval block for up to 10 minutes, matching the broker's own approval timeout. After 10 minutes without an approval decision, `mcp_call` returns an error and the agent can retry.
+Broker connect and tool-list operations use an explicit 15-second network timeout. Tool calls that require human approval block for `approvalTimeoutMs`, which defaults to 10 minutes. After the approval timeout elapses without a decision, `mcp_call` returns an error and the agent can retry.
 
 If a cached broker tool list becomes stale or the connection fails while refreshing it, the client drops the stale cache, reconnects, and retries once before surfacing the error.
 
@@ -24,11 +24,12 @@ If a cached broker tool list becomes stale or the connection fails while refresh
 
 Configure via `extension:mcp-broker` in Pi settings. Environment variables override settings when set. Use `/mcp-broker-config` to display the effective parsed config with `authToken` masked.
 
-| Field       | Default | Environment override    | Description                                                                                                     |
-| ----------- | ------- | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `endpoint`  | unset   | `MCP_BROKER_ENDPOINT`   | Base URL of the broker; the extension connects to `${endpoint}/mcp`.                                            |
-| `authToken` | unset   | `MCP_BROKER_AUTH_TOKEN` | Bearer token for the broker's MCP endpoint.                                                                     |
-| `readOnly`  | `false` | `MCP_BROKER_READONLY`   | Set to `true` in settings or `1`/`true` in the environment to activate read-only mode; `0`/`false` disables it. |
+| Field               | Default  | Environment override             | Description                                                                                                     |
+| ------------------- | -------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `endpoint`          | unset    | `MCP_BROKER_ENDPOINT`            | Base URL of the broker; the extension connects to `${endpoint}/mcp`.                                            |
+| `authToken`         | unset    | `MCP_BROKER_AUTH_TOKEN`          | Bearer token for the broker's MCP endpoint.                                                                     |
+| `readOnly`          | `false`  | `MCP_BROKER_READONLY`            | Set to `true` in settings or `1`/`true` in the environment to activate read-only mode; `0`/`false` disables it. |
+| `approvalTimeoutMs` | `600000` | `MCP_BROKER_APPROVAL_TIMEOUT_MS` | Positive integer timeout, in milliseconds, for broker tool calls that may wait for human approval.              |
 
 Example settings:
 
@@ -37,7 +38,8 @@ Example settings:
   "extension:mcp-broker": {
     "endpoint": "https://broker.example.com",
     "authToken": "<token>",
-    "readOnly": false
+    "readOnly": false,
+    "approvalTimeoutMs": 600000
   }
 }
 ```

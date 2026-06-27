@@ -172,6 +172,22 @@ test("BrokerClient.listTools invalidates stale cache and retries once", async ()
   assert.deepEqual((client as any).cachedProviders, ["github"]);
 });
 
+test("BrokerClient.callTool forwards the configured approval timeout", async () => {
+  const client = new BrokerClient({ approvalTimeoutMs: 12345 });
+  let observedTimeout: unknown;
+  (client as any).client = {
+    callTool: async (_request: unknown, _schema: unknown, options: any) => {
+      observedTimeout = options.timeout;
+      return { content: [{ type: "text", text: "ok" }] };
+    },
+    close: async () => {},
+  };
+
+  await client.callTool("test.tool", {}, new AbortController().signal);
+
+  assert.equal(observedTimeout, 12345);
+});
+
 test("BrokerClient.callTool resets the live client after call failures", async () => {
   const closed: string[] = [];
   const client = new BrokerClient();

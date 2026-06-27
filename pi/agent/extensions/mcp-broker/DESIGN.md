@@ -33,7 +33,7 @@ Tool-list behavior:
 - If a fetch fails while a cache exists, the client resets and retries once.
 - `getCachedTools()` never performs network I/O; it is used by prompt injection and the bash guard.
 
-Network connect/list operations use short explicit timeouts. `mcp_call` uses the broker approval timeout window because some broker tools intentionally wait for human approval.
+Network connect/list operations use short explicit timeouts. `mcp_call` uses the configured broker approval timeout window, defaulting to 10 minutes, because some broker tools intentionally wait for human approval.
 
 ## Read-only mode
 

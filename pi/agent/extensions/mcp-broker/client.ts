@@ -40,6 +40,7 @@ export class BrokerClient {
   private authToken: string | undefined;
   private readOnly: boolean;
   private networkTimeoutMs: number;
+  private approvalTimeoutMs: number;
 
   constructor(
     opts: {
@@ -47,18 +48,21 @@ export class BrokerClient {
       authToken?: string;
       readOnly?: boolean;
       networkTimeoutMs?: number;
+      approvalTimeoutMs?: number;
     } = {},
   ) {
     this.endpoint = opts.endpoint;
     this.authToken = opts.authToken;
     this.readOnly = opts.readOnly ?? false;
     this.networkTimeoutMs = opts.networkTimeoutMs ?? DEFAULT_NETWORK_TIMEOUT_MS;
+    this.approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
   }
 
   configure(opts: {
     endpoint?: string;
     authToken?: string;
     readOnly?: boolean;
+    approvalTimeoutMs?: number;
   }): void {
     const nextReadOnly = opts.readOnly ?? false;
     const changed =
@@ -68,6 +72,7 @@ export class BrokerClient {
     this.endpoint = opts.endpoint;
     this.authToken = opts.authToken;
     this.readOnly = nextReadOnly;
+    this.approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
     if (changed) this.reset();
   }
 
@@ -196,10 +201,10 @@ export class BrokerClient {
       return await this.withNetworkTimeout(
         client.callTool({ name, arguments: args }, undefined, {
           signal,
-          timeout: APPROVAL_TIMEOUT_MS,
+          timeout: this.approvalTimeoutMs,
         }),
         "callTool",
-        APPROVAL_TIMEOUT_MS,
+        this.approvalTimeoutMs,
       );
     } catch (error) {
       if (!(error instanceof Error && error.name === "AbortError")) {
