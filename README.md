@@ -11,7 +11,7 @@ This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-
 This is my personal agent operating system for software work. It combines:
 
 - **A Pi-native workflow layer** for planning, executing, verifying, and completing engineering tasks
-- **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, scheduled tasks, brokered external tools, web access, and TUI polish
+- **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, prechecked scheduled tasks, brokered external tools, web access, and TUI polish
 - **Reusable skills** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, memory workflows, and agent-harness engineering
 - **Subagent definitions** for isolated exploration, research, deep research, and review
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks

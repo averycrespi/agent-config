@@ -3,7 +3,7 @@ import { isAbsolute } from "node:path";
 import type { ScheduledTasksConfig } from "./config.ts";
 import { commandHealth, isValidEnvName } from "./config.ts";
 import { loadTaskEnvFiles } from "./env-files.ts";
-import { handoffPath, isSafeTaskId } from "./paths.ts";
+import { handoffPath, isSafeTaskId, scriptPath } from "./paths.ts";
 import { parseCron } from "./schedule.ts";
 import type { TaskDefinition } from "./task-file.ts";
 
@@ -24,6 +24,7 @@ export interface ValidationResult {
 const THINKING = new Set(["low", "medium", "high", "none", "minimal"]);
 const EXECUTION_SHELL = new Set(["bash-login"]);
 const SENSITIVE_KEY = /(token|secret|password|key|credential)/i;
+const PRECHECK_INTERPRETER = /^[A-Za-z0-9_./:-]+$/;
 
 export function effectiveTools(
   task: Pick<TaskDefinition, "tools" | "handoff">,
@@ -108,6 +109,69 @@ export async function validateTask(
     typeof task.rawFrontmatter.catchup !== "boolean"
   )
     errors.push("catchup must be a boolean.");
+  if (task.rawFrontmatter.precheck !== undefined) {
+    const rawPrecheck = task.rawFrontmatter.precheck;
+    if (
+      !rawPrecheck ||
+      typeof rawPrecheck !== "object" ||
+      Array.isArray(rawPrecheck)
+    ) {
+      errors.push("precheck must be an object.");
+    } else {
+      const precheck = rawPrecheck as Record<string, unknown>;
+      if (typeof precheck.script !== "string" || !precheck.script.trim()) {
+        errors.push("precheck.script is required.");
+      } else {
+        try {
+          const path = scriptPath(config.rootDir, precheck.script.trim());
+          try {
+            await access(path);
+          } catch {
+            const message = `precheck script ${path} not found or unreadable.`;
+            if (task.enabled) errors.push(message);
+            else warnings.push(message);
+          }
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
+      }
+      if (
+        precheck.interpreter !== undefined &&
+        (typeof precheck.interpreter !== "string" ||
+          !precheck.interpreter.trim() ||
+          !PRECHECK_INTERPRETER.test(precheck.interpreter))
+      )
+        errors.push(
+          "precheck.interpreter must be a non-empty command/path without shell syntax.",
+        );
+      if (
+        precheck.args !== undefined &&
+        (!Array.isArray(precheck.args) ||
+          (task.precheck?.args ?? []).length !== precheck.args.length)
+      )
+        errors.push("precheck.args must be an array of strings.");
+      if (
+        precheck.timeoutSeconds !== undefined &&
+        (typeof precheck.timeoutSeconds !== "number" ||
+          precheck.timeoutSeconds <= 0)
+      )
+        errors.push("precheck.timeoutSeconds must be a positive number.");
+      if (
+        precheck.skipExitCodes !== undefined &&
+        (!Array.isArray(precheck.skipExitCodes) ||
+          precheck.skipExitCodes.some(
+            (code) =>
+              !Number.isInteger(code) ||
+              typeof code !== "number" ||
+              code <= 0 ||
+              code > 255,
+          ))
+      )
+        errors.push(
+          "precheck.skipExitCodes must be an array of integers from 1 to 255.",
+        );
+    }
+  }
   if (
     task.rawFrontmatter.env !== undefined &&
     (!task.rawFrontmatter.env ||

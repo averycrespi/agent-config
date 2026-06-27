@@ -4,6 +4,14 @@ import { getRootPaths, isSafeTaskId } from "./paths.ts";
 
 export type ExecutionShell = "bash-login";
 
+export interface TaskPrecheck {
+  script: string;
+  interpreter: string;
+  args: string[];
+  timeoutSeconds: number;
+  skipExitCodes: number[];
+}
+
 export interface TaskDefinition {
   id: string;
   path: string;
@@ -19,6 +27,7 @@ export interface TaskDefinition {
   env?: Record<string, string>;
   executionShell?: ExecutionShell | string;
   timeoutMinutes?: number;
+  precheck?: TaskPrecheck;
   catchup: boolean;
   handoff: boolean;
   rawFrontmatter: Record<string, unknown>;
@@ -45,8 +54,8 @@ function parseScalar(raw: string): unknown {
     return value
       .slice(1, -1)
       .split(",")
-      .map((item) => String(parseScalar(item.trim())))
-      .filter(Boolean);
+      .map((item) => parseScalar(item.trim()))
+      .filter((item) => item !== "");
   }
   return value;
 }
@@ -175,6 +184,41 @@ function envField(
   return result;
 }
 
+function stringArrayField(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    )
+    .map((item) => item.trim());
+}
+
+function numberArrayField(value: unknown): number[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is number => Number.isInteger(item));
+}
+
+function precheckField(raw: Record<string, unknown>): TaskPrecheck | undefined {
+  const value = raw.precheck;
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const precheck = value as Record<string, unknown>;
+  const script = stringField(precheck, "script");
+  if (!script) return undefined;
+  const timeout = precheck.timeoutSeconds;
+  return {
+    script,
+    interpreter: stringField(precheck, "interpreter") ?? "bash",
+    args: stringArrayField(precheck.args) ?? [],
+    timeoutSeconds: typeof timeout === "number" ? timeout : 30,
+    skipExitCodes: numberArrayField(precheck.skipExitCodes) ?? [78],
+  };
+}
+
 export function parseTaskMarkdown(
   path: string,
   source: string,
@@ -217,6 +261,7 @@ export function parseTaskMarkdown(
       ? { executionShell: stringField(raw, "executionShell") }
       : {}),
     ...(typeof timeout === "number" ? { timeoutMinutes: timeout } : {}),
+    ...(raw.precheck !== undefined ? { precheck: precheckField(raw) } : {}),
     catchup: booleanField(raw, "catchup"),
     handoff: booleanField(raw, "handoff"),
     rawFrontmatter: raw,

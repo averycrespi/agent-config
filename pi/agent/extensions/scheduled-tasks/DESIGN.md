@@ -12,7 +12,8 @@ This file is for future agents changing the extension. The user-facing contract 
 - `task-file.ts` parses the limited Markdown/YAML task format. It does not use a general YAML dependency; supported syntax is deliberately simple and covered by validation.
 - `validate.ts` separates parse/runtime errors from warnings and computes effective tool permissions.
 - `schedule.ts` owns five-field cron parsing, cron matching, next-run search, and due/missed/initialize decisions.
-- `scheduler.ts` owns manual and scheduled claim-and-launch flows, the internal claimed-runner path, run artifact creation, lock sequencing, stale-lock recovery, and latest-log reads.
+- `precheck.ts` builds and runs optional scheduler-owned precheck scripts before child Pi launch, using fixed argv arrays, task cwd/env, timeout handling, and bounded output tails.
+- `scheduler.ts` owns manual and scheduled claim-and-launch flows, the internal claimed-runner path, run artifact creation, precheck gating, lock sequencing, stale-lock recovery, and latest-log reads.
 - `spawn.ts` builds the child Pi argv/env, optionally wraps child Pi execution in a supported shell mode, and supervises the child process with timeout, bounded in-memory tails, raw disk logging, and session-file extraction.
 - `state.ts` persists scheduler state, durable run lifecycle metadata, and final run results as atomically replaced JSON files.
 - `locks.ts` implements advisory file locks via exclusive create, compare-before-delete release, and conservative stale-lock recovery helpers. There is no user-facing force-unlock command in v1.
@@ -29,6 +30,7 @@ All extension-owned data is rooted under the configured `rootDir`:
   handoffs/    # Optional cross-run memory: <task-id>.md
   state/       # Scheduler state JSON plus ticks.jsonl
   sessions/    # Child Pi session dirs, one per task ID
+  scripts/     # Reusable precheck scripts
   runs/        # Run artifacts: <task-id>/<run-id>/...
   locks/       # scheduler.lock and <task-id>.lock
 ```
@@ -47,6 +49,8 @@ Enabled scheduled execution requires:
 - a valid five-field cron `schedule`
 - an absolute existing `cwd`
 - a non-empty Markdown body
+
+Optional prechecks are declared in task frontmatter but their executable content lives under `<root>/scripts/`. The task stores only the relative script path, interpreter, arguments, timeout, and skip exit codes. Script paths must be relative, must not contain `..`, and must stay inside `<root>/scripts/`; precheck processes run with `cwd` set to the task `cwd`.
 
 Disabled tasks can still be listed, read, validated, and manually run if they otherwise validate for execution.
 
@@ -72,7 +76,7 @@ Lock sequencing matters:
 4. Under the task lock, create `<run-dir>/task.md`, write initial `run.json`, and persist the advanced `nextRunAt`.
 5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and update `run.json` to `launched`, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
 6. Release `scheduler.lock` promptly; do not await final child task completion in the tick.
-7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, records `lockAdoptedAt`, `lockPid`, and `lockHostname` in `run.json`, executes the `task.md` snapshot via `runTask()`, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
+7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, records `lockAdoptedAt`, `lockPid`, and `lockHostname` in `run.json`, executes the `task.md` snapshot via `runTask()`, runs any configured precheck before child Pi launch, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
 
 If a due or catchup task is already locked and not stale, the scheduler leaves `nextRunAt` unchanged so a later tick can retry while the due time remains actionable. Same-host dead-PID recovery must evaluate the adopted runner PID, not the scheduler tick PID; otherwise a normal exited tick could make a healthy detached run look stale. If stale recovery removes a prior task lock, mark the prior active lifecycle `stale_recovered` before launching replacement work. Dry-run ticks do not write task state, acquire task execution locks, spawn child Pi, or write run artifacts, but they still append a compact tick-log entry.
 
@@ -88,13 +92,17 @@ Each run gets a unique run ID and a run directory:
 <root>/runs/<task-id>/<run-id>/
   task.md
   run.json
-  prompt.md
+  precheck.json  # when precheck is configured
+  precheck.log   # when precheck is configured
+  prompt.md      # when child Pi launches
   output.md
   result.json
   pi.log
 ```
 
-The scheduler writes `task.md` at claim time. The claimed runner parses that snapshot via the original task ID path so later edits to `tasks/<task-id>.md` cannot alter already-claimed work. `run.json` records lifecycle transitions: `claimed`, `launched`, `running`, terminal success/failure/timeout, `launch_failed`, stale recovery statuses, and lock-adoption audit fields. Preserve `result.json` as final compatibility output.
+The scheduler writes `task.md` at claim time. The claimed runner parses that snapshot via the original task ID path so later edits to `tasks/<task-id>.md` cannot alter already-claimed work. `run.json` records lifecycle transitions: `claimed`, `launched`, `running`, terminal skipped/success/failure/timeout, `launch_failed`, stale recovery statuses, precheck summary fields, and lock-adoption audit fields. Preserve `result.json` as final compatibility output.
+
+If a task has `precheck`, `runTask()` runs it after env files load and before `renderPrompt()` or child Pi spawn. Exit `0` passes. Exit codes listed in `skipExitCodes` terminalize the run as `skipped`; scheduled runs do not defer or retry the same occurrence because `nextRunAt` was already advanced during claim. Other exits, timeouts, and spawn errors terminalize the run as `failed`. Precheck artifacts are written under the run directory and log surfaces include them when present. Do not run prechecks in `/scheduled-tasks-tick`; ticks must remain fast claim-and-launch operations.
 
 `renderPrompt()` writes the exact prompt used by the child run to `prompt.md`. The child Pi process is spawned with an argument array, not a shell string. `buildSpawnPlan()` sets:
 
@@ -195,7 +203,8 @@ Security-relevant invariants:
 
 - Route all task-addressed paths through `paths.ts` safe builders.
 - Keep task ID validation strict; do not permit slashes, dots, or arbitrary relative paths.
-- Spawn child Pi with argv arrays, not shell concatenation.
+- Keep precheck scripts rooted under `<root>/scripts/`; task files may select a relative script and args but may not provide inline shell snippets.
+- Spawn prechecks and child Pi with argv arrays, not shell concatenation.
 - Keep shell execution modes fixed and argument-position based; never evaluate task-provided shell snippets.
 - Treat `piCommand` as a command/path only.
 - Keep management tooling unavailable inside scheduled child runs.

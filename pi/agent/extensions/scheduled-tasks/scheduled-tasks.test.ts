@@ -33,6 +33,7 @@ import {
   isSafeTaskId,
   lockPath,
   runDir,
+  scriptPath,
   tickLogPath,
 } from "./paths.ts";
 import { renderPrompt } from "./prompt.ts";
@@ -242,6 +243,23 @@ test("task ID and path helpers reject unsafe IDs and preserve root safety", () =
   assert.throws(() => runDir(root, "../task", "run"));
 });
 
+test("precheck script paths stay inside the scheduler scripts directory", async () => {
+  const root = await tempRoot();
+  const paths = await ensureRootLayout(root);
+  assert.equal(
+    scriptPath(root, "network-and-broker.sh"),
+    join(paths.scripts, "network-and-broker.sh"),
+  );
+  assert.equal(
+    scriptPath(root, "checks/network-and-broker.sh"),
+    join(paths.scripts, "checks", "network-and-broker.sh"),
+  );
+  assert.throws(() => scriptPath(root, "/tmp/check.sh"));
+  assert.throws(() => scriptPath(root, "../check.sh"));
+  assert.throws(() => scriptPath(root, "checks/../check.sh"));
+  await rm(root, { recursive: true, force: true });
+});
+
 test("task Markdown parsing validates frontmatter and body shape", () => {
   const parsed = parseTaskMarkdown(
     "/tmp/dependency-audit.md",
@@ -280,6 +298,21 @@ test("task Markdown parsing supports bash login execution shell", () => {
   );
   assert.deepEqual(parsed.errors, []);
   assert.equal(parsed.task?.executionShell, "bash-login");
+});
+
+test("task Markdown parsing supports scheduler-owned precheck scripts", () => {
+  const parsed = parseTaskMarkdown(
+    "/tmp/dependency-audit.md",
+    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nprecheck:\n  script: network-and-broker.sh\n  args: [--provider, github]\n  timeoutSeconds: 15\n  skipExitCodes: [78]\n---\nCheck dependencies.`,
+  );
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parsed.task?.precheck, {
+    script: "network-and-broker.sh",
+    interpreter: "bash",
+    args: ["--provider", "github"],
+    timeoutSeconds: 15,
+    skipExitCodes: [78],
+  });
 });
 
 test("validator reports errors, warnings, and effective handoff tools", async () => {
@@ -330,6 +363,49 @@ test("validator rejects unsupported execution shell values", async () => {
     result.errors.join("\n"),
     /executionShell must be one of: bash-login/,
   );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("validator requires enabled task precheck scripts under root scripts", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const root = await tempRoot();
+  const config = {
+    rootDir: root,
+    defaultTimeoutMinutes: 30,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+  };
+  const missing = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "precheck:\n  script: missing.sh\n"),
+  );
+  const missingResult = await validateTask(
+    missing.task,
+    config,
+    missing.errors,
+  );
+  assert.equal(missingResult.ok, false);
+  assert.match(
+    missingResult.errors.join("\n"),
+    /precheck script .*missing\.sh.*not found or unreadable/,
+  );
+
+  await writeFile(
+    scriptPath(root, "ready.sh"),
+    "#!/usr/bin/env bash\nexit 0\n",
+  );
+  const present = parseTaskMarkdown(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd, "precheck:\n  script: ready.sh\n"),
+  );
+  const presentResult = await validateTask(
+    present.task,
+    config,
+    present.errors,
+  );
+  assert.equal(presentResult.ok, true);
   await rm(cwd, { recursive: true, force: true });
   await rm(root, { recursive: true, force: true });
 });
@@ -2787,6 +2863,93 @@ test("claimed runner adopts the task lock before executing", async () => {
     await rm(cwd, { recursive: true, force: true });
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("claimed runner skips without launching Pi when precheck returns a skip code", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const runId = "2026-06-19T09-01-00Z-precheck";
+  const taskMarkdown = sampleTask(
+    "job",
+    cwd,
+    "precheck:\n  script: ready.sh\n  timeoutSeconds: 5\n  skipExitCodes: [78]\n",
+  );
+  await writeFile(
+    scriptPath(root, "ready.sh"),
+    "#!/usr/bin/env bash\nexit 78\n",
+  );
+  await mkdir(runDir(root, "job", runId), { recursive: true });
+  await writeFile(join(root, "tasks", "job.md"), taskMarkdown, "utf8");
+  await writeFile(
+    join(root, "runs", "job", runId, "task.md"),
+    taskMarkdown,
+    "utf8",
+  );
+  await writeRunLifecycle(root, {
+    taskId: "job",
+    runId,
+    status: "launched",
+    claimedAt: "2026-06-19T09:01:00.000Z",
+    launchedAt: "2026-06-19T09:01:00.000Z",
+  });
+  const lock = await acquireLock(root, "job", { taskId: "job", runId });
+  assert.ok(lock);
+  const spawned: Array<{ command: string; args: string[] }> = [];
+  mock.method(_spawn, "fn", (command: string, args: string[]) => {
+    spawned.push({ command, args });
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => {
+      child.stdout.end("not ready\n");
+      child.stderr.end();
+      child.emit("close", 78, null);
+    });
+    return child;
+  });
+
+  const summary = await runClaimedTask(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    "job",
+    runId,
+  );
+
+  assert.equal(summary.status, "skipped");
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0]?.command, "bash");
+  assert.deepEqual(spawned[0]?.args, [scriptPath(root, "ready.sh")]);
+  assert.equal((await readRunLifecycle(root, "job", runId))?.status, "skipped");
+  assert.equal((await readTaskState(root, "job"))?.lastStatus, "skipped");
+  assert.match(
+    await readFile(join(runDir(root, "job", runId), "precheck.log"), "utf8"),
+    /not ready/,
+  );
+  assert.match(
+    await readFile(join(runDir(root, "job", runId), "precheck.json"), "utf8"),
+    /"status": "skipped"/,
+  );
+  assert.match(
+    await readLatestLogs(
+      {
+        rootDir: root,
+        defaultTimeoutMinutes: 1,
+        defaultTools: ["read"],
+        piCommand: "pi",
+        cronEnvironment: {},
+      },
+      "job",
+    ),
+    /precheck\.log/,
+  );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
 });
 
 test("claimed runner executes the task snapshot even after source mutation", async () => {

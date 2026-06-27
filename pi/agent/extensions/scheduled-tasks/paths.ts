@@ -7,6 +7,7 @@ export const ROOT_SUBDIRS = [
   "handoffs",
   "state",
   "sessions",
+  "scripts",
   "runs",
   "locks",
 ] as const;
@@ -19,6 +20,7 @@ export interface RootPaths {
   handoffs: string;
   state: string;
   sessions: string;
+  scripts: string;
   runs: string;
   locks: string;
 }
@@ -41,6 +43,7 @@ export function getRootPaths(rootDir: string): RootPaths {
     handoffs: join(root, "handoffs"),
     state: join(root, "state"),
     sessions: join(root, "sessions"),
+    scripts: join(root, "scripts"),
     runs: join(root, "runs"),
     locks: join(root, "locks"),
   };
@@ -75,6 +78,19 @@ export function taskPath(rootDir: string, taskId: string): string {
 export function handoffPath(rootDir: string, taskId: string): string {
   assertSafeTaskId(taskId);
   return join(getRootPaths(rootDir).handoffs, `${taskId}.md`);
+}
+
+export function scriptPath(rootDir: string, script: string): string {
+  if (!script.trim()) throw new Error("Precheck script path is required.");
+  if (isAbsolute(script))
+    throw new Error("Precheck script path must be relative.");
+  if (script.split(/[\\/]+/).includes(".."))
+    throw new Error("Precheck script path must not contain '..'.");
+  const scriptsDir = getRootPaths(rootDir).scripts;
+  const resolved = resolve(scriptsDir, script);
+  if (!isInside(scriptsDir, resolved))
+    throw new Error("Precheck script path must stay inside scripts.");
+  return resolved;
 }
 
 export function statePath(rootDir: string, taskId: string): string {

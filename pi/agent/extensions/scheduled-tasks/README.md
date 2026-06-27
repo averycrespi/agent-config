@@ -2,7 +2,7 @@
 
 `scheduled-tasks` lets Pi run recurring Markdown-defined tasks from cron or on demand. Each run starts a fresh child Pi process, writes an exact prompt and run artifacts, and uses an optional per-task handoff file for intentional cross-run memory.
 
-V1 is conservative: Markdown task files only, no precheck scripts, no no-agent/script-only jobs, no catch-up replay, and no automatic handoff content in normal Pi sessions.
+V1 is conservative: Markdown task files plus scheduler-owned precheck scripts only, no inline task scripts, no no-agent/script-only jobs, no catch-up replay, and no automatic handoff content in normal Pi sessions.
 
 ## Root layout
 
@@ -14,6 +14,7 @@ All persistent data lives under one configurable root directory:
   handoffs/    # <task-id>.md optional cross-run memory
   state/       # <task-id>.json scheduler state plus ticks.jsonl
   sessions/    # child Pi session directories by task
+  scripts/     # reusable precheck scripts
   runs/        # run artifacts by task/run ID
   locks/       # scheduler and per-task locks
 ```
@@ -77,6 +78,10 @@ env:
   NODE_ENV: production
 executionShell: bash-login
 timeoutMinutes: 30
+precheck:
+  script: network-and-broker.sh
+  timeoutSeconds: 15
+  skipExitCodes: [78]
 catchup: true
 handoff: true
 ---
@@ -97,9 +102,10 @@ Rules:
 - `env` values are written in plain text in task files and are visible in management commands/tools and to agents or sessions with file read access. Env file values are not printed by validation, but they are still visible to child processes and may appear in run output. Task files and env files are not secret storage.
 - `executionShell: bash-login` runs the child Pi process through `bash --login`, allowing shell startup files to initialize development environments before Pi starts. Omit it for direct argv-array execution. Task `envFiles`, inline `env`, and scheduled-run markers are still present when bash starts, but shell startup files may mutate or override them.
 - `catchup: true` opts a task into one make-up run after a missed schedule; omitted or `false` preserves skip-on-miss behavior.
+- `precheck` optionally runs a reusable script from `<root>/scripts/` before launching child Pi. `script` is required when `precheck` is present and must be a relative path that stays inside `<root>/scripts/`; subdirectories are allowed but absolute paths and `..` segments are rejected. The precheck process runs with `cwd` set to the task `cwd`, uses the same env files, inline env, and scheduled-run marker variables as the child Pi process, and defaults to `interpreter: bash`, `args: []`, `timeoutSeconds: 30`, and `skipExitCodes: [78]`. Exit `0` continues the run, a configured skip exit code marks the run `skipped`, and other nonzero exits, timeouts, or spawn errors mark the run `failed`. Inline shell snippets are not supported in v1; put shared checks in `<root>/scripts/`.
 - `handoff` is boolean only in v1.
 
-Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `executionShell`, invalid `timeoutMinutes`, invalid `catchup`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
+Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `executionShell`, invalid `timeoutMinutes`, invalid `precheck`, missing/unreadable enabled-task precheck scripts, invalid `catchup`, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files or precheck scripts, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
 Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
 
@@ -153,13 +159,15 @@ Each run writes:
 ```text
 <root>/runs/<task-id>/<run-id>/task.md
 <root>/runs/<task-id>/<run-id>/run.json
-<root>/runs/<task-id>/<run-id>/prompt.md
+<root>/runs/<task-id>/<run-id>/precheck.json  # when precheck is configured
+<root>/runs/<task-id>/<run-id>/precheck.log   # when precheck is configured
+<root>/runs/<task-id>/<run-id>/prompt.md      # when child Pi launches
 <root>/runs/<task-id>/<run-id>/output.md
 <root>/runs/<task-id>/<run-id>/result.json
 <root>/runs/<task-id>/<run-id>/pi.log
 ```
 
-`task.md` is the immutable task snapshot written at claim time; the claimed runner executes that snapshot, not a later-edited task file. `run.json` is durable lifecycle metadata with statuses such as `claimed`, `launched`, `running`, `success`, `failed`, `timeout`, `launch_failed`, `orphaned`, and `stale_recovered`. When a detached runner adopts a task lock, `run.json` records `lockAdoptedAt`, `lockPid`, and `lockHostname` so lock ownership can be audited after the scheduler tick exits. `result.json` is still written for final compatibility and records task ID, run ID, terminal status, timestamps, child exit/timeout data, discovered session file when available, and whether handoff was updated. Full raw child stdout/stderr is streamed to `pi.log` on disk. `output.md`, scheduler result summaries, and session metadata extraction use bounded in-memory stdout/stderr tails, so very verbose runs may have truncated summaries while `pi.log` keeps the raw process output. `/scheduled-tasks-logs` and `scheduled_tasks({ "action": "logs" })` show `run.json` when present and read bounded tails from `output.md` and `pi.log` instead of loading entire large artifact files. Raw logs and outputs can include model/tool output and may contain secrets from the child run; protect the root accordingly.
+`task.md` is the immutable task snapshot written at claim time; the claimed runner executes that snapshot, not a later-edited task file. `run.json` is durable lifecycle metadata with statuses such as `claimed`, `launched`, `running`, `skipped`, `success`, `failed`, `timeout`, `launch_failed`, `orphaned`, and `stale_recovered`. When a detached runner adopts a task lock, `run.json` records `lockAdoptedAt`, `lockPid`, and `lockHostname` so lock ownership can be audited after the scheduler tick exits. `precheck.json` records the precheck outcome and bounded output tails, while `precheck.log` records bounded precheck command output. `result.json` is still written for final compatibility and records task ID, run ID, terminal status, timestamps, child exit/timeout data when applicable, discovered session file when available, and whether handoff was updated. Full raw child stdout/stderr is streamed to `pi.log` on disk after prechecks pass. `output.md`, scheduler result summaries, and session metadata extraction use bounded in-memory stdout/stderr tails, so very verbose runs may have truncated summaries while `pi.log` keeps the raw process output. `/scheduled-tasks-logs` and `scheduled_tasks({ "action": "logs" })` show `run.json` when present and read bounded tails from `precheck.log`, `output.md`, and `pi.log` instead of loading entire large artifact files. Logs and outputs can include script, model, and tool output and may contain secrets from the child run; protect the root accordingly.
 
 Scheduler ticks append compact JSON entries to `<root>/state/ticks.jsonl`, retained to the latest 1000 entries. Entries include timestamp, scheduler status (`ok` or `locked`), dry-run flag, claimed task summaries, skipped task summaries, and any scheduler-level message. They do not include task prompts, task env values, child stdout/stderr, or full validation output.
 
@@ -194,14 +202,15 @@ All configurable values in the cron command are shell-quoted. `piCommand` is tre
 ## Security defaults and limitations
 
 - Task IDs and paths are constrained to the configured root layout.
-- Child Pi is spawned with an argument array by default. When `executionShell: bash-login` is enabled, bash receives a fixed, shell-quoted `exec` command for the Pi command and generated arguments; task files cannot provide arbitrary shell snippets.
+- Prechecks run scheduler-owned scripts from `<root>/scripts/` via fixed argv arrays. Task files cannot provide inline shell snippets or escape that scripts directory.
+- Child Pi is spawned with an argument array by default. When `executionShell: bash-login` is enabled, bash receives a fixed, shell-quoted `exec` command for the Pi command and generated arguments; task files cannot provide arbitrary child Pi shell snippets.
 - Tool permissions use an explicit effective allowlist.
 - Handoff tooling is env-gated and current-task scoped; the env vars activate behavior but are not treated as a security boundary.
 - No force-unlock or destructive cleanup commands are provided in v1; stale lock recovery is automatic and conservative.
 
 ## V1 non-goals
 
-- No precheck scripts.
+- No inline precheck scripts in task Markdown.
 - No no-agent/script-only jobs.
 - No replay of every missed schedule; catchup is opt-in and coalesces missed occurrences into one make-up run.
 - No arbitrary `piArgs` passthrough.

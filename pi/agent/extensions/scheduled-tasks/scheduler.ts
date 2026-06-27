@@ -20,6 +20,7 @@ import {
 } from "./paths.ts";
 import { loadTaskEnvFiles } from "./env-files.ts";
 import { renderPrompt } from "./prompt.ts";
+import { buildPrecheckPlan, runPrecheck } from "./precheck.ts";
 import { decideDue, nextFutureRun } from "./schedule.ts";
 import { buildSpawnPlan, spawnPi, _spawn } from "./spawn.ts";
 import {
@@ -76,6 +77,7 @@ function terminalResultFromLifecycle(lifecycle: RunLifecycle): RunResult {
   const status =
     lifecycle.status === "timeout" ||
     lifecycle.status === "success" ||
+    lifecycle.status === "skipped" ||
     lifecycle.status === "launch_failed" ||
     lifecycle.status === "orphaned" ||
     lifecycle.status === "stale_recovered"
@@ -106,6 +108,7 @@ async function writeLifecycleAndResult(
       "success",
       "failed",
       "timeout",
+      "skipped",
       "launch_failed",
       "orphaned",
       "stale_recovered",
@@ -193,9 +196,6 @@ export async function runTask(
       startedAt,
     };
     await writeRunLifecycle(config.rootDir, lifecycle);
-    const prompt = await renderPrompt({ rootDir: config.rootDir, task, runId });
-    const promptPath = join(dir, "prompt.md");
-    await writeFile(promptPath, prompt.prompt, { mode: 0o600 });
     const envFileResult = await loadTaskEnvFiles(task);
     if (envFileResult.issues.length > 0) {
       const failed = {
@@ -215,6 +215,64 @@ export async function runTask(
         message: failed.error ?? "validation failed",
       };
     }
+    if (task.precheck) {
+      const precheck = await runPrecheck(
+        buildPrecheckPlan({
+          config,
+          task: task as TaskDefinition & {
+            precheck: NonNullable<TaskDefinition["precheck"]>;
+          },
+          runId,
+          runDir: dir,
+          envFileValues: envFileResult.values,
+        }),
+        join(dir, "precheck.log"),
+      );
+      await writeFile(
+        join(dir, "precheck.json"),
+        `${JSON.stringify(precheck, null, 2)}\n`,
+        { mode: 0o600 },
+      );
+      const precheckLifecycle: RunLifecycle = {
+        ...lifecycle,
+        precheckStatus: precheck.status,
+        precheckExitCode: precheck.exitCode,
+        precheckSignal: precheck.signal,
+        precheckTimedOut: precheck.timedOut,
+      };
+      if (precheck.status !== "passed") {
+        const terminal: RunLifecycle = {
+          ...precheckLifecycle,
+          status: precheck.status === "skipped" ? "skipped" : "failed",
+          endedAt: precheck.endedAt,
+          exitCode: precheck.exitCode,
+          signal: precheck.signal,
+          timedOut: precheck.timedOut,
+          error:
+            precheck.error ??
+            (precheck.status === "skipped"
+              ? `Precheck skipped with exit code ${precheck.exitCode}.`
+              : `Precheck failed with exit code ${precheck.exitCode}.`),
+        };
+        await writeLifecycleAndResult(config.rootDir, terminal);
+        await recordRunState(
+          config.rootDir,
+          terminalResultFromLifecycle(terminal),
+        );
+        return {
+          taskId: task.id,
+          runId,
+          status: terminal.status,
+          message: terminal.error ?? `Run ${runId} ${terminal.status}.`,
+          runDir: dir,
+        };
+      }
+      lifecycle = precheckLifecycle;
+      await writeRunLifecycle(config.rootDir, lifecycle);
+    }
+    const prompt = await renderPrompt({ rootDir: config.rootDir, task, runId });
+    const promptPath = join(dir, "prompt.md");
+    await writeFile(promptPath, prompt.prompt, { mode: 0o600 });
     const plan = buildSpawnPlan({
       config,
       task,
@@ -1100,14 +1158,24 @@ export async function readLatestLogs(
     `Status: ${status}`,
     `Artifacts: ${dir}`,
   ];
-  for (const file of ["run.json", "result.json", "output.md", "pi.log"]) {
+  for (const file of [
+    "run.json",
+    "result.json",
+    "precheck.json",
+    "precheck.log",
+    "output.md",
+    "pi.log",
+  ]) {
     try {
       const raw =
-        file === "result.json" || file === "run.json"
+        file === "result.json" ||
+        file === "run.json" ||
+        file === "precheck.json"
           ? await readFile(join(dir, file), "utf8")
           : await readFileTail(join(dir, file), 4000);
       parts.push(`\n## ${file}\n${raw.slice(-4000)}`);
     } catch {
+      if (file.startsWith("precheck.")) continue;
       parts.push(`\n## ${file}\n(unavailable)`);
     }
   }

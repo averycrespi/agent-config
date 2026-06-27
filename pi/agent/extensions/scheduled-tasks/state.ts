@@ -40,6 +40,7 @@ export type RunLifecycleStatus =
   | "success"
   | "failed"
   | "timeout"
+  | "skipped"
   | "launch_failed"
   | "orphaned"
   | "stale_recovered";
@@ -61,6 +62,10 @@ export interface RunLifecycle {
   timedOut?: boolean;
   sessionFile?: string;
   handoffUpdated?: boolean;
+  precheckStatus?: "passed" | "skipped" | "failed";
+  precheckExitCode?: number | null;
+  precheckSignal?: string | null;
+  precheckTimedOut?: boolean;
   error?: string;
   recoveredAt?: string;
 }
