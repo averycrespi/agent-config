@@ -32,7 +32,7 @@ Validation is a guardrail, not a complete JavaScript sandbox. Keep the worker co
 
 ## State and progress
 
-Workflow state is in-memory for one foreground tool call. Snapshots include metadata, current phase, phase history, recent logs, agent states, failure count, timings, and result preview. `workflow-tool.ts` merges runtime snapshots with subagent state updates before sending partial tool updates.
+Workflow state is in-memory for one foreground tool call. Snapshots include metadata, current phase, phase history, recent logs, agent states, per-subagent activity snapshots, failure count, timings, and result preview. `workflow-tool.ts` merges runtime snapshots with subagent state updates before sending partial tool updates.
 
 There is no persisted run database in Phase 1.
 
@@ -59,7 +59,7 @@ If a top-level script error escapes `run()`, the whole workflow tool call fails.
 
 ## Rendering and output
 
-Renderers use shared width-aware helpers. Final output goes through shared spillover, so large raw workflow results are stored in a managed temp file instead of flooding the context.
+Renderers use shared width-aware helpers and reuse `subagents/render.ts`'s per-agent progress formatter so workflow subagents look like `spawn_agents` subagents. Final output goes through shared spillover, so large raw workflow results are stored in a managed temp file instead of flooding the context.
 
 Subagent logs and spillover output may contain raw tool/model output. Keep documentation explicit about this behavior.
 

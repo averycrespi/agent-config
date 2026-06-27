@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { registerWorkflowTool } from "./workflow-tool.ts";
-import { renderSnapshot } from "./display.ts";
+import {
+  renderSnapshot,
+  renderWorkflowCall,
+  renderWorkflowResult,
+} from "./display.ts";
 
 function makePi() {
   let registered: any;
@@ -53,34 +57,123 @@ export async function run() {
   assert.match(result.content[0].text, /<persisted-output>/);
 });
 
-test("renderSnapshot summarizes workflow progress compactly", () => {
-  const lines = renderSnapshot({
-    meta: { name: "audit", description: "Audit" },
-    phase: "fanout",
-    phases: ["fanout"],
-    logs: [{ level: "info", message: "hello", timestamp: 1 }],
-    agents: [
-      {
-        id: 1,
-        agent: "explore",
-        intent: "a",
-        prompt: "a",
-        status: "done",
-        startedAt: 1,
+test("renderWorkflowCall suppresses noisy script metadata", () => {
+  const component = renderWorkflowCall(
+    { script: 'export const meta = { name: "x", description: "x" };' },
+    {},
+    {},
+  );
+  assert.deepEqual(component.render(80), []);
+});
+
+test("renderSnapshot shows workflow header, per-agent blocks, and logs", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const lines = renderSnapshot(
+    {
+      meta: { name: "audit", description: "Audit" },
+      phase: "fanout",
+      phases: ["fanout"],
+      logs: [{ level: "info", message: "hello", timestamp: 1 }],
+      agents: [
+        {
+          id: 1,
+          agent: "explore",
+          intent: "a",
+          prompt: "a",
+          status: "done",
+          startedAt: 1,
+          activity: {
+            intent: "a",
+            agentType: "explore",
+            phase: "done",
+            recentEvents: [],
+            toolUseCount: 1,
+            totalTokens: 12,
+            resolved: true,
+            startedAt: 1,
+            lastUpdateAt: 1001,
+          },
+        },
+        {
+          id: 2,
+          agent: "review",
+          intent: "b",
+          prompt: "b",
+          status: "running",
+          startedAt: 1,
+        },
+      ],
+      failureCount: 0,
+      startedAt: Date.now(),
+    },
+    theme,
+  );
+  assert.match(lines[0], /Workflow audit · fanout/);
+  assert.match(lines[0], /1 done · 1 running/);
+  assert.equal(lines[1], "");
+  assert.match(lines[2], /Explore agent/);
+  assert.match(lines[3], /Done: 1 tool use/);
+  assert.equal(lines[4], "");
+  assert.match(lines[5], /Review agent/);
+  assert.equal(lines[7], "");
+  assert.match(lines[9], /hello/);
+});
+
+test("renderWorkflowResult uses one final workflow header when snapshot exists", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const component = renderWorkflowResult(
+    {
+      content: [
+        {
+          type: "text",
+          text: "Workflow audit completed in 1.0s.\nFailures: 0\n\n[]",
+        },
+      ],
+      details: {
+        snapshot: {
+          meta: { name: "audit", description: "Audit" },
+          phase: "done",
+          phases: ["fanout", "done"],
+          logs: [],
+          agents: [
+            {
+              id: 1,
+              agent: "explore",
+              intent: "a",
+              prompt: "a",
+              status: "done",
+              startedAt: 1,
+              activity: {
+                intent: "a",
+                agentType: "explore",
+                phase: "done",
+                recentEvents: [],
+                toolUseCount: 1,
+                totalTokens: 0,
+                resolved: true,
+                startedAt: 1,
+                lastUpdateAt: 1001,
+              },
+            },
+          ],
+          failureCount: 0,
+          startedAt: 1,
+          finishedAt: 1001,
+        },
       },
-      {
-        id: 2,
-        agent: "review",
-        intent: "b",
-        prompt: "b",
-        status: "running",
-        startedAt: 1,
-      },
-    ],
-    failureCount: 0,
-    startedAt: Date.now(),
-  });
-  assert.match(lines[0], /audit/);
-  assert.match(lines[1], /1 done, 1 running/);
-  assert.match(lines[2], /hello/);
+    },
+    { isPartial: false },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  const lines = component.render(120);
+  assert.match(lines[0], /^Workflow audit ✓ · 1s · 1 done · 0 failed$/);
+  assert.ok(!lines.some((line) => line.startsWith("✓ workflow")));
+  assert.ok(!lines.some((line) => line.includes("Workflow audit completed")));
 });

@@ -41,6 +41,9 @@ test("runtime exposes args, phase, log, parallel ordering, and pipeline", async 
   assert.deepEqual(result.phases, ["fanout"]);
   assert.equal(result.logs[0].message, "hello");
   assert.ok(updates.length > 0);
+  assert.equal(updates[0].meta.name, "test");
+  assert.equal(updates[0].phase, undefined);
+  assert.deepEqual(updates[0].agents, []);
 });
 
 test("parallel aggregates branch failures as null and logs them", async () => {
@@ -102,8 +105,16 @@ test("agent spawner uses safe spawn defaults and rejects writable agents", async
     },
   ];
   const calls: any[] = [];
+  const updates: any[] = [];
   mock.method(_spawnSubagent, "fn", async (invocation: any) => {
     calls.push(invocation);
+    invocation.onEvent?.({ type: "agent_start" });
+    invocation.onEvent?.({
+      type: "tool_execution_start",
+      toolName: "read",
+      args: { path: "README.md" },
+    });
+    invocation.onEvent?.({ type: "tool_execution_end", toolName: "read" });
     return {
       ok: true,
       aborted: false,
@@ -120,6 +131,7 @@ test("agent spawner uses safe spawn defaults and rejects writable agents", async
     agents,
     model: "p/m",
     thinking: "high",
+    onAgentUpdate: (state) => updates.push(state),
   });
   assert.equal((await spawn({ id: 1, prompt: "go" })).text, "done");
   assert.equal(calls[0].inheritSession, "none");
@@ -128,6 +140,9 @@ test("agent spawner uses safe spawn defaults and rejects writable agents", async
   assert.equal(calls[0].cwd, "/repo");
   assert.equal(calls[0].model, "p/m");
   assert.equal(calls[0].thinking, "high");
+  assert.ok(updates.some((state) => state.activity?.toolUseCount === 1));
+  assert.equal(updates.at(-1)?.activity?.resolved, true);
+  assert.equal(updates.at(-1)?.activity?.agentType, "explore");
 
   const rejected = await spawn({ id: 2, prompt: "write", agent: "writer" });
   assert.equal(rejected.ok, false);

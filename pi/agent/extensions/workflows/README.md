@@ -15,7 +15,7 @@ Parameters:
 | `script` | Yes      | Raw JavaScript workflow source. It must start with literal `export const meta = { name, description }`. |
 | `args`   | No       | Any JSON value exposed to the script as the `args` global.                                              |
 
-The tool returns the workflow result text. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
+The tool returns the workflow result text. During execution, the tool UI shows the workflow phase, aggregate counts, recent `log(...)` messages, and per-subagent activity using the same style as `spawn_agents`: agent type, intent, recent tool activity, running/done/error status, tool-use counts, tokens, duration, and failure log paths when available. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
 
 ## Script format
 
@@ -72,7 +72,7 @@ There is no user-facing configuration in Phase 1, and there are no environment v
 
 ## Logging and retained output
 
-The extension does not keep a workflow run database. Progress logs live only in the tool result details for the active call. Subagent failures may produce retained logs through the `subagents` extension. Large workflow final output is written by the shared spillover helper under the system temp directory and may contain raw model/tool output. Spillover files are owner-readable and cleaned best-effort by the shared helper after its retention window.
+The extension does not keep a workflow run database. Progress logs and per-subagent activity snapshots live only in the tool result details for the active call. Subagent failures may produce retained logs through the `subagents` extension. Large workflow final output is written by the shared spillover helper under the system temp directory and may contain raw model/tool output. Spillover files are owner-readable and cleaned best-effort by the shared helper after its retention window.
 
 ## Limitations
 

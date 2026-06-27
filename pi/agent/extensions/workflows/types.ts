@@ -1,4 +1,8 @@
-import type { AgentDefinition, SpawnOutcome } from "../subagents/api.ts";
+import type {
+  AgentDefinition,
+  SpawnOutcome,
+  SubagentRunState,
+} from "../subagents/api.ts";
 
 export const DEFAULT_AGENT_TYPE = "explore";
 export const READ_MOSTLY_AGENT_TYPES = new Set([
@@ -40,6 +44,8 @@ export interface WorkflowAgentState {
   status: "running" | "done" | "error" | "aborted";
   resultPreview?: string;
   errorMessage?: string;
+  logFile?: string;
+  activity?: SubagentRunState;
   startedAt: number;
   finishedAt?: number;
 }

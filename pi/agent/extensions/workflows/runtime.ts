@@ -1,5 +1,9 @@
 import { Worker } from "node:worker_threads";
-import { formatSpawnFailure, spawnSubagent } from "../subagents/api.ts";
+import {
+  createSubagentActivityTracker,
+  formatSpawnFailure,
+  spawnSubagent,
+} from "../subagents/api.ts";
 import {
   DEFAULT_AGENT_TYPE,
   DEFAULT_MAX_CONCURRENCY,
@@ -93,6 +97,7 @@ export async function runWorkflow(
     void worker.terminate();
   };
   options.signal?.addEventListener("abort", abort, { once: true });
+  emit(snapshot(), options.onUpdate);
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -198,7 +203,34 @@ export function createWorkflowAgentSpawner(
       status: "running",
       startedAt: Date.now(),
     };
-    options.onAgentUpdate?.(state);
+
+    const tracker = createSubagentActivityTracker({
+      toolCallId: `${options.logId}:agent-${request.id}`,
+      roleLabel:
+        agent.name.charAt(0).toUpperCase() + agent.name.slice(1) + " agent",
+      intent: state.intent,
+      showActivity: false,
+      hasUI: false,
+      onUpdate: () => {
+        state.activity = {
+          ...tracker.state,
+          agentType: requestedType,
+          resolved: state.status !== "running",
+        };
+        options.onAgentUpdate?.({ ...state });
+      },
+    });
+
+    function refreshActivity(): void {
+      state.activity = {
+        ...tracker.state,
+        agentType: requestedType,
+        resolved: state.status !== "running",
+      };
+      options.onAgentUpdate?.({ ...state });
+    }
+
+    refreshActivity();
 
     const outcome = await _spawnSubagent.fn({
       prompt: request.prompt,
@@ -213,19 +245,21 @@ export function createWorkflowAgentSpawner(
       logId: `${options.logId}:agent-${request.id}`,
       cwd: options.cwd,
       signal: options.signal,
-      onEvent: () => undefined,
+      onEvent: (event) => tracker.handleEvent(event),
     });
 
     state.finishedAt = Date.now();
+    tracker.finish(outcome);
     if (outcome.ok) {
       state.status = "done";
       state.resultPreview = preview(outcome.stdout);
-      options.onAgentUpdate?.(state);
+      refreshActivity();
       return { ok: true, text: outcome.stdout, outcome };
     }
     state.status = outcome.aborted ? "aborted" : "error";
     state.errorMessage = formatSpawnFailure(outcome);
-    options.onAgentUpdate?.(state);
+    state.logFile = outcome.logFile;
+    refreshActivity();
     return { ok: false, text: null, error: state.errorMessage, outcome };
   };
 }

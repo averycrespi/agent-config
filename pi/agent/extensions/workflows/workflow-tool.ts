@@ -136,6 +136,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
             agents: [...agentStates.values()],
             phases: result.phases,
             logs: result.logs,
+            ...(latestSnapshot ? { snapshot: latestSnapshot } : {}),
             ...(spilled.spilled
               ? {
                   spilled: true,

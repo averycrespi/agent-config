@@ -97,7 +97,7 @@ export function renderAgentsCall(
   return t;
 }
 
-function agentProgressLine(
+export function agentProgressLine(
   agent: SubagentRunState,
   _isLast: boolean,
   theme: any,
