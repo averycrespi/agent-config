@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  compactAgentProgressLine,
-  formatRunningLine,
+  agentProgressLine,
   formatTokens,
   getActivity,
+  renderAgentsResult,
   statsLine,
 } from "./render.ts";
 
@@ -50,61 +50,16 @@ test("statsLine: omits zero tools and zero tokens", () => {
   assert.equal(statsLine(0, 0, 63_000), "1m 03s");
 });
 
-// ─── formatRunningLine ───────────────────────────────────────────────────────
-
-test("formatRunningLine: undefined agent returns bare Running...", () => {
-  assert.equal(formatRunningLine(undefined), "Running...");
-});
-
-test("formatRunningLine: zero tool uses renders 'Running... (Xs)'", () => {
-  const line = formatRunningLine({
-    intent: "x",
-    phase: "starting",
-    recentEvents: [],
-    toolUseCount: 0,
-    totalTokens: 0,
-    startedAt: Date.now(),
-    lastUpdateAt: Date.now(),
-  });
-  assert.match(line, /^Running\.\.\. \(\d+s\)$/);
-});
-
-test("formatRunningLine: singular tool use", () => {
-  const line = formatRunningLine({
-    intent: "x",
-    phase: "bash",
-    recentEvents: [],
-    toolUseCount: 1,
-    totalTokens: 0,
-    startedAt: Date.now(),
-    lastUpdateAt: Date.now(),
-  });
-  assert.match(line, /^Running: 1 tool use \(\d+s\)$/);
-});
-
-test("formatRunningLine: plural tool uses", () => {
-  const line = formatRunningLine({
-    intent: "x",
-    phase: "bash",
-    recentEvents: [],
-    toolUseCount: 4,
-    totalTokens: 0,
-    startedAt: Date.now(),
-    lastUpdateAt: Date.now(),
-  });
-  assert.match(line, /^Running: 4 tool uses \(\d+s\)$/);
-});
-
-// ─── compactAgentProgressLine ───────────────────────────────────────────────
+// ─── agentProgressLine ──────────────────────────────────────────────────────
 
 const theme = {
   bold: (text: string) => text,
   fg: (_color: string, text: string) => text,
 };
 
-test("compactAgentProgressLine: done row includes status, label, stats", () => {
+test("agentProgressLine: done row includes status, label, stats", () => {
   assert.equal(
-    compactAgentProgressLine(
+    agentProgressLine(
       {
         intent: "docs",
         agentType: "explore",
@@ -118,12 +73,12 @@ test("compactAgentProgressLine: done row includes status, label, stats", () => {
       },
       theme,
     ),
-    "✓ explore docs · 2 tool uses · 4.1k tokens · 12s",
+    "✓ explore: docs · 2 tool uses · 4.1k tokens · 12s",
   );
 });
 
-test("compactAgentProgressLine: running row includes latest activity", () => {
-  const line = compactAgentProgressLine(
+test("agentProgressLine: running row includes latest activity", () => {
+  const line = agentProgressLine(
     {
       intent: "tests",
       agentType: "review",
@@ -138,13 +93,13 @@ test("compactAgentProgressLine: running row includes latest activity", () => {
   );
   assert.match(
     line,
-    /^● review tests · 1 tool use · \d+s · read: package\.json$/,
+    /^● review: tests · 1 tool use · \d+s · read: package\.json$/,
   );
 });
 
-test("compactAgentProgressLine: failure row includes first error and log", () => {
+test("agentProgressLine: failure row includes first error and log", () => {
   assert.equal(
-    compactAgentProgressLine(
+    agentProgressLine(
       {
         intent: "security",
         agentType: "review",
@@ -160,7 +115,114 @@ test("compactAgentProgressLine: failure row includes first error and log", () =>
       },
       theme,
     ),
-    "✗ review security · 1s · Error: subagent failed · Log: /tmp/log.txt",
+    "✗ review: security · 1s · Error: subagent failed · Log: /tmp/log.txt",
+  );
+});
+
+// ─── renderAgentsResult ─────────────────────────────────────────────────────
+
+test("renderAgentsResult: partial output uses header and compact rows", () => {
+  const context: {
+    lastComponent?: { text?: string; setText(text: string): void };
+    state: Record<string, unknown>;
+    invalidate: () => void;
+  } = {
+    state: {},
+    invalidate: () => {},
+    lastComponent: {
+      text: "",
+      setText(text: string) {
+        this.text = text;
+      },
+    },
+  };
+  try {
+    renderAgentsResult(
+      {
+        content: [],
+        details: {
+          total: 2,
+          agents: [
+            {
+              intent: "docs",
+              agentType: "explore",
+              phase: "done",
+              recentEvents: [],
+              toolUseCount: 2,
+              totalTokens: 4100,
+              resolved: true,
+              startedAt: 1000,
+              lastUpdateAt: 13000,
+            },
+            {
+              intent: "tests",
+              agentType: "review",
+              phase: "read",
+              recentEvents: [{ kind: "tool", text: "read: package.json" }],
+              toolUseCount: 1,
+              totalTokens: 0,
+              startedAt: Date.now() - 8000,
+              lastUpdateAt: Date.now(),
+            },
+          ],
+        },
+      },
+      { isPartial: true },
+      theme,
+      context,
+    );
+    assert.match(
+      context.lastComponent?.text ?? "",
+      /^Spawn agents · 1 done · 1 running · 0 failed · [^\n]+\n\n✓ explore: docs · 2 tool uses · 4\.1k tokens · 12s\n● review: tests · 1 tool use · \d+s · read: package\.json$/,
+    );
+  } finally {
+    clearInterval(context.state.renderTimer as ReturnType<typeof setInterval>);
+  }
+});
+
+test("renderAgentsResult: final output has header and no leading blank line", () => {
+  const context: {
+    lastComponent?: { text?: string; setText(text: string): void };
+    state: Record<string, unknown>;
+    invalidate: () => void;
+  } = {
+    state: {},
+    invalidate: () => {},
+    lastComponent: {
+      text: "",
+      setText(text: string) {
+        this.text = text;
+      },
+    },
+  };
+  renderAgentsResult(
+    {
+      content: [],
+      details: {
+        total: 1,
+        failed: 0,
+        agents: [
+          {
+            intent: "docs",
+            agentType: "explore",
+            phase: "done",
+            recentEvents: [],
+            toolUseCount: 2,
+            totalTokens: 4100,
+            resolved: true,
+            startedAt: 1000,
+            lastUpdateAt: 13000,
+          },
+        ],
+      },
+    },
+    { isPartial: false },
+    theme,
+    context,
+  );
+  assert.equal(
+    context.lastComponent?.text,
+    "Spawn agents · 1 done · 0 running · 0 failed · 12s\n\n✓ explore: docs · 2 tool uses · 4.1k tokens · 12s",
   );
 });
 

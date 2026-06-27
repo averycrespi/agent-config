@@ -1,7 +1,7 @@
 /**
  * TUI rendering for the subagents extension.
  *
- * Pure formatters (`formatTokens`, `statsLine`, `formatRunningLine`,
+ * Pure formatters (`formatTokens`, `statsLine`, `agentProgressLine`,
  * `getActivity`) are unit-tested in `render.test.ts`. The render
  * functions themselves return pi-tui `Text` components and are exercised
  * indirectly via the extension's tool registrations in `index.ts`.
@@ -14,7 +14,7 @@ import {
   formatDuration,
   startPartialTimer,
 } from "../_shared/render.ts";
-import type { SubagentEvent, SubagentRunState } from "./types.ts";
+import type { SubagentRunState } from "./types.ts";
 
 export function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
@@ -56,23 +56,6 @@ export function statsLine(
   return parts.join(" · ");
 }
 
-/**
- * Build the per-agent running line. Format:
- *   "Running: 3 tool uses (1m 03s)"  when there are tool uses
- *   "Running... (1m 03s)"            before the first tool use
- *   "Running..."                     when no activity is known yet
- */
-export function formatRunningLine(agent: SubagentRunState | undefined): string {
-  if (!agent) return "Running...";
-  const elapsedSuffix = ` (${formatDuration(Date.now() - agent.startedAt)})`;
-  const toolUses = agent.toolUseCount;
-  if (toolUses > 0) {
-    const label = toolUses === 1 ? "1 tool use" : `${toolUses} tool uses`;
-    return `Running: ${label}${elapsedSuffix}`;
-  }
-  return `Running...${elapsedSuffix}`;
-}
-
 function statusGlyph(agent: SubagentRunState): string {
   if (agent.phase === "error") return "✗";
   if (agent.phase === "aborted") return "!";
@@ -103,17 +86,57 @@ function compactRecentActivity(agent: SubagentRunState): string | undefined {
   return undefined;
 }
 
-export function compactAgentProgressLine(
-  agent: SubagentRunState,
+function isFailed(agent: SubagentRunState): boolean {
+  return agent.phase === "error" || agent.phase === "aborted";
+}
+
+function isDone(agent: SubagentRunState): boolean {
+  return agent.resolved === true || agent.phase === "done" || isFailed(agent);
+}
+
+function agentsHeader(
+  agents: SubagentRunState[],
+  total: number | undefined,
+  failed: number | undefined,
   theme: any,
+  final: boolean,
 ): string {
+  const done = agents.filter(isDone).length;
+  const failureCount =
+    failed ??
+    agents.filter((agent) => isFailed(agent) || agent.errorMessage).length;
+  const running = Math.max(0, (total ?? agents.length) - done);
+  const start = agents.reduce<number | undefined>((min, agent) => {
+    return min === undefined ? agent.startedAt : Math.min(min, agent.startedAt);
+  }, undefined);
+  const end = final
+    ? agents.reduce<number | undefined>((max, agent) => {
+        return max === undefined
+          ? agent.lastUpdateAt
+          : Math.max(max, agent.lastUpdateAt);
+      }, undefined)
+    : Date.now();
+  const elapsed =
+    start === undefined || end === undefined
+      ? undefined
+      : formatDuration(Math.max(0, end - start));
+  const parts = [
+    `${done} done`,
+    `${running} running`,
+    `${failureCount} failed`,
+  ];
+  if (elapsed) parts.push(elapsed);
+  return `${theme.bold("Spawn agents")} · ${theme.fg("muted", parts.join(" · "))}`;
+}
+
+export function agentProgressLine(agent: SubagentRunState, theme: any): string {
   const elapsedMs = Math.max(
     0,
     (agent.lastUpdateAt ?? Date.now()) - agent.startedAt,
   );
-  const label = `${statusGlyph(agent)} ${compactTypeLabel(agent)} ${agent.intent}`;
+  const label = `${statusGlyph(agent)} ${compactTypeLabel(agent)}: ${agent.intent}`;
 
-  if (agent.phase === "error" || agent.phase === "aborted") {
+  if (isFailed(agent)) {
     const msg = agent.errorMessage
       ? firstLine(agent.errorMessage)
       : agent.phase === "aborted"
@@ -137,17 +160,6 @@ export function compactAgentProgressLine(
   return `${label} · ${theme.fg("muted", stats)} · ${theme.fg("muted", activity)}`;
 }
 
-function renderEventLine(
-  event: SubagentEvent,
-  prefix: string,
-  theme: any,
-): string {
-  if (event.kind === "stderr") {
-    return `${prefix}${theme.fg("error", `stderr: ${event.text}`)}`;
-  }
-  return `${prefix}${theme.fg("muted", event.text)}`;
-}
-
 // The call line would just repeat the intents already shown in renderAgentsResult's
 // per-agent blocks, so suppress it. Pi still gets a (blank) call component so the
 // usual component lifecycle is preserved.
@@ -159,52 +171,6 @@ export function renderAgentsCall(
   const t = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
   t.setText("");
   return t;
-}
-
-export function agentProgressLine(
-  agent: SubagentRunState,
-  _isLast: boolean,
-  theme: any,
-): string {
-  const isResolved = agent.resolved === true;
-  const typeName = agent.agentType ?? "agent";
-  const typeLabel = typeName.charAt(0).toUpperCase() + typeName.slice(1);
-  const nameLine = `${theme.bold(`${typeLabel} agent`)} ${theme.fg("muted", agent.intent)}`;
-
-  if (isResolved) {
-    if (agent.phase === "aborted" || agent.phase === "error") {
-      const msg = agent.errorMessage
-        ? firstLine(agent.errorMessage)
-        : agent.phase === "aborted"
-          ? "Error: subagent aborted"
-          : "Error: subagent failed";
-      const lines = [nameLine, theme.fg("error", msg)];
-      if (agent.logFile) {
-        lines.push(theme.fg("muted", `Log: ${agent.logFile}`));
-      }
-      return lines.join("\n");
-    }
-    const doneInfo = statsLine(
-      agent.toolUseCount,
-      agent.totalTokens,
-      Math.max(0, agent.lastUpdateAt - agent.startedAt),
-    );
-    const doneLine = doneInfo ? `Done: ${doneInfo}` : "Done";
-    return `${nameLine}\n${theme.fg("muted", doneLine)}`;
-  }
-
-  const events = agent.recentEvents ?? [];
-  const lastEvent = events[events.length - 1];
-  if (lastEvent) {
-    const runningLine = formatRunningLine(agent);
-    return [
-      nameLine,
-      renderEventLine(lastEvent, "- ", theme),
-      theme.fg("muted", runningLine),
-    ].join("\n");
-  }
-  const elapsed = ` (${formatDuration(Date.now() - agent.startedAt)})`;
-  return `${nameLine}\n${theme.fg("muted", `Initializing...${elapsed}`)}`;
 }
 
 export function renderAgentsResult(
@@ -223,11 +189,12 @@ export function renderAgentsResult(
   if (options.isPartial) {
     startPartialTimer(context);
     const agents = d.agents ?? [];
-    const lines: string[] = [];
-    for (let i = 0; i < agents.length; i++) {
-      lines.push(agentProgressLine(agents[i], i === agents.length - 1, theme));
-    }
-    t.setText(lines.join("\n\n"));
+    const lines = [
+      agentsHeader(agents, d.total, d.failed, theme, false),
+      "",
+      ...agents.map((agent) => agentProgressLine(agent, theme)),
+    ];
+    t.setText(lines.join("\n"));
     return t;
   }
 
@@ -235,10 +202,11 @@ export function renderAgentsResult(
 
   const agents = d.agents ?? [];
 
-  const lines: string[] = [];
-  for (let i = 0; i < agents.length; i++) {
-    lines.push(agentProgressLine(agents[i], i === agents.length - 1, theme));
-  }
-  t.setText("\n" + lines.join("\n\n"));
+  const lines = [
+    agentsHeader(agents, d.total, d.failed, theme, true),
+    "",
+    ...agents.map((agent) => agentProgressLine(agent, theme)),
+  ];
+  t.setText(lines.join("\n"));
   return t;
 }

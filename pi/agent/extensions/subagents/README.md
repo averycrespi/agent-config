@@ -36,22 +36,17 @@ All built-in agent types are read-only. `review` adds read-only broker access (M
 
 ## UI behavior
 
-While running, `spawn_agents` shows each agent as a section separated by blank lines, with recent tool events and a running status line:
+While running, `spawn_agents` shows a compact header followed by one-line agent rows:
 
 ```
- **Explore agent** Find auth flows
- - read: src/auth.ts
- Running: 4 tool uses (14s)
+Spawn agents · 1 done · 2 running · 0 failed · 18s
 
- **Research agent** Check docs
- Done: 3 tool uses · 12.4k tokens · 18s
-
- **Review agent** Check config
- - grep: config
- Running: 1 tool use (3s)
+● explore: Find auth flows · 4 tool uses · 14s · read: src/auth.ts
+✓ research: Check docs · 3 tool uses · 12.4k tokens · 18s
+● review: Check config · 1 tool use · 3s · grep: config
 ```
 
-The tool-call line itself is intentionally suppressed — its content would just repeat the intents already shown in each agent's block. Each agent shows its type, intent, recent tool events, and a Running/Done status line. On failure, the agent's section displays an error line and a path to the persisted log file.
+The tool-call line itself is intentionally suppressed — its content would just repeat the intents already shown in the header and agent rows. Each row shows status, type, intent, stable stats, and the latest activity at the end. On failure, the row displays the first error line and a path to the persisted log file when available.
 
 Activity widgets are removed when all subagents finish, error, or are aborted.
 

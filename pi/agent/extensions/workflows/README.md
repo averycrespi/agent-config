@@ -15,7 +15,7 @@ Parameters:
 | `script` | Yes      | Raw JavaScript workflow source. It must start with literal `export const meta = { name, description }`. |
 | `args`   | No       | Any JSON value exposed to the script as the `args` global.                                              |
 
-The tool returns the workflow result text. During execution, the tool UI shows the workflow phase, aggregate counts, recent `log(...)` messages, and compact one-line rows for each subagent: status, agent type, intent, recent activity, tool-use counts, tokens, duration, and failure log paths when available. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
+The tool returns the workflow result text. During execution, the tool UI shows the workflow phase, aggregate counts, recent `log(...)` messages, and compact one-line rows for each subagent: status, agent type, intent, stable stats, latest activity at the end, and failure log paths when available. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
 
 ## Script format
 

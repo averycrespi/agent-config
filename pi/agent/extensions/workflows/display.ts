@@ -6,7 +6,7 @@ import {
   getTruncatedText,
   startPartialTimer,
 } from "../_shared/render.ts";
-import { compactAgentProgressLine } from "../subagents/render.ts";
+import { agentProgressLine } from "../subagents/render.ts";
 import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
 
 export function formatWorkflowResult(details: unknown, text: string): string {
@@ -62,10 +62,10 @@ function workflowHeader(
       : "";
   if (options.final) {
     const status = failed > 0 ? "failed" : "✓";
-    return `${theme.bold("Workflow")} ${name} ${status} · ${elapsed}${counts}`;
+    return `${theme.bold("Workflow")}: ${name} ${status} · ${elapsed}${counts}`;
   }
   const phase = snapshot.phase ? ` · ${snapshot.phase}` : "";
-  return `${theme.bold("Workflow")} ${name}${phase}${counts} · ${elapsed}`;
+  return `${theme.bold("Workflow")}: ${name}${phase}${counts} · ${elapsed}`;
 }
 
 function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
@@ -77,7 +77,7 @@ function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
         : agent.status === "aborted"
           ? "!"
           : "✗";
-  const label = `${glyph} ${agent.agent} ${agent.intent}`;
+  const label = `${glyph} ${agent.agent}: ${agent.intent}`;
   if (agent.status === "running")
     return `${label} · ${theme.fg("muted", "initializing")}`;
   if (agent.status === "done") return `${label} · ${theme.fg("muted", "done")}`;
@@ -107,7 +107,7 @@ export function renderSnapshot(
       "",
       ...snapshot.agents.map((agent) =>
         agent.activity
-          ? compactAgentProgressLine(agent.activity, theme)
+          ? agentProgressLine(agent.activity, theme)
           : fallbackAgentLine(agent, theme),
       ),
     );
