@@ -84,6 +84,8 @@ Maintain readable contrast, visible focus, responsive layout, and sensible print
 
 ### 5. Style for comprehension, not decoration
 
+Prefer dark mode by default unless the user asks for light mode, print-first output, or the source material strongly calls for a light treatment. Use a dark palette that is calm, readable, and restrained: near-black or deep-neutral backgrounds, elevated surfaces, high-contrast text, muted secondary text, and a small number of purposeful accent colors. Include print styles that switch report-like artifacts to a clean light background.
+
 Create a small design system inside CSS:
 
 - Use CSS custom properties for color, spacing, type, borders, shadows, and status colors.
@@ -130,7 +132,7 @@ When done, report:
 Useful user-facing patterns to honor or suggest:
 
 ```text
-Create a single-file HTML report at report.html from these notes. No external dependencies. Make it skimmable, evidence-backed, and print-friendly.
+Create a single-file HTML report at report.html from these notes. No external dependencies. Use a polished dark-mode design, and make it skimmable, evidence-backed, and print-friendly.
 ```
 
 ```text
