@@ -35,6 +35,7 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `subagents`       | Dynamic subagent loading and dispatch                                                       |
 | `todo`            | Session-persisted TODO tool with a sticky widget                                            |
 | `web-access`      | Web search, fetch, GitHub, and PDF tools                                                    |
+| `workflows`       | Foreground JavaScript workflows that orchestrate read-mostly subagents                      |
 
 Underscore-prefixed directories are libraries imported by sibling extensions, not extensions themselves — pi's extension loader skips them because they have no `index.ts`.
 

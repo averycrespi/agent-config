@@ -1,5 +1,7 @@
+export { loadAgents } from "./loader.ts";
 export { spawnSubagent, formatSpawnFailure } from "./spawn.ts";
 export type { SpawnInvocation, SpawnOutcome } from "./spawn.ts";
+export type { AgentDefinition, BuiltinTool } from "./types.ts";
 
 export { createSubagentActivityTracker } from "./activity.ts";
 export type {

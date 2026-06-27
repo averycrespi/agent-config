@@ -6,11 +6,14 @@ Import from `api.ts`:
 
 ```ts
 import {
+  loadAgents,
   spawnSubagent,
   formatSpawnFailure,
   createSubagentActivityTracker,
 } from "../subagents/api.ts";
 import type {
+  AgentDefinition,
+  BuiltinTool,
   SpawnInvocation,
   SpawnOutcome,
   SubagentActivityOptions,
@@ -22,6 +25,16 @@ import type {
 ```
 
 Anything not exported from `api.ts` should be treated as internal.
+
+## Agent definitions
+
+### `loadAgents(): AgentDefinition[]`
+
+Loads Markdown-defined subagent definitions from the configured Pi agent directory. This is the narrow public loader for extensions that need to resolve an agent type before calling `spawnSubagent(...)` directly.
+
+`AgentDefinition` includes the resolved public fields used to build a safe spawn invocation: `name`, `description`, `tools`, `extensions`, optional `model` / `thinking`, optional `env`, `systemPrompt`, `disableSkills`, and `disablePromptTemplates`.
+
+`BuiltinTool` is the union of built-in tool names allowed in subagent definitions.
 
 ## Process spawning
 
