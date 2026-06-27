@@ -91,5 +91,6 @@ The extension does not keep a workflow run database. Progress logs and per-subag
 
 ## Prior art
 
-- `pi-dynamic-workflows` influenced the MVP shape: raw JavaScript scripts, globals such as `agent`, `parallel`, `pipeline`, `phase`, `log`, `args`, and foreground progress.
-- `@quintinshaw/pi-dynamic-workflows` demonstrates later-stage ideas such as background runs, navigators, journaling, saved workflows, model tiers, retries, and worktree isolation. Those are intentionally out of scope for this Phase 1 implementation.
+- [Claude Code dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code) — model-authored JavaScript orchestration for fan-out subagent work, the core interaction pattern this MVP adapts to Pi.
+- [Michaelliv/pi-dynamic-workflows](https://github.com/michaelliv/pi-dynamic-workflows) — Pi workflow extension that influenced the MVP shape: raw JavaScript scripts, globals such as `agent`, `parallel`, `pipeline`, `phase`, `log`, `args`, and foreground progress.
+- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — Pi package demonstrating later-stage ideas such as background runs, navigators, journaling, saved workflows, model tiers, retries, and worktree isolation. Those are intentionally out of scope for this Phase 1 implementation.

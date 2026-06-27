@@ -86,7 +86,7 @@ Preferred structure:
 Repo-specific structure rules:
 
 - Do not add top-level single-file Pi extensions under `pi/agent/extensions/*.ts` in this repo. Keep each extension in its own directory so colocated `*.test.ts` files are never mistaken for extension entrypoints.
-- When adding a new Pi extension, also add it to the extension table in `pi/README.md` with a concise user-facing purpose.
+- When adding a new Pi extension, also add it to the extension table in `pi/README.md` with a concise user-facing purpose and update the root `README.md` when the extension changes the repository's top-level capability overview.
 - Put general cross-extension helpers in `pi/agent/extensions/_shared/`. Keep that directory loader-inert: do not add an `index.ts`.
 - If shared code grows into a real library with its own conceptual surface, promote it to a top-level underscore-prefixed directory with an `api.ts` public surface instead of stretching `_shared/` into an ad hoc package.
 

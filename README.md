@@ -30,6 +30,7 @@ The Pi setup is built around a durable development loop:
 - **Steer execution** with branch-scoped goals via the `goal` extension
 - **Track work in-session** with the `todo` extension and sticky widget
 - **Delegate read-only work** to focused subagents for exploration, research, and review
+- **Orchestrate multi-agent checks** with foreground `workflow` scripts that fan out read-mostly subagents
 - **Use brokered tools safely** for GitHub, remote git, Jira-like systems, web access, and long-lived memory
 - **Verify before completion** with deterministic checks, reviewer agents, and explicit evidence
 
@@ -40,7 +41,7 @@ This turns Pi from a chat interface with tools into a more structured developmen
 The Pi extensions are directory-based TypeScript modules under [`pi/agent/extensions/`](pi/agent/extensions/). They are grouped around the capabilities I want the agent to have:
 
 - **Workflow state:** `goal`, `todo`, `scheduled-tasks`
-- **Delegation:** `subagents`
+- **Delegation and orchestration:** `subagents`, `workflows`
 - **External access:** `mcp-broker`, `web-access`
 - **Agent/user interaction:** `ask-user`
 - **Context and TUI polish:** `context`, `compact-tools`, `startup-header`, `statusline`
@@ -58,6 +59,8 @@ Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamica
 - lightweight research
 - deeper multi-source research
 - holistic review of diffs, plans, and branches
+
+The [`workflows`](pi/agent/extensions/workflows/) extension adds foreground JavaScript orchestration for those read-mostly subagents, so the main agent can run deterministic fan-out/fan-in checks while streaming compact progress.
 
 ### Extension Development
 
