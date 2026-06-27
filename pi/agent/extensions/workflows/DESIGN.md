@@ -59,7 +59,7 @@ If a top-level script error escapes `run()`, the whole workflow tool call fails.
 
 ## Rendering and output
 
-Renderers use shared width-aware helpers and reuse `subagents/render.ts`'s per-agent progress formatter so workflow subagents look like `spawn_agents` subagents. Final output goes through shared spillover, so large raw workflow results are stored in a managed temp file instead of flooding the context.
+Renderers use shared width-aware helpers. Workflows reuse `subagents/render.ts`'s compact per-agent progress formatter so every workflow subagent fits on one row; `spawn_agents` keeps the richer multi-line formatter for direct subagent calls. Final output goes through shared spillover, so large raw workflow results are stored in a managed temp file instead of flooding the context.
 
 Subagent logs and spillover output may contain raw tool/model output. Keep documentation explicit about this behavior.
 

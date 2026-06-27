@@ -66,7 +66,7 @@ test("renderWorkflowCall suppresses noisy script metadata", () => {
   assert.deepEqual(component.render(80), []);
 });
 
-test("renderSnapshot shows workflow header, per-agent blocks, and logs", () => {
+test("renderSnapshot shows compact workflow agent rows and logs", () => {
   const theme = {
     bold: (text: string) => text,
     fg: (_color: string, text: string) => text,
@@ -114,12 +114,10 @@ test("renderSnapshot shows workflow header, per-agent blocks, and logs", () => {
   assert.match(lines[0], /Workflow audit · fanout/);
   assert.match(lines[0], /1 done · 1 running/);
   assert.equal(lines[1], "");
-  assert.match(lines[2], /Explore agent/);
-  assert.match(lines[3], /Done: 1 tool use/);
+  assert.match(lines[2], /^✓ explore a · 1 tool use/);
+  assert.match(lines[3], /^● review b · initializing/);
   assert.equal(lines[4], "");
-  assert.match(lines[5], /Review agent/);
-  assert.equal(lines[7], "");
-  assert.match(lines[9], /hello/);
+  assert.match(lines[6], /hello/);
 });
 
 test("renderWorkflowResult uses one final workflow header when snapshot exists", () => {
@@ -174,6 +172,7 @@ test("renderWorkflowResult uses one final workflow header when snapshot exists",
   );
   const lines = component.render(120);
   assert.match(lines[0], /^Workflow audit ✓ · 1s · 1 done · 0 failed$/);
+  assert.match(lines[2], /^✓ explore a · 1 tool use · 1s$/);
   assert.ok(!lines.some((line) => line.startsWith("✓ workflow")));
   assert.ok(!lines.some((line) => line.includes("Workflow audit completed")));
 });

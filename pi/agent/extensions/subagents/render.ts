@@ -73,6 +73,70 @@ export function formatRunningLine(agent: SubagentRunState | undefined): string {
   return `Running...${elapsedSuffix}`;
 }
 
+function statusGlyph(agent: SubagentRunState): string {
+  if (agent.phase === "error") return "✗";
+  if (agent.phase === "aborted") return "!";
+  if (agent.resolved === true || agent.phase === "done") return "✓";
+  if (agent.phase === "thinking") return "…";
+  return "●";
+}
+
+function compactTypeLabel(agent: SubagentRunState): string {
+  return agent.agentType ?? "agent";
+}
+
+function compactRecentActivity(agent: SubagentRunState): string | undefined {
+  const lastEvent = agent.recentEvents?.[agent.recentEvents.length - 1];
+  if (lastEvent?.text) {
+    return lastEvent.kind === "stderr"
+      ? `stderr: ${lastEvent.text}`
+      : lastEvent.text;
+  }
+  if (agent.currentCommand) return agent.currentCommand;
+  if (agent.lastCommand) return agent.lastCommand;
+  if (
+    agent.phase &&
+    !["starting", "done", "error", "aborted"].includes(agent.phase)
+  ) {
+    return agent.phase;
+  }
+  return undefined;
+}
+
+export function compactAgentProgressLine(
+  agent: SubagentRunState,
+  theme: any,
+): string {
+  const elapsedMs = Math.max(
+    0,
+    (agent.lastUpdateAt ?? Date.now()) - agent.startedAt,
+  );
+  const label = `${statusGlyph(agent)} ${compactTypeLabel(agent)} ${agent.intent}`;
+
+  if (agent.phase === "error" || agent.phase === "aborted") {
+    const msg = agent.errorMessage
+      ? firstLine(agent.errorMessage)
+      : agent.phase === "aborted"
+        ? "Error: subagent aborted"
+        : "Error: subagent failed";
+    const log = agent.logFile ? ` · Log: ${agent.logFile}` : "";
+    const stats = formatDuration(elapsedMs);
+    return `${label} · ${theme.fg("muted", stats)} · ${theme.fg("error", `${msg}${log}`)}`;
+  }
+
+  if (agent.resolved === true || agent.phase === "done") {
+    return `${label} · ${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
+  }
+
+  const activity = compactRecentActivity(agent) ?? "initializing";
+  const stats = statsLine(
+    agent.toolUseCount,
+    agent.totalTokens,
+    Date.now() - agent.startedAt,
+  );
+  return `${label} · ${theme.fg("muted", stats)} · ${theme.fg("muted", activity)}`;
+}
+
 function renderEventLine(
   event: SubagentEvent,
   prefix: string,

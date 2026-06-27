@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  compactAgentProgressLine,
   formatRunningLine,
   formatTokens,
   getActivity,
@@ -92,6 +93,75 @@ test("formatRunningLine: plural tool uses", () => {
     lastUpdateAt: Date.now(),
   });
   assert.match(line, /^Running: 4 tool uses \(\d+s\)$/);
+});
+
+// ─── compactAgentProgressLine ───────────────────────────────────────────────
+
+const theme = {
+  bold: (text: string) => text,
+  fg: (_color: string, text: string) => text,
+};
+
+test("compactAgentProgressLine: done row includes status, label, stats", () => {
+  assert.equal(
+    compactAgentProgressLine(
+      {
+        intent: "docs",
+        agentType: "explore",
+        phase: "done",
+        recentEvents: [],
+        toolUseCount: 2,
+        totalTokens: 4100,
+        resolved: true,
+        startedAt: 1000,
+        lastUpdateAt: 13000,
+      },
+      theme,
+    ),
+    "✓ explore docs · 2 tool uses · 4.1k tokens · 12s",
+  );
+});
+
+test("compactAgentProgressLine: running row includes latest activity", () => {
+  const line = compactAgentProgressLine(
+    {
+      intent: "tests",
+      agentType: "review",
+      phase: "read",
+      recentEvents: [{ kind: "tool", text: "read: package.json" }],
+      toolUseCount: 1,
+      totalTokens: 0,
+      startedAt: Date.now() - 8000,
+      lastUpdateAt: Date.now(),
+    },
+    theme,
+  );
+  assert.match(
+    line,
+    /^● review tests · 1 tool use · \d+s · read: package\.json$/,
+  );
+});
+
+test("compactAgentProgressLine: failure row includes first error and log", () => {
+  assert.equal(
+    compactAgentProgressLine(
+      {
+        intent: "security",
+        agentType: "review",
+        phase: "error",
+        recentEvents: [],
+        toolUseCount: 0,
+        totalTokens: 0,
+        resolved: true,
+        errorMessage: "Error: subagent failed\nstack",
+        logFile: "/tmp/log.txt",
+        startedAt: 1000,
+        lastUpdateAt: 2000,
+      },
+      theme,
+    ),
+    "✗ review security · 1s · Error: subagent failed · Log: /tmp/log.txt",
+  );
 });
 
 // ─── getActivity ─────────────────────────────────────────────────────────────

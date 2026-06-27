@@ -6,7 +6,7 @@ import {
   getTruncatedText,
   startPartialTimer,
 } from "../_shared/render.ts";
-import { agentProgressLine } from "../subagents/render.ts";
+import { compactAgentProgressLine } from "../subagents/render.ts";
 import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
 
 export function formatWorkflowResult(details: unknown, text: string): string {
@@ -46,6 +46,7 @@ function countAgents(snapshot: WorkflowSnapshot): {
 
 function workflowHeader(
   snapshot: WorkflowSnapshot,
+  theme: any,
   options: { final?: boolean } = {},
 ): string {
   const elapsed = formatDuration(
@@ -61,20 +62,26 @@ function workflowHeader(
       : "";
   if (options.final) {
     const status = failed > 0 ? "failed" : "✓";
-    return `Workflow ${name} ${status} · ${elapsed}${counts}`;
+    return `${theme.bold("Workflow")} ${name} ${status} · ${elapsed}${counts}`;
   }
   const phase = snapshot.phase ? ` · ${snapshot.phase}` : "";
-  return `Workflow ${name}${phase}${counts} · ${elapsed}`;
+  return `${theme.bold("Workflow")} ${name}${phase}${counts} · ${elapsed}`;
 }
 
 function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
-  const typeLabel = agent.agent.charAt(0).toUpperCase() + agent.agent.slice(1);
-  const nameLine = `${theme.bold(`${typeLabel} agent`)} ${theme.fg("muted", agent.intent)}`;
+  const glyph =
+    agent.status === "done"
+      ? "✓"
+      : agent.status === "running"
+        ? "●"
+        : agent.status === "aborted"
+          ? "!"
+          : "✗";
+  const label = `${glyph} ${agent.agent} ${agent.intent}`;
   if (agent.status === "running")
-    return `${nameLine}\n${theme.fg("muted", "Initializing...")}`;
-  if (agent.status === "done")
-    return `${nameLine}\n${theme.fg("muted", "Done")}`;
-  return `${nameLine}\n${theme.fg("error", agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed")}`;
+    return `${label} · ${theme.fg("muted", "initializing")}`;
+  if (agent.status === "done") return `${label} · ${theme.fg("muted", "done")}`;
+  return `${label} · ${theme.fg("error", agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed")}`;
 }
 
 function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
@@ -94,23 +101,20 @@ export function renderSnapshot(
   theme: any,
   options: { final?: boolean } = {},
 ): string[] {
-  const sections: string[][] = [[workflowHeader(snapshot, options)]];
-  for (let i = 0; i < snapshot.agents.length; i++) {
-    const agent = snapshot.agents[i];
-    const block = agent.activity
-      ? agentProgressLine(
-          agent.activity,
-          i === snapshot.agents.length - 1,
-          theme,
-        )
-      : fallbackAgentLine(agent, theme);
-    sections.push(block.split("\n"));
+  const lines: string[] = [workflowHeader(snapshot, theme, options)];
+  if (snapshot.agents.length > 0) {
+    lines.push(
+      "",
+      ...snapshot.agents.map((agent) =>
+        agent.activity
+          ? compactAgentProgressLine(agent.activity, theme)
+          : fallbackAgentLine(agent, theme),
+      ),
+    );
   }
   const logs = workflowLogLines(snapshot, theme);
-  if (logs.length > 0) sections.push(logs);
-  return sections.flatMap((section, index) =>
-    index === 0 ? section : ["", ...section],
-  );
+  if (logs.length > 0) lines.push("", ...logs);
+  return lines;
 }
 
 export function renderWorkflowCall(
