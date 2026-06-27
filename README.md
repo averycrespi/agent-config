@@ -12,7 +12,7 @@ This is my personal agent operating system for software work. It combines:
 
 - **A Pi-native workflow layer** for planning, executing, verifying, and completing engineering tasks
 - **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, scheduled tasks, brokered external tools, web access, and TUI polish
-- **Reusable skills** for planning, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, memory workflows, and agent-harness engineering
+- **Reusable skills** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, memory workflows, and agent-harness engineering
 - **Subagent definitions** for isolated exploration, research, deep research, and review
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
 
@@ -51,7 +51,7 @@ See the [Pi README](pi/README.md#extensions) for the full extension table.
 
 ### Skills and Subagents
 
-The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for planning, reviewing, completing work, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
+The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for planning, visualizing plans as HTML artifacts, reviewing, completing work, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
 
 Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamically by the `subagents` extension. They provide isolated read-only workers for:
 

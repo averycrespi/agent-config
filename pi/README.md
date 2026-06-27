@@ -73,6 +73,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                          |
 | `review`                  | Reviewing a PR, branch, commit range, working tree, plan, document, or unit of work holistically      |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                   |
+| `visualize-plan`          | Turning plans into visual HTML artifacts for easier human review                                      |
 
 Notes:
 
