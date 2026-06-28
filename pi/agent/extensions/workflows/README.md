@@ -57,7 +57,7 @@ Supported globals:
 
 ## Structured subagent output
 
-Use `output` when workflow fan-in needs machine-readable data from a subagent. The workflow runtime injects a child-only terminating output tool, captures the tool result from Pi JSON events, validates it against the provided JSON Schema subset, and resolves `agent()` to the parsed value.
+Use `output` when workflow fan-in needs machine-readable data from a subagent. The workflow runtime asks `subagents` to load the generic `structured-output` extension in the child process, captures the `structured_output` tool result from Pi JSON events, validates it against the provided JSON Schema subset, and resolves `agent()` to the parsed value.
 
 ```js
 export const meta = {

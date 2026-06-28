@@ -180,34 +180,16 @@ export async function runWorkflow(
 
 function isStructuredOutputSpec(value: unknown): value is {
   schema: Record<string, unknown>;
-  name?: string;
-  description?: string;
 } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
-  const record = value as {
-    schema?: unknown;
-    name?: unknown;
-    description?: unknown;
-  };
-  if (
-    !record.schema ||
-    typeof record.schema !== "object" ||
-    Array.isArray(record.schema)
-  ) {
-    return false;
-  }
-  if (record.name !== undefined && typeof record.name !== "string") {
-    return false;
-  }
-  if (
-    record.description !== undefined &&
-    typeof record.description !== "string"
-  ) {
-    return false;
-  }
-  return true;
+  const record = value as { schema?: unknown };
+  return Boolean(
+    record.schema &&
+    typeof record.schema === "object" &&
+    !Array.isArray(record.schema),
+  );
 }
 
 export function createWorkflowAgentSpawner(

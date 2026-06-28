@@ -52,7 +52,7 @@ The wrapper in `createWorkflowAgentSpawner` owns policy:
 
 Do not expose raw `SpawnInvocation` fields to workflow scripts.
 
-When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends the schema through the parent RPC, `createWorkflowAgentSpawner` passes it to `spawnSubagent()`, and a successful structured outcome resolves the worker-side `agent()` promise to the parsed value. Text output remains the default for calls without `output`. Structured failures are ordinary agent failures; `parallel()` logs them and uses `null` for that branch.
+When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends the schema through the parent RPC, `createWorkflowAgentSpawner` passes it to `spawnSubagent()`, and `subagents` loads the generic `structured-output` child extension. A successful structured outcome resolves the worker-side `agent()` promise to the parsed value. Text output remains the default for calls without `output`. Structured failures are ordinary agent failures; `parallel()` logs them and uses `null` for that branch.
 
 ## Concurrency and failures
 

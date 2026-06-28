@@ -1,7 +1,8 @@
 import { spawn as _nodeSpawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createManagedLogger } from "../_shared/logging.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import {
@@ -9,11 +10,15 @@ import {
   type BuiltinTool,
   type InheritSession,
 } from "./types.ts";
+import { STRUCTURED_OUTPUT_TOOL_NAME } from "../structured-output/api.ts";
 import { resolveExtensionAllowlist } from "./utils.ts";
 
 export const PI_BINARY = "pi";
 export const POST_AGENT_END_GRACE_MS = 5_000;
-export const STRUCTURED_OUTPUT_TOOL_NAME = "subagent_output";
+const STRUCTURED_OUTPUT_EXTENSION_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../structured-output",
+);
 
 // Exported so tests can stub it without launching a real process.
 export const _spawn = {
@@ -27,8 +32,6 @@ export const _timers = {
 
 export interface StructuredOutputSpec {
   schema: Record<string, unknown>;
-  name?: string;
-  description?: string;
 }
 
 export interface StructuredOutputResult {
@@ -581,44 +584,16 @@ async function runSpawn(
   });
 }
 
-async function createStructuredOutputExtension(
+async function createStructuredOutputSchemaFile(
   output: StructuredOutputSpec,
-): Promise<{ dir: string; extensionPath: string }> {
+): Promise<{ dir: string; schemaFile: string }> {
   const dir = await mkdtemp(join(tmpdir(), "subagent-structured-output-"));
-  const extensionPath = join(dir, "index.ts");
-  const label = output.name?.trim() || "Subagent Output";
-  const description =
-    output.description?.trim() ||
-    "Return the final structured output for this subagent task.";
-  const schemaJson = JSON.stringify(output.schema);
-  const source = `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-
-const parameters = Type.Unsafe(${schemaJson});
-
-export default function (pi: ExtensionAPI) {
-  pi.registerTool({
-    name: ${JSON.stringify(STRUCTURED_OUTPUT_TOOL_NAME)},
-    label: ${JSON.stringify(label)},
-    description: ${JSON.stringify(description)},
-    promptSnippet: "Return final structured output as a terminating tool result",
-    promptGuidelines: [
-      "Use ${STRUCTURED_OUTPUT_TOOL_NAME} as your final action after completing the task.",
-      "Do not emit another assistant response after calling ${STRUCTURED_OUTPUT_TOOL_NAME}.",
-    ],
-    parameters,
-    async execute(_toolCallId, params) {
-      return {
-        content: [{ type: "text", text: "Structured subagent output captured" }],
-        details: { value: params },
-        terminate: true,
-      };
-    },
+  const schemaFile = join(dir, "schema.json");
+  await writeFile(schemaFile, JSON.stringify(output.schema, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
   });
-}
-`;
-  await writeFile(extensionPath, source, { encoding: "utf8", mode: 0o600 });
-  return { dir, extensionPath };
+  return { dir, schemaFile };
 }
 
 function appendStructuredOutputPrompt(
@@ -632,7 +607,6 @@ function appendStructuredOutputPrompt(
     "Its parameters are schema-validated and will be consumed by the parent workflow.",
     "Do not include the structured value only in prose; the tool call is required.",
   ];
-  if (output.description?.trim()) instructions.push(output.description.trim());
   return [systemPrompt?.trim(), instructions.join("\n")]
     .filter((part): part is string => Boolean(part))
     .join("\n\n");
@@ -674,12 +648,10 @@ export async function spawnSubagent(
     };
   }
 
-  let structuredExtension: { dir: string; extensionPath: string } | undefined;
+  let structuredSchema: { dir: string; schemaFile: string } | undefined;
   if (options.output) {
     try {
-      structuredExtension = await createStructuredOutputExtension(
-        options.output,
-      );
+      structuredSchema = await createStructuredOutputSchemaFile(options.output);
     } catch (error: any) {
       return {
         ok: false,
@@ -698,8 +670,8 @@ export async function spawnSubagent(
     args = buildArgs({
       prompt: options.prompt,
       tools: options.toolAllowlist,
-      extensions: structuredExtension
-        ? [...extensions, structuredExtension.extensionPath]
+      extensions: structuredSchema
+        ? [...extensions, STRUCTURED_OUTPUT_EXTENSION_PATH]
         : extensions,
       files: options.files ?? [],
       model: options.model,
@@ -714,8 +686,8 @@ export async function spawnSubagent(
       disablePromptTemplates: options.disablePromptTemplates,
     });
   } catch (error: any) {
-    if (structuredExtension) {
-      await rm(structuredExtension.dir, { recursive: true, force: true });
+    if (structuredSchema) {
+      await rm(structuredSchema.dir, { recursive: true, force: true });
     }
     return {
       ok: false,
@@ -735,11 +707,17 @@ export async function spawnSubagent(
     logId,
     options.signal,
     options.onEvent,
-    options.env,
+    structuredSchema
+      ? {
+          ...options.env,
+          PI_STRUCTURED_OUTPUT_SCHEMA_FILE: structuredSchema.schemaFile,
+          PI_STRUCTURED_OUTPUT_TERMINATE: "1",
+        }
+      : options.env,
     options.output,
   );
-  if (structuredExtension) {
-    await rm(structuredExtension.dir, { recursive: true, force: true });
+  if (structuredSchema) {
+    await rm(structuredSchema.dir, { recursive: true, force: true });
   }
 
   for (const key of ["stdout", "stderr"] as const) {

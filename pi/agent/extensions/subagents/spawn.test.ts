@@ -325,21 +325,27 @@ test("spawnSubagent: captures valid structured output from child tool result", a
   const prev = process.env.PI_SUBAGENT_DEPTH;
   process.env.PI_SUBAGENT_DEPTH = "0";
   let capturedArgs: string[] | undefined;
+  let capturedEnv: NodeJS.ProcessEnv | undefined;
+  let capturedSchema: unknown;
 
   const spawnStub = mock.method(_spawn, "fn", (...args: unknown[]) => {
     capturedArgs = args[1] as string[];
+    capturedEnv = (args[2] as { env?: NodeJS.ProcessEnv }).env;
     const child = new EventEmitter() as any;
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     child.stdout.setEncoding = () => {};
     child.stderr.setEncoding = () => {};
 
-    setImmediate(() => {
+    setImmediate(async () => {
+      capturedSchema = JSON.parse(
+        await readFile(capturedEnv!.PI_STRUCTURED_OUTPUT_SCHEMA_FILE!, "utf8"),
+      );
       child.stdout.emit(
         "data",
         `${JSON.stringify({
           type: "tool_execution_end",
-          toolName: "subagent_output",
+          toolName: "structured_output",
           isError: false,
           result: {
             details: {
@@ -382,9 +388,21 @@ test("spawnSubagent: captures valid structured output from child tool result", a
     });
     assert.ok(capturedArgs?.includes("-e"));
     assert.ok(
-      capturedArgs?.some((arg) => /subagent-structured-output/.test(arg)),
-      "structured output child extension is loaded",
+      capturedArgs?.some((arg) => /structured-output$/.test(arg)),
+      "generic structured-output extension is loaded",
     );
+    assert.match(
+      capturedEnv?.PI_STRUCTURED_OUTPUT_SCHEMA_FILE ?? "",
+      /subagent-structured-output-.*schema\.json$/,
+    );
+    assert.equal(capturedEnv?.PI_STRUCTURED_OUTPUT_TERMINATE, "1");
+    assert.deepEqual(capturedSchema, {
+      type: "object",
+      required: ["files"],
+      properties: {
+        files: { type: "array", items: { type: "string" } },
+      },
+    });
   } finally {
     spawnStub.mock.restore();
     if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
@@ -408,7 +426,7 @@ test("spawnSubagent: requested structured output fails when child value is inval
         "data",
         `${JSON.stringify({
           type: "tool_execution_end",
-          toolName: "subagent_output",
+          toolName: "structured_output",
           isError: false,
           result: { details: { value: { files: "not an array" } } },
         })}\n`,

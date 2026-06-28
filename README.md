@@ -41,7 +41,7 @@ This turns Pi from a chat interface with tools into a more structured developmen
 The Pi extensions are directory-based TypeScript modules under [`pi/agent/extensions/`](pi/agent/extensions/). They are grouped around the capabilities I want the agent to have:
 
 - **Workflow state:** `goal`, `todo`, `scheduled-tasks`
-- **Delegation and orchestration:** `subagents`, `workflows`
+- **Delegation and orchestration:** `subagents`, `workflows`, `structured-output`
 - **External access:** `mcp-broker`, `web-access`
 - **Agent/user interaction:** `ask-user`
 - **Context and TUI polish:** `context`, `compact-tools`, `startup-header`, `statusline`
