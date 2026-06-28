@@ -43,6 +43,17 @@ function abortError(): Error {
   return error;
 }
 
+function timeoutError(timeoutMs: number): Error {
+  const error = new Error(`workflow timed out after ${timeoutMs}ms`);
+  error.name = "TimeoutError";
+  return error;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 function emit(
   snapshot: WorkflowSnapshot,
   onUpdate?: (snapshot: WorkflowSnapshot) => void,
@@ -67,6 +78,9 @@ export async function runWorkflow(
   let currentPhase: string | undefined;
   let result: unknown;
   let finished = false;
+  let terminationReason: "timeout" | "aborted" | "worker_error" | undefined;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const workflowAbort = new AbortController();
 
   const snapshot = (): WorkflowSnapshot => ({
     meta: parsed.meta,
@@ -90,10 +104,14 @@ export async function runWorkflow(
   });
 
   const timeout = setTimeout(() => {
+    terminationReason = "timeout";
+    workflowAbort.abort(timeoutError(timeoutMs));
     void worker.terminate();
-  }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  }, timeoutMs);
 
   const abort = () => {
+    terminationReason = "aborted";
+    workflowAbort.abort(abortError());
     void worker.terminate();
   };
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -129,6 +147,7 @@ export async function runWorkflow(
           const agentRequest: WorkflowAgentRequest = {
             id: requestId,
             prompt: String(request.prompt ?? ""),
+            signal: workflowAbort.signal,
             ...(typeof request.agent === "string"
               ? { agent: request.agent }
               : {}),
@@ -139,10 +158,37 @@ export async function runWorkflow(
               ? { output: request.output }
               : {}),
           };
-          void options.spawnAgent(agentRequest).then((response) => {
-            worker.postMessage({ type: "agent-response", requestId, response });
-            emit(snapshot(), options.onUpdate);
-          });
+          void options
+            .spawnAgent(agentRequest)
+            .then((response) => {
+              try {
+                worker.postMessage({
+                  type: "agent-response",
+                  requestId,
+                  response,
+                });
+              } catch {
+                return;
+              }
+              emit(snapshot(), options.onUpdate);
+            })
+            .catch((error) => {
+              const response: WorkflowAgentResponse = {
+                ok: false,
+                text: null,
+                error: errorMessage(error),
+              };
+              try {
+                worker.postMessage({
+                  type: "agent-response",
+                  requestId,
+                  response,
+                });
+              } catch {
+                return;
+              }
+              emit(snapshot(), options.onUpdate);
+            });
           emit(snapshot(), options.onUpdate);
         } else if (event.type === "result") {
           result = event.result;
@@ -150,16 +196,23 @@ export async function runWorkflow(
           resolve();
         }
       });
-      worker.on("error", reject);
+      worker.on("error", (error) => {
+        terminationReason = terminationReason ?? "worker_error";
+        workflowAbort.abort(error);
+        reject(error);
+      });
       worker.on("exit", (code) => {
         if (finished) return;
-        if (options.signal?.aborted) reject(abortError());
+        if (terminationReason === "timeout") reject(timeoutError(timeoutMs));
+        else if (terminationReason === "aborted" || options.signal?.aborted)
+          reject(abortError());
         else reject(new Error(`workflow worker exited with code ${code}`));
       });
     });
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abort);
+    if (!workflowAbort.signal.aborted) workflowAbort.abort();
     void worker.terminate();
   }
 
@@ -263,7 +316,7 @@ export function createWorkflowAgentSpawner(
       disablePromptTemplates: agent.disablePromptTemplates,
       logId: `${options.logId}:agent-${request.id}`,
       cwd: options.cwd,
-      signal: options.signal,
+      signal: request.signal ?? options.signal,
       onEvent: (event) => tracker.handleEvent(event),
     });
 

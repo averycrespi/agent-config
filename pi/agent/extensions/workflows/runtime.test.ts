@@ -170,6 +170,56 @@ test("parallel aggregates branch failures as null and logs them", async () => {
   assert.match(result.logs.at(-1)?.message ?? "", /boom/);
 });
 
+test("runtime converts rejected spawn promises into agent failures", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallel([
+        () => agent("ok"),
+        () => agent("throws"),
+      ]);
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (request) => {
+        if (request.prompt === "throws") throw new Error("spawn exploded");
+        return { ok: true, text: "ok" };
+      },
+    },
+  );
+
+  assert.deepEqual(result.result, ["ok", null]);
+  assert.equal(result.failureCount, 1);
+  assert.match(result.logs.at(-1)?.message ?? "", /spawn exploded/);
+});
+
+test("workflow timeout aborts in-flight agent requests", async () => {
+  let signalAborted = false;
+
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() { return await agent("slow"); }`),
+      {
+        cwd: "/tmp",
+        timeoutMs: 200,
+        spawnAgent: async (request) =>
+          await new Promise((resolve) => {
+            request.signal?.addEventListener(
+              "abort",
+              () => {
+                signalAborted = true;
+                resolve({ ok: false, text: null, error: "aborted" });
+              },
+              { once: true },
+            );
+          }),
+      },
+    ),
+    /timed out/,
+  );
+
+  assert.equal(signalAborted, true);
+});
+
 test("aborts runaway worker promptly", async () => {
   const controller = new AbortController();
   const promise = runWorkflow(

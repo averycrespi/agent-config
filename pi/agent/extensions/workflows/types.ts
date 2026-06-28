@@ -90,6 +90,7 @@ export interface WorkflowAgentRequest {
   agent?: string;
   intent?: string;
   output?: StructuredOutputSpec;
+  signal?: AbortSignal;
 }
 
 export interface WorkflowAgentResponse {

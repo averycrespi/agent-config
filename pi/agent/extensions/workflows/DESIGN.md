@@ -14,7 +14,7 @@ The `workflows` extension owns deterministic foreground orchestration above the 
 
 ## Runtime boundary
 
-Workflow script logic runs in a separate Node worker created from generated module source. The parent can terminate this worker on cancellation or timeout, which prevents runaway script loops from blocking the main Pi process. The worker is not the only safety layer: scripts are also parsed before execution and dangerous globals are shadowed in the generated module.
+Workflow script logic runs in a separate Node worker created from generated module source. The parent can terminate this worker on cancellation or timeout, which prevents runaway script loops from blocking the main Pi process. Runtime-owned timeout and cancellation also abort the signal passed to in-flight subagent requests so child processes are not left running after the workflow boundary closes. The worker is not the only safety layer: scripts are also parsed before execution and dangerous globals are shadowed in the generated module.
 
 Do not replace the worker with same-process `vm` execution. If the runtime changes, it must keep an explicitly killable boundary or an interpreter with equivalent cancellation guarantees.
 
@@ -58,7 +58,7 @@ When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends 
 
 `parallel()` accepts thunks rather than already-started promises so the runtime controls concurrency. It preserves input order. A branch failure is logged and its result becomes `null`, allowing fan-in code to continue. `pipeline()` applies sequential stages per item while using `parallel()` across items.
 
-If a top-level script error escapes `run()`, the whole workflow tool call fails.
+If a top-level script error escapes `run()`, the whole workflow tool call fails. Parent-side subagent dispatch must always answer worker RPC with either a success response or an agent failure response; unexpected `spawnAgent` rejections are converted into worker-visible agent failures instead of leaving `agent()` promises pending.
 
 ## Rendering and output
 
