@@ -387,6 +387,9 @@ test("spawnSubagent: captures valid structured output from child tool result", a
       value: { files: ["src/auth.ts"] },
     });
     assert.ok(capturedArgs?.includes("-e"));
+    const toolsIdx = capturedArgs?.indexOf("--tools") ?? -1;
+    assert.ok(toolsIdx >= 0, "structured output keeps tools enabled");
+    assert.match(capturedArgs?.[toolsIdx + 1] ?? "", /structured_output/);
     assert.ok(
       capturedArgs?.some((arg) => /structured-output$/.test(arg)),
       "generic structured-output extension is loaded",

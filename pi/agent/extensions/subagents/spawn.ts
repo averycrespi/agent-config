@@ -85,13 +85,13 @@ function clampMaxDepth(value: number | undefined): number {
   return Math.max(1, Math.min(requested, MAX_SUBAGENT_DEPTH));
 }
 
-function uniqueTools(tools: BuiltinTool[]): BuiltinTool[] {
+function uniqueTools(tools: string[]): string[] {
   return [...new Set(tools)];
 }
 
 export function buildArgs(params: {
   prompt: string;
-  tools: BuiltinTool[];
+  tools: string[];
   extensions: string[];
   files: string[];
   model?: string;
@@ -669,7 +669,9 @@ export async function spawnSubagent(
   try {
     args = buildArgs({
       prompt: options.prompt,
-      tools: options.toolAllowlist,
+      tools: structuredSchema
+        ? [...options.toolAllowlist, STRUCTURED_OUTPUT_TOOL_NAME]
+        : options.toolAllowlist,
       extensions: structuredSchema
         ? [...extensions, STRUCTURED_OUTPUT_EXTENSION_PATH]
         : extensions,
