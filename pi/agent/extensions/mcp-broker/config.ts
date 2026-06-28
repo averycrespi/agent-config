@@ -5,12 +5,13 @@ import {
   readExtensionSettings,
   readPiSettingsFiles,
 } from "../_shared/config.ts";
-import { APPROVAL_TIMEOUT_MS } from "./client.ts";
+import { APPROVAL_TIMEOUT_MS, type ApprovalMode } from "./client.ts";
 
 export type McpBrokerConfig = {
   endpoint?: string;
   authToken?: string;
   readOnly: boolean;
+  approvalMode: ApprovalMode;
   approvalTimeoutMs: number;
 };
 
@@ -18,6 +19,7 @@ const DEFAULT_CONFIG: McpBrokerConfig = {
   endpoint: undefined,
   authToken: undefined,
   readOnly: false,
+  approvalMode: "wait",
   approvalTimeoutMs: APPROVAL_TIMEOUT_MS,
 };
 
@@ -44,6 +46,9 @@ export async function loadMcpBrokerConfig(
       typeof merged.readOnly === "boolean"
         ? merged.readOnly
         : DEFAULT_CONFIG.readOnly,
+    approvalMode:
+      normalizeApprovalMode(merged.approvalMode, DEFAULT_CONFIG.approvalMode) ??
+      DEFAULT_CONFIG.approvalMode,
     approvalTimeoutMs:
       normalizePositiveInteger(
         merged.approvalTimeoutMs,
@@ -64,6 +69,13 @@ export function readEnvSettings(): Partial<McpBrokerConfig> {
     const readOnly = parseBooleanEnv(process.env.MCP_BROKER_READONLY);
     if (readOnly !== undefined) settings.readOnly = readOnly;
   }
+  if (process.env.MCP_BROKER_APPROVAL_MODE !== undefined) {
+    const approvalMode = normalizeApprovalMode(
+      process.env.MCP_BROKER_APPROVAL_MODE,
+      undefined,
+    );
+    if (approvalMode !== undefined) settings.approvalMode = approvalMode;
+  }
   if (process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS !== undefined) {
     const approvalTimeoutMs = parsePositiveIntegerEnv(
       process.env.MCP_BROKER_APPROVAL_TIMEOUT_MS,
@@ -83,6 +95,13 @@ function normalizeString(value: unknown): string | undefined {
 
 function parsePositiveIntegerEnv(value: string): number | undefined {
   return normalizePositiveInteger(value, undefined);
+}
+
+function normalizeApprovalMode(
+  value: unknown,
+  fallback: ApprovalMode | undefined,
+): ApprovalMode | undefined {
+  return value === "wait" || value === "reject" ? value : fallback;
 }
 
 function normalizePositiveInteger(

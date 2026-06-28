@@ -5,7 +5,7 @@
 ## Architecture
 
 - `index.ts` is the extension entry point. It configures one shared `BrokerClient`, registers tools, installs the bash guard, registers `/mcp-broker-config`, prefetches broker tools on session start, closes the client on shutdown, and injects the broker menu into the system prompt.
-- `client.ts` wraps the MCP SDK Streamable HTTP client. It owns connection lifecycle, network timeouts, tool-list caching, read-only filtering, reconnect/reset behavior, and approval-timeout forwarding for tool calls.
+- `client.ts` wraps the MCP SDK Streamable HTTP client. It owns connection lifecycle, network timeouts, tool-list caching, read-only filtering, reconnect/reset behavior, approval-mode request headers, and approval-timeout forwarding for tool calls.
 - `tools.ts` registers `mcp_search`, `mcp_describe`, and `mcp_call`, handles broker errors, read-only defense-in-depth, spillover, diagnostic logs, and compact renderers.
 - `guard.ts` detects bash calls that look like `gh` or remote git operations and queues a hidden steer toward broker tools without blocking the bash call.
 - `config.ts` loads settings/env overrides and masks `authToken` through the shared config command.
@@ -25,7 +25,7 @@ Agent flow is:
 
 ## Client lifecycle and cache
 
-`BrokerClient` is long-lived within the Pi session and lazy-connects on first use. `configure()` resets the connection only when endpoint, auth token, or read-only mode changes. `ensureConfig()` in `index.ts` reloads config per cwd and avoids repeated reconfiguration for the same cwd.
+`BrokerClient` is long-lived within the Pi session and lazy-connects on first use. `configure()` resets the connection only when endpoint, auth token, read-only mode, or approval mode changes. `ensureConfig()` in `index.ts` reloads config per cwd and avoids repeated reconfiguration for the same cwd.
 
 Tool-list behavior:
 
@@ -34,6 +34,12 @@ Tool-list behavior:
 - `getCachedTools()` never performs network I/O; it is used by prompt injection and the bash guard.
 
 Network connect/list operations use short explicit timeouts. `mcp_call` uses the configured broker approval timeout window, defaulting to 10 minutes, because some broker tools intentionally wait for human approval.
+
+## Approval mode
+
+Approval mode is configured at the extension/client level, not as an `mcp_call` argument. `reject` mode sends `Mcp-Broker-Approval-Mode: reject` through the Streamable HTTP transport so broker calls that would require human approval fail immediately. `wait` mode omits the header and preserves broker defaults.
+
+Keep this as config-controlled transport state. Do not let broker metadata, prompt text, or per-call agent arguments toggle approval mode, because that would let untrusted content silently alter the approval boundary during a session.
 
 ## Read-only mode
 

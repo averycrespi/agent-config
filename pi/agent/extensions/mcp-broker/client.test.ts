@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   BrokerClient,
+  buildBrokerHeaders,
   extractProviders,
   filterReadOnly,
   isReadOnly,
@@ -170,6 +171,34 @@ test("BrokerClient.listTools invalidates stale cache and retries once", async ()
     { name: "github.gh_list_prs" },
   ]);
   assert.deepEqual((client as any).cachedProviders, ["github"]);
+});
+
+test("buildBrokerHeaders omits the approval mode header in wait mode", () => {
+  assert.deepEqual(buildBrokerHeaders("token", "wait"), {
+    Authorization: "Bearer token",
+  });
+});
+
+test("buildBrokerHeaders sends reject approval mode when configured", () => {
+  assert.deepEqual(buildBrokerHeaders("token", "reject"), {
+    Authorization: "Bearer token",
+    "Mcp-Broker-Approval-Mode": "reject",
+  });
+});
+
+test("BrokerClient.configure resets the transport when approval mode changes", () => {
+  const closed: string[] = [];
+  const client = new BrokerClient({ approvalMode: "wait" });
+  (client as any).client = {
+    close: async () => {
+      closed.push("client");
+    },
+  };
+
+  client.configure({ approvalMode: "reject" });
+
+  assert.equal((client as any).client, null);
+  assert.deepEqual(closed, ["client"]);
 });
 
 test("BrokerClient.callTool forwards the configured approval timeout", async () => {

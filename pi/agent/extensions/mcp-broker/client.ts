@@ -12,6 +12,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 export const APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_NETWORK_TIMEOUT_MS = 15_000;
+export const APPROVAL_MODE_HEADER = "Mcp-Broker-Approval-Mode";
+export type ApprovalMode = "wait" | "reject";
 
 export type BrokerTool = {
   name: string;
@@ -30,6 +32,19 @@ export function filterReadOnly(tools: BrokerTool[]): BrokerTool[] {
   return tools.filter(isReadOnly);
 }
 
+export function buildBrokerHeaders(
+  authToken: string,
+  approvalMode: ApprovalMode,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${authToken}`,
+  };
+  if (approvalMode === "reject") {
+    headers[APPROVAL_MODE_HEADER] = approvalMode;
+  }
+  return headers;
+}
+
 export class BrokerClient {
   private client: Client | null = null;
   private transport: StreamableHTTPClientTransport | null = null;
@@ -41,6 +56,7 @@ export class BrokerClient {
   private readOnly: boolean;
   private networkTimeoutMs: number;
   private approvalTimeoutMs: number;
+  private approvalMode: ApprovalMode;
 
   constructor(
     opts: {
@@ -49,6 +65,7 @@ export class BrokerClient {
       readOnly?: boolean;
       networkTimeoutMs?: number;
       approvalTimeoutMs?: number;
+      approvalMode?: ApprovalMode;
     } = {},
   ) {
     this.endpoint = opts.endpoint;
@@ -56,6 +73,7 @@ export class BrokerClient {
     this.readOnly = opts.readOnly ?? false;
     this.networkTimeoutMs = opts.networkTimeoutMs ?? DEFAULT_NETWORK_TIMEOUT_MS;
     this.approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+    this.approvalMode = opts.approvalMode ?? "wait";
   }
 
   configure(opts: {
@@ -63,16 +81,20 @@ export class BrokerClient {
     authToken?: string;
     readOnly?: boolean;
     approvalTimeoutMs?: number;
+    approvalMode?: ApprovalMode;
   }): void {
     const nextReadOnly = opts.readOnly ?? false;
+    const nextApprovalMode = opts.approvalMode ?? "wait";
     const changed =
       this.endpoint !== opts.endpoint ||
       this.authToken !== opts.authToken ||
-      this.readOnly !== nextReadOnly;
+      this.readOnly !== nextReadOnly ||
+      this.approvalMode !== nextApprovalMode;
     this.endpoint = opts.endpoint;
     this.authToken = opts.authToken;
     this.readOnly = nextReadOnly;
     this.approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
+    this.approvalMode = nextApprovalMode;
     if (changed) this.reset();
   }
 
@@ -122,7 +144,7 @@ export class BrokerClient {
         new URL(`${endpoint}/mcp`),
         {
           requestInit: {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: buildBrokerHeaders(token, this.approvalMode),
           },
         },
       );

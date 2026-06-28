@@ -16,7 +16,7 @@ Typical agent flow:
 2. `mcp_describe` for any candidate that looks right. Returns the full description and JSON Schema for `arguments`.
 3. `mcp_call` with the exact name and an arguments object matching the schema.
 
-Broker connect and tool-list operations use an explicit 15-second network timeout. Tool calls that require human approval block for `approvalTimeoutMs`, which defaults to 10 minutes. After the approval timeout elapses without a decision, `mcp_call` returns an error and the agent can retry.
+Broker connect and tool-list operations use an explicit 15-second network timeout. Tool calls that require human approval use `approvalMode`, which defaults to `wait`; in this mode they block for `approvalTimeoutMs`, which defaults to 10 minutes. After the approval timeout elapses without a decision, `mcp_call` returns an error and the agent can retry.
 
 If a cached broker tool list becomes stale or the connection fails while refreshing it, the client drops the stale cache, reconnects, and retries once before surfacing the error.
 
@@ -29,6 +29,7 @@ Configure via `extension:mcp-broker` in Pi settings. Environment variables overr
 | `endpoint`          | unset    | `MCP_BROKER_ENDPOINT`            | Base URL of the broker; the extension connects to `${endpoint}/mcp`.                                            |
 | `authToken`         | unset    | `MCP_BROKER_AUTH_TOKEN`          | Bearer token for the broker's MCP endpoint.                                                                     |
 | `readOnly`          | `false`  | `MCP_BROKER_READONLY`            | Set to `true` in settings or `1`/`true` in the environment to activate read-only mode; `0`/`false` disables it. |
+| `approvalMode`      | `wait`   | `MCP_BROKER_APPROVAL_MODE`       | `wait` blocks for human approval when broker policy requires it; `reject` immediately rejects those calls.      |
 | `approvalTimeoutMs` | `600000` | `MCP_BROKER_APPROVAL_TIMEOUT_MS` | Positive integer timeout, in milliseconds, for broker tool calls that may wait for human approval.              |
 
 Example settings:
@@ -39,12 +40,19 @@ Example settings:
     "endpoint": "https://broker.example.com",
     "authToken": "<token>",
     "readOnly": false,
+    "approvalMode": "wait",
     "approvalTimeoutMs": 600000
   }
 }
 ```
 
 If `endpoint`/`MCP_BROKER_ENDPOINT` or `authToken`/`MCP_BROKER_AUTH_TOKEN` is missing, the meta-tools are still registered, but any call returns a clear configuration error — Pi remains usable on machines without a broker.
+
+## Approval mode
+
+Set `approvalMode: "reject"` in settings or `MCP_BROKER_APPROVAL_MODE=reject` in the environment to send `Mcp-Broker-Approval-Mode: reject` on broker requests. Calls whose broker policy verdict is `require-approval` fail immediately instead of queuing a human approval request. Broker `allow` and `deny` verdicts are unchanged.
+
+Use this for background agents or subagents that must not wait on human approval. The default `wait` mode omits the header and preserves the broker's normal approval flow.
 
 ## Read-only mode
 
@@ -61,6 +69,7 @@ Subagents activate read-only mode via the `env:` block in their agent frontmatte
 extensions: mcp-broker
 env:
   MCP_BROKER_READONLY: "1"
+  MCP_BROKER_APPROVAL_MODE: "reject"
 ---
 ```
 
