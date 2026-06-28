@@ -122,6 +122,7 @@ export async function runWorkflow(
             prompt?: unknown;
             agent?: unknown;
             intent?: unknown;
+            output?: unknown;
           };
           const requestId = Number(request.requestId);
           if (!Number.isInteger(requestId)) return;
@@ -133,6 +134,9 @@ export async function runWorkflow(
               : {}),
             ...(typeof request.intent === "string"
               ? { intent: request.intent }
+              : {}),
+            ...(isStructuredOutputSpec(request.output)
+              ? { output: request.output }
               : {}),
           };
           void options.spawnAgent(agentRequest).then((response) => {
@@ -172,6 +176,38 @@ export async function runWorkflow(
     failureCount,
     durationMs,
   };
+}
+
+function isStructuredOutputSpec(value: unknown): value is {
+  schema: Record<string, unknown>;
+  name?: string;
+  description?: string;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as {
+    schema?: unknown;
+    name?: unknown;
+    description?: unknown;
+  };
+  if (
+    !record.schema ||
+    typeof record.schema !== "object" ||
+    Array.isArray(record.schema)
+  ) {
+    return false;
+  }
+  if (record.name !== undefined && typeof record.name !== "string") {
+    return false;
+  }
+  if (
+    record.description !== undefined &&
+    typeof record.description !== "string"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function createWorkflowAgentSpawner(
@@ -234,6 +270,7 @@ export function createWorkflowAgentSpawner(
 
     const outcome = await _spawnSubagent.fn({
       prompt: request.prompt,
+      output: request.output,
       toolAllowlist: agent.tools,
       extensionAllowlist: agent.extensions,
       model: agent.model ?? options.model,
@@ -252,8 +289,19 @@ export function createWorkflowAgentSpawner(
     tracker.finish(outcome);
     if (outcome.ok) {
       state.status = "done";
-      state.resultPreview = preview(outcome.stdout);
+      state.resultPreview = preview(
+        outcome.structured?.ok ? outcome.structured.value : outcome.stdout,
+      );
       refreshActivity();
+      if (outcome.structured?.ok) {
+        return {
+          ok: true,
+          text: outcome.stdout,
+          hasStructured: true,
+          value: outcome.structured.value,
+          outcome,
+        };
+      }
       return { ok: true, text: outcome.stdout, outcome };
     }
     state.status = outcome.aborted ? "aborted" : "error";

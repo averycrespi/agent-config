@@ -16,6 +16,8 @@ import type {
   BuiltinTool,
   SpawnInvocation,
   SpawnOutcome,
+  StructuredOutputResult,
+  StructuredOutputSpec,
   SubagentActivityOptions,
   SubagentActivityTracker,
   SubagentEvent,
@@ -54,8 +56,36 @@ Notable `SpawnInvocation` fields:
 - `inheritSession` — `"none"` or `"fork"`
 - `disableSkills`, `disablePromptTemplates` — optional startup restrictions
 - `env` — extra environment variables merged into the child process; `PI_SUBAGENT_DEPTH` is always set by the spawner and overrides any caller-provided value
+- `output` — optional `StructuredOutputSpec` for machine-readable results. When present, the spawner injects a temporary child-only `subagent_output` tool, instructs the child to call it as the final action, captures the tool result from Pi JSON events, and validates it before returning.
 
-`SpawnOutcome` reports whether the spawn succeeded and includes the final `stdout`, `stderr`, exit metadata, and optional `errorMessage` / `logFile`.
+`SpawnOutcome` reports whether the spawn succeeded and includes the final `stdout`, `stderr`, exit metadata, optional `errorMessage` / `logFile`, and optional `structured` result when `output` was requested.
+
+### Structured output
+
+`StructuredOutputSpec`:
+
+```ts
+interface StructuredOutputSpec {
+  schema: Record<string, unknown>;
+  name?: string;
+  description?: string;
+}
+```
+
+`schema` is passed to the child output tool as its parameter schema. `name` and `description` customize the generated tool label/description. The parent-side validator supports the common plain JSON Schema subset used by workflows: `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`.
+
+`StructuredOutputResult`:
+
+```ts
+interface StructuredOutputResult {
+  ok: boolean;
+  value?: unknown;
+  errors?: string[];
+  raw?: string;
+}
+```
+
+If structured output is requested and the child does not call `subagent_output`, the child tool errors, or the captured value fails parent-side validation, `SpawnOutcome.ok` is `false` and `structured.ok` is `false`. `stdout` is still preserved as diagnostic fallback text.
 
 ### `formatSpawnFailure(outcome: SpawnOutcome): string`
 

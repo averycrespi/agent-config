@@ -45,15 +45,48 @@ export async function run() {
 
 Supported globals:
 
-| Global     | Description                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------- |
-| `agent`    | Runs one read-mostly subagent: `agent(prompt, { agent?, intent? })`. Defaults to `explore`. |
-| `parallel` | Runs an array of thunks with bounded concurrency and preserves input ordering.              |
-| `pipeline` | Runs sequential stages for each item, using `parallel` across items.                        |
-| `phase`    | Sets the current progress phase.                                                            |
-| `log`      | Adds a progress log entry.                                                                  |
-| `args`     | The optional JSON `args` value from the tool call.                                          |
-| `cwd`      | Current working directory string.                                                           |
+| Global     | Description                                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`    | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output? })`. Defaults to `explore`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. |
+| `parallel` | Runs an array of thunks with bounded concurrency and preserves input ordering.                                                                                                                                |
+| `pipeline` | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                          |
+| `phase`    | Sets the current progress phase.                                                                                                                                                                              |
+| `log`      | Adds a progress log entry.                                                                                                                                                                                    |
+| `args`     | The optional JSON `args` value from the tool call.                                                                                                                                                            |
+| `cwd`      | Current working directory string.                                                                                                                                                                             |
+
+## Structured subagent output
+
+Use `output` when workflow fan-in needs machine-readable data from a subagent. The workflow runtime injects a child-only terminating output tool, captures the tool result from Pi JSON events, validates it against the provided JSON Schema subset, and resolves `agent()` to the parsed value.
+
+```js
+export const meta = {
+  name: "repo-map",
+  description: "Collect structured repository findings",
+};
+
+export async function run() {
+  const findingSchema = {
+    type: "object",
+    required: ["files", "summary"],
+    properties: {
+      files: { type: "array", items: { type: "string" } },
+      summary: { type: "string" },
+    },
+    additionalProperties: false,
+  };
+
+  return await agent("Find auth entrypoints", {
+    agent: "explore",
+    intent: "auth map",
+    output: { schema: findingSchema },
+  });
+}
+```
+
+Without `output`, `agent()` keeps the original behavior and resolves to the subagent's final text. If structured output is requested but the child does not call the output tool, or the value fails validation, the agent call fails; inside `parallel()`, that branch is logged and becomes `null` like other branch failures.
+
+Supported parent-side validation covers plain JSON Schema `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`. The child Pi tool still receives the full schema as its tool parameter schema.
 
 ## Safety restrictions
 
@@ -78,7 +111,6 @@ The extension does not keep a workflow run database. Progress logs and per-subag
 
 - Foreground tool calls only; no background manager or `/workflows` navigator.
 - No journaled resume or saved workflow library.
-- No structured result schema support.
 - No writable workflow mode or git worktree isolation.
 - No model tiers, retries, or quality-helper standard library.
 

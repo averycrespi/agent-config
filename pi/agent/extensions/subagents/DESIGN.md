@@ -49,7 +49,15 @@ Combined output is a Markdown document with one `## <agent> · <intent>` section
 
 The tool interface uses `inheritSession: "none"` so every subagent starts with a fresh context. Session inheritance is reserved for the programmatic API and must have an explicit parent session file.
 
-Child stdout is Pi JSONL. `spawn.ts` ignores session events for activity, forwards other events to callbacks, and extracts final text from `message_end` or the last assistant message in `agent_end`. stderr is recorded and surfaced as activity events.
+Child stdout is Pi JSONL. `spawn.ts` ignores session events for activity, forwards other events to callbacks, extracts final text from `message_end` or the last assistant message in `agent_end`, and captures structured output from a generated `subagent_output` tool when requested. stderr is recorded and surfaced as activity events.
+
+## Structured output
+
+Structured output is a programmatic API feature, not part of the public `spawn_agents` tool schema. When `SpawnInvocation.output` is set, `spawn.ts` writes a temporary child-only extension that registers a terminating `subagent_output` tool with the requested schema, appends system-prompt instructions requiring that tool as the final action, and includes the temporary extension path in the child Pi invocation.
+
+The parent captures the tool's `tool_execution_end` event from JSON mode and stores `result.details.value`. A successful child process is converted to a failed `SpawnOutcome` if the output tool was not called, returned an error, omitted `details.value`, or failed parent-side validation. This keeps structured output as a hard phase boundary for workflow fan-in while preserving `stdout` as diagnostic fallback text.
+
+Temporary structured-output extension files are created under the system temp directory with owner-only permissions and removed after the child process exits. Retained failure logs may still include raw structured values because logs contain child JSON events.
 
 ## Recursion and cancellation
 

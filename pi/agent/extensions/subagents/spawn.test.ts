@@ -319,6 +319,137 @@ test("spawnSubagent: aborted signal before spawn returns error without running",
   }
 });
 
+// ─── spawnSubagent structured output ─────────────────────────────────────────
+
+test("spawnSubagent: captures valid structured output from child tool result", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+  let capturedArgs: string[] | undefined;
+
+  const spawnStub = mock.method(_spawn, "fn", (...args: unknown[]) => {
+    capturedArgs = args[1] as string[];
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "tool_execution_end",
+          toolName: "subagent_output",
+          isError: false,
+          result: {
+            details: {
+              value: { files: ["src/auth.ts"] },
+            },
+          },
+        })}\n${JSON.stringify({
+          type: "message_end",
+          message: { content: [{ type: "text", text: "captured" }] },
+        })}\n`,
+      );
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+      output: {
+        schema: {
+          type: "object",
+          required: ["files"],
+          properties: {
+            files: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.stdout, "captured");
+    assert.deepEqual(result.structured, {
+      ok: true,
+      value: { files: ["src/auth.ts"] },
+    });
+    assert.ok(capturedArgs?.includes("-e"));
+    assert.ok(
+      capturedArgs?.some((arg) => /subagent-structured-output/.test(arg)),
+      "structured output child extension is loaded",
+    );
+  } finally {
+    spawnStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
+test("spawnSubagent: requested structured output fails when child value is invalid", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "tool_execution_end",
+          toolName: "subagent_output",
+          isError: false,
+          result: { details: { value: { files: "not an array" } } },
+        })}\n`,
+      );
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+      output: {
+        schema: {
+          type: "object",
+          required: ["files"],
+          properties: {
+            files: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.match(
+      result.errorMessage ?? "",
+      /structured output validation failed/,
+    );
+    assert.equal(result.structured?.ok, false);
+    assert.ok(result.structured?.errors?.length);
+  } finally {
+    spawnStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
 // ─── spawnSubagent env merge ──────────────────────────────────────────────────
 
 test("spawnSubagent env: options.env overrides process.env, PI_SUBAGENT_DEPTH always wins", async () => {

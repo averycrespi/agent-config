@@ -46,6 +46,109 @@ test("runtime exposes args, phase, log, parallel ordering, and pipeline", async 
   assert.deepEqual(updates[0].agents, []);
 });
 
+test("runtime resolves agent calls with structured output values when requested", async () => {
+  const requests: any[] = [];
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await agent("find auth files", {
+        agent: "explore",
+        intent: "auth",
+        output: {
+          schema: {
+            type: "object",
+            required: ["files"],
+            properties: { files: { type: "array", items: { type: "string" } } },
+          },
+        },
+      });
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (request) => {
+        requests.push(request);
+        return {
+          ok: true,
+          text: "fallback text",
+          hasStructured: true,
+          value: { files: ["src/auth.ts"] },
+        } as any;
+      },
+    },
+  );
+
+  assert.deepEqual(result.result, { files: ["src/auth.ts"] });
+  assert.deepEqual(requests[0].output, {
+    schema: {
+      type: "object",
+      required: ["files"],
+      properties: { files: { type: "array", items: { type: "string" } } },
+    },
+  });
+});
+
+test("workflow agent spawner returns structured values from spawn outcomes", async () => {
+  const agents: AgentDefinition[] = [
+    {
+      name: "explore",
+      description: "Explore",
+      tools: ["read"],
+      extensions: [],
+      systemPrompt: "Explore only",
+      disableSkills: true,
+      disablePromptTemplates: true,
+    },
+  ];
+  const calls: any[] = [];
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    calls.push(invocation);
+    return {
+      ok: true,
+      aborted: false,
+      stdout: "fallback text",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      structured: { ok: true, value: { files: ["src/auth.ts"] } },
+    };
+  });
+
+  try {
+    const spawn = createWorkflowAgentSpawner({
+      cwd: "/repo",
+      logId: "wf",
+      agents,
+    });
+    const response = await spawn({
+      id: 1,
+      prompt: "go",
+      output: {
+        schema: {
+          type: "object",
+          required: ["files"],
+          properties: {
+            files: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    } as any);
+
+    assert.equal(response.ok, true);
+    assert.equal((response as any).hasStructured, true);
+    assert.deepEqual((response as any).value, { files: ["src/auth.ts"] });
+    assert.deepEqual(calls[0].output, {
+      schema: {
+        type: "object",
+        required: ["files"],
+        properties: {
+          files: { type: "array", items: { type: "string" } },
+        },
+      },
+    });
+  } finally {
+    stub.mock.restore();
+  }
+});
+
 test("parallel aggregates branch failures as null and logs them", async () => {
   const result = await runWorkflow(
     script(`export async function run() {

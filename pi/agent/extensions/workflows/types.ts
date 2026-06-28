@@ -1,6 +1,7 @@
 import type {
   AgentDefinition,
   SpawnOutcome,
+  StructuredOutputSpec,
   SubagentRunState,
 } from "../subagents/api.ts";
 
@@ -88,11 +89,14 @@ export interface WorkflowAgentRequest {
   prompt: string;
   agent?: string;
   intent?: string;
+  output?: StructuredOutputSpec;
 }
 
 export interface WorkflowAgentResponse {
   ok: boolean;
   text: string | null;
+  hasStructured?: boolean;
+  value?: unknown;
   error?: string;
   outcome?: SpawnOutcome;
 }

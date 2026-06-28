@@ -1,4 +1,7 @@
 import { spawn as _nodeSpawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createManagedLogger } from "../_shared/logging.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import {
@@ -10,6 +13,7 @@ import { resolveExtensionAllowlist } from "./utils.ts";
 
 export const PI_BINARY = "pi";
 export const POST_AGENT_END_GRACE_MS = 5_000;
+export const STRUCTURED_OUTPUT_TOOL_NAME = "subagent_output";
 
 // Exported so tests can stub it without launching a real process.
 export const _spawn = {
@@ -20,6 +24,19 @@ export const _timers = {
   setTimeout,
   clearTimeout,
 };
+
+export interface StructuredOutputSpec {
+  schema: Record<string, unknown>;
+  name?: string;
+  description?: string;
+}
+
+export interface StructuredOutputResult {
+  ok: boolean;
+  value?: unknown;
+  errors?: string[];
+  raw?: string;
+}
 
 export interface SpawnInvocation {
   prompt: string;
@@ -34,6 +51,7 @@ export interface SpawnInvocation {
   parentSessionFile?: string;
   disableSkills?: boolean;
   disablePromptTemplates?: boolean;
+  output?: StructuredOutputSpec;
   logId?: string;
   cwd: string;
   env?: Record<string, string>;
@@ -50,6 +68,7 @@ export interface SpawnOutcome {
   signal: NodeJS.Signals | null;
   errorMessage?: string;
   logFile?: string;
+  structured?: StructuredOutputResult;
 }
 
 function getCurrentDepth(): number {
@@ -136,10 +155,52 @@ function extractTextFromMessage(message: unknown): string {
   return parts.join("").trim();
 }
 
+interface StructuredCapture {
+  captured: boolean;
+  value?: unknown;
+  raw?: string;
+  errors?: string[];
+}
+
+function captureStructuredOutput(
+  event: { type?: string; [key: string]: unknown },
+  capture: StructuredCapture | undefined,
+): void {
+  if (!capture) return;
+  if (
+    event.type !== "tool_execution_end" ||
+    event.toolName !== STRUCTURED_OUTPUT_TOOL_NAME
+  ) {
+    return;
+  }
+
+  capture.captured = true;
+  capture.raw = JSON.stringify(event);
+  if (event.isError === true) {
+    capture.errors = [`${STRUCTURED_OUTPUT_TOOL_NAME} returned an error`];
+    return;
+  }
+
+  const result = event.result;
+  if (!result || typeof result !== "object") {
+    capture.errors = [`${STRUCTURED_OUTPUT_TOOL_NAME} result was empty`];
+    return;
+  }
+  const details = (result as { details?: unknown }).details;
+  if (!details || typeof details !== "object" || !("value" in details)) {
+    capture.errors = [
+      `${STRUCTURED_OUTPUT_TOOL_NAME} result omitted details.value`,
+    ];
+    return;
+  }
+  capture.value = (details as { value?: unknown }).value;
+}
+
 function reduceJsonLine(
   rawLine: string,
   onEvent: ((event: unknown) => void) | undefined,
   currentText: string,
+  structuredCapture?: StructuredCapture,
 ): string {
   const line = rawLine.trim();
   if (!line) return currentText;
@@ -149,6 +210,7 @@ function reduceJsonLine(
     if (event.type !== "session") {
       onEvent?.(event);
     }
+    captureStructuredOutput(event, structuredCapture);
 
     if (event.type === "message_end") {
       return extractTextFromMessage(event.message) || currentText;
@@ -173,6 +235,167 @@ function reduceJsonLine(
   return currentText;
 }
 
+function valueType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (Number.isInteger(value)) return "integer";
+  return typeof value;
+}
+
+function schemaTypes(schema: Record<string, unknown>): string[] {
+  const raw = schema.type;
+  if (typeof raw === "string") return [raw];
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is string => typeof item === "string");
+  }
+  return [];
+}
+
+function validateJsonSchemaValue(
+  schema: Record<string, unknown>,
+  value: unknown,
+  path = "/",
+): string[] {
+  const errors: string[] = [];
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    errors.push(`${path} must match one of the allowed enum values`);
+  }
+  if ("const" in schema && value !== schema.const) {
+    errors.push(`${path} must equal the schema const value`);
+  }
+
+  const types = schemaTypes(schema);
+  if (types.length > 0) {
+    const actual = valueType(value);
+    const matches = types.some((type) =>
+      type === "number"
+        ? actual === "number" || actual === "integer"
+        : type === actual,
+    );
+    if (!matches) {
+      errors.push(`${path} must be ${types.join(" or ")}, got ${actual}`);
+      return errors;
+    }
+  }
+
+  if (
+    schema.type === "object" &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const record = value as Record<string, unknown>;
+    const required = Array.isArray(schema.required)
+      ? schema.required.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [];
+    for (const key of required) {
+      if (!(key in record)) errors.push(`${path}${key} is required`);
+    }
+
+    const properties = schema.properties;
+    if (
+      properties &&
+      typeof properties === "object" &&
+      !Array.isArray(properties)
+    ) {
+      for (const [key, propertySchema] of Object.entries(properties)) {
+        if (
+          key in record &&
+          propertySchema &&
+          typeof propertySchema === "object"
+        ) {
+          errors.push(
+            ...validateJsonSchemaValue(
+              propertySchema as Record<string, unknown>,
+              record[key],
+              `${path}${key}/`,
+            ),
+          );
+        }
+      }
+    }
+
+    if (
+      schema.additionalProperties === false &&
+      properties &&
+      typeof properties === "object" &&
+      !Array.isArray(properties)
+    ) {
+      const allowed = new Set(Object.keys(properties));
+      for (const key of Object.keys(record)) {
+        if (!allowed.has(key)) errors.push(`${path}${key} is not allowed`);
+      }
+    }
+  }
+
+  if (schema.type === "array" && Array.isArray(value)) {
+    const itemSchema = schema.items;
+    if (
+      itemSchema &&
+      typeof itemSchema === "object" &&
+      !Array.isArray(itemSchema)
+    ) {
+      value.forEach((item, index) => {
+        errors.push(
+          ...validateJsonSchemaValue(
+            itemSchema as Record<string, unknown>,
+            item,
+            `${path}${index}/`,
+          ),
+        );
+      });
+    }
+  }
+
+  return errors;
+}
+
+function validateStructuredOutput(
+  output: StructuredOutputSpec,
+  capture: StructuredCapture,
+): StructuredOutputResult {
+  if (!capture.captured) {
+    return {
+      ok: false,
+      errors: [
+        `structured output was requested but ${STRUCTURED_OUTPUT_TOOL_NAME} was not called`,
+      ],
+    };
+  }
+  if (capture.errors?.length) {
+    return { ok: false, errors: capture.errors, raw: capture.raw };
+  }
+
+  const errors = validateJsonSchemaValue(output.schema, capture.value);
+  if (errors.length === 0) return { ok: true, value: capture.value };
+  return {
+    ok: false,
+    value: capture.value,
+    errors,
+    raw: capture.raw,
+  };
+}
+
+function applyStructuredContract(
+  outcome: SpawnOutcome,
+  output: StructuredOutputSpec | undefined,
+  capture: StructuredCapture | undefined,
+): SpawnOutcome {
+  if (!output || !capture || !outcome.ok) return outcome;
+
+  const structured = validateStructuredOutput(output, capture);
+  if (structured.ok) return { ...outcome, structured };
+
+  return {
+    ...outcome,
+    ok: false,
+    structured,
+    errorMessage: `structured output validation failed: ${structured.errors?.join("; ") ?? "unknown error"}`,
+  };
+}
+
 async function runSpawn(
   args: string[],
   cwd: string,
@@ -180,6 +403,7 @@ async function runSpawn(
   signal?: AbortSignal,
   onEvent?: (event: unknown) => void,
   extraEnv?: Record<string, string>,
+  output?: StructuredOutputSpec,
 ): Promise<SpawnOutcome> {
   const log = createManagedLogger({ extensionName: "subagents", id: logId });
   log.write(
@@ -192,6 +416,9 @@ async function runSpawn(
     let stdoutBuffer = "";
     let stderrBuffer = "";
     let finalText = "";
+    const structuredCapture: StructuredCapture | undefined = output
+      ? { captured: false }
+      : undefined;
     let sawAgentEnd = false;
     let child: ReturnType<typeof _nodeSpawn> | undefined;
     let killTimer: NodeJS.Timeout | undefined;
@@ -232,14 +459,20 @@ async function runSpawn(
           sawAgentEnd = true;
           postAgentEndTimer = _timers.setTimeout(() => {
             startKillSequence();
-            finish({
-              ok: true,
-              aborted: false,
-              stdout: finalText,
-              stderr: stderrBuffer,
-              exitCode: 0,
-              signal: null,
-            });
+            finish(
+              applyStructuredContract(
+                {
+                  ok: true,
+                  aborted: false,
+                  stdout: finalText,
+                  stderr: stderrBuffer,
+                  exitCode: 0,
+                  signal: null,
+                },
+                output,
+                structuredCapture,
+              ),
+            );
           }, POST_AGENT_END_GRACE_MS);
         }
       }
@@ -288,7 +521,12 @@ async function runSpawn(
       while (newlineIndex !== -1) {
         const rawLine = stdoutBuffer.slice(0, newlineIndex);
         stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
-        finalText = reduceJsonLine(rawLine, onChildEvent, finalText);
+        finalText = reduceJsonLine(
+          rawLine,
+          onChildEvent,
+          finalText,
+          structuredCapture,
+        );
         newlineIndex = stdoutBuffer.indexOf("\n");
       }
     });
@@ -310,26 +548,94 @@ async function runSpawn(
 
     child?.on("close", (code, sig) => {
       if (stdoutBuffer.trim()) {
-        finalText = reduceJsonLine(stdoutBuffer, onChildEvent, finalText);
+        finalText = reduceJsonLine(
+          stdoutBuffer,
+          onChildEvent,
+          finalText,
+          structuredCapture,
+        );
         stdoutBuffer = "";
       }
 
       const ok = code === 0 && !aborted;
-      finish({
-        ok,
-        aborted,
-        stdout: finalText,
-        stderr: stderrBuffer,
-        exitCode: code,
-        signal: sig,
-        errorMessage: ok
-          ? undefined
-          : `subagent exited with code ${code ?? "unknown"}`,
-      });
+      finish(
+        applyStructuredContract(
+          {
+            ok,
+            aborted,
+            stdout: finalText,
+            stderr: stderrBuffer,
+            exitCode: code,
+            signal: sig,
+            errorMessage: ok
+              ? undefined
+              : `subagent exited with code ${code ?? "unknown"}`,
+          },
+          output,
+          structuredCapture,
+        ),
+      );
     });
 
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+async function createStructuredOutputExtension(
+  output: StructuredOutputSpec,
+): Promise<{ dir: string; extensionPath: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "subagent-structured-output-"));
+  const extensionPath = join(dir, "index.ts");
+  const label = output.name?.trim() || "Subagent Output";
+  const description =
+    output.description?.trim() ||
+    "Return the final structured output for this subagent task.";
+  const schemaJson = JSON.stringify(output.schema);
+  const source = `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+
+const parameters = Type.Unsafe(${schemaJson});
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: ${JSON.stringify(STRUCTURED_OUTPUT_TOOL_NAME)},
+    label: ${JSON.stringify(label)},
+    description: ${JSON.stringify(description)},
+    promptSnippet: "Return final structured output as a terminating tool result",
+    promptGuidelines: [
+      "Use ${STRUCTURED_OUTPUT_TOOL_NAME} as your final action after completing the task.",
+      "Do not emit another assistant response after calling ${STRUCTURED_OUTPUT_TOOL_NAME}.",
+    ],
+    parameters,
+    async execute(_toolCallId, params) {
+      return {
+        content: [{ type: "text", text: "Structured subagent output captured" }],
+        details: { value: params },
+        terminate: true,
+      };
+    },
+  });
+}
+`;
+  await writeFile(extensionPath, source, { encoding: "utf8", mode: 0o600 });
+  return { dir, extensionPath };
+}
+
+function appendStructuredOutputPrompt(
+  systemPrompt: string | undefined,
+  output: StructuredOutputSpec | undefined,
+): string | undefined {
+  if (!output) return systemPrompt;
+  const instructions = [
+    "## Structured subagent output",
+    `When the task is complete, call the ${STRUCTURED_OUTPUT_TOOL_NAME} tool as your final action.`,
+    "Its parameters are schema-validated and will be consumed by the parent workflow.",
+    "Do not include the structured value only in prose; the tool call is required.",
+  ];
+  if (output.description?.trim()) instructions.push(output.description.trim());
+  return [systemPrompt?.trim(), instructions.join("\n")]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
 }
 
 export async function spawnSubagent(
@@ -368,22 +674,49 @@ export async function spawnSubagent(
     };
   }
 
+  let structuredExtension: { dir: string; extensionPath: string } | undefined;
+  if (options.output) {
+    try {
+      structuredExtension = await createStructuredOutputExtension(
+        options.output,
+      );
+    } catch (error: any) {
+      return {
+        ok: false,
+        aborted: false,
+        stdout: "",
+        stderr: "",
+        exitCode: null,
+        signal: null,
+        errorMessage: error?.message ?? String(error),
+      };
+    }
+  }
+
   let args: string[];
   try {
     args = buildArgs({
       prompt: options.prompt,
       tools: options.toolAllowlist,
-      extensions,
+      extensions: structuredExtension
+        ? [...extensions, structuredExtension.extensionPath]
+        : extensions,
       files: options.files ?? [],
       model: options.model,
       thinking: options.thinking,
-      systemPrompt: options.systemPrompt,
+      systemPrompt: appendStructuredOutputPrompt(
+        options.systemPrompt,
+        options.output,
+      ),
       inheritSession: effectiveSession,
       parentSessionFile: options.parentSessionFile,
       disableSkills: options.disableSkills,
       disablePromptTemplates: options.disablePromptTemplates,
     });
   } catch (error: any) {
+    if (structuredExtension) {
+      await rm(structuredExtension.dir, { recursive: true, force: true });
+    }
     return {
       ok: false,
       aborted: false,
@@ -403,7 +736,11 @@ export async function spawnSubagent(
     options.signal,
     options.onEvent,
     options.env,
+    options.output,
   );
+  if (structuredExtension) {
+    await rm(structuredExtension.dir, { recursive: true, force: true });
+  }
 
   for (const key of ["stdout", "stderr"] as const) {
     const spilled = await spillIfNeeded(

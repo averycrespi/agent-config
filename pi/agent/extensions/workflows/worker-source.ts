@@ -27,8 +27,9 @@ parentPort.on("message", (message) => {
   const entry = pending.get(message.requestId);
   if (!entry) return;
   pending.delete(message.requestId);
-  if (message.response?.ok) entry.resolve(message.response.text);
-  else entry.reject(new Error(message.response?.error || "agent failed"));
+  if (message.response?.ok) {
+    entry.resolve(message.response.hasStructured ? message.response.value : message.response.text);
+  } else entry.reject(new Error(message.response?.error || "agent failed"));
 });
 
 const args = workerData.args;
@@ -51,14 +52,14 @@ function phase(name) {
 async function agent(prompt, options = {}) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("agent prompt must be a non-empty string");
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("agent options must be an object");
-  const allowed = new Set(["agent", "intent"]);
+  const allowed = new Set(["agent", "intent", "output"]);
   for (const key of Object.keys(options)) {
     if (!allowed.has(key)) throw new Error(` +
     "`agent option ${key} is not allowed`" +
     `);
   }
   const requestId = nextRequestId++;
-  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent });
+  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output });
   return await new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
 }
 

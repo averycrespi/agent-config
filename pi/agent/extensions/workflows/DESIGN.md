@@ -48,8 +48,11 @@ The wrapper in `createWorkflowAgentSpawner` owns policy:
 - arbitrary `env` is not forwarded
 - cancellation signal is propagated
 - model and thinking defaults come from the parent only when the selected agent does not specify them
+- optional structured output is forwarded only as `{ output: { schema, name?, description? } }`
 
 Do not expose raw `SpawnInvocation` fields to workflow scripts.
+
+When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends the schema through the parent RPC, `createWorkflowAgentSpawner` passes it to `spawnSubagent()`, and a successful structured outcome resolves the worker-side `agent()` promise to the parsed value. Text output remains the default for calls without `output`. Structured failures are ordinary agent failures; `parallel()` logs them and uses `null` for that branch.
 
 ## Concurrency and failures
 
@@ -65,7 +68,7 @@ Subagent logs and spillover output may contain raw tool/model output. Keep docum
 
 ## Non-goals
 
-Phase 1 does not include background execution, a `/workflows` TUI, saved scripts, journaled resume, structured output schemas, retries, model tiers, worktree isolation, or writable workflow coordination.
+Phase 1 does not include background execution, a `/workflows` TUI, saved scripts, journaled resume, retries, model tiers, worktree isolation, or writable workflow coordination. Structured output is intentionally limited to per-subagent workflow fan-in and does not define whole-workflow result schemas.
 
 ## Change guidance
 

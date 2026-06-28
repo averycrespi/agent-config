@@ -66,7 +66,7 @@ export function registerWorkflowTool(pi: ExtensionAPI): void {
     description: `Execute a deterministic foreground JavaScript workflow that orchestrates isolated read-mostly subagents.
 
 Scripts must start with literal metadata: export const meta = { name: "...", description: "..." }.
-Use the globals agent(prompt, { agent?, intent? }), parallel(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Use the globals agent(prompt, { agent?, intent?, output? }), parallel(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
       "Run a deterministic foreground JavaScript workflow that fans out isolated read-mostly subagents.",
@@ -75,6 +75,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Do not use workflow for parallel workspace mutation; Phase 1 permits only read-mostly agent types.",
       "Write scripts with `export const meta = { name, description }` as the first statement and `export async function run() { ... }` for the main body.",
       "Pass thunks to parallel(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
+      "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
     ],
     parameters: workflowParamsSchema,
     renderCall: renderWorkflowCall,
