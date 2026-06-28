@@ -192,6 +192,88 @@ test("runtime converts rejected spawn promises into agent failures", async () =>
   assert.match(result.logs.at(-1)?.message ?? "", /spawn exploded/);
 });
 
+test("parallelSettled preserves branch failure codes", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([
+        () => agent("ok"),
+        () => agent("throws"),
+      ]);
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (request) => {
+        if (request.prompt === "throws") throw new Error("spawn exploded");
+        return { ok: true, text: "ok" };
+      },
+    },
+  );
+
+  assert.deepEqual(result.result, [
+    { ok: true, value: "ok" },
+    {
+      ok: false,
+      error: {
+        code: "agent_spawn_exception",
+        message: "spawn exploded",
+        details: {
+          code: "agent_spawn_exception",
+          message: "spawn exploded",
+          agentId: 2,
+        },
+      },
+    },
+  ]);
+  assert.equal(result.failureCount, 0);
+});
+
+test("agent retries retryable failures when requested", async () => {
+  const prompts: string[] = [];
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await agent("flaky", { retries: 1 });
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (request) => {
+        prompts.push(request.prompt);
+        if (prompts.length === 1) {
+          return {
+            ok: false,
+            text: null,
+            error: "provider hiccup",
+            errorCode: "subagent_failed",
+          } as any;
+        }
+        return { ok: true, text: "recovered" };
+      },
+    },
+  );
+
+  assert.equal(result.result, "recovered");
+  assert.deepEqual(prompts, ["flaky", "flaky"]);
+});
+
+test("runtime previews cyclic workflow results safely", async () => {
+  const updates: any[] = [];
+  const result = await runWorkflow(
+    script(`export async function run() {
+      await agent("ok");
+      const value = { name: "cycle" };
+      value.self = value;
+      return value;
+    }`),
+    {
+      cwd: "/tmp",
+      onUpdate: (snapshot) => updates.push(snapshot),
+      spawnAgent: async () => ({ ok: true, text: "ok" }),
+    },
+  );
+
+  assert.equal((result.result as any).name, "cycle");
+  assert.match(updates.at(-1)?.resultPreview ?? "", /\[Circular\]/);
+});
+
 test("workflow timeout aborts in-flight agent requests", async () => {
   let signalAborted = false;
 

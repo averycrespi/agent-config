@@ -75,11 +75,26 @@ interface StructuredOutputSpec {
 `StructuredOutputResult`:
 
 ```ts
+type StructuredOutputCode =
+  | "structured_output_not_called"
+  | "structured_output_incomplete"
+  | "structured_output_tool_error"
+  | "structured_output_malformed"
+  | "structured_output_invalid";
+
+interface StructuredOutputDiagnostics {
+  toolStarted: boolean;
+  toolEnded: boolean;
+  toolError: boolean;
+}
+
 interface StructuredOutputResult {
   ok: boolean;
   value?: unknown;
   errors?: string[];
   raw?: string;
+  code?: StructuredOutputCode;
+  diagnostics?: StructuredOutputDiagnostics;
 }
 ```
 

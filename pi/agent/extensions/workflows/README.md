@@ -45,15 +45,16 @@ export async function run() {
 
 Supported globals:
 
-| Global     | Description                                                                                                                                                                                                   |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent`    | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output? })`. Defaults to `explore`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. |
-| `parallel` | Runs an array of thunks with bounded concurrency and preserves input ordering.                                                                                                                                |
-| `pipeline` | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                          |
-| `phase`    | Sets the current progress phase.                                                                                                                                                                              |
-| `log`      | Adds a progress log entry.                                                                                                                                                                                    |
-| `args`     | The optional JSON `args` value from the tool call.                                                                                                                                                            |
-| `cwd`      | Current working directory string.                                                                                                                                                                             |
+| Global            | Description                                                                                                                                                                                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`           | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output?, retries? })`. Defaults to `explore`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. `retries` is clamped to 0–2 and retries safe failures only. |
+| `parallel`        | Runs an array of thunks with bounded concurrency and preserves input ordering. Branch failures are logged and returned as `null`.                                                                                                                                                   |
+| `parallelSettled` | Runs an array of thunks with bounded concurrency and preserves input ordering. Each branch returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`, so scripts can recover from partial failure explicitly.                                            |
+| `pipeline`        | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                                                                                                |
+| `phase`           | Sets the current progress phase.                                                                                                                                                                                                                                                    |
+| `log`             | Adds a progress log entry.                                                                                                                                                                                                                                                          |
+| `args`            | The optional JSON `args` value from the tool call.                                                                                                                                                                                                                                  |
+| `cwd`             | Current working directory string.                                                                                                                                                                                                                                                   |
 
 ## Structured subagent output
 
@@ -84,7 +85,7 @@ export async function run() {
 }
 ```
 
-Without `output`, `agent()` keeps the original behavior and resolves to the subagent's final text. If structured output is requested but the child does not call the output tool, or the value fails validation, the agent call fails; inside `parallel()`, that branch is logged and becomes `null` like other branch failures.
+Without `output`, `agent()` keeps the original behavior and resolves to the subagent's final text. If structured output is requested but the child does not call the output tool, starts but does not finish it, returns a malformed tool result, or fails validation, the agent call fails with a structured error code such as `structured_output_not_called`, `structured_output_incomplete`, `structured_output_malformed`, or `structured_output_invalid`. Inside `parallel()`, that branch is logged and becomes `null`; inside `parallelSettled()`, the branch returns an explicit `{ ok: false, error }` record.
 
 Supported parent-side validation covers plain JSON Schema `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`. The child Pi tool still receives the full schema as its tool parameter schema.
 
@@ -105,14 +106,14 @@ There is no user-facing configuration in Phase 1, and there are no environment v
 
 ## Logging and retained output
 
-The extension does not keep a workflow run database. Progress logs and per-subagent activity snapshots live only in the tool result details for the active call. Subagent failures may produce retained logs through the `subagents` extension. Large workflow final output is written by the shared spillover helper under the system temp directory and may contain raw model/tool output. Spillover files are owner-readable and cleaned best-effort by the shared helper after its retention window.
+The extension does not keep a workflow run database. Progress logs and per-subagent activity snapshots live only in the tool result details for the active call. Subagent failures may produce retained logs through the `subagents` extension. Large workflow final output is written by the shared spillover helper under the system temp directory and may contain raw model/tool output. Final output and progress previews use safe stringification, so cyclic objects and `bigint` values do not crash an otherwise completed workflow. Spillover files are owner-readable and cleaned best-effort by the shared helper after its retention window.
 
 ## Limitations
 
 - Foreground tool calls only; no background manager or `/workflows` navigator.
 - No journaled resume or saved workflow library.
 - No writable workflow mode or git worktree isolation.
-- No model tiers, retries, or quality-helper standard library.
+- No model tiers or quality-helper standard library.
 
 ## Troubleshooting
 
@@ -120,9 +121,10 @@ The extension does not keep a workflow run database. Progress logs and per-subag
 - `workflow must call agent()`: include a syntactic `agent(...)` call in the script.
 - `agent type ... is not allowed`: use one of the read-mostly built-in agents listed above.
 - `workflow worker exited`: check for a thrown script error, infinite loop, or cancellation.
+- Branch failures inside `parallelSettled()` include stable `error.code` values. Retryable subagent failures can be retried with `agent(prompt, { retries: 1 })`; policy rejections and aborts are not retried.
 
 ## Prior art
 
 - [Claude Code dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code) — model-authored JavaScript orchestration for fan-out subagent work, the core interaction pattern this MVP adapts to Pi.
 - [Michaelliv/pi-dynamic-workflows](https://github.com/michaelliv/pi-dynamic-workflows) — Pi workflow extension that influenced the MVP shape: raw JavaScript scripts, globals such as `agent`, `parallel`, `pipeline`, `phase`, `log`, `args`, and foreground progress.
-- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — Pi package demonstrating later-stage ideas such as background runs, navigators, journaling, saved workflows, model tiers, retries, and worktree isolation. Those are intentionally out of scope for this Phase 1 implementation.
+- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — Pi package demonstrating later-stage ideas such as background runs, navigators, journaling, saved workflows, model tiers, richer retries, and worktree isolation. Those broader workflow-management features are intentionally out of scope for this Phase 1 implementation.

@@ -385,6 +385,11 @@ test("spawnSubagent: captures valid structured output from child tool result", a
     assert.deepEqual(result.structured, {
       ok: true,
       value: { files: ["src/auth.ts"] },
+      diagnostics: {
+        toolStarted: false,
+        toolEnded: true,
+        toolError: false,
+      },
     });
     assert.ok(capturedArgs?.includes("-e"));
     const toolsIdx = capturedArgs?.indexOf("--tools") ?? -1;
@@ -406,6 +411,59 @@ test("spawnSubagent: captures valid structured output from child tool result", a
         files: { type: "array", items: { type: "string" } },
       },
     });
+  } finally {
+    spawnStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
+test("spawnSubagent: requested structured output reports a diagnostic when tool is not called", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "message_end",
+          message: { content: [{ type: "text", text: "plain text" }] },
+        })}\n`,
+      );
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+      output: {
+        schema: {
+          type: "object",
+          required: ["files"],
+          properties: {
+            files: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.structured?.code, "structured_output_not_called");
+    assert.equal(result.structured?.diagnostics?.toolStarted, false);
+    assert.equal(result.structured?.diagnostics?.toolEnded, false);
   } finally {
     spawnStub.mock.restore();
     if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
@@ -463,6 +521,8 @@ test("spawnSubagent: requested structured output fails when child value is inval
       /structured output validation failed/,
     );
     assert.equal(result.structured?.ok, false);
+    assert.equal(result.structured?.code, "structured_output_invalid");
+    assert.equal(result.structured?.diagnostics?.toolEnded, true);
     assert.ok(result.structured?.errors?.length);
   } finally {
     spawnStub.mock.restore();

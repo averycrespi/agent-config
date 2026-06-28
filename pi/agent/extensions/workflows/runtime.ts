@@ -15,10 +15,13 @@ import {
   type WorkflowAgentState,
   type WorkflowLogEntry,
   type WorkflowRunResult,
+  type WorkflowErrorCode,
+  type WorkflowFailureDetails,
   type WorkflowRuntimeOptions,
   type WorkflowSnapshot,
 } from "./types.ts";
 import type { ParsedWorkflow } from "./types.ts";
+import { safeStringify } from "./safe-stringify.ts";
 import { buildWorkerSource } from "./worker-source.ts";
 
 export const _spawnSubagent = { fn: spawnSubagent };
@@ -30,10 +33,7 @@ export const _worker = {
 };
 
 function preview(value: unknown, max = 240): string {
-  const text =
-    typeof value === "string"
-      ? value
-      : (JSON.stringify(value, null, 2) ?? String(value));
+  const text = safeStringify(value);
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
@@ -52,6 +52,110 @@ function timeoutError(timeoutMs: number): Error {
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function clampRetries(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(Math.trunc(parsed), 2));
+}
+
+function failureDetails(
+  code: WorkflowErrorCode,
+  message: string,
+  request: WorkflowAgentRequest,
+  phase: string | undefined,
+  logFile?: string,
+): WorkflowFailureDetails {
+  return {
+    code,
+    message,
+    ...(phase ? { phase } : {}),
+    agentId: request.id,
+    ...(request.intent ? { intent: request.intent } : {}),
+    ...(logFile ? { logFile } : {}),
+  };
+}
+
+function failedResponse(
+  code: WorkflowErrorCode,
+  message: string,
+  request: WorkflowAgentRequest,
+  phase: string | undefined,
+  logFile?: string,
+): WorkflowAgentResponse {
+  return {
+    ok: false,
+    text: null,
+    error: message,
+    errorCode: code,
+    errorDetails: failureDetails(code, message, request, phase, logFile),
+  };
+}
+
+function withFailureContext(
+  response: WorkflowAgentResponse,
+  request: WorkflowAgentRequest,
+  phase: string | undefined,
+): WorkflowAgentResponse {
+  if (response.ok || !response.errorCode) return response;
+  return {
+    ...response,
+    errorDetails: {
+      code: response.errorCode,
+      message: response.error ?? "agent failed",
+      ...response.errorDetails,
+      ...(phase && !response.errorDetails?.phase ? { phase } : {}),
+      agentId: response.errorDetails?.agentId ?? request.id,
+      intent: response.errorDetails?.intent ?? request.intent,
+      logFile: response.errorDetails?.logFile ?? response.outcome?.logFile,
+    },
+  };
+}
+
+function isRetryableAgentFailure(response: WorkflowAgentResponse): boolean {
+  if (response.ok) return false;
+  return !new Set<WorkflowErrorCode>([
+    "agent_policy_rejected",
+    "subagent_aborted",
+    "workflow_aborted",
+    "workflow_timeout",
+  ]).has(response.errorCode ?? "subagent_failed");
+}
+
+async function spawnWithRetries(
+  request: WorkflowAgentRequest,
+  phase: string | undefined,
+  spawnAgent: (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse>,
+): Promise<WorkflowAgentResponse> {
+  const maxAttempts = 1 + (request.retries ?? 0);
+  let lastResponse: WorkflowAgentResponse | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      lastResponse = withFailureContext(
+        await spawnAgent(request),
+        request,
+        phase,
+      );
+    } catch (error) {
+      lastResponse = failedResponse(
+        "agent_spawn_exception",
+        errorMessage(error),
+        request,
+        phase,
+      );
+    }
+    if (lastResponse.ok || attempt === maxAttempts) {
+      return { ...lastResponse, attempts: attempt };
+    }
+    if (!isRetryableAgentFailure(lastResponse)) {
+      return { ...lastResponse, attempts: attempt };
+    }
+  }
+  return (
+    lastResponse ??
+    failedResponse("subagent_failed", "agent failed", request, phase)
+  );
 }
 
 function emit(
@@ -141,6 +245,7 @@ export async function runWorkflow(
             agent?: unknown;
             intent?: unknown;
             output?: unknown;
+            retries?: unknown;
           };
           const requestId = Number(request.requestId);
           if (!Number.isInteger(requestId)) return;
@@ -157,38 +262,24 @@ export async function runWorkflow(
             ...(isStructuredOutputSpec(request.output)
               ? { output: request.output }
               : {}),
+            retries: clampRetries(request.retries),
           };
-          void options
-            .spawnAgent(agentRequest)
-            .then((response) => {
-              try {
-                worker.postMessage({
-                  type: "agent-response",
-                  requestId,
-                  response,
-                });
-              } catch {
-                return;
-              }
-              emit(snapshot(), options.onUpdate);
-            })
-            .catch((error) => {
-              const response: WorkflowAgentResponse = {
-                ok: false,
-                text: null,
-                error: errorMessage(error),
-              };
-              try {
-                worker.postMessage({
-                  type: "agent-response",
-                  requestId,
-                  response,
-                });
-              } catch {
-                return;
-              }
-              emit(snapshot(), options.onUpdate);
-            });
+          void spawnWithRetries(
+            agentRequest,
+            currentPhase,
+            options.spawnAgent,
+          ).then((response) => {
+            try {
+              worker.postMessage({
+                type: "agent-response",
+                requestId,
+                response,
+              });
+            } catch {
+              return;
+            }
+            emit(snapshot(), options.onUpdate);
+          });
           emit(snapshot(), options.onUpdate);
         } else if (event.type === "result") {
           result = event.result;
@@ -252,19 +343,36 @@ export function createWorkflowAgentSpawner(
   return async (request) => {
     const requestedType = request.agent?.trim() || DEFAULT_AGENT_TYPE;
     if (!READ_MOSTLY_AGENT_TYPES.has(requestedType)) {
+      const message = `agent type ${JSON.stringify(requestedType)} is not allowed in workflows`;
       return {
         ok: false,
         text: null,
-        error: `agent type ${JSON.stringify(requestedType)} is not allowed in workflows`,
+        error: message,
+        errorCode: "agent_policy_rejected",
+        errorDetails: failureDetails(
+          "agent_policy_rejected",
+          message,
+          request,
+          undefined,
+        ),
       };
     }
     const agent = agentMap.get(requestedType);
-    if (!agent)
+    if (!agent) {
+      const message = `unknown agent type ${JSON.stringify(requestedType)}`;
       return {
         ok: false,
         text: null,
-        error: `unknown agent type ${JSON.stringify(requestedType)}`,
+        error: message,
+        errorCode: "agent_policy_rejected",
+        errorDetails: failureDetails(
+          "agent_policy_rejected",
+          message,
+          request,
+          undefined,
+        ),
       };
+    }
 
     const state: WorkflowAgentState = {
       id: request.id,
@@ -343,6 +451,22 @@ export function createWorkflowAgentSpawner(
     state.errorMessage = formatSpawnFailure(outcome);
     state.logFile = outcome.logFile;
     refreshActivity();
-    return { ok: false, text: null, error: state.errorMessage, outcome };
+    const code: WorkflowErrorCode = outcome.aborted
+      ? "subagent_aborted"
+      : (outcome.structured?.code ?? "subagent_failed");
+    return {
+      ok: false,
+      text: null,
+      error: state.errorMessage,
+      errorCode: code,
+      errorDetails: failureDetails(
+        code,
+        state.errorMessage,
+        request,
+        undefined,
+        outcome.logFile,
+      ),
+      outcome,
+    };
   };
 }

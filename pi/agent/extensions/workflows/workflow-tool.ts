@@ -4,6 +4,7 @@ import { spillIfNeeded } from "../_shared/spillover.ts";
 import { loadAgents, type AgentDefinition } from "../subagents/api.ts";
 import { parseWorkflowScript } from "./parser.ts";
 import { createWorkflowAgentSpawner, runWorkflow } from "./runtime.ts";
+import { safeStringify } from "./safe-stringify.ts";
 import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
 import { renderWorkflowCall, renderWorkflowResult } from "./display.ts";
 
@@ -40,10 +41,7 @@ function thinkingLevelFromPi(pi: ExtensionAPI): string | undefined {
 }
 
 function formatFinal(result: Awaited<ReturnType<typeof runWorkflow>>): string {
-  const body =
-    typeof result.result === "string"
-      ? result.result
-      : JSON.stringify(result.result, null, 2);
+  const body = safeStringify(result.result);
   return [
     `Workflow ${result.meta.name} completed in ${(result.durationMs / 1000).toFixed(1)}s.`,
     `Failures: ${result.failureCount}`,
@@ -66,7 +64,7 @@ export function registerWorkflowTool(pi: ExtensionAPI): void {
     description: `Execute a deterministic foreground JavaScript workflow that orchestrates isolated read-mostly subagents.
 
 Scripts must start with literal metadata: export const meta = { name: "...", description: "..." }.
-Use the globals agent(prompt, { agent?, intent?, output? }), parallel(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Use the globals agent(prompt, { agent?, intent?, output?, retries? }), parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
       "Run a deterministic foreground JavaScript workflow that fans out isolated read-mostly subagents.",
@@ -74,8 +72,10 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Use workflow for deterministic fan-out/fan-in research, review, or audit work where several isolated subagents can run under one script.",
       "Do not use workflow for parallel workspace mutation; Phase 1 permits only read-mostly agent types.",
       "Write scripts with `export const meta = { name, description }` as the first statement and `export async function run() { ... }` for the main body.",
-      "Pass thunks to parallel(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
+      "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
+      "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
       "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
+      "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
     ],
     parameters: workflowParamsSchema,
     renderCall: renderWorkflowCall,

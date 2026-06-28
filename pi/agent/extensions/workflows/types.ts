@@ -31,6 +31,29 @@ export interface WorkflowParams {
   args?: unknown;
 }
 
+export type WorkflowErrorCode =
+  | "agent_policy_rejected"
+  | "agent_spawn_exception"
+  | "subagent_failed"
+  | "subagent_aborted"
+  | "structured_output_not_called"
+  | "structured_output_incomplete"
+  | "structured_output_tool_error"
+  | "structured_output_malformed"
+  | "structured_output_invalid"
+  | "workflow_aborted"
+  | "workflow_timeout"
+  | "workflow_script_error";
+
+export interface WorkflowFailureDetails {
+  code: WorkflowErrorCode;
+  message: string;
+  phase?: string;
+  agentId?: number;
+  intent?: string;
+  logFile?: string;
+}
+
 export interface WorkflowLogEntry {
   level: "info" | "error";
   message: string;
@@ -90,6 +113,7 @@ export interface WorkflowAgentRequest {
   agent?: string;
   intent?: string;
   output?: StructuredOutputSpec;
+  retries?: number;
   signal?: AbortSignal;
 }
 
@@ -99,6 +123,9 @@ export interface WorkflowAgentResponse {
   hasStructured?: boolean;
   value?: unknown;
   error?: string;
+  errorCode?: WorkflowErrorCode;
+  errorDetails?: WorkflowFailureDetails;
+  attempts?: number;
   outcome?: SpawnOutcome;
 }
 

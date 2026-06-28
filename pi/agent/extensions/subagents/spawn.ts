@@ -34,11 +34,26 @@ export interface StructuredOutputSpec {
   schema: Record<string, unknown>;
 }
 
+export type StructuredOutputCode =
+  | "structured_output_not_called"
+  | "structured_output_incomplete"
+  | "structured_output_tool_error"
+  | "structured_output_malformed"
+  | "structured_output_invalid";
+
+export interface StructuredOutputDiagnostics {
+  toolStarted: boolean;
+  toolEnded: boolean;
+  toolError: boolean;
+}
+
 export interface StructuredOutputResult {
   ok: boolean;
   value?: unknown;
   errors?: string[];
   raw?: string;
+  code?: StructuredOutputCode;
+  diagnostics?: StructuredOutputDiagnostics;
 }
 
 export interface SpawnInvocation {
@@ -160,9 +175,13 @@ function extractTextFromMessage(message: unknown): string {
 
 interface StructuredCapture {
   captured: boolean;
+  toolStarted: boolean;
+  toolEnded: boolean;
+  toolError: boolean;
   value?: unknown;
   raw?: string;
   errors?: string[];
+  code?: StructuredOutputCode;
 }
 
 function captureStructuredOutput(
@@ -170,27 +189,32 @@ function captureStructuredOutput(
   capture: StructuredCapture | undefined,
 ): void {
   if (!capture) return;
-  if (
-    event.type !== "tool_execution_end" ||
-    event.toolName !== STRUCTURED_OUTPUT_TOOL_NAME
-  ) {
+  if (event.toolName !== STRUCTURED_OUTPUT_TOOL_NAME) return;
+  if (event.type === "tool_execution_start") {
+    capture.toolStarted = true;
     return;
   }
+  if (event.type !== "tool_execution_end") return;
 
   capture.captured = true;
+  capture.toolEnded = true;
   capture.raw = JSON.stringify(event);
   if (event.isError === true) {
+    capture.toolError = true;
+    capture.code = "structured_output_tool_error";
     capture.errors = [`${STRUCTURED_OUTPUT_TOOL_NAME} returned an error`];
     return;
   }
 
   const result = event.result;
   if (!result || typeof result !== "object") {
+    capture.code = "structured_output_malformed";
     capture.errors = [`${STRUCTURED_OUTPUT_TOOL_NAME} result was empty`];
     return;
   }
   const details = (result as { details?: unknown }).details;
   if (!details || typeof details !== "object" || !("value" in details)) {
+    capture.code = "structured_output_malformed";
     capture.errors = [
       `${STRUCTURED_OUTPUT_TOOL_NAME} result omitted details.value`,
     ];
@@ -355,26 +379,53 @@ function validateJsonSchemaValue(
   return errors;
 }
 
+function structuredDiagnostics(
+  capture: StructuredCapture,
+): StructuredOutputDiagnostics {
+  return {
+    toolStarted: capture.toolStarted,
+    toolEnded: capture.toolEnded,
+    toolError: capture.toolError,
+  };
+}
+
 function validateStructuredOutput(
   output: StructuredOutputSpec,
   capture: StructuredCapture,
 ): StructuredOutputResult {
+  const diagnostics = structuredDiagnostics(capture);
   if (!capture.captured) {
+    const code = capture.toolStarted
+      ? "structured_output_incomplete"
+      : "structured_output_not_called";
     return {
       ok: false,
+      code,
+      diagnostics,
       errors: [
-        `structured output was requested but ${STRUCTURED_OUTPUT_TOOL_NAME} was not called`,
+        capture.toolStarted
+          ? `${STRUCTURED_OUTPUT_TOOL_NAME} started but did not finish`
+          : `structured output was requested but ${STRUCTURED_OUTPUT_TOOL_NAME} was not called`,
       ],
     };
   }
   if (capture.errors?.length) {
-    return { ok: false, errors: capture.errors, raw: capture.raw };
+    return {
+      ok: false,
+      code: capture.code ?? "structured_output_malformed",
+      diagnostics,
+      errors: capture.errors,
+      raw: capture.raw,
+    };
   }
 
   const errors = validateJsonSchemaValue(output.schema, capture.value);
-  if (errors.length === 0) return { ok: true, value: capture.value };
+  if (errors.length === 0)
+    return { ok: true, value: capture.value, diagnostics };
   return {
     ok: false,
+    code: "structured_output_invalid",
+    diagnostics,
     value: capture.value,
     errors,
     raw: capture.raw,
@@ -420,7 +471,12 @@ async function runSpawn(
     let stderrBuffer = "";
     let finalText = "";
     const structuredCapture: StructuredCapture | undefined = output
-      ? { captured: false }
+      ? {
+          captured: false,
+          toolStarted: false,
+          toolEnded: false,
+          toolError: false,
+        }
       : undefined;
     let sawAgentEnd = false;
     let child: ReturnType<typeof _nodeSpawn> | undefined;

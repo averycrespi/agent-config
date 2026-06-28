@@ -57,6 +57,26 @@ export async function run() {
   assert.match(result.content[0].text, /<persisted-output>/);
 });
 
+test("workflow tool formats cyclic final results safely", async () => {
+  const harness = makePi();
+  registerWorkflowTool(harness.pi as any);
+  const script = `export const meta = { name: "cycle", description: "cycle" };
+export async function run() {
+  if (false) await agent("not run");
+  const value = { name: "cycle" };
+  value.self = value;
+  return value;
+}`;
+  const result = await harness.tool.execute(
+    "wf-cycle-test",
+    { script },
+    undefined,
+    undefined,
+    { cwd: "/tmp" },
+  );
+  assert.match(result.content[0].text, /\[Circular\]/);
+});
+
 test("renderWorkflowCall suppresses noisy script metadata", () => {
   const component = renderWorkflowCall(
     { script: 'export const meta = { name: "x", description: "x" };' },

@@ -32,7 +32,7 @@ Validation is a guardrail, not a complete JavaScript sandbox. Keep the worker co
 
 ## State and progress
 
-Workflow state is in-memory for one foreground tool call. Snapshots include metadata, current phase, phase history, recent logs, agent states, per-subagent activity snapshots, failure count, timings, and result preview. `workflow-tool.ts` merges runtime snapshots with subagent state updates before sending partial tool updates.
+Workflow state is in-memory for one foreground tool call. Snapshots include metadata, current phase, phase history, recent logs, agent states, per-subagent activity snapshots, failure count, timings, and result preview. Result previews use `safe-stringify.ts` so cyclic or otherwise unusual but structured-cloneable return values cannot turn a completed worker run into a formatting failure. `workflow-tool.ts` merges runtime snapshots with subagent state updates before sending partial tool updates.
 
 There is no persisted run database in Phase 1.
 
@@ -48,17 +48,18 @@ The wrapper in `createWorkflowAgentSpawner` owns policy:
 - arbitrary `env` is not forwarded
 - cancellation signal is propagated
 - model and thinking defaults come from the parent only when the selected agent does not specify them
-- optional structured output is forwarded only as `{ output: { schema, name?, description? } }`
+- optional structured output is forwarded only as `{ output: { schema } }`
+- bounded retry counts are clamped before dispatch and are applied only by runtime-owned retry logic
 
 Do not expose raw `SpawnInvocation` fields to workflow scripts.
 
-When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends the schema through the parent RPC, `createWorkflowAgentSpawner` passes it to `spawnSubagent()`, and `subagents` loads the generic `structured-output` child extension. A successful structured outcome resolves the worker-side `agent()` promise to the parsed value. Text output remains the default for calls without `output`. Structured failures are ordinary agent failures; `parallel()` logs them and uses `null` for that branch.
+When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends the schema through the parent RPC, `createWorkflowAgentSpawner` passes it to `spawnSubagent()`, and `subagents` loads the generic `structured-output` child extension. A successful structured outcome resolves the worker-side `agent()` promise to the parsed value. Text output remains the default for calls without `output`. Structured failures are ordinary agent failures with stable error codes and diagnostics; `parallel()` logs them and uses `null` for that branch, while `parallelSettled()` returns explicit failure records.
 
 ## Concurrency and failures
 
-`parallel()` accepts thunks rather than already-started promises so the runtime controls concurrency. It preserves input order. A branch failure is logged and its result becomes `null`, allowing fan-in code to continue. `pipeline()` applies sequential stages per item while using `parallel()` across items.
+`parallel()` accepts thunks rather than already-started promises so the runtime controls concurrency. It preserves input order. A branch failure is logged and its result becomes `null`, allowing fan-in code to continue. `parallelSettled()` shares the same bounded scheduler but returns `{ ok: true, value }` or `{ ok: false, error }` records without incrementing workflow log failure count, so scripts can make explicit recovery decisions. `pipeline()` applies sequential stages per item while using `parallel()` across items.
 
-If a top-level script error escapes `run()`, the whole workflow tool call fails. Parent-side subagent dispatch must always answer worker RPC with either a success response or an agent failure response; unexpected `spawnAgent` rejections are converted into worker-visible agent failures instead of leaving `agent()` promises pending.
+If a top-level script error escapes `run()`, the whole workflow tool call fails. Parent-side subagent dispatch must always answer worker RPC with either a success response or an agent failure response; unexpected `spawnAgent` rejections are converted into worker-visible agent failures instead of leaving `agent()` promises pending. Agent failure responses should carry stable `WorkflowErrorCode` values and context details. Runtime retry is deliberately bounded and skips non-retryable classes such as policy rejection and aborts.
 
 ## Rendering and output
 
@@ -68,7 +69,7 @@ Subagent logs and spillover output may contain raw tool/model output. Keep docum
 
 ## Non-goals
 
-Phase 1 does not include background execution, a `/workflows` TUI, saved scripts, journaled resume, retries, model tiers, worktree isolation, or writable workflow coordination. Structured output is intentionally limited to per-subagent workflow fan-in and does not define whole-workflow result schemas.
+Phase 1 does not include background execution, a `/workflows` TUI, saved scripts, journaled resume, model tiers, worktree isolation, or writable workflow coordination. It includes only small bounded per-agent retries, not a generalized retry policy framework. Structured output is intentionally limited to per-subagent workflow fan-in and does not define whole-workflow result schemas.
 
 ## Change guidance
 
