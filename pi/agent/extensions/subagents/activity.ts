@@ -247,7 +247,8 @@ export function createSubagentActivityTracker(
         state.toolUseCount += 1;
         state.lastToolInfo = state.currentCommand ?? toolName;
         if (isError) {
-          setPhase("error");
+          pushRecentEvent("tool", `${toolName} failed`);
+          state.lastUpdateAt = Date.now();
           emitProgress(`${state.intent}: ${toolName} failed`);
         }
         if (state.activeTool === toolName) {

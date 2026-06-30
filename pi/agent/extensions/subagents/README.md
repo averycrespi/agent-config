@@ -46,7 +46,7 @@ Spawn agents · 1 done · 2 running · 0 failed · 18s
 ● review: Check config · 1 tool use · 3s · grep: config
 ```
 
-The tool-call line itself is intentionally suppressed — its content would just repeat the intents already shown in the header and agent rows. Each row shows status, type, intent, stable stats, and the latest activity at the end. On failure, the row displays the first error line and a path to the persisted log file when available.
+The tool-call line itself is intentionally suppressed — its content would just repeat the intents already shown in the header and agent rows. Each row shows status, type, intent, stable stats, and the latest activity at the end. Recoverable child tool failures are shown as latest activity while the subagent continues; only terminal child outcomes count as failed. On failure, the row displays the first error line and a path to the persisted log file when available.
 
 Activity widgets are removed when all subagents finish, error, or are aborted.
 

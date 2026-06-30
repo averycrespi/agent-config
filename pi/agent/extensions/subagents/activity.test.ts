@@ -101,7 +101,7 @@ test("tool_execution_end increments count and clears activeTool", () => {
   });
 });
 
-test("tool_execution_end with isError transitions to phase 'error'", () => {
+test("tool_execution_end with isError records recoverable tool failure", () => {
   const { tracker, progress } = makeTracker();
   tracker.handleEvent({
     type: "tool_execution_start",
@@ -114,16 +114,19 @@ test("tool_execution_end with isError transitions to phase 'error'", () => {
     isError: true,
     result: "exit 1",
   });
-  assert.equal(tracker.state.phase, "error");
+  assert.equal(tracker.state.phase, "bash");
+  assert.equal(tracker.state.recentEvents.at(-1)?.kind, "tool");
+  assert.match(tracker.state.recentEvents.at(-1)?.text ?? "", /bash failed/);
   assert.ok(progress.some((p) => /bash failed/.test(p.content[0].text)));
   tracker.finish({
-    ok: false,
+    ok: true,
     aborted: false,
     stdout: "",
     stderr: "",
-    exitCode: 1,
+    exitCode: 0,
     signal: null,
   });
+  assert.equal(tracker.state.phase, "done");
 });
 
 test("message_end with assistant role accumulates totalTokens", () => {
@@ -176,7 +179,7 @@ test("agent_end transitions to 'done' when not already errored", () => {
   });
 });
 
-test("agent_end does not overwrite 'error' phase", () => {
+test("finish with failed outcome sets terminal error phase", () => {
   const { tracker } = makeTracker();
   tracker.handleEvent({
     type: "tool_execution_start",
@@ -189,7 +192,7 @@ test("agent_end does not overwrite 'error' phase", () => {
     isError: true,
   });
   tracker.handleEvent({ type: "agent_end", messages: [] });
-  assert.equal(tracker.state.phase, "error");
+  assert.equal(tracker.state.phase, "done");
   tracker.finish({
     ok: false,
     aborted: false,
@@ -198,6 +201,7 @@ test("agent_end does not overwrite 'error' phase", () => {
     exitCode: 1,
     signal: null,
   });
+  assert.equal(tracker.state.phase, "error");
 });
 
 test("stderr event pushes to recentEvents with kind='stderr'", () => {
