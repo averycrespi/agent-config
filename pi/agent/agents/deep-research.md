@@ -2,7 +2,7 @@
 name: deep-research
 description: Thorough read-only investigation — synthesize repo and external evidence with explicit confidence and gaps
 tools: read, ls, find, grep
-extensions: web-access, mcp-broker
+extensions: extra-context, web-access, mcp-broker
 env:
   MCP_BROKER_READONLY: "1"
   MCP_BROKER_APPROVAL_MODE: "reject"

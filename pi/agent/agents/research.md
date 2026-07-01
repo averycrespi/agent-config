@@ -2,7 +2,7 @@
 name: research
 description: Fast read-only research — answer questions with lightweight verification from repo, web, and remote metadata
 tools: read, ls, find, grep
-extensions: web-access, mcp-broker
+extensions: extra-context, web-access, mcp-broker
 env:
   MCP_BROKER_READONLY: "1"
   MCP_BROKER_APPROVAL_MODE: "reject"

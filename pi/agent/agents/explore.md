@@ -2,7 +2,7 @@
 name: explore
 description: Read-only repo exploration — localize code, trace behavior, and answer codebase questions from local files
 tools: read, ls, find, grep
-extensions:
+extensions: extra-context
 thinking: medium
 disable_skills: true
 disable_prompt_templates: true

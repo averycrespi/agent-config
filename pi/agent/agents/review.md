@@ -2,7 +2,7 @@
 name: review
 description: Read-only review — evaluate code, diffs, or plans against criteria and report evidence-backed issues
 tools: read, ls, find, grep
-extensions: mcp-broker
+extensions: extra-context, mcp-broker
 env:
   MCP_BROKER_READONLY: "1"
   MCP_BROKER_APPROVAL_MODE: "reject"

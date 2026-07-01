@@ -23,12 +23,12 @@ Agent types are loaded dynamically from `~/.pi/agent/agents/*.md` at startup. Th
 
 The built-in types:
 
-| Type            | Tools                | Extensions                 | Model           | Thinking |
-| --------------- | -------------------- | -------------------------- | --------------- | -------- |
-| `explore`       | read, ls, find, grep | —                          | inherits parent | medium   |
-| `review`        | read, ls, find, grep | `mcp-broker`               | inherits parent | high     |
-| `research`      | read, ls, find, grep | `mcp-broker`, `web-access` | inherits parent | medium   |
-| `deep-research` | read, ls, find, grep | `mcp-broker`, `web-access` | inherits parent | high     |
+| Type            | Tools                | Extensions                                  | Model           | Thinking |
+| --------------- | -------------------- | ------------------------------------------- | --------------- | -------- |
+| `explore`       | read, ls, find, grep | `extra-context`                             | inherits parent | medium   |
+| `review`        | read, ls, find, grep | `extra-context`, `mcp-broker`               | inherits parent | high     |
+| `research`      | read, ls, find, grep | `extra-context`, `mcp-broker`, `web-access` | inherits parent | medium   |
+| `deep-research` | read, ls, find, grep | `extra-context`, `mcp-broker`, `web-access` | inherits parent | high     |
 
 All built-in agent types are read-only. `review` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `research` is the faster default for external lookup, while `deep-research` is the slower, evidence-heavier option. Both `research` and `deep-research` add web search and fetch via the `web-access` extension. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
 
@@ -74,6 +74,7 @@ Retained logs may contain raw subagent output, tool results, command output, and
 - `intent` is required for every agent and drives activity titles — keep it short and descriptive
 - Requests are prevalidated before spawning; blank intents or unknown agent types return one recoverable tool error and no subagents are launched
 - Each subagent starts with a fresh context; session inheritance is not supported through the tool
+- Built-in agents load `extra-context` so user-configured context files are available in child Pi processes
 - `review`, `research`, and `deep-research` require the `mcp-broker` extension to be installed and discoverable. `research` and `deep-research` additionally require `web-access`
 - Built-in agent types disable skills and prompt templates for tighter, role-specific behavior
 - All agents in a single `spawn_agents` call run concurrently; result order matches input order
