@@ -1,11 +1,11 @@
-# Context Design
+# context-usage Design
 
-`context` provides a lightweight token-blame command for the current Pi session branch. It is diagnostic only: it reads context state, estimates rough token contribution by source, and reports the largest contributors.
+`context-usage` provides a lightweight token-blame command for the current Pi session branch. It is diagnostic only: it reads context state, estimates rough token contribution by source, and reports the largest contributors.
 
 ## Architecture
 
-- `index.ts` contains the complete extension: context extraction, rough token estimation, grouping, report rendering, and `/context` command registration.
-- `createContextExtension()` exists so tests can instantiate the extension with a fake Pi API.
+- `index.ts` contains the complete extension: context extraction, rough token estimation, grouping, report rendering, and `/context-usage` command registration.
+- `createContextUsageExtension()` exists so tests can instantiate the extension with a fake Pi API.
 - `renderContextReport()` is exported as pure formatting logic for direct testing.
 - `index.test.ts` covers grouping, detailed rendering, largest tool-result ranking, and fallback behavior.
 
@@ -37,7 +37,7 @@ If provider-reported usage is larger than the local branch estimate, the differe
 
 ## Rendering contract
 
-`/context` should stay compact by default. It shows the largest grouped sources and top individual tool results. `/context --details` expands to all groups and includes short examples.
+`/context-usage` should stay compact by default. It shows the largest grouped sources and top individual tool results. `/context-usage --details` expands to all groups and includes short examples.
 
 Keep report output deterministic and plain text. It is shown through `ctx.ui.notify()`, so it should be readable in the TUI and useful in transcripts without relying on custom widgets.
 

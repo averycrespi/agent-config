@@ -1,14 +1,14 @@
-# Context
+# context-usage
 
-Adds `/context`, a minimal token-blame command for the current Pi context window.
+Adds `/context-usage`, a minimal token-blame command for the current Pi context window.
 
 The command combines Pi's current context-usage reading, when available, with a local estimate of what the current session branch contributes. It uses a deliberately rough `Math.ceil(text.length / 4)` estimator so the output is useful for spotting large context sources without depending on provider-specific tokenizers.
 
 ## Commands
 
 ```text
-/context
-/context --details
+/context-usage
+/context-usage --details
 ```
 
 Example output:
@@ -26,7 +26,7 @@ Largest individual tool results
 2. bash (call_def456)                            8.7k   11%
 ```
 
-`/context` shows the largest grouped sources plus the top individual tool-result calls. `/context --details` shows every grouped source plus short examples for groups and individual calls.
+`/context-usage` shows the largest grouped sources plus the top individual tool-result calls. `/context-usage --details` shows every grouped source plus short examples for groups and individual calls.
 
 ## What it counts
 

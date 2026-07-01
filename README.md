@@ -44,7 +44,7 @@ The Pi extensions are directory-based TypeScript modules under [`pi/agent/extens
 - **Delegation and orchestration:** `subagents`, `workflows`, `structured-output`
 - **External access:** `mcp-broker`, `web-access`
 - **Agent/user interaction:** `ask-user`
-- **Context and TUI polish:** `context`, `extra-context`, `compact-tools`, `startup-header`, `statusline`
+- **Context and TUI polish:** `context-usage`, `extra-context`, `compact-tools`, `startup-header`, `statusline`
 - **Shared infrastructure:** `_shared` helpers for rendering, config, logging, and common extension behavior
 
 See the [Pi README](pi/README.md#extensions) for the full extension table.

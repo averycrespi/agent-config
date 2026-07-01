@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createContextExtension, renderContextReport } from "./index.ts";
+import { createContextUsageExtension, renderContextReport } from "./index.ts";
 
 function makePi() {
   const commands = new Map<string, any>();
@@ -28,9 +28,9 @@ function makeCtx(branch: unknown[], usage?: unknown) {
   } as any;
 }
 
-test("/context reports current token sources by branch content", async () => {
+test("/context-usage reports current token sources by branch content", async () => {
   const pi = makePi();
-  createContextExtension()(pi);
+  createContextUsageExtension()(pi);
 
   const branch = [
     {
@@ -58,7 +58,7 @@ test("/context reports current token sources by branch content", async () => {
     percent: 10,
   });
 
-  await pi.commands.get("context").handler("", ctx);
+  await pi.commands.get("context-usage").handler("", ctx);
 
   const output = ctx.notifications.at(-1)?.msg ?? "";
   assert.match(output, /Context usage: 20\.0k \/ 200\.0k tokens · 10%/);
@@ -71,9 +71,9 @@ test("/context reports current token sources by branch content", async () => {
   assert.doesNotMatch(output, /e\.g\./);
 });
 
-test("/context --details includes all groups", async () => {
+test("/context-usage --details includes all groups", async () => {
   const pi = makePi();
-  createContextExtension()(pi);
+  createContextUsageExtension()(pi);
   const branch = Array.from({ length: 10 }, (_, index) => ({
     type: "custom_message",
     customType: `custom-${index}`,
@@ -82,18 +82,18 @@ test("/context --details includes all groups", async () => {
   }));
   const ctx = makeCtx(branch);
 
-  await pi.commands.get("context").handler("--details", ctx);
+  await pi.commands.get("context-usage").handler("--details", ctx);
 
   const output = ctx.notifications.at(-1)?.msg ?? "";
   assert.match(output, /Custom context: custom-0/);
   assert.match(output, /Custom context: custom-9/);
   assert.match(output, /e\.g\./);
-  assert.doesNotMatch(output, /Run \/context --details/);
+  assert.doesNotMatch(output, /Run \/context-usage --details/);
 });
 
-test("/context ranks individual tool results separately from tool groups", async () => {
+test("/context-usage ranks individual tool results separately from tool groups", async () => {
   const pi = makePi();
-  createContextExtension()(pi);
+  createContextUsageExtension()(pi);
   const branch = [
     {
       type: "message",
@@ -116,7 +116,7 @@ test("/context ranks individual tool results separately from tool groups", async
   ];
   const ctx = makeCtx(branch);
 
-  await pi.commands.get("context").handler("--details", ctx);
+  await pi.commands.get("context-usage").handler("--details", ctx);
 
   const output = ctx.notifications.at(-1)?.msg ?? "";
   assert.match(output, /Tool result: bash/);

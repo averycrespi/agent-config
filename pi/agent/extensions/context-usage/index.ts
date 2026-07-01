@@ -308,16 +308,16 @@ export function renderContextReport(
   if (!detailed && report.groups.length > groups.length) {
     lines.push(
       "",
-      `Run /context --details to show all ${report.groups.length} groups.`,
+      `Run /context-usage --details to show all ${report.groups.length} groups.`,
     );
   }
 
   return lines.join("\n");
 }
 
-export function createContextExtension() {
-  return function contextExtension(pi: ExtensionAPI) {
-    pi.registerCommand("context", {
+export function createContextUsageExtension() {
+  return function contextUsageExtension(pi: ExtensionAPI) {
+    pi.registerCommand("context-usage", {
       description: "Show what is using tokens in the current context window",
       handler: async (args, ctx) => {
         const detailed = args.split(/\s+/).includes("--details");
@@ -327,4 +327,4 @@ export function createContextExtension() {
   };
 }
 
-export default createContextExtension();
+export default createContextUsageExtension();
