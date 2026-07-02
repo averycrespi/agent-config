@@ -30,9 +30,14 @@ Matches pattern: `https://github.com/<owner>/<repo>/pull/<number>`
    - `method: "get_comments"` for conversation comments
    - `method: "get_reviews"` for review summaries
    - `method: "get_review_comments"` for inline review threads/comments
-4. If MCP broker returns a configuration or authentication error, report that remote PR review requires broker access and stop.
-5. If the diff is truncated, continue with available context but mark truncation as a review gap in the final report.
-6. Do not use the `gh` CLI for PR URL mode.
+4. If the PR belongs to the current local repository, fetch the PR head without checking it out:
+   - Resolve the repo root with local git, compare the local `origin` URL to `<owner>/<repo>`, and only use this path when they match.
+   - Use `mcp_call` with `name: "git.fetch"`, `repo_path: <absolute repo root>`, `remote: "origin"`, and a refspec such as `+refs/pull/<number>/head:refs/remotes/origin/pr/<number>`.
+   - Inspect fetched branch contents locally via git object reads and diffs, such as `git diff <default-branch>...refs/remotes/origin/pr/<number>` and `git show refs/remotes/origin/pr/<number>:<path>`.
+   - Do not run `git checkout`, `git switch`, or otherwise move the working tree to the PR branch.
+5. If MCP broker returns a configuration or authentication error, report that remote PR review requires broker access and stop.
+6. If the diff is truncated, continue with available context but mark truncation as a review gap in the final report.
+7. Do not use the `gh` CLI for PR URL mode.
 
 ### Mode 2: Local Branch Name
 
@@ -96,7 +101,7 @@ Use when the user describes work to review without a concrete PR, branch, range,
 After obtaining target material:
 
 1. Parse changed files from the PR file list, `git diff --name-only`, diff headers (`+++ b/` and `--- a/`), or document references.
-2. Read full local file contents for changed files when the workspace appears to be a checkout of the reviewed code. If a file is missing or local content may not match the reviewed target, rely on the diff and record the limitation.
+2. Read full local file contents for changed files when the workspace appears to be a checkout of the reviewed code. In PR URL mode for the current repository, prefer contents from the fetched PR ref rather than the working tree. If a file is missing or local content may not match the reviewed target, rely on the diff and record the limitation.
 3. Read relevant project guidance files when present, especially `AGENTS.md`, `CLAUDE.md`, and nearby repository docs that define review or code conventions.
 4. In PR URL mode, include PR title, description, conversation comments, review summaries, and inline review comments.
 5. For plans or documents, include the artifact text, nearby referenced files, acceptance criteria, and explicit assumptions.
@@ -196,6 +201,6 @@ Review gaps: <none or concise list>
 ## Pi Notes
 
 - `review` subagents inherit the active Pi model unless the agent definition overrides it.
-- Remote PR review depends on the `mcp-broker` extension and authenticated GitHub broker tools.
+- Remote PR review depends on the `mcp-broker` extension and authenticated GitHub broker tools. For PRs in the current repository, use authenticated `git.fetch` through the broker to fetch the PR ref for local inspection without checking it out.
 - Large PR diffs may be truncated by `github.pull_request_read` with `method: "get_diff"`; use changed-file summaries, available full-file context, and review-gap reporting rather than pretending the review is complete.
 - `spawn_agents` reviewers start with fresh context and read-only tools, so brief them with all relevant context and constraints.
