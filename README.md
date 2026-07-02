@@ -26,7 +26,7 @@ The goal is not just to store settings. The goal is to make the agent more state
 
 The Pi setup is built around a durable development loop:
 
-- **Clarify and plan** with skills such as `plan`, `challenge-plan`, and `review`
+- **Clarify and plan** with skills such as `clarify`, `plan`, `challenge-plan`, and `review`
 - **Steer execution** with branch-scoped goals via the `goal` extension
 - **Track work in-session** with the `todo` extension and sticky widget
 - **Delegate read-only work** to focused subagents for exploration, research, and review
@@ -51,7 +51,7 @@ See the [Pi README](pi/README.md#extensions) for the full extension table.
 
 ### Skills and Subagents
 
-The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for planning, visualizing plans as HTML artifacts, reviewing, completing work, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
+The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, reviewing, completing work, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
 
 Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamically by the `subagents` extension. They provide isolated read-only workers for:
 

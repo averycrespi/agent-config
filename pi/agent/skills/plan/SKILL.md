@@ -1,23 +1,25 @@
 ---
 name: plan
-description: Use when turning a fuzzy implementation request, feature idea, bugfix, refactor, workflow change, or design discussion into an execution-ready plan that a fresh coding agent can implement autonomously, especially before running /goal.
+description: Use when turning a clarified implementation request, feature idea, bugfix, refactor, workflow change, or design discussion into an execution-ready plan that a fresh coding agent can implement autonomously, especially before running /goal.
 ---
 
 # Plan
 
-Create an execution-ready plan through a research-first, question-driven flow. Optimize for a durable handoff artifact that another agent can pick up in a fresh session and implement autonomously until complete.
+Create an execution-ready plan from clarified intent and repo research. Optimize for a durable handoff artifact that another agent can pick up in a fresh session and implement autonomously until complete.
 
 Do not implement the plan while using this skill. Stop after writing or updating the plan and summarizing the handoff.
+
+If the user's goal, scope, product behavior, edge-case policy, acceptance criteria, or risk tolerance is still fuzzy, use the `clarify` skill first. Do not turn user-owned decisions into silent assumptions just to produce a plan.
 
 ## Outcomes
 
 Produce a plan that:
 
-- Captures the user's goal, constraints, acceptance criteria, chosen approach, risks, and verification path.
-- Resolves every material design decision needed for autonomous execution.
+- Captures the clarified goal, constraints, acceptance criteria, chosen approach, risks, and verification path.
+- Records the material decisions needed for autonomous execution and the evidence or user input behind them.
 - Includes enough repo context, file areas, commands, and evidence expectations for a fresh engineer or `/goal` run.
 - Avoids line-by-line implementation choreography; the implementer owns local coding choices.
-- Has no blocking open questions. If uncertainty remains, encode a safe explicit assumption or ask another question before finalizing.
+- Has no blocking open questions. If high-impact user-owned decisions remain, switch to `clarify` before finalizing.
 
 ## Process
 
@@ -63,25 +65,32 @@ Convert research into a concise internal picture:
 
 If the answer is already clear from evidence, do not ask the user.
 
-### 3. Ask only material questions
+### 3. Run a clarity gate
 
-Ask the user only for things the agent cannot infer responsibly, such as:
+Before writing the plan, classify the request:
 
-- Product or UX decisions with multiple valid outcomes.
-- Edge-case policy choices.
-- Scope boundaries or non-goals.
-- Conflicts between the user's request, repo conventions, web docs, or memory.
+- **Clear enough to plan:** the goal, scope, user-visible behavior, material edge cases, acceptance criteria, and verification path are settled by user input or evidence.
+- **Needs a residual planning question:** one or two focused decisions remain and the answers materially affect the plan.
+- **Needs clarification interview:** several high-impact user-owned decisions remain, or the user's intent is still fuzzy enough that a plan would encode guesses.
+
+Use the `clarify` skill instead of continuing when unresolved ambiguity affects:
+
+- Product or UX behavior with multiple valid outcomes.
+- Edge-case policy, failure handling, or security/privacy posture.
+- Scope boundaries, non-goals, migration, or rollout choices.
+- Acceptance criteria or completion evidence.
 - Risk trade-offs where the best choice depends on user preference.
+- Terminology or domain conflicts where multiple sources disagree.
 
-Question discipline, adapted from `grill-me`:
+For residual planning questions:
 
-- Walk down the decision tree one dependency at a time.
-- Ask one focused question at a time and wait for the answer.
+- Ask exactly one focused question at a time and wait for the answer.
 - Provide the recommended answer first, with a brief reason.
 - Prefer `ask_user` for multiple valid options with different trade-offs.
-- If a question can be answered by exploring the codebase, web, or memory, research instead of asking.
-- For terminology or domain conflicts, call out the contradiction directly and ask which source should win.
-- Keep asking until the implementation shape is clear enough that the final plan has no blocking open questions.
+- If the question can be answered by exploring the codebase, web, or memory, research instead of asking.
+- If more than one or two high-impact questions emerge, stop and run the `clarify` flow before planning.
+
+Only encode an assumption when it is low-impact, reversible, non-user-visible, and safe for an implementer to rely on. Do not use assumptions for scope, UX, acceptance criteria, security posture, data semantics, or risk tolerance.
 
 Do not ask permission to continue with obvious research or mechanical plan writing. Ask only when the decision materially changes the outcome.
 
@@ -170,7 +179,8 @@ Plan quality rules:
 - Documentation impact must be a conscious decision.
 - Include enough context to survive a fresh session, but do not paste large code excerpts unless essential.
 - Prefer implementation intent over exact diffs.
-- Mark assumptions only when they are safe and non-blocking.
+- Mark assumptions only when they are safe, non-blocking, low-impact, reversible, and not user-visible.
+- Do not use assumptions for scope, UX, acceptance criteria, security posture, data semantics, or risk tolerance.
 - Do not leave `TBD`, `TODO`, or blocking open questions in the final plan.
 - Do not over-plan speculative features; apply YAGNI.
 
