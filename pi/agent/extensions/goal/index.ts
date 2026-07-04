@@ -272,7 +272,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
     });
 
     pi.registerCommand("goal-show", {
-      description: "Show the current branch-scoped goal.",
+      description: "Show the current session-scoped goal.",
       handler: async (_args, ctx) => {
         ctx.ui.notify(
           formatGoalState(store.getState(), { showUsage: config.showUsage }),
@@ -282,7 +282,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
     });
 
     pi.registerCommand("goal-set", {
-      description: "Set or replace the current branch-scoped goal.",
+      description: "Set or replace the current session-scoped goal.",
       handler: async (args, ctx) => {
         try {
           store.setGoal(args, config.objectiveMaxChars);

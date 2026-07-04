@@ -68,14 +68,14 @@ function phase(name) {
 async function agent(prompt, options = {}) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("agent prompt must be a non-empty string");
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("agent options must be an object");
-  const allowed = new Set(["agent", "intent", "output", "retries"]);
+  const allowed = new Set(["agent", "intent", "output", "retries", "timeoutMs"]);
   for (const key of Object.keys(options)) {
     if (!allowed.has(key)) throw new Error(` +
     "`agent option ${key} is not allowed`" +
     `);
   }
   const requestId = nextRequestId++;
-  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output, retries: options.retries });
+  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output, retries: options.retries, timeoutMs: options.timeoutMs });
   return await new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
 }
 

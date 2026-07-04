@@ -56,10 +56,8 @@ async function collectMatchesFromRoot(
   if (!(await pathExists(root))) return matches;
 
   const rootBase = basename(root);
-  const rootExt = extname(root).toLowerCase();
-  const rootLooksLikeFile = EXTENSION_FILE_EXTENSIONS.has(rootExt);
 
-  if (rootBase === name && (rootLooksLikeFile || !rootLooksLikeFile)) {
+  if (rootBase === name) {
     matches.push(root);
     return matches;
   }

@@ -13,6 +13,16 @@ const identityTheme = {
 
 type RegisteredTool = {
   name: string;
+  execute: (
+    id: string,
+    params: Record<string, any>,
+    signal: AbortSignal,
+    onUpdate: unknown,
+    ctx: Record<string, unknown>,
+  ) => Promise<{
+    content: Array<{ type: string; text: string }>;
+    details?: unknown;
+  }>;
   renderCall: (
     args: Record<string, unknown>,
     theme: typeof identityTheme,
@@ -29,7 +39,10 @@ type RegisteredTool = {
   ) => { render: (width: number) => string[] };
 };
 
-function loadRegisteredTool(name: string): RegisteredTool {
+function loadRegisteredTool(
+  name: string,
+  client?: Record<string, unknown>,
+): RegisteredTool {
   const registered: RegisteredTool[] = [];
   registerTools(
     {
@@ -42,6 +55,7 @@ function loadRegisteredTool(name: string): RegisteredTool {
       callTool: async () => ({ content: [], isError: false }),
       reset() {},
       getReadOnly: () => false,
+      ...client,
     } as any,
   );
   const tool = registered.find((t) => t.name === name);
@@ -95,6 +109,40 @@ test("summarize omits the dash when description is whitespace-only", () => {
     summarize({ name: "foo.bar", description: "   \n  \n" }),
     "foo.bar",
   );
+});
+
+test("mcp_search ranks multi-token matches that are not substrings", async () => {
+  const tool = loadRegisteredTool("mcp_search", {
+    listTools: async () => [
+      {
+        name: "github.list_pull_requests",
+        description: "List pull requests",
+      },
+      {
+        name: "github.get_label",
+        description: "Get a repository label",
+      },
+      {
+        name: "git.fetch",
+        description: "Fetch remote refs",
+      },
+    ],
+  });
+
+  const result = await tool.execute(
+    "search-test-id",
+    { query: "github label" },
+    new AbortController().signal,
+    undefined,
+    {},
+  );
+
+  assert.equal(
+    result.content[0]?.text,
+    "github.get_label — Get a repository label\n" +
+      "github.list_pull_requests — List pull requests",
+  );
+  assert.deepEqual(result.details, { matchCount: 2, totalCount: 3 });
 });
 
 test("mcp_search renderCall truncates long queries instead of wrapping", () => {

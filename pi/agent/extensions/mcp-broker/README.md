@@ -12,7 +12,7 @@ Pi extension that exposes the MCP broker to the agent via three meta-tools (`mcp
 
 Typical agent flow:
 
-1. `mcp_search` with a substring query (e.g. `"pr"`, `"git"`, empty string for everything). Returns name + one-line description per match.
+1. `mcp_search` with a keyword query (e.g. `"pull request"`, `"git"`, empty string for everything). It ranks matches by token overlap against tool names and descriptions, then returns name + one-line description per match.
 2. `mcp_describe` for any candidate that looks right. Returns the full description and JSON Schema for `arguments`.
 3. `mcp_call` with the exact name and an arguments object matching the schema.
 

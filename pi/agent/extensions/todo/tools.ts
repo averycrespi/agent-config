@@ -1,11 +1,11 @@
-import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import {
   firstLine,
   getResultText,
   getTruncatedText,
 } from "../_shared/render.ts";
+import { stringEnum } from "../_shared/schema.ts";
 import {
   formatTodoList,
   isTodoStatus,
@@ -13,7 +13,7 @@ import {
   type TodoStore,
 } from "./state.ts";
 
-const todoStatusSchema = StringEnum(
+const todoStatusSchema = stringEnum(
   ["todo", "in_progress", "done", "blocked"] as const,
   {
     description:
@@ -21,7 +21,7 @@ const todoStatusSchema = StringEnum(
   },
 );
 
-const todoActionSchema = StringEnum(
+const todoActionSchema = stringEnum(
   ["list", "set", "add", "update", "remove", "clear"] as const,
   {
     description:

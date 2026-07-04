@@ -7,6 +7,7 @@ import {
   runWorkflow,
 } from "./runtime.ts";
 import type { AgentDefinition } from "../subagents/api.ts";
+import { DEFAULT_TIMEOUT_MS } from "./types.ts";
 
 function script(body: string) {
   return parseWorkflowScript(
@@ -272,6 +273,45 @@ test("runtime previews cyclic workflow results safely", async () => {
 
   assert.equal((result.result as any).name, "cycle");
   assert.match(updates.at(-1)?.resultPreview ?? "", /\[Circular\]/);
+});
+
+test("runtime default workflow timeout is one hour", () => {
+  assert.equal(DEFAULT_TIMEOUT_MS, 60 * 60 * 1000);
+});
+
+test("agent timeout fails only that agent branch", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([
+        () => agent("slow", { timeoutMs: 50 }),
+        () => agent("fast"),
+      ]);
+    }`),
+    {
+      cwd: "/tmp",
+      timeoutMs: 1_000,
+      spawnAgent: async (request) => {
+        if (request.prompt === "fast") return { ok: true, text: "fast ok" };
+        return await new Promise(() => undefined);
+      },
+    },
+  );
+
+  assert.deepEqual(result.result, [
+    {
+      ok: false,
+      error: {
+        code: "agent_timeout",
+        message: "agent timed out after 50ms",
+        details: {
+          code: "agent_timeout",
+          message: "agent timed out after 50ms",
+          agentId: 1,
+        },
+      },
+    },
+    { ok: true, value: "fast ok" },
+  ]);
 });
 
 test("workflow timeout aborts in-flight agent requests", async () => {

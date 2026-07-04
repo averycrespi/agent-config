@@ -20,6 +20,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BrokerClient, BrokerTool } from "./client.ts";
+import { COMMON_SEARCH_STOPWORDS, rankToolMatches } from "./search.ts";
 
 export type BrokerCommandKind = "github-cli" | "git-remote";
 
@@ -48,24 +49,7 @@ const NAMESPACE_FOR: Record<BrokerCommandKind, string> = {
   "git-remote": "git",
 };
 
-const STOPWORDS = new Set([
-  "gh",
-  "git",
-  "the",
-  "a",
-  "an",
-  "for",
-  "to",
-  "with",
-  "from",
-  "and",
-  "or",
-  "in",
-  "of",
-  "on",
-  "at",
-  "by",
-]);
+const GUARD_STOPWORDS = new Set([...COMMON_SEARCH_STOPWORDS, "gh", "git"]);
 
 export function stripQuoted(command: string): string {
   return command.replace(QUOTED_STRING_RE, "");
@@ -95,35 +79,18 @@ export function getHintReason(kind: BrokerCommandKind): string {
   return "Remote git operation detected — prefer mcp_call with a broker git tool.";
 }
 
-function tokenize(s: string): string[] {
-  return s
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
-}
-
 export function findToolCandidates(
   segment: string,
   namespace: string,
   tools: BrokerTool[],
   limit = 3,
 ): BrokerTool[] {
-  const tokens = tokenize(segment);
-  if (tokens.length === 0) return [];
-  const prefix = `${namespace}.`;
-  const scored = tools
-    .filter((t) => t.name.startsWith(prefix))
-    .map((tool) => {
-      const haystack = `${tool.name} ${tool.description ?? ""}`.toLowerCase();
-      const score = tokens.reduce(
-        (s, tok) => (haystack.includes(tok) ? s + 1 : s),
-        0,
-      );
-      return { tool, score };
-    })
-    .filter((c) => c.score > 0)
-    .sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map((c) => c.tool);
+  return rankToolMatches(segment, tools, {
+    namespace,
+    stopwords: GUARD_STOPWORDS,
+  })
+    .slice(0, limit)
+    .map((match) => match.tool);
 }
 
 export function getHintMessage(

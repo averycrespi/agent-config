@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
 import { spillIfNeeded } from "../_shared/spillover.ts";
+import { loadWorkflowConfig, type WorkflowConfig } from "./config.ts";
 import { loadAgents, type AgentDefinition } from "../subagents/api.ts";
 import { parseWorkflowScript } from "./parser.ts";
 import { createWorkflowAgentSpawner, runWorkflow } from "./runtime.ts";
@@ -55,7 +56,15 @@ function formatError(error: unknown): string {
   return `Error: ${String(error)}`;
 }
 
-export function registerWorkflowTool(pi: ExtensionAPI): void {
+type LoadWorkflowConfig = (
+  cwd: string,
+  warnings?: string[],
+) => Promise<WorkflowConfig>;
+
+export function registerWorkflowTool(
+  pi: ExtensionAPI,
+  loadConfig: LoadWorkflowConfig = loadWorkflowConfig,
+): void {
   const agents = loadAgents();
 
   pi.registerTool({
@@ -64,7 +73,7 @@ export function registerWorkflowTool(pi: ExtensionAPI): void {
     description: `Execute a deterministic foreground JavaScript workflow that orchestrates isolated read-mostly subagents.
 
 Scripts must start with literal metadata: export const meta = { name: "...", description: "..." }.
-Use the globals agent(prompt, { agent?, intent?, output?, retries? }), parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Use the globals agent(prompt, { agent?, intent?, output?, retries?, timeoutMs? }), parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
       "Run a deterministic foreground JavaScript workflow that fans out isolated read-mostly subagents.",
@@ -76,6 +85,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
       "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
+      "Use `timeoutMs` on an agent call when one slow branch should fail without exhausting the whole workflow timeout.",
     ],
     parameters: workflowParamsSchema,
     renderCall: renderWorkflowCall,
@@ -91,6 +101,9 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           details: { validationError: true },
         };
       }
+
+      const warnings: string[] = [];
+      const config = await loadConfig(ctx.cwd, warnings);
 
       const agentStates = new Map<number, WorkflowAgentState>();
       let latestSnapshot: WorkflowSnapshot | undefined;
@@ -125,6 +138,8 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           signal,
           spawnAgent,
           onUpdate: emit,
+          timeoutMs: config.workflowTimeoutMs,
+          agentTimeoutMs: config.agentTimeoutMs,
         });
         const finalText = formatFinal(result);
         const spilled = await spillIfNeeded(text(finalText), toolCallId);

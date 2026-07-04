@@ -17,25 +17,6 @@ const FORBIDDEN_IDENTIFIERS = new Set([
   "importScripts",
 ]);
 
-const FORBIDDEN_MODULES = new Set([
-  "fs",
-  "node:fs",
-  "fs/promises",
-  "node:fs/promises",
-  "net",
-  "node:net",
-  "http",
-  "node:http",
-  "https",
-  "node:https",
-  "dgram",
-  "node:dgram",
-  "child_process",
-  "node:child_process",
-  "worker_threads",
-  "node:worker_threads",
-]);
-
 function fail(message: string): never {
   throw new Error(message);
 }
@@ -94,10 +75,6 @@ function isAgentCall(node: ts.CallExpression): boolean {
   return ts.isIdentifier(node.expression) && node.expression.text === "agent";
 }
 
-function isForbiddenModuleSpecifier(text: string): boolean {
-  return FORBIDDEN_MODULES.has(text) || text.startsWith("node:");
-}
-
 export function parseWorkflowScript(script: string): ParsedWorkflow {
   const source = ts.createSourceFile(
     "workflow.mjs",
@@ -143,13 +120,6 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
     }
     if (ts.isIdentifier(node) && FORBIDDEN_IDENTIFIERS.has(node.text)) {
       fail(`${node.text} is not allowed`);
-    }
-    if (
-      ts.isImportDeclaration(node) &&
-      ts.isStringLiteralLike(node.moduleSpecifier) &&
-      isForbiddenModuleSpecifier(node.moduleSpecifier.text)
-    ) {
-      fail(`module ${node.moduleSpecifier.text} is not allowed`);
     }
     ts.forEachChild(node, visit);
   }

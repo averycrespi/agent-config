@@ -1,6 +1,6 @@
 # Goal Extension
 
-The goal extension keeps one branch-scoped durable objective for the current Pi session. It can also run a bounded in-session continuation loop so headless commands like `pi "/goal <objective>"` keep making progress until completion, user interruption, or a configured stop condition.
+The goal extension keeps one session-scoped, fork-safe objective for the current Pi session tree. It can also run a bounded in-session continuation loop so headless commands like `pi "/goal <objective>"` keep making progress until completion, user interruption, or a configured stop condition.
 
 ## Commands
 
@@ -45,7 +45,7 @@ Completion is intentionally conservative. Agents should call `goal_update` only 
 
 ## State and persistence
 
-Goal state is branch-scoped. The extension restores the latest valid snapshot from the active branch on session start, resume, and tree navigation.
+Goal state is scoped to Pi's session tree branch, not the git branch. The extension restores the latest valid snapshot from the active session branch on session start, resume, and tree navigation; starting a fresh Pi session in the same git branch does not restore the goal. For plan-driven work, keep the plan file as the durable artifact and use the goal as the current session's steering state.
 
 Snapshots include goal lifecycle state and, when present, auto-run lifecycle state. Auto-run state is separate from goal status so automation can stop while the goal remains active for steering and manual continuation.
 
