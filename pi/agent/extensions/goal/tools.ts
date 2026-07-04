@@ -47,7 +47,7 @@ export function registerGoalTools(
   pi.registerTool({
     name: "goal_get",
     label: "Goal: get",
-    description: "Read the current branch-scoped goal state.",
+    description: "Read the current session-scoped goal state.",
     promptSnippet: "Read the current durable goal, if any.",
     promptGuidelines: [
       "Use goal_get when you need to check the current durable objective.",

@@ -1,6 +1,6 @@
 # Goal Extension Design
 
-`goal` keeps one branch-scoped durable objective for the current Pi session and can drive a bounded in-session continuation loop. It is designed to steer long-running work without letting the agent declare completion based on weak proxy signals.
+`goal` keeps one session-scoped, fork-safe objective for the current Pi session tree and can drive a bounded in-session continuation loop. It is designed to steer long-running work without letting the agent declare completion based on weak proxy signals.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Goal state is persisted into the Pi session branch, not a standalone database:
 
 `restoreFromBranch()` scans the current branch in order and keeps the latest valid snapshot from either custom entries or `goal_update` tool results. Invalid snapshots are ignored through `parsePersistedGoalState()`.
 
-Because state is branch-scoped, navigation can legitimately restore a different goal or no goal. Do not introduce project-global goal state without redesigning this assumption.
+Because state is scoped to the Pi session tree branch rather than the git branch, navigation can legitimately restore a different goal or no goal, and a fresh Pi session in the same git branch starts without that prior goal. Do not introduce project-global or git-branch-global goal state without redesigning this assumption.
 
 ## Auto-run lifecycle
 
