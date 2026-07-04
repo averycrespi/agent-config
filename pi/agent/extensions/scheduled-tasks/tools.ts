@@ -1,13 +1,13 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Type, type Static } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { Type, type Static } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   getResultText,
   getTruncatedText,
   firstLine,
 } from "../_shared/render.ts";
+import { stringEnum } from "../_shared/schema.ts";
 import type { ScheduledTasksConfig } from "./config.ts";
 import { formatCrontabStatus, getCrontabStatus } from "./crontab.ts";
 import { handoffPath, runDir, taskPath } from "./paths.ts";
@@ -21,7 +21,7 @@ import {
 import { readAllTasks, readTaskFile } from "./task-file.ts";
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
 
-const actionSchema = StringEnum(
+const actionSchema = stringEnum(
   ["list", "read", "validate", "run", "logs", "doctor"] as const,
   { description: "Scheduled task management action." },
 );
@@ -31,7 +31,7 @@ const paramsSchema = Type.Object({
 });
 type Params = Static<typeof paramsSchema>;
 
-const handoffActionSchema = StringEnum(["read", "update"] as const, {
+const handoffActionSchema = stringEnum(["read", "update"] as const, {
   description: "Handoff action.",
 });
 const handoffParamsSchema = Type.Object({
