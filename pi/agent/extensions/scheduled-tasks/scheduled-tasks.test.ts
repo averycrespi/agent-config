@@ -1064,6 +1064,40 @@ test("/scheduled-tasks-doctor reports task lock diagnostics", async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+test("doctor runtime status includes completed run duration", async () => {
+  const root = await tempRoot();
+  const runId = "2026-06-19T09-00-00Z-duration";
+  await writeTaskState(root, {
+    taskId: "job",
+    lastRunId: runId,
+    lastStatus: "success",
+  });
+  await writeRunLifecycle(root, {
+    taskId: "job",
+    runId,
+    status: "success",
+    claimedAt: "2026-06-19T08:59:50.000Z",
+    launchedAt: "2026-06-19T08:59:55.000Z",
+    startedAt: "2026-06-19T09:00:00.000Z",
+    endedAt: "2026-06-19T09:02:03.000Z",
+  });
+
+  assert.match(
+    await formatTaskRuntimeStatus(
+      {
+        rootDir: root,
+        defaultTimeoutMinutes: 1,
+        defaultTools: ["read"],
+        piCommand: "pi",
+        cronEnvironment: {},
+      },
+      "job",
+    ),
+    /runtime job: lastRunId=2026-06-19T09-00-00Z-duration status=success duration=2m3s/,
+  );
+  await rm(root, { recursive: true, force: true });
+});
+
 test("/scheduled-tasks-doctor reports managed crontab installation status", async () => {
   const cases = [
     {

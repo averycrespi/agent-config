@@ -1097,6 +1097,25 @@ async function formatTaskLockStatus(
   ].join(" ");
 }
 
+function formatDurationMs(ms: number): string | undefined {
+  if (!Number.isFinite(ms) || ms < 0) return undefined;
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h${minutes}m${seconds}s`;
+  if (minutes > 0) return `${minutes}m${seconds}s`;
+  return `${seconds}s`;
+}
+
+function runDuration(lifecycle: RunLifecycle): string | undefined {
+  const startedAt =
+    lifecycle.startedAt ?? lifecycle.launchedAt ?? lifecycle.claimedAt;
+  const start = Date.parse(startedAt);
+  const end = Date.parse(lifecycle.endedAt ?? new Date().toISOString());
+  return formatDurationMs(end - start);
+}
+
 export async function formatTaskRuntimeStatus(
   config: ScheduledTasksConfig,
   taskId: string,
@@ -1124,7 +1143,8 @@ export async function formatTaskRuntimeStatus(
         : lifecycle.missing
           ? (state.lastStatus ?? "unknown")
           : `run metadata error: ${lifecycle.error}`;
-      runtime = `runtime: lastRunId=${lastRunId} status=${status}`;
+      const duration = lifecycle.ok ? runDuration(lifecycle.value) : undefined;
+      runtime = `runtime: lastRunId=${lastRunId} status=${status}${duration ? ` duration=${duration}` : ""}`;
     }
   }
   if (!task) return runtime.replace("runtime:", `runtime ${taskId}:`);
