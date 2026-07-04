@@ -56,7 +56,7 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 ## Scheduler semantics
 
-`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command.
+`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode with all other extensions disabled and only this extension re-enabled. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command, also launched with only this extension enabled.
 
 The scheduler behavior is intentionally coalescing, not replaying:
 
@@ -171,7 +171,7 @@ Doctor surfaces inspect crontab status by reading `crontab -l` and checking only
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session --no-extensions -e '<scheduled-tasks-extension>' -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 

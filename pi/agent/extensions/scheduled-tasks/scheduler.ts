@@ -9,7 +9,10 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import type { SpawnOptions } from "node:child_process";
-import type { ScheduledTasksConfig } from "./config.ts";
+import {
+  SCHEDULED_TASKS_EXTENSION_PATH,
+  type ScheduledTasksConfig,
+} from "./config.ts";
 import {
   ensureRootLayout,
   getRootPaths,
@@ -624,6 +627,9 @@ async function launchClaimedRunner(options: {
           "--mode",
           "json",
           "--no-session",
+          "--no-extensions",
+          "-e",
+          SCHEDULED_TASKS_EXTENSION_PATH,
           "-p",
           `/scheduled-tasks-run-claimed ${options.taskId} ${options.runId}`,
         ],

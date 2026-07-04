@@ -145,7 +145,7 @@ If handoff is disabled or the scheduled-run context is invalid, it returns a cle
 
 ## Runs and artifacts
 
-Manual runs and scheduled ticks share the same claim-and-launch path: they claim work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, and return without waiting for final task success or failure. The detached runner adopts the task lock by rewriting lock metadata to its own process PID before executing, so same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
+Manual runs and scheduled ticks share the same claim-and-launch path: they claim work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, and return without waiting for final task success or failure. The detached runner is launched with `--no-extensions -e <scheduled-tasks-extension>` so it loads only this extension, then adopts the task lock by rewriting lock metadata to its own process PID before executing; same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>
@@ -193,7 +193,7 @@ Write task prompts so they check current external state before irreversible chan
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session --no-extensions -e '<scheduled-tasks-extension>' -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
