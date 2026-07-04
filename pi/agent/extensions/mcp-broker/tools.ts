@@ -1,6 +1,6 @@
 /**
  * Three Pi tools that wrap the MCP broker:
- *   - mcp_search: list/filter broker tools by name/description substring
+ *   - mcp_search: rank/filter broker tools by name/description tokens
  *   - mcp_describe: return full description + input schema for a named tool
  *   - mcp_call: invoke a broker tool with a JSON argument object
  *
@@ -27,12 +27,13 @@ import {
 
 const CALL_HEAD_LINES = 3;
 import type { BrokerClient, BrokerTool } from "./client.ts";
+import { rankToolMatches } from "./search.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 
 const SEARCH_PARAMS = Type.Object({
   query: Type.String({
     description:
-      'Case-insensitive substring to match against tool name and description. Pass empty string "" to list everything.',
+      'Case-insensitive keywords to match against tool name and description. Pass empty string "" to list everything.',
   }),
 });
 
@@ -264,7 +265,7 @@ export function registerTools(
     name: "mcp_search",
     label: "MCP Search",
     description:
-      "Search tools exposed by the MCP broker. Tool names follow <provider>.<tool>. Pass a substring query to filter by name or description, or an empty string to list everything.",
+      "Search tools exposed by the MCP broker. Tool names follow <provider>.<tool>. Pass keywords to rank matches by name or description, or an empty string to list everything.",
     parameters: SEARCH_PARAMS,
     async execute(_id, params, _signal, _onUpdate, ctx) {
       let tools: BrokerTool[];
@@ -276,14 +277,8 @@ export function registerTools(
           `mcp_search failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-      const q = params.query.trim().toLowerCase();
-      const matches = q
-        ? tools.filter((t) => {
-            const name = t.name.toLowerCase();
-            const desc = (t.description ?? "").toLowerCase();
-            return name.includes(q) || desc.includes(q);
-          })
-        : tools;
+      const q = params.query.trim();
+      const matches = rankToolMatches(q, tools).map((match) => match.tool);
       const text = matches.length
         ? matches.map(summarize).join("\n")
         : `No broker tools match "${params.query}".`;

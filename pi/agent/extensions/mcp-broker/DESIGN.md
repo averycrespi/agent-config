@@ -7,6 +7,7 @@
 - `index.ts` is the extension entry point. It configures one shared `BrokerClient`, registers tools, installs the bash guard, registers `/mcp-broker-config`, prefetches broker tools on session start, closes the client on shutdown, and injects the broker menu into the system prompt.
 - `client.ts` wraps the MCP SDK Streamable HTTP client. It owns connection lifecycle, network timeouts, tool-list caching, read-only filtering, reconnect/reset behavior, approval-mode request headers, and approval-timeout forwarding for tool calls.
 - `tools.ts` registers `mcp_search`, `mcp_describe`, and `mcp_call`, handles broker errors, read-only defense-in-depth, spillover, diagnostic logs, and compact renderers.
+- `search.ts` ranks broker tools by token overlap against names and descriptions; `mcp_search` and the bash guard share this scorer.
 - `guard.ts` detects bash calls that look like `gh` or remote git operations and queues a hidden steer toward broker tools without blocking the bash call.
 - `config.ts` loads settings/env overrides and masks `authToken` through the shared config command.
 - `spillover.ts` re-exports the shared large-output spillover helper.
@@ -17,7 +18,7 @@ The extension intentionally does not register one Pi tool per broker tool. A sta
 
 Agent flow is:
 
-1. `mcp_search` filters cached/refreshed broker tools by name or description.
+1. `mcp_search` ranks cached/refreshed broker tools by token overlap against names and descriptions.
 2. `mcp_describe` returns the selected tool description and JSON schema.
 3. `mcp_call` invokes the exact broker tool name with an arguments object.
 
