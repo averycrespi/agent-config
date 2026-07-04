@@ -4,8 +4,9 @@ The `workflows` extension owns deterministic foreground orchestration above the 
 
 ## Architecture
 
-- `index.ts` registers the extension and before-agent-start guidance.
-- `workflow-tool.ts` defines the `workflow` tool schema, validates scripts, connects runtime progress to partial updates, applies final-output spillover, and loads public subagent definitions.
+- `index.ts` registers the extension, `/workflows-config`, and before-agent-start guidance.
+- `config.ts` loads the whole-workflow and per-agent timeout settings from Pi settings and environment overrides.
+- `workflow-tool.ts` defines the `workflow` tool schema, validates scripts, connects runtime progress to partial updates, applies final-output spillover, loads config, and loads public subagent definitions.
 - `parser.ts` performs AST-level validation and extracts literal metadata.
 - `runtime.ts` starts the killable worker, mediates worker-to-parent RPC, tracks snapshots, and implements the narrow subagent policy wrapper.
 - `worker-source.ts` builds the worker module that exposes only workflow globals to user scripts.
@@ -14,7 +15,7 @@ The `workflows` extension owns deterministic foreground orchestration above the 
 
 ## Runtime boundary
 
-Workflow script logic runs in a separate Node worker created from generated module source. The parent can terminate this worker on cancellation or timeout, which prevents runaway script loops from blocking the main Pi process. Runtime-owned timeout and cancellation also abort the signal passed to in-flight subagent requests so child processes are not left running after the workflow boundary closes. The worker is not the only safety layer: scripts are also parsed before execution and dangerous globals are shadowed in the generated module.
+Workflow script logic runs in a separate Node worker created from generated module source. The parent can terminate this worker on cancellation or whole-workflow timeout, which prevents runaway script loops from blocking the main Pi process. Runtime-owned cancellation also aborts the signal passed to in-flight subagent requests so child processes are not left running after the workflow boundary closes. Each `agent(...)` call also has its own timeout; if that timer fires, the runtime aborts that subagent signal and returns an `agent_timeout` failure to the worker without failing sibling branches. The worker is not the only safety layer: scripts are also parsed before execution and dangerous globals are shadowed in the generated module.
 
 Do not replace the worker with same-process `vm` execution. If the runtime changes, it must keep an explicitly killable boundary or an interpreter with equivalent cancellation guarantees.
 
@@ -49,6 +50,7 @@ The wrapper in `createWorkflowAgentSpawner` owns policy:
 - cancellation signal is propagated
 - model and thinking defaults come from the parent only when the selected agent does not specify them
 - optional structured output is forwarded only as `{ output: { schema } }`
+- per-agent timeout is runtime-owned, configurable by default, and overridable per call with `timeoutMs`
 - bounded retry counts are clamped before dispatch and are applied only by runtime-owned retry logic
 
 Do not expose raw `SpawnInvocation` fields to workflow scripts.
@@ -59,7 +61,7 @@ When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends 
 
 `parallel()` accepts thunks rather than already-started promises so the runtime controls concurrency. It preserves input order. A branch failure is logged and its result becomes `null`, allowing fan-in code to continue. `parallelSettled()` shares the same bounded scheduler but returns `{ ok: true, value }` or `{ ok: false, error }` records without incrementing workflow log failure count, so scripts can make explicit recovery decisions. `pipeline()` applies sequential stages per item while using `parallel()` across items.
 
-If a top-level script error escapes `run()`, the whole workflow tool call fails. Parent-side subagent dispatch must always answer worker RPC with either a success response or an agent failure response; unexpected `spawnAgent` rejections are converted into worker-visible agent failures instead of leaving `agent()` promises pending. Agent failure responses should carry stable `WorkflowErrorCode` values and context details. Runtime retry is deliberately bounded and skips non-retryable classes such as policy rejection and aborts.
+If a top-level script error escapes `run()`, the whole workflow tool call fails. Parent-side subagent dispatch must always answer worker RPC with either a success response or an agent failure response; unexpected `spawnAgent` rejections are converted into worker-visible agent failures instead of leaving `agent()` promises pending. Per-agent timeouts are also converted into worker-visible `agent_timeout` failures so `parallelSettled()` can preserve sibling results. Agent failure responses should carry stable `WorkflowErrorCode` values and context details. Runtime retry is deliberately bounded and skips non-retryable classes such as policy rejection, timeouts, and aborts.
 
 ## Rendering and output
 

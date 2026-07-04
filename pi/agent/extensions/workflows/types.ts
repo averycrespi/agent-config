@@ -13,7 +13,7 @@ export const READ_MOSTLY_AGENT_TYPES = new Set([
   "review",
 ]);
 export const DEFAULT_MAX_CONCURRENCY = 4;
-export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+export const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 
 export interface WorkflowMeta {
   name: string;
@@ -43,6 +43,7 @@ export type WorkflowErrorCode =
   | "structured_output_invalid"
   | "workflow_aborted"
   | "workflow_timeout"
+  | "agent_timeout"
   | "workflow_script_error";
 
 export interface WorkflowFailureDetails {
@@ -105,6 +106,7 @@ export interface WorkflowRuntimeOptions {
   onUpdate?: (snapshot: WorkflowSnapshot) => void;
   spawnAgent: (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse>;
   timeoutMs?: number;
+  agentTimeoutMs?: number;
 }
 
 export interface WorkflowAgentRequest {
@@ -114,6 +116,7 @@ export interface WorkflowAgentRequest {
   intent?: string;
   output?: StructuredOutputSpec;
   retries?: number;
+  timeoutMs?: number;
   signal?: AbortSignal;
 }
 

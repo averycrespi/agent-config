@@ -45,16 +45,16 @@ export async function run() {
 
 Supported globals:
 
-| Global            | Description                                                                                                                                                                                                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent`           | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output?, retries? })`. Defaults to `explore`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. `retries` is clamped to 0–2 and retries safe failures only. |
-| `parallel`        | Runs an array of thunks with bounded concurrency and preserves input ordering. Branch failures are logged and returned as `null`.                                                                                                                                                   |
-| `parallelSettled` | Runs an array of thunks with bounded concurrency and preserves input ordering. Each branch returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`, so scripts can recover from partial failure explicitly.                                            |
-| `pipeline`        | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                                                                                                |
-| `phase`           | Sets the current progress phase.                                                                                                                                                                                                                                                    |
-| `log`             | Adds a progress log entry.                                                                                                                                                                                                                                                          |
-| `args`            | The optional JSON `args` value from the tool call.                                                                                                                                                                                                                                  |
-| `cwd`             | Current working directory string.                                                                                                                                                                                                                                                   |
+| Global            | Description                                                                                                                                                                                                                                                                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`           | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output?, retries?, timeoutMs? })`. Defaults to `explore`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. `retries` is clamped to 0–2 and retries safe failures only. `timeoutMs` overrides the per-agent timeout for that call. |
+| `parallel`        | Runs an array of thunks with bounded concurrency and preserves input ordering. Branch failures are logged and returned as `null`.                                                                                                                                                                                                                          |
+| `parallelSettled` | Runs an array of thunks with bounded concurrency and preserves input ordering. Each branch returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`, so scripts can recover from partial failure explicitly.                                                                                                                   |
+| `pipeline`        | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                                                                                                                                                                       |
+| `phase`           | Sets the current progress phase.                                                                                                                                                                                                                                                                                                                           |
+| `log`             | Adds a progress log entry.                                                                                                                                                                                                                                                                                                                                 |
+| `args`            | The optional JSON `args` value from the tool call.                                                                                                                                                                                                                                                                                                         |
+| `cwd`             | Current working directory string.                                                                                                                                                                                                                                                                                                                          |
 
 ## Structured subagent output
 
@@ -102,7 +102,25 @@ Script execution runs in a separate killable Node worker. The worker receives on
 
 ## Configuration
 
-There is no user-facing configuration in Phase 1, and there are no environment variable overrides.
+Configure via `extension:workflows` in Pi settings. Environment variables override settings when set. Use `/workflows-config` to display the effective parsed config.
+
+| Field               | Default   | Environment override            | Description                                                                                        |
+| ------------------- | --------- | ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `workflowTimeoutMs` | `3600000` | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Positive integer timeout, in milliseconds, for the whole foreground workflow.                      |
+| `agentTimeoutMs`    | `600000`  | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Positive integer default timeout, in milliseconds, for each `agent(...)` call inside the workflow. |
+
+Example settings:
+
+```json
+{
+  "extension:workflows": {
+    "workflowTimeoutMs": 3600000,
+    "agentTimeoutMs": 600000
+  }
+}
+```
+
+A workflow script can override the per-agent timeout for one branch with `agent("prompt", { timeoutMs: 120000 })`. If one agent times out inside `parallel()` the branch is logged and returns `null`; inside `parallelSettled()` it returns `{ ok: false, error: { code: "agent_timeout", ... } }`.
 
 ## Logging and retained output
 

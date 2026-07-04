@@ -49,6 +49,10 @@ function timeoutError(timeoutMs: number): Error {
   return error;
 }
 
+function agentTimeoutMessage(timeoutMs: number): string {
+  return `agent timed out after ${timeoutMs}ms`;
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
@@ -120,22 +124,92 @@ function isRetryableAgentFailure(response: WorkflowAgentResponse): boolean {
     "subagent_aborted",
     "workflow_aborted",
     "workflow_timeout",
+    "agent_timeout",
   ]).has(response.errorCode ?? "subagent_failed");
+}
+
+function resolveAgentTimeoutMs(
+  request: WorkflowAgentRequest,
+  defaultTimeoutMs: number | undefined,
+): number | undefined {
+  const value = request.timeoutMs ?? defaultTimeoutMs;
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.trunc(parsed);
+}
+
+async function spawnAttemptWithTimeout(
+  request: WorkflowAgentRequest,
+  phase: string | undefined,
+  spawnAgent: (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse>,
+  timeoutMs: number | undefined,
+): Promise<WorkflowAgentResponse> {
+  if (timeoutMs === undefined) {
+    return withFailureContext(await spawnAgent(request), request, phase);
+  }
+
+  const controller = new AbortController();
+  const abort = () => controller.abort(abortError());
+  if (request.signal?.aborted) {
+    return failedResponse(
+      "workflow_aborted",
+      "workflow aborted",
+      request,
+      phase,
+    );
+  }
+  request.signal?.addEventListener("abort", abort, { once: true });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await new Promise<WorkflowAgentResponse>((resolve, reject) => {
+      let settled = false;
+      const finish = (response: WorkflowAgentResponse) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(response);
+      };
+      timer = setTimeout(() => {
+        controller.abort(new Error(agentTimeoutMessage(timeoutMs)));
+        finish(
+          failedResponse(
+            "agent_timeout",
+            agentTimeoutMessage(timeoutMs),
+            request,
+            phase,
+          ),
+        );
+      }, timeoutMs);
+
+      spawnAgent({ ...request, signal: controller.signal }).then(
+        (response) => finish(withFailureContext(response, request, phase)),
+        reject,
+      );
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+    request.signal?.removeEventListener("abort", abort);
+  }
 }
 
 async function spawnWithRetries(
   request: WorkflowAgentRequest,
   phase: string | undefined,
   spawnAgent: (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse>,
+  defaultAgentTimeoutMs: number | undefined,
 ): Promise<WorkflowAgentResponse> {
   const maxAttempts = 1 + (request.retries ?? 0);
+  const timeoutMs = resolveAgentTimeoutMs(request, defaultAgentTimeoutMs);
   let lastResponse: WorkflowAgentResponse | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      lastResponse = withFailureContext(
-        await spawnAgent(request),
+      lastResponse = await spawnAttemptWithTimeout(
         request,
         phase,
+        spawnAgent,
+        timeoutMs,
       );
     } catch (error) {
       lastResponse = failedResponse(
@@ -184,6 +258,7 @@ export async function runWorkflow(
   let finished = false;
   let terminationReason: "timeout" | "aborted" | "worker_error" | undefined;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const agentTimeoutMs = options.agentTimeoutMs;
   const workflowAbort = new AbortController();
 
   const snapshot = (): WorkflowSnapshot => ({
@@ -246,6 +321,7 @@ export async function runWorkflow(
             intent?: unknown;
             output?: unknown;
             retries?: unknown;
+            timeoutMs?: unknown;
           };
           const requestId = Number(request.requestId);
           if (!Number.isInteger(requestId)) return;
@@ -263,11 +339,16 @@ export async function runWorkflow(
               ? { output: request.output }
               : {}),
             retries: clampRetries(request.retries),
+            ...(typeof request.timeoutMs === "number" ||
+            typeof request.timeoutMs === "string"
+              ? { timeoutMs: Number(request.timeoutMs) }
+              : {}),
           };
           void spawnWithRetries(
             agentRequest,
             currentPhase,
             options.spawnAgent,
+            agentTimeoutMs,
           ).then((response) => {
             try {
               worker.postMessage({
