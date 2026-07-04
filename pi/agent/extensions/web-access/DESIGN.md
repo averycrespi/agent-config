@@ -63,13 +63,13 @@ If local extraction fails or content is too sparse, Jina Reader is used with mar
 
 ## GitHub handling
 
-GitHub support is optimized for repository exploration by Pi's built-in file tools. Repository URLs are shallow-cloned under `/tmp/pi-github-repos/<owner>/<repo>` or a ref-specific directory. Existing clones with a `.git` directory are reused.
+GitHub support is optimized for repository exploration by Pi's built-in file tools. Repository URLs are shallow-cloned under `/tmp/pi-github-repos/<owner>/<repo>` or a ref-specific directory. Existing clones with a `.git` directory are reused, and each GitHub fetch best-effort removes cached clone directories older than the retention window.
 
 Important boundaries:
 
 - Only `github.com` URLs are parsed.
-- Repository size is checked through `gh api` when available; if unavailable, clone proceeds without the size precheck.
-- Clone and size commands use argument arrays, not shell strings.
+- Repository size is checked through GitHub's public REST API; if unavailable, clone proceeds without the size precheck.
+- Clone commands use argument arrays, not shell strings.
 - File trees skip common heavy/generated/binary directories and file extensions.
 - Blob URLs return direct file contents plus the clone path.
 
@@ -83,7 +83,7 @@ Do not add behavior that treats fetched content as extension instructions, Pi se
 
 ## Temporary files and cleanup
 
-GitHub clones are stored under `/tmp/pi-github-repos` and are not actively cleaned up. The clone path is intentionally returned so the agent can inspect files with normal tools. These clones may contain arbitrary public repository contents and should not be treated as sanitized.
+GitHub clones are stored under `/tmp/pi-github-repos` and clone directories older than 7 days are deleted best-effort during GitHub fetches. The clone path is intentionally returned so the agent can inspect files with normal tools. These clones may contain arbitrary public repository contents and should not be treated as sanitized.
 
 The extension writes no retained diagnostic logs.
 
@@ -93,7 +93,7 @@ The extension writes no retained diagnostic logs.
 - No Playwright/browser rendering fallback.
 - No recursive crawl or multi-page research orchestration.
 - No private-host blocking in v1.
-- No active cleanup of temporary GitHub clones.
+- No configurable retention policy for temporary GitHub clones.
 - No exact content deduplication or cache invalidation policy.
 
 ## Change guidance

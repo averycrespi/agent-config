@@ -1,6 +1,6 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   fetchGitHub,
@@ -136,6 +136,52 @@ test("fetchGitHub rejects immediately when the signal is already aborted", async
       ),
     { name: "AbortError" },
   );
+});
+
+test("fetchGitHub rejects oversized repositories using public GitHub metadata", async () => {
+  const owner = "pi-test-owner";
+  const repo = "oversize-repo";
+  const cloneOwnerDir = join("/tmp/pi-github-repos", owner);
+  await rm(cloneOwnerDir, { recursive: true, force: true });
+  await mkdir(join(cloneOwnerDir, repo, ".git"), { recursive: true });
+  await writeFile(join(cloneOwnerDir, repo, "README.md"), "readme");
+
+  mock.method(globalThis, "fetch", async (url: string) => {
+    assert.equal(url, `https://api.github.com/repos/${owner}/${repo}`);
+    return new Response(JSON.stringify({ size: 100 * 1024 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+
+  await assert.rejects(
+    () => fetchGitHub({ owner, repo }, 10_000),
+    /100MB \(limit: 50MB\)/,
+  );
+  await rm(cloneOwnerDir, { recursive: true, force: true });
+});
+
+test("fetchGitHub removes stale cached clones while preserving recent clones", async () => {
+  const owner = "pi-test-owner";
+  const repo = "cleanup-repo";
+  const staleRepo = "stale-repo";
+  const cloneOwnerDir = join("/tmp/pi-github-repos", owner);
+  const clonePath = join(cloneOwnerDir, repo);
+  const stalePath = join(cloneOwnerDir, staleRepo);
+  await rm(cloneOwnerDir, { recursive: true, force: true });
+  await mkdir(join(clonePath, ".git"), { recursive: true });
+  await mkdir(join(stalePath, ".git"), { recursive: true });
+  await writeFile(join(clonePath, "README.md"), "recent readme");
+  await writeFile(join(stalePath, "README.md"), "stale readme");
+
+  const staleDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  await utimes(stalePath, staleDate, staleDate);
+
+  await fetchGitHub({ owner, repo }, 10_000);
+
+  assert.equal((await stat(clonePath)).isDirectory(), true);
+  await assert.rejects(() => stat(stalePath), { code: "ENOENT" });
+  await rm(cloneOwnerDir, { recursive: true, force: true });
 });
 
 test("fetchGitHub uses a ref-specific clone path for blob URLs", async () => {

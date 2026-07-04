@@ -3,7 +3,13 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { join } from "node:path";
 
 /** Maximum repo size in MB before we refuse to clone. */
@@ -11,6 +17,9 @@ const MAX_REPO_SIZE_MB = 50;
 
 /** Clone timeout in milliseconds. */
 const CLONE_TIMEOUT_MS = 30_000;
+
+/** Cached clone retention window in milliseconds. */
+const CLONE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Base directory for cloned repos. */
 const CLONE_BASE = "/tmp/pi-github-repos";
@@ -142,24 +151,61 @@ function getClonePath(gh: GitHubUrl): string {
   return join(CLONE_BASE, gh.owner, repoDir);
 }
 
-/** Check repo size via gh CLI. Returns size in MB, or null if unavailable. */
+function cleanupOldClones(now = Date.now()): void {
+  let owners: string[];
+  try {
+    owners = readdirSync(CLONE_BASE);
+  } catch {
+    return;
+  }
+
+  for (const owner of owners) {
+    const ownerPath = join(CLONE_BASE, owner);
+    let repos: string[];
+    try {
+      if (!statSync(ownerPath).isDirectory()) continue;
+      repos = readdirSync(ownerPath);
+    } catch {
+      continue;
+    }
+
+    for (const repo of repos) {
+      const repoPath = join(ownerPath, repo);
+      try {
+        const stat = statSync(repoPath);
+        if (!stat.isDirectory()) continue;
+        if (now - stat.mtimeMs <= CLONE_RETENTION_MS) continue;
+        rmSync(repoPath, { recursive: true, force: true });
+      } catch {
+        continue;
+      }
+    }
+  }
+}
+
+/** Check repo size via GitHub's public API. Returns size in MB, or null if unavailable. */
 async function getRepoSizeMB(
   owner: string,
   repo: string,
   signal?: AbortSignal,
 ): Promise<number | null> {
   try {
-    const out = await exec(
-      "gh",
-      ["api", `repos/${owner}/${repo}`, "--jq", ".size"],
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}`,
       {
-        timeout: 10_000,
+        headers: {
+          accept: "application/vnd.github+json",
+          "user-agent": "PiAgent/1.0",
+        },
         signal,
       },
     );
-    const kb = parseInt(out.trim(), 10);
-    if (isNaN(kb)) return null;
-    return kb / 1024;
+    if (!response.ok) return null;
+    const body = (await response.json()) as { size?: unknown };
+    if (typeof body.size !== "number" || !Number.isFinite(body.size)) {
+      return null;
+    }
+    return body.size / 1024;
   } catch {
     return null;
   }
@@ -255,6 +301,8 @@ export async function fetchGitHub(
   signal?: AbortSignal,
 ): Promise<GitHubFetchResponse> {
   signal?.throwIfAborted();
+
+  cleanupOldClones();
 
   // Check repo size
   const sizeMB = await getRepoSizeMB(gh.owner, gh.repo, signal);
