@@ -145,7 +145,7 @@ If handoff is disabled or the scheduled-run context is invalid, it returns a cle
 
 ## Runs and artifacts
 
-Manual runs and scheduled ticks share the same claim-and-launch path: they claim work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, wait briefly for that runner to adopt the task lock, and then return without waiting for final task success or failure. The detached runner is launched with `--no-extensions -e <scheduled-tasks-extension>` so it loads only this extension, then adopts the task lock by rewriting lock metadata to its own process PID before executing; same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. If the runner exits or fails to adopt the lock during launch, the scheduler records `launch_failed`, writes a terminal `result.json`, and releases the parent-held lock so the task does not remain stuck as `launched`. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
+Manual runs and scheduled ticks share the same claim-and-launch path: they claim work, write lifecycle metadata and a task snapshot, spawn a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>`, wait briefly for that runner to adopt the task lock, and then return without waiting for final task success or failure. The detached runner adopts the task lock by rewriting lock metadata to its own process PID before executing, so same-host dead-PID recovery evaluates the active runner rather than the short-lived scheduler tick. If the runner exits or fails to adopt the lock during launch, the scheduler records `launch_failed`, writes a terminal `result.json`, and releases the parent-held lock so the task does not remain stuck as `launched`. By default the child Pi command is spawned directly with an argv array. Tasks with `executionShell: bash-login` instead spawn `bash --login -c 'exec <quoted-pi-command> <quoted-args> ...'`, allowing bash login startup files to run first without depending on positional parameters that user startup files may mutate. Child runs set:
 
 ```text
 SCHEDULED_TASKS_ROOT_DIR=<root>
@@ -195,11 +195,13 @@ Write task prompts so they check current external state before irreversible chan
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session --no-extensions -e '<scheduled-tasks-extension>' -p '/scheduled-tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
 All configurable values in the cron command are shell-quoted. `piCommand` is treated as an executable path or command name, not a shell snippet. `cronEnvironment` is merged key-by-key across default, global, project, and environment config layers, then emitted inline after `cd ... && env`, so values apply only to the managed Pi process and its children, not to unrelated crontab entries. Do not put secrets in `cronEnvironment`; crontab entries are not secret storage.
+
+The managed cron and claimed-runner command paths rely on Pi registering this extension's slash commands before processing `-p`. Do not combine `--no-extensions` with `-e <scheduled-tasks-directory>` for these paths: Pi may treat a directory containing package resources such as `skills/` as a package root, skip `index.ts` command registration, and send `/scheduled-tasks-tick` or `/scheduled-tasks-run-claimed` to the model as an ordinary prompt. If future changes need isolated loading, use a deterministic non-LLM entrypoint or an exact extension file path and prove command dispatch with an integration probe.
 
 ## Security defaults and limitations
 

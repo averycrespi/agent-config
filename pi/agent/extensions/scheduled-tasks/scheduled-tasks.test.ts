@@ -16,7 +16,6 @@ import { PassThrough, Writable } from "node:stream";
 import scheduledTasksExtension from "./index.ts";
 import { registerScheduledTaskCommands, _execFile } from "./commands.ts";
 import {
-  SCHEDULED_TASKS_EXTENSION_PATH,
   loadScheduledTasksConfigFromSettings,
   mergeCronEnvironment,
   normalizeConfig,
@@ -719,7 +718,7 @@ test("cron block scopes configured environment to the managed Pi command", () =>
   });
   assert.match(
     block,
-    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' 'pi' --mode json --no-session --no-extensions -e '.*scheduled-tasks' -p '\/scheduled-tasks-tick'/,
+    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' 'pi' --mode json --no-session -p '\/scheduled-tasks-tick'/,
   );
 });
 
@@ -733,7 +732,7 @@ test("cron install and uninstall preserve unrelated crontab lines and quote Pi c
   assert.match(block, /BEGIN PI SCHEDULED TASKS/);
   assert.match(
     block,
-    /cd '\/tmp\/project with spaces;rm' && '\/opt\/pi bin\/pi' --mode json --no-session --no-extensions -e '.*scheduled-tasks' -p '\/scheduled-tasks-tick'/,
+    /cd '\/tmp\/project with spaces;rm' && '\/opt\/pi bin\/pi' --mode json --no-session -p '\/scheduled-tasks-tick'/,
   );
   assert.doesNotMatch(block, /pi-task-scheduler\.mjs|node/);
   const existing = "MAILTO=user@example.com\n";
@@ -1300,15 +1299,10 @@ test("manual run launches claimed runner asynchronously without advancing nextRu
 
   assert.equal(summary.status, "launched");
   assert.ok(summary.runId);
-  assert.deepEqual(spawnedArgs?.slice(0, 6), [
+  assert.deepEqual(spawnedArgs, [
     "--mode",
     "json",
     "--no-session",
-    "--no-extensions",
-    "-e",
-    SCHEDULED_TASKS_EXTENSION_PATH,
-  ]);
-  assert.deepEqual(spawnedArgs?.slice(6), [
     "-p",
     `/scheduled-tasks-run-claimed job ${summary.runId}`,
   ]);
@@ -2091,15 +2085,12 @@ test("scheduler launches normal due tasks and caps catchup runs", async () => {
   assert.equal(summary.status, "ok");
   assert.equal(spawnCount, 2);
   assert.equal(unrefCount, 2);
-  assert.deepEqual(launchCalls[0]?.args.slice(0, 6), [
+  assert.deepEqual(launchCalls[0]?.args.slice(0, 4), [
     "--mode",
     "json",
     "--no-session",
-    "--no-extensions",
-    "-e",
-    SCHEDULED_TASKS_EXTENSION_PATH,
+    "-p",
   ]);
-  assert.equal(launchCalls[0]?.args[6], "-p");
   assert.match(
     String(launchCalls[0]?.args.at(-1)),
     /\/scheduled-tasks-run-claimed catch-a /,

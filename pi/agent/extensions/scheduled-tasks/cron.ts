@@ -1,5 +1,3 @@
-import { SCHEDULED_TASKS_EXTENSION_PATH } from "./config.ts";
-
 export const CRON_BEGIN = "# BEGIN PI SCHEDULED TASKS";
 export const CRON_END = "# END PI SCHEDULED TASKS";
 
@@ -24,9 +22,6 @@ export function buildCronBlock(options: {
     "--mode",
     "json",
     "--no-session",
-    "--no-extensions",
-    "-e",
-    shellQuote(SCHEDULED_TASKS_EXTENSION_PATH),
     "-p",
     shellQuote("/scheduled-tasks-tick"),
   ].join(" ");
