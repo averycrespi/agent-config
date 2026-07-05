@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { isSafeTaskId } from "./paths.ts";
+import { isSafeRunId, isSafeTaskId } from "./paths.ts";
 import { loadScheduledTasksConfig } from "./config.ts";
 import {
   runClaimedTask,
@@ -69,9 +69,9 @@ export async function runClaimedCli(
     return usage(
       "Invalid task ID. Use letters, numbers, underscores, or hyphens; no slashes or dots.",
     );
-  if (!/^[a-zA-Z0-9T_.:-]+$/.test(runId))
+  if (!isSafeRunId(runId))
     return usage(
-      "Invalid run ID. Use letters, numbers, T, underscores, dots, colons, or hyphens; no slashes.",
+      "Invalid run ID. Start with a letter or number; use letters, numbers, T, underscores, dots, colons, or hyphens; no slashes.",
     );
   const warnings: string[] = [];
   try {

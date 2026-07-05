@@ -62,6 +62,10 @@ export function isSafeTaskId(value: string): boolean {
   return /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
 }
 
+export function isSafeRunId(value: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9T_.:-]{0,127}$/.test(value);
+}
+
 export function assertSafeTaskId(taskId: string): void {
   if (!isSafeTaskId(taskId)) {
     throw new Error(
@@ -114,7 +118,7 @@ export function taskRunsDir(rootDir: string, taskId: string): string {
 
 export function runDir(rootDir: string, taskId: string, runId: string): string {
   assertSafeTaskId(taskId);
-  if (!/^[a-zA-Z0-9T_.:-]+$/.test(runId)) throw new Error("Invalid run ID.");
+  if (!isSafeRunId(runId)) throw new Error("Invalid run ID.");
   return join(taskRunsDir(rootDir, taskId), runId);
 }
 

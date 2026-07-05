@@ -37,6 +37,7 @@ import { acquireLock, readLock } from "./locks.ts";
 import {
   ensureRootLayout,
   isInside,
+  isSafeRunId,
   isSafeTaskId,
   lockPath,
   runDir,
@@ -264,12 +265,16 @@ test("cronEnvironment merges nested maps with later layers overriding keys", () 
 test("task ID and path helpers reject unsafe IDs and preserve root safety", () => {
   assert.equal(isSafeTaskId("dependency-audit_1"), true);
   assert.equal(isSafeTaskId("../bad"), false);
+  assert.equal(isSafeRunId("2026-01-01T00:00:00.000Z-abc123"), true);
+  assert.equal(isSafeRunId(".."), false);
+  assert.equal(isSafeRunId(".hidden"), false);
   const root = "/tmp/root";
   assert.equal(
     isInside(root, runDir(root, "task", "2026-01-01T00-00-00Z-abc123")),
     true,
   );
   assert.throws(() => runDir(root, "../task", "run"));
+  assert.throws(() => runDir(root, "task", ".."), /Invalid run ID/);
 });
 
 test("precheck script paths stay inside the scheduler scripts directory", async () => {
@@ -1343,6 +1348,11 @@ test("run-claimed CLI validates arguments and prints one JSON RunSummary", async
   assert.equal(invalid.exitCode, 2);
   assert.equal(invalid.stdout, "");
   assert.match(invalid.stderr, /Invalid task ID/);
+
+  const unsafeRun = await runClaimedCli(["job", ".."], { cwd });
+  assert.equal(unsafeRun.exitCode, 2);
+  assert.equal(unsafeRun.stdout, "");
+  assert.match(unsafeRun.stderr, /Invalid run ID/);
 
   const result = await runClaimedCli(["job", "run1"], { cwd });
   assert.equal(result.exitCode, 0);
