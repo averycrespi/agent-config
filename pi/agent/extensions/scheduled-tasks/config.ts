@@ -1,5 +1,5 @@
 import { access } from "node:fs/promises";
-import { delimiter } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   mergeExtensionConfig,
@@ -9,6 +9,10 @@ import {
 import { resolveRoot } from "./paths.ts";
 
 export const EXTENSION_NAME = "scheduled-tasks";
+export const SCHEDULED_TASKS_EXTENSION_ENTRYPOINT = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "index.ts",
+);
 
 export interface ScheduledTasksConfig {
   rootDir: string;

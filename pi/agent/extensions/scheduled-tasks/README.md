@@ -195,13 +195,13 @@ Write task prompts so they check current external state before irreversible chan
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session --no-extensions -e '<scheduled-tasks-extension>/index.ts' -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
 All configurable values in the cron command are shell-quoted. `piCommand` is treated as an executable path or command name, not a shell snippet. `cronEnvironment` is merged key-by-key across default, global, project, and environment config layers, then emitted inline after `cd ... && env`, so values apply only to the managed Pi process and its children, not to unrelated crontab entries. Do not put secrets in `cronEnvironment`; crontab entries are not secret storage.
 
-The managed cron and claimed-runner command paths rely on Pi registering this extension's slash commands before processing `-p`. Do not combine `--no-extensions` with `-e <scheduled-tasks-directory>` for these paths: Pi may treat a directory containing package resources such as `skills/` as a package root, skip `index.ts` command registration, and send `/scheduled-tasks-tick` or `/scheduled-tasks-run-claimed` to the model as an ordinary prompt. If future changes need isolated loading, use a deterministic non-LLM entrypoint or an exact extension file path and prove command dispatch with an integration probe.
+The managed cron and claimed-runner command paths rely on Pi registering this extension's slash commands before processing `-p`, so they disable extension discovery and re-enable only the exact `index.ts` entrypoint for this extension. Do not pass `-e <scheduled-tasks-directory>` for these paths: Pi may treat a directory containing package resources such as `skills/` as a package root, skip `index.ts` command registration, and send `/scheduled-tasks-tick` or `/scheduled-tasks-run-claimed` to the model as an ordinary prompt. If future changes alter scheduler loading, prove command dispatch with an integration probe.
 
 ## Security defaults and limitations
 

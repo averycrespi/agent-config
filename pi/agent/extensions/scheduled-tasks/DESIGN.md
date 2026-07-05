@@ -56,7 +56,7 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 ## Scheduler semantics
 
-`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command.
+`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode with all other extensions disabled and this extension's exact `index.ts` entrypoint re-enabled. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command, also launched with this extension's exact entrypoint.
 
 The scheduler behavior is intentionally coalescing, not replaying:
 
@@ -171,13 +171,13 @@ Doctor surfaces inspect crontab status by reading `crontab -l` and checking only
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session -p '/scheduled-tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session --no-extensions -e '<scheduled-tasks-extension>/index.ts' -p '/scheduled-tasks-tick'
 # END PI SCHEDULED TASKS
 ```
 
 Configurable values are shell-quoted. `piCommand` is treated as an executable path or command name, not as a shell snippet. `cronEnvironment` is emitted inline after `cd ... && env` so configured variables are scoped to the managed Pi process and do not bleed into unrelated crontab entries. Future cron changes should preserve the managed-block boundary and inline environment scoping so uninstall remains safe and the extension does not alter global cron behavior.
 
-Command-dispatch invariant: cron and claimed-runner launch paths must not disable extension discovery and then pass `-e` the scheduled-tasks directory. Pi can interpret an explicit directory source that contains package resource directories such as `skills/` as a package root instead of loading `index.ts`; then `/scheduled-tasks-tick` or `/scheduled-tasks-run-claimed` is not registered and `-p` falls through to normal model prompt processing. A safe isolation change must either invoke a deterministic non-LLM scheduler entrypoint or pass an exact extension file path and include an integration test/probe that proves the slash command executes without an LLM turn.
+Command-dispatch invariant: cron and claimed-runner launch paths may disable extension discovery only when they pass `-e` the exact scheduled-tasks `index.ts` file. Pi can interpret an explicit directory source that contains package resource directories such as `skills/` as a package root instead of loading `index.ts`; then `/scheduled-tasks-tick` or `/scheduled-tasks-run-claimed` is not registered and `-p` falls through to normal model prompt processing. Any scheduler-loading change must include an integration test/probe that proves the slash command executes without an LLM turn.
 
 ## State and atomicity
 
