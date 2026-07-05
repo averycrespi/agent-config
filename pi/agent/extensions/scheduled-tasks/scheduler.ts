@@ -603,23 +603,74 @@ async function launchClaimedRunner(options: {
   config: ScheduledTasksConfig;
   taskId: string;
   runId: string;
-}): Promise<{ ok: true; pid?: number } | { ok: false; error: string }> {
+  runDir: string;
+  parentLock: LockMetadata;
+}): Promise<
+  | { ok: true; pid?: number }
+  | {
+      ok: false;
+      error: string;
+      exitCode?: number | null;
+      signal?: string | null;
+    }
+> {
+  let stdout: Awaited<ReturnType<typeof open>> | undefined;
+  let stderr: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    stdout = await open(join(options.runDir, "launch.stdout.log"), "a", 0o600);
+    stderr = await open(join(options.runDir, "launch.stderr.log"), "a", 0o600);
+  } catch (error) {
+    await stdout?.close().catch(() => undefined);
+    return {
+      ok: false,
+      error: `Unable to open launch logs: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   return new Promise((resolve) => {
     let settled = false;
+    let spawned = false;
     const finish = (
-      result: { ok: true; pid?: number } | { ok: false; error: string },
+      result:
+        | { ok: true; pid?: number }
+        | {
+            ok: false;
+            error: string;
+            exitCode?: number | null;
+            signal?: string | null;
+          },
     ) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      void stdout.close().catch(() => undefined);
+      void stderr.close().catch(() => undefined);
       resolve(result);
     };
-    const timer = setTimeout(
-      () =>
-        finish({ ok: false, error: "Timed out waiting for runner launch." }),
-      LAUNCH_TIMEOUT_MS,
-    );
-    let child: ReturnType<typeof _spawn.fn>;
+    const fail = (
+      error: string,
+      detail: { exitCode?: number | null; signal?: string | null } = {},
+    ) => finish({ ok: false, error, ...detail });
+    const timer = setTimeout(() => {
+      child?.kill?.("SIGTERM");
+      fail("Timed out waiting for runner lock adoption.");
+    }, LAUNCH_TIMEOUT_MS);
+    let child: ReturnType<typeof _spawn.fn> | undefined;
+    const pollForAdoption = async () => {
+      if (settled || !spawned) return;
+      const lock = await readLock(options.config.rootDir, options.taskId);
+      if (
+        lock?.taskId === options.taskId &&
+        lock.runId === options.runId &&
+        (lock.pid !== options.parentLock.pid ||
+          lock.startedAt !== options.parentLock.startedAt ||
+          lock.hostname !== options.parentLock.hostname)
+      ) {
+        child?.unref?.();
+        finish({ ok: true, pid: child?.pid });
+        return;
+      }
+      setTimeout(() => void pollForAdoption(), 25);
+    };
     try {
       child = _spawn.fn(
         options.config.piCommand,
@@ -640,25 +691,26 @@ async function launchClaimedRunner(options: {
             SCHEDULED_TASKS_ROOT_DIR: options.config.rootDir,
           },
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", stdout.fd, stderr.fd],
         } as SpawnOptions,
       );
     } catch (error) {
-      finish({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      fail(error instanceof Error ? error.message : String(error));
       return;
     }
     child.once("error", (error) =>
-      finish({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      }),
+      fail(error instanceof Error ? error.message : String(error)),
     );
     child.once("spawn", () => {
-      child.unref?.();
-      finish({ ok: true, pid: child.pid });
+      spawned = true;
+      void pollForAdoption();
+    });
+    child.once("exit", (code, signal) => {
+      if (!settled)
+        fail("Runner exited before adopting the task lock.", {
+          exitCode: code,
+          signal,
+        });
     });
   });
 }
@@ -745,6 +797,8 @@ async function claimAndLaunch(options: {
       config,
       taskId: task.id,
       runId,
+      runDir: dir,
+      parentLock: lock.metadata,
     });
     if (!launch.ok) {
       const lifecycle: RunLifecycle = {
@@ -754,6 +808,8 @@ async function claimAndLaunch(options: {
         claimedAt,
         endedAt: new Date().toISOString(),
         error: launch.error,
+        ...("exitCode" in launch ? { exitCode: launch.exitCode } : {}),
+        ...("signal" in launch ? { signal: launch.signal } : {}),
       };
       await writeLifecycleAndResult(config.rootDir, lifecycle);
       await recordRunState(
@@ -770,22 +826,31 @@ async function claimAndLaunch(options: {
       };
     }
     const launchedAt = new Date().toISOString();
-    await writeRunLifecycle(config.rootDir, {
-      taskId: task.id,
+    const currentLifecycle = await readRunLifecycleStrict(
+      config.rootDir,
+      task.id,
       runId,
-      status: "launched",
-      claimedAt,
-      launchedAt,
-      ...(launch.pid ? { runnerPid: launch.pid } : {}),
-    });
-    await writeTaskState(config.rootDir, {
-      ...(state ?? { taskId: task.id }),
-      ...(nextRunAt ? { nextRunAt } : {}),
-      lastRunAt: launchedAt,
-      lastRunId: runId,
-      lastStatus: "launched",
-      lastSkipReason: null,
-    });
+    );
+    let recordedLaunch = false;
+    if (currentLifecycle.ok && currentLifecycle.value.status === "claimed") {
+      await writeRunLifecycle(config.rootDir, {
+        ...currentLifecycle.value,
+        status: "launched",
+        launchedAt,
+        ...(launch.pid ? { runnerPid: launch.pid } : {}),
+      });
+      recordedLaunch = true;
+    }
+    if (recordedLaunch) {
+      await writeTaskState(config.rootDir, {
+        ...(state ?? { taskId: task.id }),
+        ...(nextRunAt ? { nextRunAt } : {}),
+        lastRunAt: launchedAt,
+        lastRunId: runId,
+        lastStatus: "launched",
+        lastSkipReason: null,
+      });
+    }
     return {
       taskId: task.id,
       runId,

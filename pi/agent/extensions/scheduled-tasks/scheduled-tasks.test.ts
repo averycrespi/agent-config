@@ -90,6 +90,27 @@ function sampleTask(path: string, cwd: string, extra = ""): string {
   return `---\nid: ${path}\ndescription: Test task\nenabled: true\nschedule: "* * * * *"\ncwd: ${cwd}\ntools:\n  - read\ntimeoutMinutes: 1\n${extra}---\nDo the work.\n`;
 }
 
+async function simulateRunnerLockAdoption(
+  root: string,
+  taskId: string,
+): Promise<void> {
+  const lock = await readLock(root, taskId);
+  assert.ok(lock);
+  await writeFile(
+    lockPath(root, taskId),
+    `${JSON.stringify(
+      {
+        ...lock,
+        pid: lock.pid + 1,
+        startedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+}
+
 test("config normalization supports env-shaped values and defaults", () => {
   const warnings: string[] = [];
   const config = normalizeConfig(
@@ -947,7 +968,10 @@ test("/scheduled-tasks-run acknowledges after launching detached child", async (
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
+    });
     return child;
   });
 
@@ -1256,7 +1280,10 @@ test("manual run launches claimed runner asynchronously without advancing nextRu
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
+    });
     return child;
   });
 
@@ -2043,8 +2070,12 @@ test("scheduler launches normal due tasks and caps catchup runs", async () => {
       child.unref = () => {
         unrefCount += 1;
       };
-      process.nextTick(() => {
+      process.nextTick(async () => {
         child.emit("spawn");
+        await simulateRunnerLockAdoption(
+          root,
+          String(args.at(-1)).split(" ")[1]!,
+        );
         child.stdout.end();
         child.stderr.end();
         child.emit("close", 0, null);
@@ -2074,7 +2105,8 @@ test("scheduler launches normal due tasks and caps catchup runs", async () => {
     /\/scheduled-tasks-run-claimed catch-a /,
   );
   assert.equal(launchCalls[0]?.options?.detached, true);
-  assert.equal(launchCalls[0]?.options?.stdio, "ignore");
+  assert.ok(Array.isArray(launchCalls[0]?.options?.stdio));
+  assert.equal(launchCalls[0]?.options?.stdio?.[0], "ignore");
   assert.deepEqual(
     summary.claimed.map((item) => [item.taskId, item.status]),
     [
@@ -2224,13 +2256,15 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
   );
 
   await held.release();
-  const child = new EventEmitter() as StubChild;
-  child.stdout = new PassThrough();
-  child.stderr = new PassThrough();
-  child.kill = () => true;
-  mock.method(_spawn, "fn", () => {
-    process.nextTick(() => {
+  mock.method(_spawn, "fn", (_command: string, args: readonly string[]) => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(async () => {
       child.emit("spawn");
+      if (args.includes("--no-session"))
+        await simulateRunnerLockAdoption(root, "job");
       child.stdout.end();
       child.stderr.end();
       child.emit("close", 0, null);
@@ -2328,7 +2362,7 @@ test("scheduler launch failure writes terminal lifecycle and releases the task l
   await rm(root, { recursive: true, force: true });
 });
 
-test("scheduler launch timeout writes terminal lifecycle and releases the task lock", async () => {
+test("scheduler runner exit before lock adoption fails launch and releases the task lock", async () => {
   const root = await tempRoot();
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
   await writeFile(
@@ -2345,6 +2379,11 @@ test("scheduler launch timeout writes terminal lifecycle and releases the task l
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
+    process.nextTick(() => {
+      child.emit("spawn");
+      child.emit("exit", 1, null);
+      child.emit("close", 1, null);
+    });
     return child;
   });
 
@@ -2360,7 +2399,120 @@ test("scheduler launch timeout writes terminal lifecycle and releases the task l
   );
 
   assert.equal(summary.claimed[0]?.status, "launch_failed");
-  assert.match(summary.claimed[0]?.message ?? "", /Timed out/);
+  assert.match(summary.claimed[0]?.message ?? "", /exited before adopting/i);
+  const runId = summary.claimed[0]!.runId!;
+  const lifecycle = await readRunLifecycle(root, "job", runId);
+  assert.equal(lifecycle?.status, "launch_failed");
+  assert.equal(lifecycle?.exitCode, 1);
+  assert.equal(
+    JSON.parse(
+      await readFile(join(root, "runs", "job", runId, "result.json"), "utf8"),
+    ).status,
+    "launch_failed",
+  );
+  assert.equal(await readLock(root, "job"), undefined);
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler launch does not overwrite a fast child terminal state", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
+      const lock = await readLock(root, "job");
+      assert.ok(lock?.runId);
+      await writeRunLifecycle(root, {
+        taskId: "job",
+        runId: lock.runId,
+        status: "success",
+        claimedAt: "2026-06-19T09:01:00.000Z",
+        startedAt: "2026-06-19T09:01:01.000Z",
+        endedAt: "2026-06-19T09:01:02.000Z",
+      });
+      await writeTaskState(root, {
+        taskId: "job",
+        nextRunAt: "2026-06-19T09:02:00.000Z",
+        lastRunAt: "2026-06-19T09:01:02.000Z",
+        lastRunId: lock.runId,
+        lastStatus: "success",
+        lastSkipReason: null,
+      });
+    });
+    return child;
+  });
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.equal(summary.claimed[0]?.status, "launched");
+  const runId = summary.claimed[0]!.runId!;
+  assert.equal((await readRunLifecycle(root, "job", runId))?.status, "success");
+  assert.equal((await readTaskState(root, "job"))?.lastStatus, "success");
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("scheduler runner adoption timeout fails launch and releases the task lock", async () => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  await writeFile(
+    join(root, "tasks", "job.md"),
+    sampleTask("job", cwd),
+    "utf8",
+  );
+  await writeTaskState(root, {
+    taskId: "job",
+    nextRunAt: "2026-06-19T09:01:00.000Z",
+  });
+  mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as StubChild;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("spawn"));
+    return child;
+  });
+
+  const summary = await schedulerTick(
+    {
+      rootDir: root,
+      defaultTimeoutMinutes: 1,
+      defaultTools: ["read"],
+      piCommand: "pi",
+      cronEnvironment: {},
+    },
+    { now: new Date("2026-06-19T09:01:00Z") },
+  );
+
+  assert.equal(summary.claimed[0]?.status, "launch_failed");
+  assert.match(
+    summary.claimed[0]?.message ?? "",
+    /Timed out waiting for runner lock adoption/,
+  );
   const runId = summary.claimed[0]!.runId!;
   assert.equal(
     (await readRunLifecycle(root, "job", runId))?.status,
@@ -2390,7 +2542,10 @@ test("scheduler enforces global active scheduled-run concurrency without advanci
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "a");
+    });
     return child;
   });
 
@@ -2573,7 +2728,10 @@ test("scheduler recovers stale task locks and marks prior lifecycle", async () =
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
+    });
     return child;
   });
 
@@ -2632,7 +2790,10 @@ test("scheduler recovers same-host dead-pid task locks after safety floor", asyn
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
+    });
     return child;
   });
 
@@ -2795,7 +2956,10 @@ test("scheduler recovers stale active locks before enforcing concurrency cap", a
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(async () => {
+      child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
+    });
     return child;
   });
 
@@ -3012,8 +3176,9 @@ test("claimed runner executes the task snapshot even after source mutation", asy
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => {
+    process.nextTick(async () => {
       child.emit("spawn");
+      await simulateRunnerLockAdoption(root, "job");
       child.stdout.end();
       child.stderr.end();
       child.emit("close", 0, null);
@@ -3262,17 +3427,20 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
   mock.method(
     _spawn,
     "fn",
-    (_command: string, _args: readonly string[], options?: SpawnOptions) => {
+    (_command: string, args: readonly string[], options?: SpawnOptions) => {
       spawnedEnv = options?.env;
       const child = new EventEmitter() as StubChild;
       child.stdout = new PassThrough();
       child.stderr = new PassThrough();
       child.kill = () => true;
-      process.nextTick(() => {
+      process.nextTick(async () => {
         child.emit("spawn");
-        child.stdout.write(
-          '{"type":"message_end","message":{"content":"done"}}\n',
-        );
+        if (args.includes("--no-session"))
+          await simulateRunnerLockAdoption(root, "job");
+        else
+          child.stdout.write(
+            '{"type":"message_end","message":{"content":"done"}}\n',
+          );
         child.stdout.end();
         child.stderr.end();
         child.emit("close", 0, null);
