@@ -74,7 +74,7 @@ Lock sequencing matters:
 2. Read and validate tasks.
 3. For a due or catchup task, acquire the per-task lock before advancing `nextRunAt`. Task locks may be recovered after task timeout plus a 5-minute cushion, or after a 30-second floor for same-host dead PIDs.
 4. Under the task lock, create `<run-dir>/task.md`, write initial `run.json`, and persist the advanced `nextRunAt`.
-5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and update `run.json` to `launched`, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
+5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and wait up to 10 seconds for lock adoption. Update `run.json` to `launched` only after adoption, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
 6. Release `scheduler.lock` promptly; do not await final child task completion in the tick.
 7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, records `lockAdoptedAt`, `lockPid`, and `lockHostname` in `run.json`, executes the `task.md` snapshot via `runTask()`, runs any configured precheck before child Pi launch, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
 

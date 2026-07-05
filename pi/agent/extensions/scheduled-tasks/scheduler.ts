@@ -474,8 +474,9 @@ const TICK_LOG_RETAIN = 1000;
 const SCHEDULER_LOCK_STALE_MS = 5 * 60_000;
 const TASK_LOCK_CUSHION_MS = 5 * 60_000;
 const SAME_HOST_DEAD_PID_FLOOR_MS = 30_000;
-const LAUNCH_TIMEOUT_MS = 1_000;
+const LAUNCH_TIMEOUT_MS = 10_000;
 const ACTIVE_STATUSES = new Set(["claimed", "launched", "running"]);
+export const _launchTimers = { setTimeout, clearTimeout };
 
 async function trimTickLog(path: string): Promise<void> {
   const raw = await readFile(path, "utf8");
@@ -641,7 +642,7 @@ async function launchClaimedRunner(options: {
     ) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      _launchTimers.clearTimeout(timer);
       void stdout.close().catch(() => undefined);
       void stderr.close().catch(() => undefined);
       resolve(result);
@@ -650,7 +651,7 @@ async function launchClaimedRunner(options: {
       error: string,
       detail: { exitCode?: number | null; signal?: string | null } = {},
     ) => finish({ ok: false, error, ...detail });
-    const timer = setTimeout(() => {
+    const timer = _launchTimers.setTimeout(() => {
       child?.kill?.("SIGTERM");
       fail("Timed out waiting for runner lock adoption.");
     }, LAUNCH_TIMEOUT_MS);
@@ -669,7 +670,7 @@ async function launchClaimedRunner(options: {
         finish({ ok: true, pid: child?.pid });
         return;
       }
-      setTimeout(() => void pollForAdoption(), 25);
+      _launchTimers.setTimeout(() => void pollForAdoption(), 25);
     };
     try {
       child = _spawn.fn(

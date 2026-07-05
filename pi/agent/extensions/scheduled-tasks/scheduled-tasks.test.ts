@@ -50,6 +50,7 @@ import {
   readLatestLogs,
   runClaimedTask,
   schedulerTick,
+  _launchTimers,
 } from "./scheduler.ts";
 import {
   buildSpawnPlan,
@@ -2474,7 +2475,7 @@ test("scheduler launch does not overwrite a fast child terminal state", async ()
   await rm(root, { recursive: true, force: true });
 });
 
-test("scheduler runner adoption timeout fails launch and releases the task lock", async () => {
+test("scheduler runner adoption timeout fails launch and releases the task lock", async (t) => {
   const root = await tempRoot();
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
   await writeFile(
@@ -2486,12 +2487,25 @@ test("scheduler runner adoption timeout fails launch and releases the task lock"
     taskId: "job",
     nextRunAt: "2026-06-19T09:01:00.000Z",
   });
+  const timerCalls: Array<{ callback: () => void; ms: number }> = [];
+  t.mock.method(
+    _launchTimers,
+    "setTimeout",
+    (callback: () => void, ms: number) => {
+      timerCalls.push({ callback, ms });
+      return timerCalls.length as any;
+    },
+  );
+  t.mock.method(_launchTimers, "clearTimeout", () => undefined);
   mock.method(_spawn, "fn", () => {
     const child = new EventEmitter() as StubChild;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.kill = () => true;
-    process.nextTick(() => child.emit("spawn"));
+    process.nextTick(() => {
+      child.emit("spawn");
+      timerCalls[0]?.callback();
+    });
     return child;
   });
 
@@ -2506,6 +2520,7 @@ test("scheduler runner adoption timeout fails launch and releases the task lock"
     { now: new Date("2026-06-19T09:01:00Z") },
   );
 
+  assert.equal(timerCalls[0]?.ms, 10_000);
   assert.equal(summary.claimed[0]?.status, "launch_failed");
   assert.match(
     summary.claimed[0]?.message ?? "",
