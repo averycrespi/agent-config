@@ -9,9 +9,28 @@ import {
 import { resolveRoot } from "./paths.ts";
 
 export const EXTENSION_NAME = "scheduled-tasks";
+export const SCHEDULED_TASKS_EXTENSION_DIR = dirname(
+  fileURLToPath(import.meta.url),
+);
+export const SCHEDULED_TASKS_REPO_ROOT = join(
+  SCHEDULED_TASKS_EXTENSION_DIR,
+  "../../../..",
+);
 export const SCHEDULED_TASKS_EXTENSION_ENTRYPOINT = join(
-  dirname(fileURLToPath(import.meta.url)),
+  SCHEDULED_TASKS_EXTENSION_DIR,
   "index.ts",
+);
+export const SCHEDULED_TASKS_TICK_CLI = join(
+  SCHEDULED_TASKS_EXTENSION_DIR,
+  "tick-cli.ts",
+);
+export const SCHEDULED_TASKS_RUN_CLAIMED_CLI = join(
+  SCHEDULED_TASKS_EXTENSION_DIR,
+  "run-claimed-cli.ts",
+);
+export const SCHEDULED_TASKS_TSX_COMMAND = join(
+  SCHEDULED_TASKS_REPO_ROOT,
+  "node_modules/.bin/tsx",
 );
 
 export interface ScheduledTasksConfig {

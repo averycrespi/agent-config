@@ -56,7 +56,7 @@ Disabled tasks can still be listed, read, validated, and manually run if they ot
 
 ## Scheduler semantics
 
-`/scheduled-tasks-tick` is the only scheduler entrypoint. Cron invokes it once per minute through Pi in non-interactive JSON mode with all other extensions disabled and this extension's exact `index.ts` entrypoint re-enabled. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the internal `/scheduled-tasks-run-claimed <task-id> <run-id>` command, also launched with this extension's exact entrypoint.
+The deterministic repo-local tick CLI is the unattended scheduler entrypoint for cron, while `/scheduled-tasks-tick` remains an interactive wrapper over the same function. Cron invokes `node_modules/.bin/tsx` with `tick-cli.ts` once per minute; it must not depend on Pi startup, extension loading, slash-command registration, or model prompt dispatch. A tick must stay a fast claim-and-launch operation, not a long-running task supervisor. Manual runs use `/scheduled-tasks-run <task-id>` and follow the same detached claimed-runner path without advancing `nextRunAt`; scheduled runs are claimed by the tick and executed later by the deterministic repo-local `run-claimed-cli.ts`. The `/scheduled-tasks-run-claimed <task-id> <run-id>` slash command remains a manual/debug and compatibility wrapper.
 
 The scheduler behavior is intentionally coalescing, not replaying:
 
@@ -74,7 +74,7 @@ Lock sequencing matters:
 2. Read and validate tasks.
 3. For a due or catchup task, acquire the per-task lock before advancing `nextRunAt`. Task locks may be recovered after task timeout plus a 5-minute cushion, or after a 30-second floor for same-host dead PIDs.
 4. Under the task lock, create `<run-dir>/task.md`, write initial `run.json`, and persist the advanced `nextRunAt`.
-5. Launch a detached Pi runner for `/scheduled-tasks-run-claimed <task-id> <run-id>` and wait up to 10 seconds for lock adoption. Update `run.json` to `launched` only after adoption, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
+5. Launch a detached deterministic repo-local run-claimed CLI for `<task-id> <run-id>` and wait up to 10 seconds for lock adoption. Update `run.json` to `launched` only after adoption, or mark `launch_failed`, write `result.json`, update last-run state, and release the task lock.
 6. Release `scheduler.lock` promptly; do not await final child task completion in the tick.
 7. The claimed runner validates `run.json` and the task lock metadata, adopts the task lock by compare-and-rewrite to its own `process.pid`, records `lockAdoptedAt`, `lockPid`, and `lockHostname` in `run.json`, executes the `task.md` snapshot via `runTask()`, runs any configured precheck before child Pi launch, writes terminal lifecycle/result artifacts, updates last-run state, and releases the same lock by compare-before-delete semantics.
 
@@ -147,12 +147,17 @@ Keep the handoff model narrow. It exists to make recurrence intentional and audi
 
 ## Commands and agent tools
 
-Slash commands are for interactive users:
+Slash commands are for interactive users, manual debugging, and compatibility:
 
 - `/scheduled-tasks-list`, `/scheduled-tasks-show`, `/scheduled-tasks-doctor`
-- `/scheduled-tasks-run`, internal `/scheduled-tasks-run-claimed`, `/scheduled-tasks-logs`, `/scheduled-tasks-tick [--dry-run]`
+- `/scheduled-tasks-run`, `/scheduled-tasks-run-claimed`, `/scheduled-tasks-logs`, `/scheduled-tasks-tick [--dry-run]`
 - `/scheduled-tasks-install-cron`, `/scheduled-tasks-uninstall-cron`
 - `/scheduled-tasks-config` from the shared config helper
+
+Unattended scheduler automation uses deterministic CLIs instead of slash-command dispatch:
+
+- `tick-cli.ts [--dry-run]` loads config from the current project cwd, calls `schedulerTick()`, writes exactly one JSON `TickSummary` to stdout, and writes diagnostics to stderr.
+- `run-claimed-cli.ts <task-id> <run-id>` loads config from the current project cwd, calls `runClaimedTask()`, writes exactly one JSON `RunSummary` to stdout, and writes diagnostics to stderr.
 
 Agent tools are deliberately smaller:
 
@@ -165,19 +170,21 @@ V1 intentionally does not expose structured create/update/delete task actions. A
 
 ## Cron integration
 
-Doctor surfaces inspect crontab status by reading `crontab -l` and checking only for the marked managed block. They report installed, not installed, or unavailable without mutating crontab.
+Doctor surfaces inspect crontab status by reading `crontab -l` and checking the marked managed block against the expected deterministic CLI block. They report installed, installed-but-stale/needs-update, not installed, or unavailable without mutating crontab.
 
-`/scheduled-tasks-install-cron` owns one marked crontab block and leaves unrelated entries untouched. The block captures the project cwd at install time and invokes the configured Pi command directly:
+`/scheduled-tasks-install-cron` owns one marked crontab block and leaves unrelated entries untouched. The block captures the project cwd at install time for settings resolution and invokes the repo-local TypeScript scheduler CLI:
 
 ```cron
 # BEGIN PI SCHEDULED TASKS
-* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<pi>' --mode json --no-session --no-extensions -e '<scheduled-tasks-extension>/index.ts' -p '/scheduled-tasks-tick'
+* * * * * cd '<project-cwd>' && env PATH='<optional-cron-path>' '<extension-repo>/node_modules/.bin/tsx' '<extension-repo>/pi/agent/extensions/scheduled-tasks/tick-cli.ts'
 # END PI SCHEDULED TASKS
 ```
 
-Configurable values are shell-quoted. `piCommand` is treated as an executable path or command name, not as a shell snippet. `cronEnvironment` is emitted inline after `cd ... && env` so configured variables are scoped to the managed Pi process and do not bleed into unrelated crontab entries. Future cron changes should preserve the managed-block boundary and inline environment scoping so uninstall remains safe and the extension does not alter global cron behavior.
+Configurable values are shell-quoted. `piCommand` is treated as the final child Pi executable path or command name, not as a scheduler orchestration command and not as a shell snippet. `cronEnvironment` is emitted inline after `cd ... && env` so configured variables are scoped to the managed scheduler process and descendants and do not bleed into unrelated crontab entries. Future cron changes should preserve the managed-block boundary and inline environment scoping so uninstall remains safe and the extension does not alter global cron behavior.
 
-Command-dispatch invariant: cron and claimed-runner launch paths may disable extension discovery only when they pass `-e` the exact scheduled-tasks `index.ts` file. Pi can interpret an explicit directory source that contains package resource directories such as `skills/` as a package root instead of loading `index.ts`; then `/scheduled-tasks-tick` or `/scheduled-tasks-run-claimed` is not registered and `-p` falls through to normal model prompt processing. Any scheduler-loading change must include an integration test/probe that proves the slash command executes without an LLM turn.
+Cron installation must preflight the repo-local `node_modules/.bin/tsx`, `tick-cli.ts`, and `run-claimed-cli.ts` paths before writing crontab. The scheduled-tasks extension source repo root and the project cwd are separate concepts: CLI executable/script paths come from the extension repo root, while `cwd` remains the project settings directory captured by cron install or inherited by runner launch.
+
+Control-plane invariant: unattended scheduler automation must not depend on Pi slash-command dispatch. Cron uses `tick-cli.ts`, claimed-runner launch uses `run-claimed-cli.ts`, and only final task execution launches Pi through `buildSpawnPlan()` / `spawnPi()`. If a future change reintroduces Pi command dispatch into scheduler-owned automation, it must include an integration probe proving command dispatch cannot fall through to model prompt processing.
 
 ## State and atomicity
 

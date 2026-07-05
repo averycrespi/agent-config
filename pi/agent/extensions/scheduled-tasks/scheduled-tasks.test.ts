@@ -14,9 +14,15 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import scheduledTasksExtension from "./index.ts";
-import { registerScheduledTaskCommands, _execFile } from "./commands.ts";
 import {
-  SCHEDULED_TASKS_EXTENSION_ENTRYPOINT,
+  registerScheduledTaskCommands,
+  _access,
+  _execFile,
+} from "./commands.ts";
+import { runClaimedCli, runTickCli } from "./cli.ts";
+import {
+  SCHEDULED_TASKS_RUN_CLAIMED_CLI,
+  SCHEDULED_TASKS_TSX_COMMAND,
   loadScheduledTasksConfigFromSettings,
   mergeCronEnvironment,
   normalizeConfig,
@@ -709,40 +715,52 @@ test("spawn plan merges env files before inline task env and scheduled markers",
   await rm(root, { recursive: true, force: true });
 });
 
-test("cron block scopes configured environment to the managed Pi command", () => {
+test("cron block scopes configured environment to the deterministic tick CLI", () => {
   const block = buildCronBlock({
     projectCwd: "/tmp/project",
-    piCommand: "pi",
     cronEnvironment: {
       PATH: "/asdf shims:/usr/bin",
       ASDF_DATA_DIR: "/Users/test/.asdf",
     },
+    tsxCommand: "/repo/node_modules/.bin/tsx",
+    tickCli: "/repo/pi/agent/extensions/scheduled-tasks/tick-cli.ts",
   });
   assert.match(
     block,
-    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' 'pi' --mode json --no-session --no-extensions -e '.*scheduled-tasks\/index\.ts' -p '\/scheduled-tasks-tick'/,
+    /cd '\/tmp\/project' && env PATH='\/asdf shims:\/usr\/bin' ASDF_DATA_DIR='\/Users\/test\/.asdf' '\/repo\/node_modules\/.bin\/tsx' '\/repo\/pi\/agent\/extensions\/scheduled-tasks\/tick-cli\.ts'/,
+  );
+  assert.doesNotMatch(
+    block,
+    / --mode | --no-session | --no-extensions | -p |\/scheduled-tasks-tick/,
   );
 });
 
-test("cron install and uninstall preserve unrelated crontab lines and quote Pi command entrypoint", () => {
+test("cron install and uninstall preserve unrelated crontab lines and quote deterministic CLI paths", () => {
   assert.equal(shellQuote("/tmp/a b;$(x)'y"), `'/tmp/a b;$(x)'"'"'y'`);
   const block = buildCronBlock({
     projectCwd: "/tmp/project with spaces;rm",
-    piCommand: "/opt/pi bin/pi",
     cronEnvironment: {},
+    tsxCommand: "/repo dir/node_modules/.bin/tsx",
+    tickCli: "/repo dir/pi/agent/extensions/scheduled-tasks/tick-cli.ts",
   });
   assert.match(block, /BEGIN PI SCHEDULED TASKS/);
   assert.match(
     block,
-    /cd '\/tmp\/project with spaces;rm' && '\/opt\/pi bin\/pi' --mode json --no-session --no-extensions -e '.*scheduled-tasks\/index\.ts' -p '\/scheduled-tasks-tick'/,
+    /cd '\/tmp\/project with spaces;rm' && '\/repo dir\/node_modules\/.bin\/tsx' '\/repo dir\/pi\/agent\/extensions\/scheduled-tasks\/tick-cli\.ts'/,
   );
-  assert.doesNotMatch(block, /pi-task-scheduler\.mjs|node/);
+  assert.doesNotMatch(
+    block,
+    /pi-task-scheduler\.mjs| --mode | -p |\/scheduled-tasks-tick/,
+  );
   const existing = "MAILTO=user@example.com\n";
   const installed = installManagedBlock(existing, block);
   assert.match(installed, /^MAILTO=user@example.com/m);
   const replaced = installManagedBlock(
     installed,
-    block.replace("/opt/pi bin/pi", "/opt/pi2"),
+    block.replace(
+      "/repo dir/node_modules/.bin/tsx",
+      "/repo dir/node_modules/.bin/tsx2",
+    ),
   );
   assert.equal((replaced.match(/BEGIN PI SCHEDULED TASKS/g) ?? []).length, 1);
   const removed = uninstallManagedBlock(replaced);
@@ -1128,12 +1146,18 @@ test("/scheduled-tasks-doctor reports managed crontab installation status", asyn
     {
       stdout: buildCronBlock({
         projectCwd: "/tmp/project",
-        piCommand: "pi",
         cronEnvironment: {},
       }),
       error: null,
       stderr: "",
       expected: "cron: installed",
+    },
+    {
+      stdout:
+        "# BEGIN PI SCHEDULED TASKS\n* * * * * cd '/tmp/project' && 'pi' -p '/scheduled-tasks-tick'\n# END PI SCHEDULED TASKS\n",
+      error: null,
+      stderr: "",
+      expected: "cron: installed, needs update",
     },
     {
       stdout: "MAILTO=user@example.com\n",
@@ -1264,6 +1288,74 @@ test("commands register /scheduled-tasks-tick with dry-run support instead of le
   await rm(root, { recursive: true, force: true });
 });
 
+test("tick CLI prints exactly one JSON TickSummary and keeps diagnostics on stderr", async (t) => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const previousRoot = process.env.SCHEDULED_TASKS_ROOT_DIR;
+  const previousTimeout = process.env.SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES;
+  process.env.SCHEDULED_TASKS_ROOT_DIR = root;
+  process.env.SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES = "bad";
+  t.after(() => {
+    if (previousRoot === undefined) delete process.env.SCHEDULED_TASKS_ROOT_DIR;
+    else process.env.SCHEDULED_TASKS_ROOT_DIR = previousRoot;
+    if (previousTimeout === undefined)
+      delete process.env.SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES;
+    else process.env.SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES = previousTimeout;
+  });
+
+  const result = await runTickCli(["--dry-run"], {
+    cwd,
+    now: new Date("2026-06-19T09:00:00Z"),
+  });
+
+  assert.equal(result.exitCode, 0);
+  const lines = result.stdout.trim().split("\n");
+  assert.equal(lines.length, 1);
+  const payload = JSON.parse(lines[0]!);
+  assert.equal(payload.status, "ok");
+  assert.equal(payload.dryRun, true);
+  assert.match(
+    result.stderr,
+    /Ignoring invalid SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES/,
+  );
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
+test("tick CLI rejects unknown arguments without writing stdout", async () => {
+  const result = await runTickCli(["--bogus"]);
+  assert.equal(result.exitCode, 2);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /Usage: tick-cli\.ts/);
+});
+
+test("run-claimed CLI validates arguments and prints one JSON RunSummary", async (t) => {
+  const root = await tempRoot();
+  const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
+  const previousRoot = process.env.SCHEDULED_TASKS_ROOT_DIR;
+  process.env.SCHEDULED_TASKS_ROOT_DIR = root;
+  t.after(() => {
+    if (previousRoot === undefined) delete process.env.SCHEDULED_TASKS_ROOT_DIR;
+    else process.env.SCHEDULED_TASKS_ROOT_DIR = previousRoot;
+  });
+
+  const invalid = await runClaimedCli(["bad/id", "run1"], { cwd });
+  assert.equal(invalid.exitCode, 2);
+  assert.equal(invalid.stdout, "");
+  assert.match(invalid.stderr, /Invalid task ID/);
+
+  const result = await runClaimedCli(["job", "run1"], { cwd });
+  assert.equal(result.exitCode, 0);
+  const lines = result.stdout.trim().split("\n");
+  assert.equal(lines.length, 1);
+  const payload = JSON.parse(lines[0]!);
+  assert.equal(payload.taskId, "job");
+  assert.equal(payload.runId, "run1");
+  assert.equal(payload.status, "not_found");
+  await rm(cwd, { recursive: true, force: true });
+  await rm(root, { recursive: true, force: true });
+});
+
 test("manual run launches claimed runner asynchronously without advancing nextRunAt", async () => {
   const root = await tempRoot();
   const cwd = await mkdtemp(join(tmpdir(), "scheduled-tasks-cwd-"));
@@ -1273,8 +1365,10 @@ test("manual run launches claimed runner asynchronously without advancing nextRu
     taskId: "job",
     nextRunAt: "2026-06-19T10:00:00.000Z",
   });
+  let spawnedCommand: string | undefined;
   let spawnedArgs: string[] | undefined;
-  mock.method(_spawn, "fn", (_command: string, args: string[]) => {
+  mock.method(_spawn, "fn", (command: string, args: string[]) => {
+    spawnedCommand = command;
     spawnedArgs = args;
     const child = new EventEmitter() as StubChild & { pid: number };
     child.pid = 12345;
@@ -1301,15 +1395,11 @@ test("manual run launches claimed runner asynchronously without advancing nextRu
 
   assert.equal(summary.status, "launched");
   assert.ok(summary.runId);
+  assert.equal(spawnedCommand, SCHEDULED_TASKS_TSX_COMMAND);
   assert.deepEqual(spawnedArgs, [
-    "--mode",
-    "json",
-    "--no-session",
-    "--no-extensions",
-    "-e",
-    SCHEDULED_TASKS_EXTENSION_ENTRYPOINT,
-    "-p",
-    `/scheduled-tasks-run-claimed job ${summary.runId}`,
+    SCHEDULED_TASKS_RUN_CLAIMED_CLI,
+    "job",
+    summary.runId,
   ]);
   assert.equal(
     await readFile(
@@ -2071,10 +2161,7 @@ test("scheduler launches normal due tasks and caps catchup runs", async () => {
       };
       process.nextTick(async () => {
         child.emit("spawn");
-        await simulateRunnerLockAdoption(
-          root,
-          String(args.at(-1)).split(" ")[1]!,
-        );
+        await simulateRunnerLockAdoption(root, String(args[1]));
         child.stdout.end();
         child.stderr.end();
         child.emit("close", 0, null);
@@ -2090,18 +2177,13 @@ test("scheduler launches normal due tasks and caps catchup runs", async () => {
   assert.equal(summary.status, "ok");
   assert.equal(spawnCount, 2);
   assert.equal(unrefCount, 2);
-  assert.deepEqual(launchCalls[0]?.args.slice(0, 6), [
-    "--mode",
-    "json",
-    "--no-session",
-    "--no-extensions",
-    "-e",
-    SCHEDULED_TASKS_EXTENSION_ENTRYPOINT,
+  assert.deepEqual(launchCalls[0]?.args.slice(0, 2), [
+    SCHEDULED_TASKS_RUN_CLAIMED_CLI,
+    "catch-a",
   ]);
-  assert.equal(launchCalls[0]?.args[6], "-p");
-  assert.match(
-    String(launchCalls[0]?.args.at(-1)),
-    /\/scheduled-tasks-run-claimed catch-a /,
+  assert.doesNotMatch(
+    launchCalls[0]?.args.join(" ") ?? "",
+    /scheduled-tasks-run-claimed| -p |--no-extensions/,
   );
   assert.equal(launchCalls[0]?.options?.detached, true);
   assert.ok(Array.isArray(launchCalls[0]?.options?.stdio));
@@ -2262,7 +2344,7 @@ test("scheduler locked due tasks keep nextRunAt for retries until grace expires"
     child.kill = () => true;
     process.nextTick(async () => {
       child.emit("spawn");
-      if (args.includes("--no-session"))
+      if (args[0] === SCHEDULED_TASKS_RUN_CLAIMED_CLI)
         await simulateRunnerLockAdoption(root, "job");
       child.stdout.end();
       child.stderr.end();
@@ -3409,7 +3491,64 @@ test("cron commands call crontab through exported wrapper", async () => {
       ["crontab", ["-"]],
     ],
   );
-  assert.match(calls[1]!.input ?? "", /\/scheduled-tasks-tick/);
+  assert.match(calls[1]!.input ?? "", /node_modules\/\.bin\/tsx/);
+  assert.match(calls[1]!.input ?? "", /tick-cli\.ts/);
+  assert.doesNotMatch(
+    calls[1]!.input ?? "",
+    /\/scheduled-tasks-tick| -p |--no-extensions/,
+  );
+  await rm(root, { recursive: true, force: true });
+});
+
+test("cron install refuses to write crontab when deterministic CLI prerequisites are missing", async () => {
+  const registered = new Map<
+    string,
+    { handler: (args: string, ctx: any) => Promise<void> }
+  >();
+  const pi = {
+    registerCommand(
+      name: string,
+      command: { handler: (args: string, ctx: any) => Promise<void> },
+    ) {
+      registered.set(name, command);
+    },
+  };
+  const root = await tempRoot();
+  const calls: Array<{ command: string; args: string[] }> = [];
+  mock.method(_access, "fn", async (path: string) => {
+    if (path === SCHEDULED_TASKS_TSX_COMMAND) throw new Error("missing");
+  });
+  mock.method(
+    _execFile,
+    "fn",
+    (command: string, args: string[], callback: any) => {
+      calls.push({ command, args });
+      callback(null, "MAILTO=user@example.com\n", "");
+      return { stdin: { end() {} } };
+    },
+  );
+  registerScheduledTaskCommands(pi as any, async () => ({
+    rootDir: root,
+    defaultTimeoutMinutes: 1,
+    defaultTools: ["read"],
+    piCommand: "pi",
+    cronEnvironment: {},
+  }));
+  const notifications: Array<{ text: string; level: string }> = [];
+
+  await registered.get("scheduled-tasks-install-cron")!.handler("", {
+    cwd: "/tmp/project",
+    ui: {
+      notify(text: string, level = "info") {
+        notifications.push({ text, level });
+      },
+    },
+  });
+
+  assert.equal(calls.length, 0);
+  assert.equal(notifications[0]?.level, "error");
+  assert.match(notifications[0]?.text ?? "", /make install-dev/);
+  assert.match(notifications[0]?.text ?? "", /repo-local tsx/);
   await rm(root, { recursive: true, force: true });
 });
 
@@ -3448,7 +3587,7 @@ test("scheduler tick initializes state, claims due work, writes artifacts, and r
       child.kill = () => true;
       process.nextTick(async () => {
         child.emit("spawn");
-        if (args.includes("--no-session"))
+        if (args[0] === SCHEDULED_TASKS_RUN_CLAIMED_CLI)
           await simulateRunnerLockAdoption(root, "job");
         else
           child.stdout.write(

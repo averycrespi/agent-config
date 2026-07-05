@@ -1,7 +1,13 @@
 import { access, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import type { ScheduledTasksConfig } from "./config.ts";
-import { commandHealth, isValidEnvName } from "./config.ts";
+import {
+  SCHEDULED_TASKS_RUN_CLAIMED_CLI,
+  SCHEDULED_TASKS_TICK_CLI,
+  SCHEDULED_TASKS_TSX_COMMAND,
+  commandHealth,
+  isValidEnvName,
+} from "./config.ts";
 import { loadTaskEnvFiles } from "./env-files.ts";
 import { handoffPath, isSafeTaskId, scriptPath } from "./paths.ts";
 import { parseCron } from "./schedule.ts";
@@ -255,6 +261,20 @@ export async function validateConfig(
         severity: health.ok ? "warning" : "error",
         message: `${name}: ${health.warning}`,
       });
+  }
+  for (const [name, path] of [
+    ["scheduler tsx", SCHEDULED_TASKS_TSX_COMMAND],
+    ["scheduler tick CLI", SCHEDULED_TASKS_TICK_CLI],
+    ["scheduler run-claimed CLI", SCHEDULED_TASKS_RUN_CLAIMED_CLI],
+  ] as const) {
+    try {
+      await access(path);
+    } catch {
+      issues.push({
+        severity: "error",
+        message: `${name}: required file is not accessible: ${path}`,
+      });
+    }
   }
   for (const [key, value] of Object.entries(config.cronEnvironment)) {
     if (!isValidEnvName(key))

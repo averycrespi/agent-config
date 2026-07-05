@@ -9,6 +9,7 @@ import {
 } from "../_shared/render.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import type { ScheduledTasksConfig } from "./config.ts";
+import { buildCronBlock } from "./cron.ts";
 import { formatCrontabStatus, getCrontabStatus } from "./crontab.ts";
 import { handoffPath, runDir, taskPath } from "./paths.ts";
 import {
@@ -164,7 +165,12 @@ export function registerScheduledTasksTool(
           return textResult(await readLatestLogs(config, params.task_id));
         }
         case "doctor": {
-          const crontabStatus = await getCrontabStatus();
+          const crontabStatus = await getCrontabStatus(
+            buildCronBlock({
+              projectCwd: ctx.cwd,
+              cronEnvironment: config.cronEnvironment,
+            }),
+          );
           const latestTick = await readLatestTickLog(config.rootDir);
           const issues = await validateConfig(config);
           const parsed = params.task_id

@@ -10,7 +10,8 @@ import {
 import { join } from "node:path";
 import type { SpawnOptions } from "node:child_process";
 import {
-  SCHEDULED_TASKS_EXTENSION_ENTRYPOINT,
+  SCHEDULED_TASKS_RUN_CLAIMED_CLI,
+  SCHEDULED_TASKS_TSX_COMMAND,
   type ScheduledTasksConfig,
 } from "./config.ts";
 import {
@@ -674,17 +675,8 @@ async function launchClaimedRunner(options: {
     };
     try {
       child = _spawn.fn(
-        options.config.piCommand,
-        [
-          "--mode",
-          "json",
-          "--no-session",
-          "--no-extensions",
-          "-e",
-          SCHEDULED_TASKS_EXTENSION_ENTRYPOINT,
-          "-p",
-          `/scheduled-tasks-run-claimed ${options.taskId} ${options.runId}`,
-        ],
+        SCHEDULED_TASKS_TSX_COMMAND,
+        [SCHEDULED_TASKS_RUN_CLAIMED_CLI, options.taskId, options.runId],
         {
           cwd: process.cwd(),
           env: {

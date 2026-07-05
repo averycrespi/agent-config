@@ -3,7 +3,12 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import type { ScheduledTasksConfig } from "./config.ts";
+import {
+  SCHEDULED_TASKS_RUN_CLAIMED_CLI,
+  SCHEDULED_TASKS_TICK_CLI,
+  SCHEDULED_TASKS_TSX_COMMAND,
+  type ScheduledTasksConfig,
+} from "./config.ts";
 import {
   buildCronBlock,
   installManagedBlock,
@@ -34,6 +39,7 @@ import {
 import { formatValidation, validateConfig, validateTask } from "./validate.ts";
 
 export { _execFile };
+export const _access = { fn: access };
 
 type LoadConfig = (
   cwd: string,
@@ -50,6 +56,32 @@ function notify(
 
 const TASK_ID_RULES =
   "Use letters, numbers, underscores, or hyphens; no slashes or dots.";
+
+function cronBlockFor(
+  config: ScheduledTasksConfig,
+  projectCwd: string,
+): string {
+  return buildCronBlock({
+    projectCwd,
+    cronEnvironment: config.cronEnvironment,
+  });
+}
+
+async function validateSchedulerCliPrerequisites(): Promise<string[]> {
+  const missing: string[] = [];
+  for (const [label, path] of [
+    ["repo-local tsx", SCHEDULED_TASKS_TSX_COMMAND],
+    ["tick CLI", SCHEDULED_TASKS_TICK_CLI],
+    ["run-claimed CLI", SCHEDULED_TASKS_RUN_CLAIMED_CLI],
+  ] as const) {
+    try {
+      await _access.fn(path);
+    } catch {
+      missing.push(`${label}: ${path}`);
+    }
+  }
+  return missing;
+}
 
 function taskIdArg(
   args: string,
@@ -214,7 +246,9 @@ export function registerScheduledTaskCommands(
       }
       const lines = [
         `rootDir: ${config.rootDir}`,
-        formatCrontabStatus(await getCrontabStatus()),
+        formatCrontabStatus(
+          await getCrontabStatus(cronBlockFor(config, ctx.cwd)),
+        ),
         formatLatestTick(await readLatestTickLog(config.rootDir)),
         ...warnings.map((warning) => `config warning: ${warning}`),
       ];
@@ -246,13 +280,16 @@ export function registerScheduledTaskCommands(
     description: "Install or update the managed scheduled-tasks crontab block.",
     handler: async (_args, ctx) => {
       const { config } = await configFor(ctx);
+      const missing = await validateSchedulerCliPrerequisites();
+      if (missing.length > 0)
+        return notify(
+          ctx,
+          `Cannot install scheduled-tasks cron because required repo-local scheduler files are missing. Run make install-dev in the agent-config repo, then retry.\n${missing.join("\n")}`,
+          "error",
+        );
       const next = installManagedBlock(
         await readCurrentCrontab(),
-        buildCronBlock({
-          projectCwd: ctx.cwd,
-          piCommand: config.piCommand,
-          cronEnvironment: config.cronEnvironment,
-        }),
+        cronBlockFor(config, ctx.cwd),
       );
       await writeCrontab(next);
       notify(ctx, "Installed managed Pi scheduled-tasks crontab block.");

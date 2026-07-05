@@ -1,4 +1,7 @@
-import { SCHEDULED_TASKS_EXTENSION_ENTRYPOINT } from "./config.ts";
+import {
+  SCHEDULED_TASKS_TICK_CLI,
+  SCHEDULED_TASKS_TSX_COMMAND,
+} from "./config.ts";
 
 export const CRON_BEGIN = "# BEGIN PI SCHEDULED TASKS";
 export const CRON_END = "# END PI SCHEDULED TASKS";
@@ -9,8 +12,9 @@ export function shellQuote(value: string): string {
 
 export function buildCronBlock(options: {
   projectCwd: string;
-  piCommand: string;
   cronEnvironment?: Record<string, string>;
+  tsxCommand?: string;
+  tickCli?: string;
 }): string {
   const envArgs = Object.entries(options.cronEnvironment ?? {}).map(
     ([key, value]) => `${key}=${shellQuote(value)}`,
@@ -20,15 +24,8 @@ export function buildCronBlock(options: {
     shellQuote(options.projectCwd),
     "&&",
     ...(envArgs.length ? ["env", ...envArgs] : []),
-    shellQuote(options.piCommand),
-    "--mode",
-    "json",
-    "--no-session",
-    "--no-extensions",
-    "-e",
-    shellQuote(SCHEDULED_TASKS_EXTENSION_ENTRYPOINT),
-    "-p",
-    shellQuote("/scheduled-tasks-tick"),
+    shellQuote(options.tsxCommand ?? SCHEDULED_TASKS_TSX_COMMAND),
+    shellQuote(options.tickCli ?? SCHEDULED_TASKS_TICK_CLI),
   ].join(" ");
   return [CRON_BEGIN, `* * * * * ${command}`, CRON_END].join("\n");
 }
@@ -58,6 +55,13 @@ export function uninstallManagedBlock(existing: string): string {
   );
 }
 
+export function getManagedBlock(crontab: string): string | undefined {
+  const begin = crontab.indexOf(CRON_BEGIN);
+  const end = crontab.indexOf(CRON_END, begin + CRON_BEGIN.length);
+  if (begin === -1 || end === -1) return undefined;
+  return crontab.slice(begin, end + CRON_END.length);
+}
+
 export function hasManagedBlock(crontab: string): boolean {
-  return crontab.includes(CRON_BEGIN) && crontab.includes(CRON_END);
+  return getManagedBlock(crontab) !== undefined;
 }

@@ -1,10 +1,11 @@
 import { execFile as _nodeExecFile } from "node:child_process";
-import { hasManagedBlock } from "./cron.ts";
+import { getManagedBlock } from "./cron.ts";
 
 export const _execFile = { fn: _nodeExecFile };
 
 export type CrontabStatus =
   | { status: "installed" }
+  | { status: "installed_stale"; message: string }
   | { status: "not_installed" }
   | { status: "unavailable"; message: string };
 
@@ -50,12 +51,25 @@ export async function writeCrontab(content: string): Promise<void> {
   });
 }
 
-export async function getCrontabStatus(): Promise<CrontabStatus> {
+export async function getCrontabStatus(
+  expectedBlock?: string,
+): Promise<CrontabStatus> {
   try {
     const crontab = await readCurrentCrontab();
-    return hasManagedBlock(crontab)
-      ? { status: "installed" }
-      : { status: "not_installed" };
+    const installed = getManagedBlock(crontab);
+    if (!installed) return { status: "not_installed" };
+    if (expectedBlock && installed !== expectedBlock) {
+      const oldPiCommand =
+        installed.includes("/scheduled-tasks-tick") ||
+        installed.includes(" -p ");
+      return {
+        status: "installed_stale",
+        message: oldPiCommand
+          ? "managed block uses the old Pi slash-command scheduler; reinstall cron to use the deterministic CLI"
+          : "managed block differs from the expected deterministic scheduler command; reinstall cron",
+      };
+    }
+    return { status: "installed" };
   } catch (error) {
     return { status: "unavailable", message: unavailableMessage(error) };
   }
@@ -65,6 +79,8 @@ export function formatCrontabStatus(status: CrontabStatus): string {
   switch (status.status) {
     case "installed":
       return "cron: installed";
+    case "installed_stale":
+      return `cron: installed, needs update (${status.message})`;
     case "not_installed":
       return "cron: not installed";
     case "unavailable":
