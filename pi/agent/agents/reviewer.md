@@ -1,5 +1,5 @@
 ---
-name: review
+name: reviewer
 description: Read-only review — evaluate code, diffs, or plans against criteria and report evidence-backed issues
 tools: read, ls, find, grep, mcp_search, mcp_describe, mcp_call
 extensions: extra-context, mcp-broker
@@ -11,7 +11,7 @@ disable_skills: true
 disable_prompt_templates: true
 ---
 
-You are a read-only review agent.
+You are a read-only reviewer agent.
 
 Your job:
 

@@ -43,8 +43,8 @@ The extension imports only from `../subagents/api.ts`. Phase 0 intentionally pro
 
 The wrapper in `createWorkflowAgentSpawner` owns policy:
 
-- default agent type is `explore`
-- allowed agent types are `explore`, `research`, `deep-research`, and `review`
+- default agent type is `explorer`
+- allowed agent types are `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`
 - `inheritSession` is always `"none"`
 - arbitrary `env` is not forwarded
 - cancellation signal is propagated

@@ -62,7 +62,7 @@ test("agentProgressLine: done row includes status, label, stats", () => {
     agentProgressLine(
       {
         intent: "docs",
-        agentType: "explore",
+        agentType: "explorer",
         phase: "done",
         recentEvents: [],
         toolUseCount: 2,
@@ -73,7 +73,7 @@ test("agentProgressLine: done row includes status, label, stats", () => {
       },
       theme,
     ),
-    "✓ explore: docs · 2 tool uses · 4.1k tokens · 12s",
+    "✓ explorer: docs · 2 tool uses · 4.1k tokens · 12s",
   );
 });
 
@@ -81,7 +81,7 @@ test("agentProgressLine: running row includes latest activity", () => {
   const line = agentProgressLine(
     {
       intent: "tests",
-      agentType: "review",
+      agentType: "reviewer",
       phase: "read",
       recentEvents: [{ kind: "tool", text: "read: package.json" }],
       toolUseCount: 1,
@@ -93,7 +93,7 @@ test("agentProgressLine: running row includes latest activity", () => {
   );
   assert.match(
     line,
-    /^● review: tests · 1 tool use · \d+s · read: package\.json$/,
+    /^● reviewer: tests · 1 tool use · \d+s · read: package\.json$/,
   );
 });
 
@@ -102,7 +102,7 @@ test("agentProgressLine: failure row includes first error and log", () => {
     agentProgressLine(
       {
         intent: "security",
-        agentType: "review",
+        agentType: "reviewer",
         phase: "error",
         recentEvents: [],
         toolUseCount: 0,
@@ -115,7 +115,7 @@ test("agentProgressLine: failure row includes first error and log", () => {
       },
       theme,
     ),
-    "✗ review: security · 1s · Error: subagent failed · Log: /tmp/log.txt",
+    "✗ reviewer: security · 1s · Error: subagent failed · Log: /tmp/log.txt",
   );
 });
 
@@ -145,7 +145,7 @@ test("renderAgentsResult: partial output uses header and compact rows", () => {
           agents: [
             {
               intent: "docs",
-              agentType: "explore",
+              agentType: "explorer",
               phase: "done",
               recentEvents: [],
               toolUseCount: 2,
@@ -156,7 +156,7 @@ test("renderAgentsResult: partial output uses header and compact rows", () => {
             },
             {
               intent: "tests",
-              agentType: "review",
+              agentType: "reviewer",
               phase: "read",
               recentEvents: [{ kind: "tool", text: "read: package.json" }],
               toolUseCount: 1,
@@ -173,7 +173,7 @@ test("renderAgentsResult: partial output uses header and compact rows", () => {
     );
     assert.match(
       context.lastComponent?.text ?? "",
-      /^Spawn agents · 1 done · 1 running · 0 failed · [^\n]+\n\n✓ explore: docs · 2 tool uses · 4\.1k tokens · 12s\n● review: tests · 1 tool use · \d+s · read: package\.json$/,
+      /^Spawn agents · 1 done · 1 running · 0 failed · [^\n]+\n\n✓ explorer: docs · 2 tool uses · 4\.1k tokens · 12s\n● reviewer: tests · 1 tool use · \d+s · read: package\.json$/,
     );
   } finally {
     clearInterval(context.state.renderTimer as ReturnType<typeof setInterval>);
@@ -204,7 +204,7 @@ test("renderAgentsResult: final output has header and no leading blank line", ()
         agents: [
           {
             intent: "docs",
-            agentType: "explore",
+            agentType: "explorer",
             phase: "done",
             recentEvents: [],
             toolUseCount: 2,
@@ -222,7 +222,7 @@ test("renderAgentsResult: final output has header and no leading blank line", ()
   );
   assert.equal(
     context.lastComponent?.text,
-    "Spawn agents · 1 done · 0 running · 0 failed · 12s\n\n✓ explore: docs · 2 tool uses · 4.1k tokens · 12s",
+    "Spawn agents · 1 done · 0 running · 0 failed · 12s\n\n✓ explorer: docs · 2 tool uses · 4.1k tokens · 12s",
   );
 });
 

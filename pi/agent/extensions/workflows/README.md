@@ -34,7 +34,7 @@ export async function run() {
     topics.map(
       (topic) => () =>
         agent(`Audit the repository for ${topic} issues.`, {
-          agent: "explore",
+          agent: "explorer",
           intent: topic,
         }),
     ),
@@ -45,16 +45,16 @@ export async function run() {
 
 Supported globals:
 
-| Global            | Description                                                                                                                                                                                                                                                                                                                                                |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent`           | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output?, retries?, timeoutMs? })`. Defaults to `explore`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. `retries` is clamped to 0–2 and retries safe failures only. `timeoutMs` overrides the per-agent timeout for that call. |
-| `parallel`        | Runs an array of thunks with bounded concurrency and preserves input ordering. Branch failures are logged and returned as `null`.                                                                                                                                                                                                                          |
-| `parallelSettled` | Runs an array of thunks with bounded concurrency and preserves input ordering. Each branch returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`, so scripts can recover from partial failure explicitly.                                                                                                                   |
-| `pipeline`        | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                                                                                                                                                                       |
-| `phase`           | Sets the current progress phase.                                                                                                                                                                                                                                                                                                                           |
-| `log`             | Adds a progress log entry.                                                                                                                                                                                                                                                                                                                                 |
-| `args`            | The optional JSON `args` value from the tool call.                                                                                                                                                                                                                                                                                                         |
-| `cwd`             | Current working directory string.                                                                                                                                                                                                                                                                                                                          |
+| Global            | Description                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`           | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output?, retries?, timeoutMs? })`. Defaults to `explorer`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. `retries` is clamped to 0–2 and retries safe failures only. `timeoutMs` overrides the per-agent timeout for that call. |
+| `parallel`        | Runs an array of thunks with bounded concurrency and preserves input ordering. Branch failures are logged and returned as `null`.                                                                                                                                                                                                                           |
+| `parallelSettled` | Runs an array of thunks with bounded concurrency and preserves input ordering. Each branch returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`, so scripts can recover from partial failure explicitly.                                                                                                                    |
+| `pipeline`        | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                                                                                                                                                                        |
+| `phase`           | Sets the current progress phase.                                                                                                                                                                                                                                                                                                                            |
+| `log`             | Adds a progress log entry.                                                                                                                                                                                                                                                                                                                                  |
+| `args`            | The optional JSON `args` value from the tool call.                                                                                                                                                                                                                                                                                                          |
+| `cwd`             | Current working directory string.                                                                                                                                                                                                                                                                                                                           |
 
 ## Structured subagent output
 
@@ -78,7 +78,7 @@ export async function run() {
   };
 
   return await agent("Find auth entrypoints", {
-    agent: "explore",
+    agent: "explorer",
     intent: "auth map",
     output: { schema: findingSchema },
   });
@@ -98,7 +98,7 @@ Scripts are parsed before execution. The MVP rejects:
 - nondeterminism such as `Date.now`, `new Date`, and `Math.random`
 - scripts without a syntactic `agent()` call
 
-Script execution runs in a separate killable Node worker. The worker receives only the MVP globals above. The subagent wrapper always uses `inheritSession: "none"`, does not pass arbitrary environment variables, propagates cancellation, and permits only read-mostly built-in agent types: `explore`, `research`, `deep-research`, and `review`.
+Script execution runs in a separate killable Node worker. The worker receives only the MVP globals above. The subagent wrapper always uses `inheritSession: "none"`, does not pass arbitrary environment variables, propagates cancellation, and permits only read-mostly built-in agent types: `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`.
 
 ## Configuration
 

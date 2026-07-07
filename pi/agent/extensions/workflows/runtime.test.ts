@@ -52,7 +52,7 @@ test("runtime resolves agent calls with structured output values when requested"
   const result = await runWorkflow(
     script(`export async function run() {
       return await agent("find auth files", {
-        agent: "explore",
+        agent: "explorer",
         intent: "auth",
         output: {
           schema: {
@@ -90,7 +90,7 @@ test("runtime resolves agent calls with structured output values when requested"
 test("workflow agent spawner returns structured values from spawn outcomes", async () => {
   const agents: AgentDefinition[] = [
     {
-      name: "explore",
+      name: "explorer",
       description: "Explore",
       tools: ["read"],
       extensions: [],
@@ -361,7 +361,7 @@ test("aborts runaway worker promptly", async () => {
 test("agent spawner uses safe spawn defaults and rejects writable agents", async () => {
   const agents: AgentDefinition[] = [
     {
-      name: "explore",
+      name: "explorer",
       description: "Explore",
       tools: ["read"],
       extensions: [],
@@ -417,7 +417,7 @@ test("agent spawner uses safe spawn defaults and rejects writable agents", async
   assert.equal(calls[0].thinking, "high");
   assert.ok(updates.some((state) => state.activity?.toolUseCount === 1));
   assert.equal(updates.at(-1)?.activity?.resolved, true);
-  assert.equal(updates.at(-1)?.activity?.agentType, "explore");
+  assert.equal(updates.at(-1)?.activity?.agentType, "explorer");
 
   const rejected = await spawn({ id: 2, prompt: "write", agent: "writer" });
   assert.equal(rejected.ok, false);

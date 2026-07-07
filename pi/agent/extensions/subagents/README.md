@@ -12,26 +12,26 @@ Launch one or more subagents in parallel. Each runs independently in its own con
 
 **Parameters:**
 
-| Parameter         | Type   | Required | Description                                                                        |
-| ----------------- | ------ | -------- | ---------------------------------------------------------------------------------- |
-| `agents`          | array  | yes      | List of agents to run concurrently (minimum 1)                                     |
-| `agents[].agent`  | string | yes      | Agent type: `explore`, `review`, `research`, `deep-research`, or `signal-analysis` |
-| `agents[].intent` | string | yes      | Short label shown in activity titles (3–6 words)                                   |
-| `agents[].prompt` | string | yes      | Full task — brief the agent like a colleague who just walked in                    |
+| Parameter         | Type   | Required | Description                                                             |
+| ----------------- | ------ | -------- | ----------------------------------------------------------------------- |
+| `agents`          | array  | yes      | List of agents to run concurrently (minimum 1)                          |
+| `agents[].agent`  | string | yes      | Agent type: `explorer`, `reviewer`, `scout`, `researcher`, or `analyst` |
+| `agents[].intent` | string | yes      | Short label shown in activity titles (3–6 words)                        |
+| `agents[].prompt` | string | yes      | Full task — brief the agent like a colleague who just walked in         |
 
 Agent types are loaded dynamically from `~/.pi/agent/agents/*.md` at startup. The built-in types are defined in `pi/agent/agents/` in this repo and symlinked via `make stow`. Custom agents can be added by dropping additional `.md` files in that directory — no code changes required.
 
 The built-in types:
 
-| Type              | Tools                                                                           | Extensions                                  | Model           | Thinking |
-| ----------------- | ------------------------------------------------------------------------------- | ------------------------------------------- | --------------- | -------- |
-| `explore`         | read, ls, find, grep                                                            | `extra-context`                             | inherits parent | medium   |
-| `review`          | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | inherits parent | high     |
-| `research`        | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | medium   |
-| `deep-research`   | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | high     |
-| `signal-analysis` | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | inherits parent | high     |
+| Type         | Tools                                                                           | Extensions                                  | Model           | Thinking |
+| ------------ | ------------------------------------------------------------------------------- | ------------------------------------------- | --------------- | -------- |
+| `explorer`   | read, ls, find, grep                                                            | `extra-context`                             | inherits parent | medium   |
+| `reviewer`   | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | inherits parent | high     |
+| `scout`      | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | medium   |
+| `researcher` | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | high     |
+| `analyst`    | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | inherits parent | high     |
 
-All built-in agent types are read-only. Because Pi's `--tools` flag is an allowlist across built-in, extension, and custom tools, agent definitions that enable tool-providing extensions must also list those extension tool names. `review` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `research` is the faster default for external lookup, while `deep-research` is the slower, evidence-heavier option. Both `research` and `deep-research` add web search and fetch via the `web-access` extension. `signal-analysis` distills noisy logs, traces, metrics, query results, or large local outputs into patterns, representative examples, hypotheses, and follow-up queries. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
+All built-in agent types are read-only. Because Pi's `--tools` flag is an allowlist across built-in, extension, and custom tools, agent definitions that enable tool-providing extensions must also list those extension tool names. `reviewer` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `scout` is the faster default for external lookup, while `researcher` is the slower, evidence-heavier option. Both `scout` and `researcher` add web search and fetch via the `web-access` extension. `analyst` distills noisy logs, traces, metrics, query results, or large local outputs into patterns, representative examples, hypotheses, and follow-up queries. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
 
 **Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
 
@@ -42,9 +42,9 @@ While running, `spawn_agents` shows a compact header followed by one-line agent 
 ```
 Spawn agents · 1 done · 2 running · 0 failed · 18s
 
-● explore: Find auth flows · 4 tool uses · 14s · read: src/auth.ts
-✓ research: Check docs · 3 tool uses · 12.4k tokens · 18s
-● review: Check config · 1 tool use · 3s · grep: config
+● explorer: Find auth flows · 4 tool uses · 14s · read: src/auth.ts
+✓ scout: Check docs · 3 tool uses · 12.4k tokens · 18s
+● reviewer: Check config · 1 tool use · 3s · grep: config
 ```
 
 The tool-call line itself is intentionally suppressed — its content would just repeat the intents already shown in the header and agent rows. Each row shows status, type, intent, stable stats, and the latest activity at the end. Recoverable child tool failures are shown as latest activity while the subagent continues; only terminal child outcomes count as failed. On failure, the row displays the first error line and a path to the persisted log file when available.
@@ -76,7 +76,7 @@ Retained logs may contain raw subagent output, tool results, command output, and
 - Requests are prevalidated before spawning; blank intents or unknown agent types return one recoverable tool error and no subagents are launched
 - Each subagent starts with a fresh context; session inheritance is not supported through the tool
 - Built-in agents load `extra-context` so user-configured context files are available in child Pi processes
-- `review`, `research`, and `deep-research` require the `mcp-broker` extension to be installed and discoverable. `research` and `deep-research` additionally require `web-access`
+- `reviewer`, `scout`, `researcher`, and `analyst` require the `mcp-broker` extension to be installed and discoverable. `scout` and `researcher` additionally require `web-access`
 - Built-in agent types disable skills and prompt templates for tighter, role-specific behavior
 - All agents in a single `spawn_agents` call run concurrently; result order matches input order
 
@@ -86,7 +86,7 @@ Each agent is a markdown file with YAML frontmatter:
 
 ```markdown
 ---
-name: explore
+name: explorer
 description: Read-only codebase research — finding files and answering questions
 tools: read, ls, find, grep
 extensions:
@@ -104,7 +104,7 @@ The `env` field accepts an indented key/value map:
 
 ```markdown
 ---
-name: review
+name: reviewer
 extensions: mcp-broker
 env:
   MCP_BROKER_READONLY: "1"

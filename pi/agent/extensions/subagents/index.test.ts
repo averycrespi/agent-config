@@ -47,11 +47,11 @@ test("buildAgentDescription: empty list returns no-agents-loaded message", () =>
 
 test("buildAgentDescription: non-empty list enumerates name and description", () => {
   const text = buildAgentDescription([
-    agent("explore", "Read-only research"),
+    agent("explorer", "Read-only research"),
     agent("code", "Full write access"),
   ]);
   assert.match(text, /Agent type\. Choose based on the task:/);
-  assert.match(text, /- explore: Read-only research/);
+  assert.match(text, /- explorer: Read-only research/);
   assert.match(text, /- code: Full write access/);
 });
 
@@ -60,10 +60,10 @@ test("buildAgentDescription: non-empty list enumerates name and description", ()
 test("validateSpawnAgentSpecs: reports all invalid agents before spawn", () => {
   const errors = validateSpawnAgentSpecs(
     [
-      { agent: "explore", intent: "   ", prompt: "Inspect files" },
-      { agent: "missing", intent: "review", prompt: "Review change" },
+      { agent: "explorer", intent: "   ", prompt: "Inspect files" },
+      { agent: "missing", intent: "reviewer", prompt: "Review change" },
     ],
-    new Map([["explore", agent("explore", "Read-only research")]]),
+    new Map([["explorer", agent("explorer", "Read-only research")]]),
   );
 
   assert.deepEqual(errors, [
@@ -74,8 +74,8 @@ test("validateSpawnAgentSpecs: reports all invalid agents before spawn", () => {
 
 test("validateSpawnAgentSpecs: accepts known agents with non-empty intents", () => {
   const errors = validateSpawnAgentSpecs(
-    [{ agent: "explore", intent: " inspect ", prompt: "Inspect files" }],
-    new Map([["explore", agent("explore", "Read-only research")]]),
+    [{ agent: "explorer", intent: " inspect ", prompt: "Inspect files" }],
+    new Map([["explorer", agent("explorer", "Read-only research")]]),
   );
 
   assert.deepEqual(errors, []);

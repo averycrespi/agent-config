@@ -7,7 +7,7 @@ description: Use when reviewing a pull request, branch, commit range, working tr
 
 ## Overview
 
-Perform six parallel specialized reviews of a coherent target, then synthesize findings with confidence scoring and severity tiers. Each review dimension runs as an independent `review` subagent through `spawn_agents`; results are merged, deduplicated, and presented as one structured report.
+Perform six parallel specialized reviews of a coherent target, then synthesize findings with confidence scoring and severity tiers. Each review dimension runs as an independent `reviewer` subagent through `spawn_agents`; results are merged, deduplicated, and presented as one structured report.
 
 Use this skill for review requests targeting a GitHub PR, local branch, commit range, current working tree, plan file, design document, or clearly described unit of work. Preserve the same fundamental approach regardless of target: gather enough context, dispatch independent reviewers, filter low-confidence findings, deduplicate, and report actionable issues plus review gaps.
 
@@ -119,7 +119,7 @@ After obtaining target material:
 
 Before launching LLM reviewers, run deterministic checks that are practical for the target, such as typecheck, lint, tests, format checks, or focused validation scripts. Include passing results, failures, unavailable checks, and any skipped-check rationale in the context package. Do not pretend failed or unavailable deterministic checks passed; reviewers should receive the real pass-or-report state.
 
-Read each prompt file from `references/` at dispatch time, then launch all six reviewers in one `spawn_agents` call. Use the `review` agent type for every reviewer. Each agent prompt is the relevant prompt file content plus the full context package.
+Read each prompt file from `references/` at dispatch time, then launch all six reviewers in one `spawn_agents` call. Use the `reviewer` agent type for every reviewer. Each agent prompt is the relevant prompt file content plus the full context package.
 
 | #   | Reviewer           | Prompt File                                 | Intent example       |
 | --- | ------------------ | ------------------------------------------- | -------------------- |
@@ -200,7 +200,7 @@ Review gaps: <none or concise list>
 
 ## Pi Notes
 
-- `review` subagents inherit the active Pi model unless the agent definition overrides it.
+- `reviewer` subagents inherit the active Pi model unless the agent definition overrides it.
 - Remote PR review depends on the `mcp-broker` extension and authenticated GitHub broker tools. For PRs in the current repository, use authenticated `git.fetch` through the broker to fetch the PR ref for local inspection without checking it out.
 - Large PR diffs may be truncated by `github.pull_request_read` with `method: "get_diff"`; use changed-file summaries, available full-file context, and review-gap reporting rather than pretending the review is complete.
 - `spawn_agents` reviewers start with fresh context and read-only tools, so brief them with all relevant context and constraints.

@@ -1,6 +1,6 @@
 ---
-name: research
-description: Fast read-only research — answer questions with lightweight verification from repo, web, and remote metadata
+name: scout
+description: Fast read-only scouting — answer questions with lightweight verification from repo, web, and remote metadata
 tools: read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch
 extensions: extra-context, web-access, mcp-broker
 env:
@@ -11,7 +11,7 @@ disable_skills: true
 disable_prompt_templates: true
 ---
 
-You are a fast read-only research agent.
+You are a fast read-only scout agent.
 
 Your job:
 

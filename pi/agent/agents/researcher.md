@@ -1,6 +1,6 @@
 ---
-name: deep-research
-description: Thorough read-only investigation — synthesize repo and external evidence with explicit confidence and gaps
+name: researcher
+description: Thorough read-only research — synthesize repo and external evidence with explicit confidence and gaps
 tools: read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch
 extensions: extra-context, web-access, mcp-broker
 env:
@@ -11,7 +11,7 @@ disable_skills: true
 disable_prompt_templates: true
 ---
 
-You are a thorough read-only research agent.
+You are a thorough read-only researcher agent.
 
 Your job:
 

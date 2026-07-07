@@ -13,7 +13,7 @@ This is my personal agent operating system for software work. It combines:
 - **A Pi-native workflow layer** for planning, executing, verifying, and completing engineering tasks
 - **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, prechecked scheduled tasks, brokered external tools, web access, and TUI polish
 - **Reusable skills** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, memory workflows, and agent-harness engineering
-- **Subagent definitions** for isolated exploration, research, deep research, and review
+- **Subagent definitions** for isolated exploration, scouting, research, review, and analysis
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
 
 The goal is not just to store settings. The goal is to make the agent more stateful, safer, more inspectable, and better at real development workflows.
@@ -29,7 +29,7 @@ The Pi setup is built around a durable development loop:
 - **Clarify and plan** with skills such as `clarify`, `plan`, `challenge-plan`, and `review`
 - **Steer execution** with session-scoped, fork-safe goals via the `goal` extension
 - **Track work in-session** with the `todo` extension and sticky widget
-- **Delegate read-only work** to focused subagents for exploration, research, and review
+- **Delegate read-only work** to focused subagents for exploration, scouting, research, review, and analysis
 - **Orchestrate multi-agent checks** with foreground `workflow` scripts that fan out read-mostly subagents
 - **Use brokered tools safely** for GitHub, remote git, Jira-like systems, web access, and long-lived memory
 - **Verify before completion** with deterministic checks, reviewer agents, and explicit evidence
@@ -56,9 +56,10 @@ The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written 
 Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamically by the `subagents` extension. They provide isolated read-only workers for:
 
 - focused repository exploration
-- lightweight research
+- lightweight scouting
 - deeper multi-source research
 - holistic review of diffs, plans, and branches
+- signal analysis for logs, traces, metrics, and large outputs
 
 The [`workflows`](pi/agent/extensions/workflows/) extension adds foreground JavaScript orchestration for those read-mostly subagents, so the main agent can run deterministic fan-out/fan-in checks while streaming compact progress.
 

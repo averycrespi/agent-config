@@ -50,9 +50,9 @@ test("loadAgents: parses a full frontmatter + body", async () => {
   await withAgentDir(
     async (dir) => {
       await writeFile(
-        join(dir, "explore.md"),
+        join(dir, "explorer.md"),
         `---
-name: explore
+name: explorer
 description: Read-only research
 tools: read, bash
 extensions: web, other
@@ -69,7 +69,7 @@ You are a research agent.`,
       const agents = loadAgents();
       assert.equal(agents.length, 1);
       const a = agents[0];
-      assert.equal(a.name, "explore");
+      assert.equal(a.name, "explorer");
       assert.equal(a.description, "Read-only research");
       assert.deepEqual(a.tools, ["read", "bash"]);
       assert.deepEqual(a.extensions, ["web", "other"]);
@@ -86,7 +86,7 @@ test("loadAgents: name defaults to filename without extension", async () => {
   await withAgentDir(
     async (dir) => {
       await writeFile(
-        join(dir, "review.md"),
+        join(dir, "reviewer.md"),
         `---
 description: some reviewer
 ---
@@ -97,7 +97,7 @@ body`,
     () => {
       const agents = loadAgents();
       assert.equal(agents.length, 1);
-      assert.equal(agents[0].name, "review");
+      assert.equal(agents[0].name, "reviewer");
       assert.equal(agents[0].description, "some reviewer");
     },
   );

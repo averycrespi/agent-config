@@ -5,12 +5,13 @@ import type {
   SubagentRunState,
 } from "../subagents/api.ts";
 
-export const DEFAULT_AGENT_TYPE = "explore";
+export const DEFAULT_AGENT_TYPE = "explorer";
 export const READ_MOSTLY_AGENT_TYPES = new Set([
-  "explore",
-  "research",
-  "deep-research",
-  "review",
+  "explorer",
+  "scout",
+  "researcher",
+  "reviewer",
+  "analyst",
 ]);
 export const DEFAULT_MAX_CONCURRENCY = 4;
 export const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
