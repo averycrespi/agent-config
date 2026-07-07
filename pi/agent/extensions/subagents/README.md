@@ -23,14 +23,14 @@ Agent types are loaded dynamically from `~/.pi/agent/agents/*.md` at startup. Th
 
 The built-in types:
 
-| Type            | Tools                | Extensions                                  | Model           | Thinking |
-| --------------- | -------------------- | ------------------------------------------- | --------------- | -------- |
-| `explore`       | read, ls, find, grep | `extra-context`                             | inherits parent | medium   |
-| `review`        | read, ls, find, grep | `extra-context`, `mcp-broker`               | inherits parent | high     |
-| `research`      | read, ls, find, grep | `extra-context`, `mcp-broker`, `web-access` | inherits parent | medium   |
-| `deep-research` | read, ls, find, grep | `extra-context`, `mcp-broker`, `web-access` | inherits parent | high     |
+| Type            | Tools                                                                           | Extensions                                  | Model           | Thinking |
+| --------------- | ------------------------------------------------------------------------------- | ------------------------------------------- | --------------- | -------- |
+| `explore`       | read, ls, find, grep                                                            | `extra-context`                             | inherits parent | medium   |
+| `review`        | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | inherits parent | high     |
+| `research`      | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | medium   |
+| `deep-research` | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | high     |
 
-All built-in agent types are read-only. `review` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `research` is the faster default for external lookup, while `deep-research` is the slower, evidence-heavier option. Both `research` and `deep-research` add web search and fetch via the `web-access` extension. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
+All built-in agent types are read-only. Because Pi's `--tools` flag is an allowlist across built-in, extension, and custom tools, agent definitions that enable tool-providing extensions must also list those extension tool names. `review` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `research` is the faster default for external lookup, while `deep-research` is the slower, evidence-heavier option. Both `research` and `deep-research` add web search and fetch via the `web-access` extension. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
 
 **Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
 
