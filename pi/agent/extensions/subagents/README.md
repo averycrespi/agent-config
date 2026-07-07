@@ -33,6 +33,18 @@ The built-in types:
 
 All built-in agent types are read-only. Because Pi's `--tools` flag is an allowlist across built-in, extension, and custom tools, agent definitions that enable tool-providing extensions must also list those extension tool names. `reviewer` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `scout` is the faster default for external lookup, while `researcher` is the slower, evidence-heavier option. Both `scout` and `researcher` add web search and fetch via the `web-access` extension. `analyst` distills noisy logs, traces, metrics, query results, or large local outputs into patterns, representative examples, hypotheses, and follow-up queries. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
 
+## When to delegate
+
+Use subagents for read-only work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion:
+
+- `explorer` — unfamiliar code, control/data-flow tracing, entry points, and broad local file reading
+- `scout` — quick repo/web/remote lookup with lightweight verification
+- `researcher` — deeper multi-source synthesis with explicit confidence and gaps
+- `reviewer` — plans, diffs, branches, PRs, designs, and risk checks against criteria
+- `analyst` — logs, traces, metrics, query results, and large noisy outputs
+
+Do not delegate when the task requires editing files, a deterministic command would answer faster, the work needs unstated conversation context, or the steps are tightly sequential. Put all independent branches in one `spawn_agents` call so they run concurrently; use a single-agent call for one isolated task.
+
 **Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
 
 ## UI behavior

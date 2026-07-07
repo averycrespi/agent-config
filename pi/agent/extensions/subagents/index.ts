@@ -47,6 +47,30 @@ export function buildAgentDescription(agents: AgentDefinition[]): string {
   return `Agent type. Choose based on the task:\n\n${list}`;
 }
 
+export function buildDelegationGuidance(agents: AgentDefinition[]): string {
+  const agentList =
+    agents.length > 0
+      ? agents.map((a) => `${a.name}: ${a.description}`).join("; ")
+      : "none loaded";
+  return `\n\n## Subagent delegation
+Use spawn_agents proactively for read-only work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion.
+
+Delegate when:
+- localizing unfamiliar code, tracing control/data flow, or reading more than a few files
+- checking external docs, remote metadata, issues, PRs, releases, or web sources
+- reviewing a plan, diff, branch, PR, or design against explicit criteria
+- distilling noisy logs, traces, metrics, query results, or large command output
+- splitting independent questions that can run concurrently
+
+Do not delegate when:
+- the task requires editing files or coordinating overlapping workspace changes
+- a deterministic command, test, typecheck, lint, or focused search would answer faster
+- the subagent would need unstated conversation context or user-owned decisions
+- the work is tightly sequential or delegation would mostly duplicate effort
+
+Pass all independent agents in one spawn_agents call — they execute in parallel. A single-agent call is correct for one isolated task. Brief each agent like a colleague who just arrived: include the goal, paths/artifacts, criteria, constraints, and expected output. Available agent types: ${agentList}.`;
+}
+
 export function validateSpawnAgentSpecs(
   specs: SpawnAgentItem[],
   agentMap: Map<string, AgentDefinition>,
@@ -298,11 +322,9 @@ export default function (pi: ExtensionAPI) {
   const agentDescription = buildAgentDescription(agents);
 
   pi.on("before_agent_start", async (event: { systemPrompt: string }) => {
-    const agentList = agents
-      .map((a) => `${a.name}: ${a.description}`)
-      .join("; ");
-    const guidance = `\n\n## Subagent delegation\nUse spawn_agents to delegate tasks to focused subagents when a task would generate large output, require iterative searching, or benefit from isolation. Pass all agents you want to run in a single call — they execute in parallel, and a single-agent call is the right shape for delegating one task. Brief each agent thoroughly — subagents have no access to the current conversation. Available agent types: ${agentList}.`;
-    return { systemPrompt: event.systemPrompt + guidance };
+    return {
+      systemPrompt: event.systemPrompt + buildDelegationGuidance(agents),
+    };
   });
 
   pi.registerTool({

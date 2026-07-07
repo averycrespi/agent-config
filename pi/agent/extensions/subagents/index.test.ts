@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { THRESHOLD_CHARS } from "../_shared/spillover.ts";
 import {
   buildAgentDescription,
+  buildDelegationGuidance,
   normalizeIntent,
   spillSubagentOutput,
   validateSpawnAgentSpecs,
@@ -53,6 +54,22 @@ test("buildAgentDescription: non-empty list enumerates name and description", ()
   assert.match(text, /Agent type\. Choose based on the task:/);
   assert.match(text, /- explorer: Read-only research/);
   assert.match(text, /- code: Full write access/);
+});
+
+// ─── buildDelegationGuidance ────────────────────────────────────────────────
+
+test("buildDelegationGuidance: includes triggers, exclusions, and agent list", () => {
+  const text = buildDelegationGuidance([
+    agent("explorer", "Read-only repo exploration"),
+    agent("reviewer", "Read-only review"),
+  ]);
+
+  assert.match(text, /Use spawn_agents proactively/);
+  assert.match(text, /Delegate when:/);
+  assert.match(text, /Do not delegate when:/);
+  assert.match(text, /editing files/);
+  assert.match(text, /explorer: Read-only repo exploration/);
+  assert.match(text, /reviewer: Read-only review/);
 });
 
 // ─── validateSpawnAgentSpecs ────────────────────────────────────────────────

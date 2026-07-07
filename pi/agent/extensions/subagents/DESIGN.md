@@ -21,6 +21,12 @@ Supported definition fields include name, description, tools, extensions, model,
 
 The tool schema description is built from loaded agent descriptions at extension startup. Agent definitions are not reloaded during a session.
 
+## System prompt guidance
+
+`index.ts` owns the active delegation guidance injected through `before_agent_start`. Keep that guidance behavior-oriented: it should tell the parent agent when to delegate, when not to delegate, how to batch independent branches, and that subagents start without conversation context. The guidance may reference dynamically loaded agent names and descriptions, but it should not duplicate each agent's full system prompt.
+
+README owns the user-facing version of the same policy. Keep `AGENTS.md` at the principle level so agent names, tool availability, and delegation heuristics do not drift across global instructions.
+
 ## Spawn lifecycle
 
 Each `spawn_agents` call validates all requested specs before launching. Validation failures return one recoverable tool error and launch no children. Valid specs run concurrently with `Promise.all`, and result order follows input order.
