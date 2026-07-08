@@ -97,11 +97,11 @@ Both individual `stdout`/`stderr` fields and combined tool output can spill to t
 
 - No subagent session inheritance through the `spawn_agents` tool.
 - No automatic merging of subagent decisions into workspace changes.
-- No parallel write coordination; built-in agents are read-only by convention.
+- No parallel write coordination; built-in agents are read-mostly by tool boundary and read-only by prompt convention.
 - No dynamic agent reload mid-session.
 - No persistent run database or dashboard.
 - No unbounded recursive delegation.
 
 ## Change guidance
 
-Preserve subagents as isolated, bounded child processes. Use subagents for read-only exploration, retrieval, review, and verification unless a custom agent explicitly broadens tools. When changing spawn arguments, update `API.md` if the programmatic surface changes. Add tests for loader parsing, CLI argument construction, depth/abort behavior, activity updates, and render output when relevant.
+Preserve subagents as isolated, bounded child processes. Use subagents for read-mostly exploration, retrieval, review, and verification unless a custom agent explicitly broadens tools. When built-in agents include `bash`, keep their prompts read-only and explicitly forbid filesystem mutations because `bash` is not mechanically read-only. When changing spawn arguments, update `API.md` if the programmatic surface changes. Add tests for loader parsing, CLI argument construction, depth/abort behavior, activity updates, and render output when relevant.

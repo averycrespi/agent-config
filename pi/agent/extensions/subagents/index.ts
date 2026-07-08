@@ -53,7 +53,7 @@ export function buildDelegationGuidance(agents: AgentDefinition[]): string {
       ? agents.map((a) => `${a.name}: ${a.description}`).join("; ")
       : "none loaded";
   return `\n\n## Subagent delegation
-Use spawn_agents proactively for read-only work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion.
+Use spawn_agents proactively for read-mostly work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion.
 
 Delegate when:
 - localizing unfamiliar code, tracing control/data flow, or reading more than a few files
