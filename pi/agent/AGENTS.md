@@ -65,6 +65,10 @@
 - Stage files by name, not `git add -A` or `git add .`.
 - Never commit likely secrets (`.env`, credentials, etc.). Warn the user if they specifically request it.
 - Never push to remote unless the user explicitly asks.
+- When creating or switching branches, do not assume upstream tracking is set.
+- If tracking an existing remote branch, use `git switch --track origin/<branch>` or `git branch --set-upstream-to=origin/<branch> <branch>`.
+- If pushing a new branch, use `git push -u origin <branch>` when the user explicitly asked to push.
+- Verify with `git status -sb` before reporting branch state.
 - Commit messages: focus on the _why_, not the _what_. Imperative mood, under 50 characters, no trailing period. Use conventional commits: `<type>(<optional scope>): <description>`.
 
 ## Pull Request Titles and Descriptions
