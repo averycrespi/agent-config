@@ -52,7 +52,7 @@ User input stops auto-run unless the input source is `extension`, which prevents
 
 ## Prompt steering and completion rule
 
-When `injectActiveGoal` is enabled and the goal is active, `before_agent_start` appends goal steering to the system prompt. The objective is explicitly framed as user-provided data, not higher-priority instructions. The injected text reminds the agent to continue focused progress and to complete only after an evidence audit.
+When `injectActiveGoal` is enabled and the goal is active, `before_agent_start` appends goal steering to the system prompt. The objective is explicitly framed as user-provided data, not higher-priority instructions. The injected text reminds the agent to continue focused progress and to complete only after an evidence audit. Auto-run steering says configured continuation/time bounds apply but does not expose exact remaining values; deterministic state still enforces those limits without creating context-pressure signals for the model.
 
 `goal_update` intentionally supports only `status: "complete"`. Completion requires non-empty bounded evidence. The schema advertises the configured `evidenceMaxChars` cap, and agent-facing guidance should tell the model to summarize logs/results instead of pasting raw output. The agent-facing contract is stricter than the type schema: every explicit requirement in the objective should map to concrete artifacts such as files, command output, tests, UI state, or other observed evidence. TODO completion, effort, passing tests alone, or context pressure are not sufficient.
 

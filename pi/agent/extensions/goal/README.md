@@ -68,7 +68,7 @@ When the current goal is active and `injectActiveGoal` is enabled, each agent tu
 - a completion audit checklist
 - the configured `evidenceMaxChars` cap for concise `goal_update` evidence
 - a warning that proxy signals are insufficient completion evidence
-- remaining auto-run continuation/time bounds when auto-run is running
+- a qualitative reminder that configured continuation/time bounds apply when auto-run is running
 
 No goal context is injected when the goal is paused, complete, absent, or injection is disabled. When checkpoint guidance is enabled, the agent is told to create git commits at logical verified checkpoints, stage files by name, and never push unless explicitly asked.
 

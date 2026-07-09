@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import registerWorkflowsExtension from "./index.ts";
 import { registerWorkflowTool } from "./workflow-tool.ts";
 import {
   renderSnapshot,
@@ -23,6 +24,28 @@ function makePi() {
     },
   };
 }
+
+test("extension relies on tool prompt guidelines without duplicate prompt injection", () => {
+  const beforeAgentStartPrompts: string[] = [];
+  let registeredTool: any;
+  const pi = {
+    registerCommand() {},
+    registerTool(tool: any) {
+      registeredTool = tool;
+    },
+    getThinkingLevel() {
+      return "off";
+    },
+    addBeforeAgentStart(prompt: string) {
+      beforeAgentStartPrompts.push(prompt);
+    },
+  };
+
+  registerWorkflowsExtension(pi as any);
+
+  assert.deepEqual(beforeAgentStartPrompts, []);
+  assert.ok(registeredTool.promptGuidelines.length > 0);
+});
 
 test("workflow tool returns validation errors as tool text", async () => {
   const harness = makePi();

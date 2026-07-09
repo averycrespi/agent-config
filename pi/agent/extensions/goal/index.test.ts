@@ -167,6 +167,39 @@ test("restore scans branch snapshots and before_agent_start injects only active 
   assert.match(result.systemPrompt, /Stage files by name/i);
 });
 
+test("active goal prompt keeps auto-run bounds qualitative", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal").handler("Keep bounded progress", ctx);
+
+  const result = await pi.handlers.get("before_agent_start")(
+    { systemPrompt: "base" },
+    ctx,
+  );
+
+  assert.match(result.systemPrompt, /Auto-run is active and bounded/i);
+  assert.doesNotMatch(result.systemPrompt, /continuations remaining/i);
+  assert.doesNotMatch(result.systemPrompt, /auto-run time remaining/i);
+});
+
 test("compaction returns goal-aware summary when enabled", async () => {
   const pi = makePi();
   const ctx = makeCtx();

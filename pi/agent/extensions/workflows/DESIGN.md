@@ -4,9 +4,9 @@ The `workflows` extension owns deterministic foreground orchestration above the 
 
 ## Architecture
 
-- `index.ts` registers the extension, `/workflows-config`, and before-agent-start guidance.
+- `index.ts` registers the extension and `/workflows-config`; it does not inject a separate before-agent-start prompt.
 - `config.ts` loads the whole-workflow and per-agent timeout settings from Pi settings and environment overrides.
-- `workflow-tool.ts` defines the `workflow` tool schema, validates scripts, connects runtime progress to partial updates, applies final-output spillover, loads config, and loads public subagent definitions.
+- `workflow-tool.ts` defines the `workflow` tool schema and canonical prompt guidelines, validates scripts, connects runtime progress to partial updates, applies final-output spillover, loads config, and loads public subagent definitions.
 - `parser.ts` performs AST-level validation and extracts literal metadata.
 - `runtime.ts` starts the killable worker, mediates worker-to-parent RPC, tracks snapshots, and implements the narrow subagent policy wrapper.
 - `worker-source.ts` builds the worker module that exposes only workflow globals to user scripts.
