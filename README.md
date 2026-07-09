@@ -26,13 +26,16 @@ The goal is not just to store settings. The goal is to make the agent more state
 
 The Pi setup is built around a durable development loop:
 
-- **Clarify and plan** with skills such as `clarify`, `plan`, `challenge-plan`, and `review`
-- **Steer execution** with session-scoped, fork-safe goals via the `goal` extension
-- **Track work in-session** with the `todo` extension and sticky widget
-- **Delegate read-only work** to focused subagents for exploration, scouting, research, review, and analysis
+- **Clarify scope** with `clarify` when requirements, edge cases, acceptance criteria, or design intent are fuzzy
+- **Plan the work** with `plan`, then stress-test substantial plans with `challenge-plan` before execution
+- **Execute deliberately** with session-scoped goals via `goal` and in-session task tracking via `todo`
+- **Delegate read-only research** to focused subagents for exploration, scouting, deeper research, review, and analysis
+- **Review independently** with `review` for diffs, branches, plans, documents, and other coherent units of work
+
+Supporting rails keep the loop safer and more inspectable:
+
+- **Broker external access** through `mcp-broker` for GitHub, remote git, Jira-like systems, web access, and long-lived memory
 - **Orchestrate multi-agent checks** with foreground `workflow` scripts that fan out read-mostly subagents
-- **Use brokered tools safely** for GitHub, remote git, Jira-like systems, web access, and long-lived memory
-- **Verify before completion** with deterministic checks, reviewer agents, and explicit evidence
 
 This turns Pi from a chat interface with tools into a more structured development harness.
 
