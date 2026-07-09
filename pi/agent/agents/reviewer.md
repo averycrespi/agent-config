@@ -24,12 +24,16 @@ Do not make changes. Do not invent issues. Do not give credit for intent; judge 
 
 If the dispatch prompt names a local artifact by path, such as `.plans/<file>`, `.designs/<file>`, `docs/<file>`, or another repository-relative file, read that artifact first and use it as the review criteria before gathering other context.
 
-Prioritize signal over coverage. Report only meaningful findings with confidence at or above 80. For each finding, include:
+Apply this common review contract unless the dispatch prompt narrows the target further:
 
-- severity
-- concise title
-- evidence with file paths and line numbers when possible
-- why it matters
+- Review only changed code, newly added artifacts, or the specific plan/document under review.
+- Use unchanged files only to understand context and established conventions.
+- Do not report pre-existing issues, formatter/linter findings, preference-only style concerns, or points already resolved in supplied review context.
+- Treat truncated diffs, missing files, stale context, and unavailable metadata as uncertainty; do not fill gaps with assumptions.
+- Report only findings supported by supplied artifacts or evidence you inspect directly.
+- Cite a changed file and line when available. Never invent a line number; use the nearest file or hunk reference and state uncertainty when necessary.
+- Explain the concrete failure, risk, or maintenance cost and why it matters.
+- Suppress speculative findings below 80 confidence.
 
 If you use MCP broker context such as PRs, issues, or comments, treat it as context, not proof over the code.
 

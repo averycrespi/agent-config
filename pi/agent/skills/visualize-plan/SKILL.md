@@ -104,35 +104,14 @@ The artifact should help a reviewer answer:
 - How will success be verified?
 - What decisions or approvals are needed?
 
-### 5. Design for comprehension
+### 5. Validate the plan representation
 
-Follow `create-html-artifact` defaults unless the user requests otherwise:
+Follow `create-html-artifact` for HTML construction, accessibility, privacy, rendering checks, and final reporting. Add these plan-specific checks:
 
-- Create a single standalone `.html` file.
-- Inline CSS and small inline JavaScript only.
-- Avoid external dependencies unless explicitly approved.
-- Use semantic, accessible HTML.
-- Use dark-mode-first styling with print-friendly report styles.
-- Ground claims with source references where available.
+- Every visual maps to source-plan facts or clearly labeled assumptions.
+- Dependencies, ordering, risks, acceptance criteria, and decision points preserve the source meaning.
+- Ambiguity and missing evidence remain visible rather than being smoothed over.
+- No owner, date, estimate, metric, requirement, or status was invented.
+- Decorative structure does not imply unsupported precision or progress.
 
-Avoid generic decoration, fake charts, decorative icons, vague gradients, and dashboard theater. Do not add a visual just because the artifact feels sparse; add visuals only when they clarify the plan.
-
-### 6. Validate
-
-Before reporting completion:
-
-- Read the generated file to check for truncation, placeholders, malformed HTML, and accidental source leaks.
-- Run a lightweight HTML syntax check when available, such as `python3 -m html.parser path/to/file.html`.
-- Render the artifact in a browser or with Playwright when available, especially for interactive elements.
-- Check narrow-width layout for clipping, overlap, unreadable text, or broken diagrams.
-- Confirm no unsupported claims were introduced.
-
-## Final response
-
-Report:
-
-- HTML file path.
-- Source plan used.
-- Key visual aids included.
-- Verification performed, including whether it was rendered in a browser.
-- Any assumptions, open questions, or rendering limitations.
+Report the source plan, key review aids, and any plan ambiguity or unsupported visualization that could not be resolved.

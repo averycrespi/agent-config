@@ -42,7 +42,7 @@ Wrong symptom means wrong fix.
 
 ### 3. Rank falsifiable hypotheses
 
-Before changing code, write 3-5 ranked hypotheses. Each hypothesis must include a prediction:
+Before changing code, write the smallest useful ranked set of falsifiable hypotheses. Each hypothesis must include a prediction:
 
 > If <cause> is true, then <probe/change> will show <observable result>.
 

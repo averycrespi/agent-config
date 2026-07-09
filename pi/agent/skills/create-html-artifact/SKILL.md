@@ -42,7 +42,7 @@ Before writing HTML, identify:
 - Privacy boundary: whether the file is personal, internal, shareable, or public.
 - Dependency policy: default to no external dependencies; ask or state the tradeoff before adding any CDN, remote font, image, API call, or hosted asset.
 
-For GPT-5.5-style reasoning models, keep the internal prompt shape outcome-first: define the target, success criteria, constraints, available evidence, output file, and stop conditions. Avoid over-prescribing every implementation step unless a step is mandatory.
+For GPT-5.6 and similar reasoning models, keep the internal prompt shape outcome-first: define the target, success criteria, constraints, available evidence, output file, and stop conditions. Avoid over-prescribing every implementation step unless a step is mandatory.
 
 ### 2. Choose a structure that matches the job
 
@@ -154,4 +154,4 @@ This skill is based on public guidance and examples from the named sources below
 - Thariq Shihipar’s “The unreasonable effectiveness of HTML” examples: single-file artifacts for planning, review, design, prototypes, diagrams, decks, research, reports, and custom editors.
 - Hacker News discussion of the approach: HTML improves rich consumption and throwaway tools, while Markdown remains valuable for coauthoring, token efficiency, readable diffs, and maintainability.
 - Simon Willison’s HTML tools patterns: single file, no React/build step, small code, copy/paste workflows, optional CDN dependencies only when worthwhile, URL/localStorage state where useful, and self-hosting caution.
-- OpenAI GPT-5.5 prompting guidance: use outcome-first prompts, success criteria, explicit constraints, dependency/stop rules, structured outputs where schemas matter, concise preambles for tool-heavy work, and rendered inspection for visual artifacts.
+- OpenAI GPT-5.5 prompting guidance, retained by GPT-5.6: use outcome-first prompts, success criteria, explicit constraints, dependency/stop rules, structured outputs where schemas matter, concise preambles for tool-heavy work, and rendered inspection for visual artifacts.

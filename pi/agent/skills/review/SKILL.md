@@ -131,21 +131,7 @@ Read each prompt file from `references/` at dispatch time, then launch all seven
 | 6   | Performance  | `references/performance-prompt.md`  | `performance review` |
 | 7   | Simplicity   | `references/simplicity-prompt.md`   | `simplicity review`  |
 
-Each reviewer MUST return findings in this exact format when findings exist:
-
-```text
-FINDINGS:
-- <file>:<line> | <severity> | <confidence> | <description>
-```
-
-If no findings meet the confidence threshold, the reviewer MUST return exactly:
-
-```text
-NO_FINDINGS
-```
-
-Where `<severity>` is one of: `blocker`, `important`, `suggestion`.
-Where `<confidence>` is an integer from 0 to 100.
+The `reviewer` agent definition owns the shared scope, evidence, confidence, severity, and machine-readable output contract. Lens prompts should contain only their specialized rubric. Expect either `FINDINGS:` lines in the reviewer's documented format or `NO_FINDINGS`.
 
 ## Synthesize
 
@@ -201,7 +187,7 @@ Review gaps: <none or concise list>
 
 ## Pi Notes
 
-- `reviewer` subagents inherit the active Pi model unless the agent definition overrides it.
+- `reviewer` subagents use the model and thinking level configured in `pi/agent/agents/reviewer.md`.
 - Remote PR review depends on the `mcp-broker` extension and authenticated GitHub broker tools. For PRs in the current repository, use authenticated `git.fetch` through the broker to fetch the PR ref for local inspection without checking it out.
 - Large PR diffs may be truncated by `github.pull_request_read` with `method: "get_diff"`; use changed-file summaries, available full-file context, and review-gap reporting rather than pretending the review is complete.
 - `spawn_agents` reviewers start with fresh context and read-only tools, so brief them with all relevant context and constraints.
