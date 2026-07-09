@@ -54,7 +54,7 @@ User input stops auto-run unless the input source is `extension`, which prevents
 
 When `injectActiveGoal` is enabled and the goal is active, `before_agent_start` appends goal steering to the system prompt. The objective is explicitly framed as user-provided data, not higher-priority instructions. The injected text reminds the agent to continue focused progress and to complete only after an evidence audit.
 
-`goal_update` intentionally supports only `status: "complete"`. Completion requires non-empty bounded evidence. The agent-facing contract is stricter than the type schema: every explicit requirement in the objective should map to concrete artifacts such as files, command output, tests, UI state, or other observed evidence. TODO completion, effort, passing tests alone, or context pressure are not sufficient.
+`goal_update` intentionally supports only `status: "complete"`. Completion requires non-empty bounded evidence. The schema advertises the configured `evidenceMaxChars` cap, and agent-facing guidance should tell the model to summarize logs/results instead of pasting raw output. The agent-facing contract is stricter than the type schema: every explicit requirement in the objective should map to concrete artifacts such as files, command output, tests, UI state, or other observed evidence. TODO completion, effort, passing tests alone, or context pressure are not sufficient.
 
 Preserve this conservative completion design. Adding more statuses or softer completion paths would weaken the extension's main purpose.
 

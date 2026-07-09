@@ -41,7 +41,7 @@ The extension registers two tools:
 - `goal_get` reads the current goal state without mutation.
 - `goal_update` can only mark the current goal `complete` and requires non-empty completion evidence bounded by `evidenceMaxChars`.
 
-Completion is intentionally conservative. Agents should call `goal_update` only after mapping every explicit requirement in the objective to concrete evidence from files, command output, tests, UI state, or other real artifacts. TODO completion, tests passing, implementation effort, a plausible final answer, or context pressure are not sufficient by themselves.
+Completion is intentionally conservative. Agents should call `goal_update` only after mapping every explicit requirement in the objective to concrete evidence from files, command output, tests, UI state, or other real artifacts. The tool schema, prompt snippet, and prompt guidelines tell agents to keep evidence concise and at most `evidenceMaxChars`; evidence should summarize logs/results and cite artifacts rather than paste raw output. TODO completion, tests passing, implementation effort, a plausible final answer, or context pressure are not sufficient by themselves.
 
 ## State and persistence
 
@@ -66,6 +66,7 @@ When the current goal is active and `injectActiveGoal` is enabled, each agent tu
 - a reminder to continue unless paused, blocked, or complete
 - checkpoint commit guidance when `checkpointCommits` is enabled
 - a completion audit checklist
+- the configured `evidenceMaxChars` cap for concise `goal_update` evidence
 - a warning that proxy signals are insufficient completion evidence
 - remaining auto-run continuation/time bounds when auto-run is running
 

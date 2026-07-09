@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import {
   formatGoalState,
   normalizeBoundedText,
@@ -8,18 +8,20 @@ import {
 
 export const STATE_ENTRY_TYPE = "goal-state";
 
-const goalUpdateParamsSchema = Type.Object({
-  status: Type.String({
-    enum: ["complete"],
-    description: "Only 'complete' is accepted.",
-  }),
-  evidence: Type.String({
-    description:
-      "Concrete evidence that every explicit goal requirement is satisfied.",
-  }),
-});
+function createGoalUpdateParamsSchema(evidenceMaxChars: number) {
+  return Type.Object({
+    status: Type.String({
+      enum: ["complete"],
+      description: "Only 'complete' is accepted.",
+    }),
+    evidence: Type.String({
+      maxLength: evidenceMaxChars,
+      description: `Concise concrete evidence that every explicit goal requirement is satisfied. Must be at most ${evidenceMaxChars} characters; summarize logs/results instead of pasting raw output.`,
+    }),
+  });
+}
 
-type GoalUpdateParams = Static<typeof goalUpdateParamsSchema>;
+type GoalUpdateParams = { status: string; evidence: string };
 
 function textResult(text: string, store: GoalStore) {
   return {
@@ -65,16 +67,16 @@ export function registerGoalTools(
   pi.registerTool({
     name: "goal_update",
     label: "Goal: update",
-    description: "Mark the current goal complete with concrete evidence.",
-    promptSnippet:
-      "Mark the current goal complete only after auditing concrete evidence.",
+    description: `Mark the current goal complete with concise evidence, up to ${options.evidenceMaxChars} characters.`,
+    promptSnippet: `Mark the current goal complete only after auditing concise concrete evidence. Keep evidence at most ${options.evidenceMaxChars} characters.`,
     promptGuidelines: [
       "Use goal_update only after auditing concrete artifacts, files, command output, tests, UI state, or other real evidence.",
       "Map every explicit goal requirement to concrete evidence before marking complete.",
+      `Keep evidence concise and at most ${options.evidenceMaxChars} characters; summarize commands/results and cite artifacts instead of pasting full logs.`,
       "Do not mark complete merely because TODOs are done, tests pass, effort was substantial, context is low, or you are stopping.",
       "If evidence is incomplete, continue working or report the blocker instead.",
     ],
-    parameters: goalUpdateParamsSchema,
+    parameters: createGoalUpdateParamsSchema(options.evidenceMaxChars),
     async execute(_toolCallId, rawParams) {
       const params = rawParams as GoalUpdateParams;
       if (params.status !== "complete") {

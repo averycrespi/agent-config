@@ -32,6 +32,18 @@ test("goal_get returns current goal without mutating", async () => {
   assert.equal(pi.entries.length, 0);
 });
 
+test("goal_update advertises concise evidence cap", () => {
+  const pi = makePi();
+  const store = createGoalStore(() => 1);
+  registerGoalTools(pi, store, { evidenceMaxChars: 100 });
+
+  const tool = pi.tools.get("goal_update");
+  assert.equal(tool.parameters.properties.evidence.maxLength, 100);
+  assert.match(tool.description, /up to 100 characters/);
+  assert.match(tool.promptSnippet, /at most 100 characters/);
+  assert.match(tool.promptGuidelines.join("\n"), /at most 100 characters/);
+});
+
 test("goal_update requires complete status and non-empty evidence", async () => {
   const pi = makePi();
   const store = createGoalStore(() => 1);

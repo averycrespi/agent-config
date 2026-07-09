@@ -303,6 +303,7 @@ test("/goal sets active goal, starts auto-run, and sends kickoff", async () => {
   assert.match(ctx.notifications.at(-1)?.msg, /Auto-run: running/);
   assert.equal(pi.sentMessages.length, 1);
   assert.match(String(pi.sentMessages[0].content), /Finish auto-run/);
+  assert.match(String(pi.sentMessages[0].content), /at most 100 characters/);
   assert.equal(pi.entries.at(-1)?.type, "goal-state");
 });
 
