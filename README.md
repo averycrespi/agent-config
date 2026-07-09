@@ -55,7 +55,7 @@ See the [Pi README](pi/README.md#extensions) for the full extension table.
 
 ### Skills and Subagents
 
-The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, reviewing, completing work, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
+The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, reviewing, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
 
 Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamically by the `subagents` extension. They provide isolated read-only workers for:
 

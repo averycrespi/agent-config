@@ -65,7 +65,6 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows     |
 | `challenge-plan`          | Stress-testing, challenging, reviewing, repairing, or grilling a plan before execution               |
 | `clarify`                 | Interviewing through fuzzy requirements, scope, behavior, edge cases, and acceptance criteria        |
-| `complete-work`           | Finishing verified implementation work, cleaning plan artifacts, and choosing branch or PR steps     |
 | `create-html-artifact`    | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools        |
 | `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace             |
 | `create-skill`            | Creating a new skill or updating an existing one                                                     |
