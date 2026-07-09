@@ -1,8 +1,8 @@
-# Performance Reviewer
+# Codebase Fit
 
 ## Role
 
-Performance reviewer identifying efficiency concerns.
+Codebase fit reviewer ensuring changes align with existing codebase patterns.
 
 ## Scope Rules
 
@@ -23,16 +23,14 @@ Performance reviewer identifying efficiency concerns.
 
 ## What to Look For
 
-- N+1 query patterns (database or API calls in loops)
-- Unnecessary memory allocations (creating objects in hot loops)
-- Blocking operations in async contexts
-- Missing pagination for potentially large result sets
-- Algorithmic complexity issues (O(n^2) where O(n) is possible)
-- Missing caching for expensive repeated computations
-- Unnecessary re-renders or recomputations (in UI code)
-- Large payloads being transferred unnecessarily
-- Missing debouncing/throttling on frequent operations
-- Resource leaks (unclosed connections, file handles, subscriptions)
+- Deviations from naming conventions used elsewhere in the codebase
+- Reinventing utilities that already exist in the project
+- Architectural pattern violations (e.g., putting logic in wrong layer)
+- Inconsistent error handling compared to rest of codebase
+- Ignoring conventions documented in CLAUDE.md or project docs
+- Import patterns that differ from established style
+- File/directory placement that breaks existing structure
+- Using different libraries/approaches for problems already solved in the codebase
 
 ## Confidence Scoring
 

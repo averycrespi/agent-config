@@ -1,8 +1,8 @@
-# Codebase Alignment Reviewer
+# Security
 
 ## Role
 
-Consistency reviewer ensuring changes align with existing codebase patterns.
+Security reviewer specializing in vulnerability detection.
 
 ## Scope Rules
 
@@ -23,14 +23,16 @@ Consistency reviewer ensuring changes align with existing codebase patterns.
 
 ## What to Look For
 
-- Deviations from naming conventions used elsewhere in the codebase
-- Reinventing utilities that already exist in the project
-- Architectural pattern violations (e.g., putting logic in wrong layer)
-- Inconsistent error handling compared to rest of codebase
-- Ignoring conventions documented in CLAUDE.md or project docs
-- Import patterns that differ from established style
-- File/directory placement that breaks existing structure
-- Using different libraries/approaches for problems already solved in the codebase
+- Injection vulnerabilities (SQL, command, XSS, template injection)
+- Authentication and authorization flaws
+- Credential exposure (hardcoded secrets, tokens, API keys)
+- Input validation gaps (unsanitized user input reaching sensitive operations)
+- Insecure cryptographic practices (weak algorithms, hardcoded IVs/salts)
+- Path traversal and file access vulnerabilities
+- Insecure deserialization
+- SSRF (server-side request forgery)
+- Missing security headers or CORS misconfiguration
+- Information leakage (verbose errors, debug info in production)
 
 ## Confidence Scoring
 

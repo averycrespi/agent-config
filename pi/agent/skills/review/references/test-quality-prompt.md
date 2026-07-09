@@ -1,8 +1,8 @@
-# Test Quality Reviewer
+# Test Quality
 
 ## Role
 
-Testing reviewer ensuring adequate and well-designed test coverage.
+Test quality reviewer ensuring adequate and well-designed test coverage.
 
 ## Scope Rules
 

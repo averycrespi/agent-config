@@ -1,8 +1,8 @@
-# Code Quality Reviewer
+# Code Quality
 
 ## Role
 
-Design and quality reviewer assessing code craftsmanship.
+Code quality reviewer assessing design and craftsmanship.
 
 ## Scope Rules
 

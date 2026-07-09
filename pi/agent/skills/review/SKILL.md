@@ -1,13 +1,13 @@
 ---
 name: review
-description: Use when reviewing a pull request, branch, commit range, working tree diff, plan, document, or other coherent unit of work across correctness, security, codebase alignment, code quality, test quality, and performance.
+description: Use when reviewing a pull request, branch, commit range, working tree diff, plan, document, or other coherent unit of work across correctness, security, codebase alignment, code quality, test quality, performance, and simplicity.
 ---
 
 # Review
 
 ## Overview
 
-Perform six parallel specialized reviews of a coherent target, then synthesize findings with confidence scoring and severity tiers. Each review dimension runs as an independent `reviewer` subagent through `spawn_agents`; results are merged, deduplicated, and presented as one structured report.
+Perform seven parallel specialized reviews of a coherent target, then synthesize findings with confidence scoring and severity tiers. Each review dimension runs as an independent `reviewer` subagent through `spawn_agents`; results are merged, deduplicated, and presented as one structured report.
 
 Use this skill for review requests targeting a GitHub PR, local branch, commit range, current working tree, plan file, design document, or clearly described unit of work. Preserve the same fundamental approach regardless of target: gather enough context, dispatch independent reviewers, filter low-confidence findings, deduplicate, and report actionable issues plus review gaps.
 
@@ -119,16 +119,17 @@ After obtaining target material:
 
 Before launching LLM reviewers, run deterministic checks that are practical for the target, such as typecheck, lint, tests, format checks, or focused validation scripts. Include passing results, failures, unavailable checks, and any skipped-check rationale in the context package. Do not pretend failed or unavailable deterministic checks passed; reviewers should receive the real pass-or-report state.
 
-Read each prompt file from `references/` at dispatch time, then launch all six reviewers in one `spawn_agents` call. Use the `reviewer` agent type for every reviewer. Each agent prompt is the relevant prompt file content plus the full context package.
+Read each prompt file from `references/` at dispatch time, then launch all seven reviewers in one `spawn_agents` call. Use the `reviewer` agent type for every reviewer. Each agent prompt is the relevant prompt file content plus the full context package.
 
-| #   | Reviewer           | Prompt File                                 | Intent example       |
-| --- | ------------------ | ------------------------------------------- | -------------------- |
-| 1   | Bug Hunter         | `references/bug-hunter-prompt.md`           | `bug hunt`           |
-| 2   | Security Reviewer  | `references/security-reviewer-prompt.md`    | `security review`    |
-| 3   | Codebase Alignment | `references/codebase-alignment-prompt.md`   | `codebase alignment` |
-| 4   | Code Quality       | `references/code-quality-prompt.md`         | `code quality`       |
-| 5   | Test Quality       | `references/test-quality-prompt.md`         | `test quality`       |
-| 6   | Performance        | `references/performance-reviewer-prompt.md` | `performance review` |
+| #   | Reviewer     | Prompt File                         | Intent example       |
+| --- | ------------ | ----------------------------------- | -------------------- |
+| 1   | Correctness  | `references/correctness-prompt.md`  | `correctness review` |
+| 2   | Security     | `references/security-prompt.md`     | `security review`    |
+| 3   | Codebase Fit | `references/codebase-fit-prompt.md` | `codebase fit`       |
+| 4   | Code Quality | `references/code-quality-prompt.md` | `code quality`       |
+| 5   | Test Quality | `references/test-quality-prompt.md` | `test quality`       |
+| 6   | Performance  | `references/performance-prompt.md`  | `performance review` |
+| 7   | Simplicity   | `references/simplicity-prompt.md`   | `simplicity review`  |
 
 Each reviewer MUST return findings in this exact format when findings exist:
 
@@ -148,7 +149,7 @@ Where `<confidence>` is an integer from 0 to 100.
 
 ## Synthesize
 
-After all six agents return:
+After all seven agents return:
 
 1. Parse each response for `FINDINGS:` or `NO_FINDINGS`.
 2. Treat malformed reviewer output conservatively: parse any usable finding lines, count the malformed response as a review gap, and do not invent missing findings.
