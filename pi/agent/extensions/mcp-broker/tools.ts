@@ -26,7 +26,7 @@ import {
 } from "../_shared/render.ts";
 
 const CALL_HEAD_LINES = 3;
-export const MAX_INLINE_IMAGE_BASE64_CHARS = 5_000_000;
+export const MAX_INLINE_IMAGE_CHARS = 5_000_000;
 const MCP_CATALOG_KIND = "EXTERNAL MCP TOOL CATALOG";
 const MCP_DESCRIPTION_KIND = "EXTERNAL MCP TOOL DESCRIPTION";
 const MCP_RESULT_KIND = "EXTERNAL MCP TOOL RESULT";
@@ -135,10 +135,12 @@ export function normalizeBrokerContent(
     if (!value || typeof value !== "object") return total;
     const block = value as Record<string, unknown>;
     return block.type === "image" && typeof block.data === "string"
-      ? total + block.data.length
+      ? total +
+          block.data.length +
+          (typeof block.mimeType === "string" ? block.mimeType.length : 0)
       : total;
   }, 0);
-  const serializeImages = imagePayloadChars > MAX_INLINE_IMAGE_BASE64_CHARS;
+  const serializeImages = imagePayloadChars > MAX_INLINE_IMAGE_CHARS;
 
   const normalized: AgentToolResult<unknown>["content"] = [];
   for (const value of content) {

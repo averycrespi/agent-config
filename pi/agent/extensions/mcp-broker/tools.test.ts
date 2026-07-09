@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   callBrokerTool,
-  MAX_INLINE_IMAGE_BASE64_CHARS,
+  MAX_INLINE_IMAGE_CHARS,
   normalizeBrokerContent,
   registerTools,
   summarize,
@@ -140,7 +140,7 @@ test("normalizeBrokerContent converts embedded text resources to supported text 
 });
 
 test("normalizeBrokerContent serializes oversized image payloads for spillover", () => {
-  const data = "a".repeat(MAX_INLINE_IMAGE_BASE64_CHARS + 1);
+  const data = "a".repeat(MAX_INLINE_IMAGE_CHARS + 1);
   const normalized = normalizeBrokerContent([
     { type: "image", data, mimeType: "image/png" },
   ]);
@@ -150,6 +150,31 @@ test("normalizeBrokerContent serializes oversized image payloads for spillover",
     (normalized[0] as { type: "text"; text: string }).text,
     /"mimeType":"image\/png"/,
   );
+});
+
+test("normalizeBrokerContent applies the image cap across multiple blocks", () => {
+  const data = "a".repeat(Math.ceil(MAX_INLINE_IMAGE_CHARS / 2));
+  const normalized = normalizeBrokerContent([
+    { type: "image", data, mimeType: "image/png" },
+    { type: "image", data, mimeType: "image/png" },
+  ]);
+
+  assert.deepEqual(
+    normalized.map((block) => block.type),
+    ["text", "text"],
+  );
+});
+
+test("normalizeBrokerContent serializes oversized image metadata for spillover", () => {
+  const normalized = normalizeBrokerContent([
+    {
+      type: "image",
+      data: "a",
+      mimeType: "x".repeat(MAX_INLINE_IMAGE_CHARS),
+    },
+  ]);
+
+  assert.equal(normalized[0]?.type, "text");
 });
 
 test("MCP tool descriptions identify broker results as untrusted external data", () => {
