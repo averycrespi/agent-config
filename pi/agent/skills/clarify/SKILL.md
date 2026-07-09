@@ -36,7 +36,7 @@ Use whichever sources apply:
 - **Codebase:** read `AGENTS.md`, `CLAUDE.md`, `README.md`, design docs, existing `.plans/`, relevant source files, tests, configs, and nearby conventions.
 - **Subagents:** for substantial or unfamiliar repo questions, run independent read-only subagents in parallel whenever possible to localize files, discover conventions, identify risks, or summarize external docs. Use one `spawn_agents` call for all independent research branches instead of serial subagent calls.
 - **Web:** use web research when behavior depends on current external APIs, libraries, standards, or public examples.
-- **Memory:** use Hindsight when prior preferences, repo history, recurring decisions, or external context may matter.
+- **Memory:** use Hindsight per `AGENTS.md` when prior preferences, repo history, recurring decisions, or external context may matter.
 
 If research proves an answer, do not ask the user. If research only suggests a plausible default for a user-owned decision, ask with that default as the recommendation.
 

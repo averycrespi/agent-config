@@ -71,7 +71,6 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `create-skill`            | Creating a new skill or updating an existing one                                                     |
 | `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                       |
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends    |
-| `hindsight`               | Retaining and querying Hindsight memories via the mcp-broker `hindsight` namespace                   |
 | `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                         |
 | `review`                  | Reviewing a PR, branch, commit range, working tree, plan, document, or unit of work holistically     |

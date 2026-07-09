@@ -34,14 +34,7 @@ Use whichever sources apply:
 - **Codebase:** read `AGENTS.md`, `CLAUDE.md`, `README.md`, design docs, existing `.plans/`, relevant source files, tests, configs, and nearby conventions.
 - **Subagents:** use `spawn_agents` for read-only exploration, localization, convention discovery, risk review, and external-doc research that can run in parallel. Keep subagents read-only and ask for evidence-backed findings with file paths or URLs.
 - **Web:** use `web_search` / `web_fetch` when behavior depends on current external docs, libraries, APIs, standards, or examples.
-- **Memory:** use Hindsight when prior preferences, repo history, recurring decisions, or external context may matter. Make Hindsight MCP calls in the main context by default; use subagents for memory only when they are explicitly configured with `mcp-broker` access and the prompt authorizes the operation.
-
-Hindsight recall pattern:
-
-1. Use `mcp_search` for `hindsight` if tool availability is uncertain.
-2. Use `mcp_describe` for `hindsight.recall` before first use in a session if the schema is not already known.
-3. Call `mcp_call` with `name: "hindsight.recall"` and a focused query. Include repo tags such as `scope:repo` and `repo:<name>` when known; include global tags only when cross-repo preferences or tool knowledge may apply.
-4. Treat memory as evidence, not authority. Current repo state and current user messages override memory.
+- **Memory:** use Hindsight per `AGENTS.md` when prior preferences, repo history, recurring decisions, or external context may matter. Make Hindsight MCP calls in the main context by default; use subagents for memory only when they are explicitly configured with `mcp-broker` access and the prompt authorizes the operation.
 
 Default parallel research bundle for substantial work:
 
