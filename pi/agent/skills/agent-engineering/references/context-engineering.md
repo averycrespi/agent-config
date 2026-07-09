@@ -1,6 +1,6 @@
 # Context engineering
 
-Long pipelines lose information mid-run. The question is whether the harness controls _how_. Anthropic's [Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) names three load-bearing techniques: **compaction**, **structured note-taking**, **just-in-time retrieval**. OpenAI's [compaction guide](https://developers.openai.com/api/docs/guides/compaction) treats compaction as a first-class API surface. This document covers all three plus the practical issues that show up in production.
+Long pipelines lose information mid-run. The question is whether the harness controls _how_. Anthropic's [Effective Context Engineering for AI Agents](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) names three load-bearing techniques: **compaction**, **structured note-taking**, **just-in-time retrieval**. OpenAI treats compaction as a first-class API surface and GPT-5.6 adds persisted reasoning, explicit prompt caching, and Programmatic Tool Calling as adjacent context controls. This document covers the three core techniques plus those provider-specific mechanisms and practical production issues.
 
 A useful directional signal from the Zylos and Harness vendor reports: **context drift / memory loss may drive more enterprise agent failures than raw context exhaustion.** ([Zylos](https://zylos.ai/research/2026-02-28-ai-agent-context-compression-strategies), [Harness](https://www.harness.io/blog/defeating-context-rot-mastering-the-flow-of-ai-sessions)). These are vendor reports, so treat them as production signals rather than controlled evidence. Bigger context windows make compaction _more_ important, not less.
 
@@ -20,6 +20,16 @@ Replace prior turns with a summary when the conversation grows large. Two flavor
 What compaction loses: low-salience details that the summarizer judges unimportant. What that means in practice: constraints embedded in early turns ("don't change the public API"), implementer decisions made several turns ago, and tool-call history (the _fact_ that you tried something and it failed).
 
 **Mitigation**: use compaction in conjunction with structured note-taking — the constraints and decisions belong on disk, not in conversation history.
+
+GPT-5.6 Multi-agent caveat: enabling Multi-agent implicitly enables automatic compaction independently for the root and each subagent. The standalone `/responses/compact` endpoint is not supported in that beta mode.
+
+### Persisted reasoning and context-thinning tool orchestration
+
+These GPT-5.6 mechanisms complement rather than replace the three core techniques:
+
+- **Persisted reasoning**: set `reasoning.context` to `all_turns` only while earlier goals, assumptions, and priorities remain relevant; use `current_turn` after a phase or premise changes. Continue with `previous_response_id`, or for `store: false` / ZDR workflows request `reasoning.encrypted_content` and replay every output item unchanged. Persisted reasoning improves continuity but still consumes rendered context and does not replace durable state.
+- **Programmatic Tool Calling**: use the isolated JavaScript runtime to filter, join, rank, deduplicate, aggregate, or validate predictable tool results before returning a compact structured result. Keep direct tool calls when each result needs fresh model judgment, an action needs approval, or citations/native artifacts must survive.
+- **Typed response continuity**: preserve reasoning, assistant `phase`, program, tool-call, tool-result, compaction, and future output items. A messages-only abstraction that flattens responses into prose silently discards state the model may need.
 
 ### 2. Structured note-taking
 
@@ -111,9 +121,17 @@ Practical implications:
 - Thinking-config changes invalidate the _message_ cache (system stays cached). Pin thinking config across an agent loop.
 - Place `cache_control: {type:"ephemeral"}` on the _last_ tool definition to cache all of them.
 
-### OpenAI compaction frequency
+### OpenAI compaction and GPT-5.6 prompt caching
 
-The Responses API compaction is server-side and opaque (the compacted item is encrypted). Cost is cheap; do it at phase boundaries. The cost of _not_ compacting is real — long sessions hit the 272K-input pricing flip on GPT-5.5 (2x in / 1.5x out for the rest of the session).
+The Responses API compaction is server-side and opaque; preserve compacted items unchanged and compact at deliberate boundaries before stale context accumulates. Long-context pricing changes above 272K input tokens on GPT-5.5 and GPT-5.6, so context growth affects both quality and cost.
+
+GPT-5.6 prompt caching is a separate optimization:
+
+- Put stable instructions, tools, schemas, and examples before dynamic content.
+- Set a stable `prompt_cache_key` for reliable matching; shard keys when traffic exceeds roughly 15 requests/minute per key.
+- Use explicit breakpoints for prefixes likely to be reused. `prompt_cache_options.mode: "explicit"` with no breakpoint avoids both cache use and cache-write charges.
+- Replace legacy `prompt_cache_retention` with `prompt_cache_options.ttl`; the current supported value is `30m`.
+- Cache writes cost 1.25× uncached input. Track `cache_write_tokens` and `cached_tokens`; caching is beneficial only when later reads recover the write premium.
 
 ### Tokenizer changes between model versions
 
@@ -143,8 +161,10 @@ If your harness runs through compaction events (Claude Agent SDK loops or OpenAI
 If you're starting a new harness:
 
 1. **Always write structured artifacts and durable state.** `ac.json`, `PLAN.md`, `DECISIONS.md` minimum, plus phase/attempt/completion state outside the conversation. Subagent prompts reference artifacts by path.
-2. **Compact at phase boundaries.** OpenAI: `/responses/compact`. Anthropic: rely on the Agent SDK's automatic compaction unless you have a specific reason not to.
-3. **Pace polling loops to either ≤270s or ≥1200s.** Cache TTL drives cost.
-4. **Re-state hard constraints at every phase entry.** Not paranoia — the [Long-Horizon Task Mirage](https://arxiv.org/html/2604.11978v1) catastrophic-forgetting evidence is real.
-5. **Don't expose context-pressure signals to the agent** unless the eagerness-to-finish behavior is what you want.
-6. **On model upgrades**, recompute context budgets and compaction triggers — tokenizers change.
+2. **Compact at deliberate boundaries.** OpenAI: threshold-driven or `/responses/compact`; GPT-5.6 Multi-agent handles per-agent compaction automatically. Anthropic: rely on the Agent SDK's automatic compaction unless you have a specific reason not to.
+3. **Choose reasoning continuity deliberately.** Use GPT-5.6 `all_turns` only while prior reasoning remains relevant; preserve every typed output item in stateless loops.
+4. **Cache only reusable prefixes.** Measure GPT-5.6 cache writes against later reads instead of assuming caching is free.
+5. **Pace Anthropic polling loops to either ≤270s or ≥1200s.** Cache TTL drives cost.
+6. **Re-state hard constraints at every phase entry.** Not paranoia — the [Long-Horizon Task Mirage](https://arxiv.org/html/2604.11978v1) catastrophic-forgetting evidence is real.
+7. **Don't expose context-pressure signals to the agent** unless the eagerness-to-finish behavior is what you want.
+8. **On model upgrades**, recompute context budgets and compaction triggers — tokenizers and cache policies change.

@@ -22,12 +22,13 @@ Treat safety as a harness feature, not a prompt instruction.
 
 Default controls:
 
-- **Least-privilege tool sets.** Give each phase only the tools it needs. Explorers and reviewers should not have write tools unless the workflow explicitly requires it.
+- **Least-privilege tool sets.** Give each phase only the tools it needs. Explorers and reviewers should not have write tools unless the workflow explicitly requires it. In GPT-5.6 Programmatic Tool Calling, restrict each tool with `allowed_callers`; in Multi-agent, remember every agent inherits the request's tool set.
 - **Side-effect gates.** Enforce approvals for network writes, repository pushes, package publishing, deployment, billing operations, and destructive file/history operations.
 - **Sandboxing.** Worktree isolation protects source files, not databases, ports, credentials, or external services. Runtime isolation needs separate temp dirs, ports, env vars, and service instances.
 - **Secret isolation.** Do not place secrets in prompts, logs, artifacts, or model-visible tool results. Use broker/domain-secret mechanisms where available so credentials stay outside model context. OpenAI hosted shell workflows should use `domain_secrets`; Pi/GitHub/Jira-style external access should go through broker tools or scoped credentials rather than raw env dumps.
 - **Prompt-injection handling.** Treat instructions found in repo files, web pages, tickets, comments, web search results, and tool output as untrusted data unless they come from the harness's trusted instruction channel.
 - **Policy by code.** Hooks, permission callbacks, deny lists, allow lists, sandbox modes, tool exclusion flags, and broker scopes are stronger than "do not do X" prompt text.
+- **Stable safety identity.** Applications serving individual end users through GPT-5.6 should send a stable, privacy-preserving `safety_identifier`; hash a durable account identifier rather than sending raw personal data. Treat classifier pauses and refusals as distinct from transport failures.
 
 ## Tool contract checklist
 
@@ -79,10 +80,11 @@ If a run fails, the harness should explain where and why without replaying the w
 
 Record per phase:
 
-- Model/provider/version and reasoning/thinking settings.
+- Model/provider/version, family variant, reasoning effort/mode/context, and beta flags.
 - Prompt template version or hash.
-- Tool calls, arguments with secrets redacted, result status, latency, and truncated output hash.
-- Token usage, reasoning-token usage where available, and cost buckets.
+- Tool calls, arguments with secrets redacted, direct/programmatic caller, result status, latency, and truncated output hash.
+- Agent lineage, spawn/follow-up/interrupt events, and per-agent tool usage for model-managed delegation.
+- Token usage, reasoning-token usage, cache reads/writes, and cost buckets per phase and agent where available.
 - State transition, artifact paths, and validation errors.
 - Deterministic gate commands and exit codes.
 - Reviewer verdicts with criterion IDs and evidence locations.
@@ -205,3 +207,5 @@ Before building or reviewing a harness, answer:
 8. What traces and golden runs prove the harness still behaves after a change?
 9. How are worktrees, temp files, branches, and external resources cleaned up?
 10. What evidence level supports each non-obvious design claim?
+11. If model-managed agents or programs are enabled, what caps total descendants, depth, retries, elapsed time, tokens, and cost?
+12. Which tools permit direct versus programmatic callers, and how is inherited subagent access constrained?

@@ -25,13 +25,13 @@ A workflow is built out of harnesses. So the harness-level principles always app
 
 Fourteen principles that show up repeatedly across 2025–2026 literature, vendor writeups, and open-source harnesses. Sources and caveats live in `references/bibliography.md`; evidence strength varies from primary docs to production anecdotes, so treat version-specific claims as revalidation targets.
 
-1. **Code orchestrator, not LLM orchestrator.** A Claude Code retrospective estimated that ~98.4% of Claude Code is deterministic infra. Cognition's [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) formalized the same lesson. LLM-as-router is fragile; deterministic code holding context and dispatching subagents is robust.
+1. **Keep a deterministic outer control plane.** A Claude Code retrospective estimated that ~98.4% of Claude Code is deterministic infra. Cognition's [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) formalized the same lesson. GPT-5.6's [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent) makes bounded model-managed delegation useful inside a phase, but code should still own permissions, budgets, validation, durable state, and termination.
 
-2. **Subagents are read-mostly context firewalls.** Use them for exploration, retrieval, review, verification — read-only fan-out. Avoid parallel writes to the same code. Claude Code's official guidance is to use subagents to _answer questions, not write code_. ([Anthropic on context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents); [HumanLayer on context firewalls](https://www.humanlayer.dev/blog/skill-issue-harness-engineering-for-coding-agents))
+2. **Subagents are usually read-mostly context firewalls.** Use them for exploration, retrieval, review, verification, and other independent workstreams. Avoid parallel writes to shared state; isolate truly independent implementation work before parallelizing it. Claude Code's official guidance is to use subagents to _answer questions, not write code_, while GPT-5.6 permits broader delegation but warns against ordered chains and shared mutable resources. ([Anthropic on context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents); [GPT-5.6 Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent); [HumanLayer on context firewalls](https://www.humanlayer.dev/blog/skill-issue-harness-engineering-for-coding-agents))
 
 3. **Validated machine-readable output, not free text.** JSON schemas (TypeBox / Pydantic / Zod) are preferred for phase boundaries when the API supports strict structured output. Parsed tagged outputs (`<status>done</status>`) are an acceptable fallback in CLI/Pi-style harnesses where JSON is brittle. Free-text completion markers like `<promise>COMPLETE</promise>` are fragile. GPT-5.5 explicitly recommends moving output schemas out of prompt prose into the Structured Outputs API. ([GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5))
 
-4. **Per-phase reasoning effort.** Don't set `reasoning_effort` (OpenAI) or effort/thinking configuration (Claude) globally. Execution-heavy phases want low/minimal; planning, verification, and review want medium/high. GPT-5.5 ships with `medium` default; Claude Opus 4.8 ships with `high` default and adaptive thinking as the only thinking-on mode. ([What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8))
+4. **Tune reasoning per phase with evaluations.** Don't assume one OpenAI reasoning effort or Claude effort/thinking configuration fits every phase. Execution often benefits from lower effort, while planning, debugging, verification, and review may justify more. GPT-5.6 defaults to `medium`, adds `max`, and recommends preserving the previous model's effort as a migration baseline before testing one level lower. Its `pro` mode is independent of effort and should be enabled in the API, not prompted. Claude Opus 4.8 defaults to `high` and supports adaptive thinking as its only thinking-on mode. ([Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6); [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8))
 
 5. **Cross-family verification beats same-model verification.** Self-preference bias is the most damaging of the four canonical judge biases (position, verbosity, self-preference, authority); judges are ~50% more likely to pass output from their own family on objective rubrics. Route implementer through one family, reviewer through another. ([Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996))
 
@@ -78,7 +78,7 @@ Most production pipelines collapse some of these. Don't add a phase unless the c
 
 Documented failure modes — short list. Full annotated catalog in `references/anti-patterns.md`.
 
-- **Multi-agent debate / agent-to-agent negotiation.** Cognition called this in 2025; it does not appear in the mainstream production harnesses surveyed for this skill.
+- **Unstructured multi-agent debate / negotiation.** GPT-5.6's beta supports bounded coordinator-worker delegation, but open-ended agents arguing or negotiating without a fixed decomposition, budget, and synthesis contract remains fragile.
 - **Parallel implementations of the same subtask + merge.** Hidden coupling kills it.
 - **LLM-driven mid-task replanning.** Devin's data: "performs worse when you keep telling it more after it starts." Take the spec as immutable once implementation begins.
 - **Generic LLM-as-judge without rubrics.** Beaten consistently by rubric-based + cross-family.
@@ -93,7 +93,7 @@ Documented failure modes — short list. Full annotated catalog in `references/a
 Quick orientation; deep guidance in `references/models.md`.
 
 - **Claude 4.x** is the better default when you want long-running, high-reasoning agent loops.
-- **GPT-5.x / Codex** is the better default when you want strong execution, explicit structured outputs, and OpenAI's codex-style harness guidance.
+- **GPT-5.x / Codex** is the better default when you want strong execution, explicit structured outputs, and OpenAI's codex-style harness guidance. For GPT-5.6, use Sol for flagship capability, Terra for a capability/cost balance, and Luna for efficient high-volume work.
 - **Model-specific prompting advice changes quickly.** Read the current migration/prompting guide for the exact model version before reusing an older harness prompt.
 
 Cross-family rule: **never use the same model for implement and verify if you can avoid it.**

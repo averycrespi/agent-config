@@ -2,7 +2,7 @@
 
 This document covers multi-phase agent workflow design — the patterns deterministic orchestrators use to drive a sequence of LLM calls toward a complete artifact (a PR, a refactor, a migration). Single-agent harness patterns are in `platforms.md` and `models.md`; this document is about what happens between agents.
 
-The reference architecture is a code-orchestrated pipeline of fresh subagents with validated machine-readable output at each phase boundary: strict JSON where the API supports it, parsed tags where CLI ergonomics make JSON brittle.
+The reference architecture is a deterministically controlled pipeline with validated machine-readable output at each phase boundary: strict JSON where the API supports it, parsed tags where CLI ergonomics make JSON brittle. Fresh subagents remain the portable default; GPT-5.6 can instead use bounded model-managed delegation inside a decomposable phase while code retains the outer control plane.
 
 ## The canonical phase sequence
 
@@ -90,6 +90,21 @@ The default pattern for most coding workflows.
 `roach-pi` runs 5 lenses × 2 seeds = 10 reviewers. `ruizrica/agent-pi` runs 5 lenses. Several high-performing SWE-bench scaffolds use multiple review/evaluation passes.
 
 Cap fix-loops at **2 rounds**. Without a cap, verifiers nitpick on style indefinitely. Sticky completion: once a phase reaches `done`, no edge out — failing checks become "known issues" in the report.
+
+## GPT-5.6 model-managed delegation
+
+The Responses API [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent) can compress a read-heavy fan-out/fan-in phase into one model-managed run. Good candidates are localization, independent research, proposal comparison, failure-hypothesis investigation, and lens-based review.
+
+Treat the run as one probabilistic phase inside the deterministic workflow:
+
+- Give each branch a concrete independent workstream and a required result shape.
+- Keep shared-state writes sequential unless each branch has real filesystem and runtime isolation.
+- Use the recommended default of three concurrent subagents as the starting point.
+- Enforce outer elapsed-time, total-token/cost, descendant-count, retry, permission, and termination budgets. Concurrency does not cap total fan-out or depth, and Multi-agent does not support `max_tool_calls`.
+- Validate the root synthesis against the phase contract before advancing durable state.
+- Record agent lineage and per-agent tool/cost usage so one phase does not hide an unbounded tree.
+
+This does not overturn the sequential-implement rule. It offers a lower-application-code orchestration option when decomposition is clean and the beta's changing schema is acceptable.
 
 ## Two-seed reviewers (cheap diversity)
 

@@ -56,10 +56,17 @@ These are the load-bearing references. Read them directly when you need to groun
 - [GPT-5.1 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-1_prompting_guide)
 - [GPT-5.2 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-2_prompting_guide) — `<planning>` block (compaction-discardable); strict JSON schemas; tighter scope discipline.
 - [GPT-5.4 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.4) — "Bias to action" default; per-plan-item closure.
-- [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) — **The highest-signal page in the GPT-5 family.** Migration directives: rebaseline, move tool guidance to descriptions, replace prose procedure with outcome+criteria, drop schemas from prose, use Responses API.
+- [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) — Migration baseline retained by GPT-5.6: move tool guidance to descriptions, replace prose procedure with outcome+criteria, drop schemas from prose, and use the Responses API.
 - [GPT-5.5 model page](https://developers.openai.com/api/docs/models/gpt-5.5) — 1.05M context, default `reasoning_effort=medium`.
 - [GPT-5.5 system card](https://openai.com/index/gpt-5-5-system-card/) — Persistence delta; harness-relevant signal that 5.5 keeps going where 5.4 gave up.
-- [Introducing GPT-5.5](https://openai.com/index/introducing-gpt-5-5/) — Release post. New default Codex model.
+- [Introducing GPT-5.5](https://openai.com/index/introducing-gpt-5-5/) — Release post. Migration history for GPT-5.6.
+- [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — Current highest-signal migration and prompting guide; model routing, shorter prompts, effort/pro mode, persisted reasoning, PTC, Multi-agent, caching, vision, and safety deltas.
+- [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol), [Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), and [Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) — Authoritative model roles, limits, and pricing references.
+- [OpenAI reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) — Effort, pro mode, persisted reasoning, stateless encrypted reasoning replay, and assistant phase continuity.
+- [OpenAI Programmatic Tool Calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling) — Bounded JavaScript tool orchestration, caller restrictions, continuation protocol, and safety guidance.
+- [OpenAI Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent) — GPT-5.6 Responses API beta, supported collaboration actions, limits, compaction behavior, and HTTP/WebSocket guidance.
+- [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) — GPT-5.6 explicit breakpoints, keys, TTL, write pricing, and observability fields.
+- [OpenAI safety best practices](https://developers.openai.com/api/docs/guides/safety-best-practices) — Safety identifiers and deployment controls.
 - [atLabs — GPT-5.2 Prompting Guide: The 2026 Playbook](https://www.atlabs.ai/blog/gpt-5.2-prompting-guide-the-2026-playbook-for-developers-agents) — Practitioner adaptation.
 
 ## 3. Platform docs
@@ -268,8 +275,9 @@ A high-leverage set of harness-pattern repos from the survey for this skill.
 - [Builder.io — Claude Code Routines Tutorial](https://www.builder.io/blog/claude-code-routines)
 - [dabit3 gist — How to Build a Custom Agent Framework with PI](https://gist.github.com/dabit3/e97dbfe71298b1df4d36542aceb5f158)
 
-### GPT-5.5 migration
+### GPT-5.x migration
 
+- [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — Primary source; preserve prior effort as a baseline, test one level lower, and shorten accumulated prompts.
 - [the-decoder — OpenAI says old prompts are holding GPT-5.5 back](https://the-decoder.com/openai-says-old-prompts-are-holding-gpt-5-5-back-and-developers-need-a-fresh-baseline/)
 - [TokenMix — GPT-5.5 Migration Checklist](https://tokenmix.ai/blog/gpt-5-5-migration-checklist)
 - [Simon Willison — GPT-5.5 prompting guide notes](https://simonwillison.net/2026/apr/25/gpt-5-5-prompting-guide/)

@@ -6,15 +6,15 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 ## Architecture-level
 
-### Multi-agent debate / agent-to-agent negotiation
+### Unstructured multi-agent debate / agent-to-agent negotiation
 
-**What**: Two or more LLM agents converse with each other to refine an answer. Variants: "critic and proposer," "red team / blue team," "panel of experts."
+**What**: Two or more LLM agents converse without a fixed decomposition, budget, or synthesis contract. Variants: open-ended "critic and proposer," "red team / blue team," or "panel of experts."
 
-**Why it fails**: Agents lack the shared grounding that makes human debate productive. They drift, agree spuriously, or argue past each other. It does not appear in the mainstream production harnesses surveyed for this skill.
+**Why it fails**: Agents can drift, agree spuriously, argue past each other, or expand work without a deterministic stop condition. GPT-5.6's Multi-agent beta makes bounded coordinator-worker delegation a supported primitive; it does not make open-ended negotiation reliable.
 
-**Instead**: Code orchestrator coordinating fresh subagents with validated machine-readable outputs. Reviewer reads spec + code, returns rubric verdict; orchestrator decides what to do.
+**Instead**: Keep permissions, budgets, validation, and termination in a deterministic outer control plane. Delegate independent, bounded workstreams with explicit outputs, then validate the synthesized result. Prefer read-heavy work and serialize shared-state writes.
 
-**Citation**: [Cognition — Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (2025). Reinforced by Claude Code's own architecture: subagents are used almost exclusively for read-only work.
+**Citation**: [Cognition — Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (2025); [OpenAI — Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent) (GPT-5.6 beta).
 
 ### Parallel implementations of the same subtask + merge
 
@@ -92,21 +92,31 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: System prompt micro-specifies the procedure: "First do X, then Y, then Z."
 
-**Why it fails on GPT-5.5**: OpenAI's [GPT-5.5 prompt guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) explicitly says replace step-by-step prose with outcome + success criteria. Tighter instruction-following means the model now over-literally follows the procedure even when a better path exists. Old prompts "narrow the model's search space."
+**Why it fails on GPT-5.5 and GPT-5.6**: OpenAI's [GPT-5.5 prompt guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) says to replace step-by-step prose with outcome + success criteria, and GPT-5.6 carries that guidance forward while recommending shorter prompts. Tighter instruction-following can over-literalize a procedure even when a better path exists.
 
 **Instead**: "Achieve X with these criteria for done: ..."
 
-**Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5); [the-decoder summary](https://the-decoder.com/openai-says-old-prompts-are-holding-gpt-5-5-back-and-developers-need-a-fresh-baseline/).
+**Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5); [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6); [the-decoder summary](https://the-decoder.com/openai-says-old-prompts-are-holding-gpt-5-5-back-and-developers-need-a-fresh-baseline/).
+
+### Generic brevity instructions on GPT-5.6
+
+**What**: A global prompt says "be concise," "keep it short," or "use minimal text" without saying what content must remain.
+
+**Why it fails**: GPT-5.6 is already biased toward compression. Generic brevity can change task prioritization, causing the model to substitute a shorter response for a complete artifact or omit required evidence and caveats.
+
+**Instead**: Lead with the conclusion and preserve required facts, decisions, evidence, caveats, and next actions. Trim introductions, repetition, generic reassurance, and optional background first.
+
+**Citation**: [Using GPT-5.6 — Personality and style](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
 
 ### Tool guidance in the system prompt
 
 **What**: System prompt explains when to use each tool, side effects, error handling, retry semantics.
 
-**Why it fails on GPT-5.5**: That guidance belongs in tool _descriptions_. Putting it in the system prompt means the model has to mentally re-route every tool decision through prose; it also bloats the system prompt.
+**Why it fails on GPT-5.5 and GPT-5.6**: That guidance belongs in tool _descriptions_. Putting it in the system prompt means the model has to mentally re-route every tool decision through prose; it also bloats the system prompt.
 
 **Instead**: Move per-tool guidance into the tool description: when to use, side effects, retry safety, error modes. System prompt describes the agent's _role_.
 
-**Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5).
+**Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5); [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
 
 ### Old "double-check" / "be careful" scaffolding on Claude Opus 4.x
 
@@ -206,7 +216,7 @@ Mitigations map to patterns elsewhere in this skill:
 
 ### Same model for implement and verify
 
-**What**: GPT-5.5 implements, GPT-5.5 verifies.
+**What**: The same GPT-5.x model implements and verifies.
 
 **Why it fails**: Self-preference bias. Judges are ~50% more likely to pass output from their own family on objective rubrics, with worse skews on subjective rubrics.
 

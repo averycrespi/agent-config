@@ -1,8 +1,8 @@
 # Model-specific guidance
 
-Two families dominate AI coding agents in May 2026: Anthropic's Claude 4.x and OpenAI's GPT-5.x. They differ on default behavior, the knobs you turn, and the failure modes you guard against. This document captures what's load-bearing for _harness design_ — not a full model card.
+Two families dominate AI coding agents in July 2026: Anthropic's Claude 4.x and OpenAI's GPT-5.x. They differ on default behavior, the knobs you turn, and the failure modes you guard against. This document captures what's load-bearing for _harness design_ — not a full model card.
 
-Cutoff: 2026-05-29. Verify model names and version-specific claims against the linked primary sources before relying on them.
+Cutoff: 2026-07-09. Verify model names, beta features, pricing, and version-specific claims against the linked primary sources before relying on them.
 
 ## Claude 4.x family
 
@@ -84,15 +84,15 @@ Reference: [Memory tool](https://platform.claude.com/docs/en/agents-and-tools/to
 
 ## GPT-5.x family
 
-Five public models as of 2026-05:
+Current flagship family as of 2026-07:
 
-| Model   | Released   | Context | Default `reasoning_effort` | Notes                                                                                    |
-| ------- | ---------- | ------- | -------------------------- | ---------------------------------------------------------------------------------------- |
-| GPT-5.0 | 2025-Q3    | varies  | medium                     | Original 5.x.                                                                            |
-| GPT-5.1 | 2025-Q4    | varies  | medium                     | Tool-use refinements.                                                                    |
-| GPT-5.2 | 2026-Q1    | varies  | none                       | Introduced `<planning>` block (compaction-discardable); strict JSON schemas recommended. |
-| GPT-5.4 | 2026-Q1    | varies  | none                       | "Bias to action" default; per-plan-item Done/Blocked/Cancelled closure.                  |
-| GPT-5.5 | 2026-04-23 | 1.05M   | medium                     | New default Codex model. **Rebaseline prompts — don't drop-in from 5.4.**                |
+| Model         | Role                       | Context | Output | Default `reasoning.effort` |
+| ------------- | -------------------------- | ------- | ------ | -------------------------- |
+| GPT-5.6 Sol   | Frontier capability        | 1.05M   | 128K   | medium                     |
+| GPT-5.6 Terra | Capability/cost balance    | 1.05M   | 128K   | medium                     |
+| GPT-5.6 Luna  | Efficient high-volume work | 1.05M   | 128K   | medium                     |
+
+The `gpt-5.6` alias routes to `gpt-5.6-sol`. Earlier GPT-5.x releases remain relevant as migration history: GPT-5.2 introduced compaction-discardable planning; GPT-5.4 emphasized bias to action and plan-item closure; GPT-5.5 established the outcome-oriented prompt baseline that GPT-5.6 retains.
 
 Prompting guides (each release tightens rather than reinvents):
 
@@ -100,9 +100,26 @@ Prompting guides (each release tightens rather than reinvents):
 - [GPT-5.1 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-1_prompting_guide)
 - [GPT-5.2 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-2_prompting_guide)
 - [GPT-5.4 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.4)
-- [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) — **the highest-signal page in the family**
+- [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) — still applicable to GPT-5.6
+- [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — **the highest-signal page in the family**
 
-### GPT-5.5 specifics (most relevant for new harnesses)
+### GPT-5.6 specifics
+
+Authoritative pages: [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [Programmatic Tool Calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling), [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent), and [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
+
+Harness-relevant changes:
+
+1. **Route across Sol, Terra, and Luna.** Sol is the flagship; Terra balances capability and cost; Luna targets efficient high-volume work. The unsuffixed alias resolves to Sol.
+2. **Migrate by evaluation, not slug replacement.** Preserve the GPT-5.5/5.4 reasoning effort as the first baseline, then test one level lower. GPT-5.6 supports `none`, `low`, `medium`, `high`, `xhigh`, and `max`; omitted effort defaults to `medium`.
+3. **Treat pro mode and effort as independent.** Set `reasoning.mode: "pro"` on the chosen GPT-5.6 model for difficult quality-first work. Do not prompt the model to "use pro mode," and do not switch to a separate Pro slug.
+4. **Shorten accumulated harness prompts.** OpenAI reports internal gains from removing redundant instructions, examples, verbose tool descriptions, and global response templates. State the goal, important constraints, authorization boundary, evidence requirements, success criteria, and output contract. Avoid generic "be concise" instructions: GPT-5.6 is already compressed and may omit required artifacts.
+5. **Use persisted reasoning deliberately.** `reasoning.context: "all_turns"` can reuse compatible earlier reasoning when goals and assumptions remain stable; use `current_turn` when earlier reasoning is stale. With `store: false` or ZDR workflows, request encrypted reasoning content and replay every output item.
+6. **Use Programmatic Tool Calling only for bounded computation over tools.** It fits filtering, joining, ranking, deduplication, aggregation, and validation in an isolated JavaScript runtime. Keep direct calls for approval-sensitive actions, writes, fresh semantic judgment, and citation/native-artifact preservation.
+7. **Treat Multi-agent as a bounded beta primitive, not the outer orchestrator.** Opt in through the beta Responses SDK or `OpenAI-Beta: responses_multi_agent=v1`, and set `multi_agent.enabled: true` on the request; item schemas may change. It fits independent exploration, research, comparison, review, and isolated components. Default concurrency is three, but total descendants and depth have no fixed service limit and `max_tool_calls` is unavailable; enforce application-level time, cost, fan-out, retry, permission, and termination limits. Keep shared-state writes sequential.
+8. **Re-evaluate prompt caching economics.** GPT-5.6 supports explicit breakpoints and more reliable matching with `prompt_cache_key`, but cache writes cost 1.25× uncached input. Monitor `cache_write_tokens` and `cached_tokens`; use explicit mode when only known-stable prefixes should be written.
+9. **Budget for richer image inputs and safety pauses.** `original` and `auto` can preserve large image dimensions, increasing tokens and latency. Real-time cyber and biology classifiers can pause streaming or refuse dual-use requests; distinguish those events from transport failures and send a privacy-preserving `safety_identifier` for individual end users.
+
+### GPT-5.5 specifics (migration baseline)
 
 Released 2026-04-23. Default `reasoning_effort=medium`. Authoritative pages: [model page](https://developers.openai.com/api/docs/models/gpt-5.5), [system card](https://openai.com/index/gpt-5-5-system-card/), [GPT-5.5 prompt guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5), [introducing GPT-5.5](https://openai.com/index/introducing-gpt-5-5/).
 
@@ -129,7 +146,7 @@ Pricing flips above 272K input tokens (2x in / 1.5x out for the rest of the sess
 
 ### GPT-5.x recurring patterns
 
-Constant across the family:
+Stable across recent releases:
 
 - **Persistence framing.** "Only terminate your turn when you are sure the problem is solved … never stop or hand back when uncertain." The fix for over-clarification on ambiguous tickets.
 - **Eagerness control via budget.** Explicit tool-call budgets for context discovery. GPT-5.4 guidance: "default to implementing with reasonable assumptions" once intent is clear.
@@ -148,6 +165,8 @@ Compaction is first-class. Two modes:
 
 1. **Threshold-driven**: set `context_management.compact_threshold`; on overflow the server emits an opaque encrypted compaction item that carries forward state/reasoning. ZDR-friendly when `store=false`. Chain via appended item OR `previous_response_id`.
 2. **Explicit-control**: call `/responses/compact` yourself when your harness decides to compact. Use this when you want compaction to align with phase boundaries (e.g. compact at end of `plan` before entering `implement`).
+
+GPT-5.6 adds adjacent but distinct state controls: persisted reasoning (`reasoning.context`), prompt caching with explicit breakpoints, and Programmatic Tool Calling to reduce predictable intermediate tool output. Multi-agent beta automatically compacts each agent context and does not support the standalone compact endpoint.
 
 ## OpenAI Codex CLI
 
@@ -179,5 +198,5 @@ These apply regardless of which model family you're using:
 1. **Never use the same model for implement and verify if avoidable.** Self-preference bias is the most damaging judge bias. Cross-family routing is the cheapest mitigation. ([Self-Preference Bias paper](https://arxiv.org/abs/2604.06996))
 2. **Pin thinking/reasoning config across a single loop.** Mid-loop changes invalidate caches and (on Claude) break thinking-block continuity.
 3. **Read the model's own most recent prompting/migration guide before reusing prompts.** Both families have published "your old prompts are wrong" notices for major releases (Anthropic via 4.7/4.8 migration guidance; OpenAI via GPT-5.5 prompt guidance). The advice is genuinely different version-to-version.
-4. **Cache strategy is model-specific.** Anthropic: 5-min ephemeral TTL by default; place `cache_control` on the last tool. OpenAI: server-side compaction with opaque items chained via `previous_response_id`.
+4. **Cache and context strategy is model-specific.** Anthropic: 5-min ephemeral TTL by default; place `cache_control` on the last tool. OpenAI: combine server-side compaction, persisted reasoning, and prompt caching deliberately; preserve opaque response items and account for GPT-5.6 cache-write charges.
 5. **Tokenizers and cache behavior change.** Recompute context budgets, max-token settings, and compaction/cache thresholds on model upgrades; Opus 4.7 changed token counts materially, and Opus 4.8 changed prompt-cache economics.
