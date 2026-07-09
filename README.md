@@ -34,7 +34,8 @@ The Pi setup is built around a durable development loop:
 
 Supporting rails keep the loop safer and more inspectable:
 
-- **Broker external access** through `mcp-broker` for GitHub, remote git, Jira-like systems, web access, and long-lived memory
+- **Route authenticated external access** through `mcp-broker` instead of exposing credentials directly to the agent
+- **Use direct web access** through `web-access` for public search and page fetching
 - **Orchestrate multi-agent checks** with foreground `workflow` scripts that fan out read-mostly subagents
 
 This turns Pi from a chat interface with tools into a more structured development harness.
