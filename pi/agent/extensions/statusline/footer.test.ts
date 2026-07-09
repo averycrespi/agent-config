@@ -54,10 +54,14 @@ test("renderFooterLine renders statusline segments in priority order", () => {
     "~/Workspace/agent-config · Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium",
   );
   assert.match(line, /Workspace\/agent-config/);
-  assert.match(line, /\x1b\[2mCodex\x1b\[0m \x1b\[2m45%\x1b\[0m/);
-  assert.match(line, /\x1b\[2m20%\x1b\[0m/);
-  assert.match(line, /\x1b\[2mctx\x1b\[0m \x1b\[2m42%\x1b\[0m/);
-  assert.match(line, /\x1b\[2mmedium\x1b\[0m/);
+  assert.match(line, /Codex 45% \(20%\) 2h/);
+  assert.match(line, /ctx 42%\/200k/);
+  assert.match(line, /gpt-5-codex/);
+  assert.match(line, /medium/);
+  assert.doesNotMatch(
+    line,
+    /\x1b\[2m(?:Codex|45%|20%|2h|ctx|42%|\/200k|gpt-5-codex|medium)/,
+  );
 });
 
 test("renderFooterLine colors statusline percentages above warning and error thresholds", () => {
@@ -78,14 +82,12 @@ test("renderFooterLine colors statusline percentages above warning and error thr
 
   assert.match(line, /\x1b\[33m71%\x1b\[0m/);
   assert.match(line, /\x1b\[31m91%\x1b\[0m/);
-  assert.match(line, /\x1b\[2mCodex\x1b\[0m \x1b\[33m71%\x1b\[0m/);
-  assert.match(
-    line,
-    /\x1b\[2mctx\x1b\[0m \x1b\[31m92%\x1b\[0m\x1b\[2m\/200k\x1b\[0m/,
-  );
-  assert.match(line, /\x1b\[2m2h\x1b\[0m/);
-  assert.match(line, /\x1b\[2mgpt-5-codex\x1b\[0m/);
-  assert.match(line, /\x1b\[2mhigh\x1b\[0m/);
+  assert.match(line, /Codex \x1b\[33m71%\x1b\[0m/);
+  assert.match(line, /ctx \x1b\[31m92%\x1b\[0m\/200k/);
+  assert.match(line, /2h/);
+  assert.match(line, /gpt-5-codex/);
+  assert.match(line, /high/);
+  assert.doesNotMatch(line, /\x1b\[2m(?:Codex|2h|ctx|\/200k|gpt-5-codex|high)/);
 });
 
 test("renderFooterLine appends the git branch to the working directory in brackets", () => {

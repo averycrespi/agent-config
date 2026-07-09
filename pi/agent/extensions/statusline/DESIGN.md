@@ -35,7 +35,7 @@ The footer has two logical sides:
 
 When everything fits, the left segment stays left and status segments are right-aligned. If it does not fit, the full repository segment moves to its own line and the status segment renders below. This deliberately avoids truncating long worktree or branch names in the primary repository context.
 
-Within the status segment, priority is left-to-right: provider quota, context usage, model, thinking. Narrow terminals keep the highest-priority segments that fit. Percentages above thresholds are colored warning/error.
+Within the status segment, priority is left-to-right: provider quota, context usage, model, thinking. Narrow terminals keep the highest-priority segments that fit. Status text uses the normal foreground by default, while percentages above thresholds are colored warning/error.
 
 Keep `footer.ts` pure. Rendering tests should be able to exercise layout without Pi APIs, subprocesses, network, or timers.
 

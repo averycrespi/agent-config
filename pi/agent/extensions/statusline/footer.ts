@@ -64,15 +64,11 @@ function formatTokens(value: number): string {
   return String(value);
 }
 
-function dim(text: string, theme: FooterTheme): string {
-  return theme.fg("dim", text);
-}
-
 function colorizePercent(percent: number, theme: FooterTheme): string {
   const text = `${Math.round(percent)}%`;
   if (percent > 90) return theme.fg("error", text);
   if (percent > 70) return theme.fg("warning", text);
-  return dim(text, theme);
+  return text;
 }
 
 function buildUsageSegment(
@@ -82,19 +78,18 @@ function buildUsageSegment(
   if (!usage) return undefined;
 
   const { label, stats } = usage;
-  const labelText = dim(label, theme);
   if (stats.balance !== undefined) {
     const reset = stats.primary?.resetAfterSeconds;
     return reset === undefined
-      ? `${labelText} $${stats.balance}`
-      : `${labelText} $${stats.balance} ${dim(formatDuration(reset), theme)}`;
+      ? `${label} $${stats.balance}`
+      : `${label} $${stats.balance} ${formatDuration(reset)}`;
   }
 
   if (stats.limitReached) {
     const reset = stats.primary?.resetAfterSeconds;
     return reset === undefined
-      ? `${labelText} limit`
-      : `${labelText} limit ${dim(formatDuration(reset), theme)}`;
+      ? `${label} limit`
+      : `${label} limit ${formatDuration(reset)}`;
   }
 
   const primaryPercent = stats.primary?.usedPercent;
@@ -102,15 +97,12 @@ function buildUsageSegment(
   const primaryReset = stats.primary?.resetAfterSeconds;
 
   if (primaryPercent === undefined && secondaryPercent === undefined) {
-    return labelText;
+    return label;
   }
 
   let percentText = "";
   if (primaryPercent !== undefined && secondaryPercent !== undefined) {
-    percentText = `${colorizePercent(primaryPercent, theme)}${dim(
-      " (",
-      theme,
-    )}${colorizePercent(secondaryPercent, theme)}${dim(")", theme)}`;
+    percentText = `${colorizePercent(primaryPercent, theme)} (${colorizePercent(secondaryPercent, theme)})`;
   } else if (primaryPercent !== undefined) {
     percentText = colorizePercent(primaryPercent, theme);
   } else if (secondaryPercent !== undefined) {
@@ -118,11 +110,9 @@ function buildUsageSegment(
   }
 
   const resetText =
-    primaryReset === undefined
-      ? ""
-      : ` ${dim(formatDuration(primaryReset), theme)}`;
+    primaryReset === undefined ? "" : ` ${formatDuration(primaryReset)}`;
 
-  return `${labelText} ${percentText}${resetText}`;
+  return `${label} ${percentText}${resetText}`;
 }
 
 function buildContextSegment(
@@ -137,26 +127,20 @@ function buildContextSegment(
       ? "?%"
       : colorizePercent(percent, theme);
 
-  return `${dim("ctx", theme)} ${percentText}${dim(
-    `/${formatTokens(contextUsage.contextWindow)}`,
-    theme,
-  )}`;
+  return `ctx ${percentText}/${formatTokens(contextUsage.contextWindow)}`;
 }
 
-function buildThinkingSegment(
-  state: FooterState,
-  theme: FooterTheme,
-): string | undefined {
+function buildThinkingSegment(state: FooterState): string | undefined {
   if (!state.thinking) return undefined;
-  return dim(state.thinking, theme);
+  return state.thinking;
 }
 
 function buildStatusSegments(state: FooterState, theme: FooterTheme): string[] {
   return [
     buildUsageSegment(state.usage, theme),
     buildContextSegment(state.contextUsage, theme),
-    state.modelId ? dim(state.modelId, theme) : undefined,
-    buildThinkingSegment(state, theme),
+    state.modelId,
+    buildThinkingSegment(state),
   ].filter((segment): segment is string => Boolean(segment));
 }
 
