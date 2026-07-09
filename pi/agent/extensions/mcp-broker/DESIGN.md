@@ -6,7 +6,7 @@
 
 - `index.ts` is the extension entry point. It configures one shared `BrokerClient`, registers tools, installs the bash guard, registers `/mcp-broker-config`, prefetches broker tools on session start, closes the client on shutdown, and injects the broker menu into the system prompt.
 - `client.ts` wraps the MCP SDK Streamable HTTP client. It owns connection lifecycle, network timeouts, tool-list caching, read-only filtering, reconnect/reset behavior, approval-mode request headers, and approval-timeout forwarding for tool calls.
-- `tools.ts` registers `mcp_search`, `mcp_describe`, and `mcp_call`, handles broker errors, read-only defense-in-depth, spillover, diagnostic logs, and compact renderers.
+- `tools.ts` registers `mcp_search`, `mcp_describe`, and `mcp_call`, frames broker-originated data, handles broker errors, read-only defense-in-depth, spillover, diagnostic logs, and compact renderers.
 - `search.ts` ranks broker tools by token overlap against names and descriptions; `mcp_search` and the bash guard share this scorer.
 - `guard.ts` detects bash calls that look like `gh` or remote git operations and queues a hidden steer toward broker tools without blocking the bash call.
 - `config.ts` loads settings/env overrides and masks `authToken` through the shared config command.
@@ -61,7 +61,9 @@ Broker tool errors are different from transport failures:
 - Transport/client failures return a text error. Session-looking failures reset the client and retry once.
 - Abort errors are rethrown so Pi can handle cancellation normally.
 
-Large successful text output is spilled to a temporary file through the shared spillover helper. Error responses are not spilled. If spill writing fails, the original content is returned inline rather than failing the call.
+Broker-originated meta-tool output and remote error messages are framed as untrusted external data before they reach the shared spillover helper. This ordering ensures persisted files retain the trust boundary. When content spills, the returned preview envelope is framed again because its inner preview may not include the persisted content's closing marker. Broker-reported errors keep an extension-authored marker outside the frame; transport failures use an extension-authored summary plus a framed remote message. If spill writing fails, the wrapped original content is returned inline rather than failing the call.
+
+Diagnostic logs keep dynamic tool names and failure messages inside the same escaped untrusted-content frame. Keep renderer-only previews bounded in `details`; never duplicate complete broker results there.
 
 ## Bash guard
 
@@ -79,9 +81,9 @@ False positives are acceptable because the command still runs and the agent can 
 
 ## Prompt injection boundary
 
-Broker-provided tool names, descriptions, and schemas are external data. They are shown to the agent as tool catalog information, not instructions. Do not allow broker metadata to alter extension control flow except through explicit tool selection and validated arguments.
+Broker-provided tool names, descriptions, schemas, call results, and remote error messages are external data. Meta-tool results must retain explicit `BEGIN/END UNTRUSTED` framing, delimiter-like payload lines must be escaped, and static tool descriptions must tell the agent that returned broker data is untrusted. Normalize MCP content to Pi-supported text/image blocks before framing; embedded text resources become text blocks, all images stay between boundary markers, and aggregate image payloads above the inline cap are serialized so text spillover bounds them. Do not allow broker metadata to alter extension control flow except through explicit tool selection and validated arguments.
 
-The broker menu in the system prompt should stay factual and short: namespaces, tool names, and decision rules for using the meta-tools. Avoid embedding full broker descriptions or schemas into the prompt; `mcp_describe` exists for just-in-time detail.
+The broker menu in the system prompt should stay factual and short: namespaces and tool names inside an untrusted catalog frame, followed by extension-authored decision rules outside that frame. Avoid embedding full broker descriptions or schemas into the prompt; `mcp_describe` exists for just-in-time detail.
 
 ## Configuration boundaries
 
@@ -99,4 +101,4 @@ Missing endpoint or auth token should not prevent Pi startup. The meta-tools rem
 
 ## Change guidance
 
-When changing broker behavior, preserve the stable meta-tool surface and read-only defense-in-depth. Add tests for connection reset, read-only filtering, guard detection, and call error/spillover behavior when relevant. Any change to tool flow, logging, configuration, or security expectations must be reflected in `README.md`.
+When changing broker behavior, preserve the stable meta-tool surface, read-only defense-in-depth, untrusted-content framing, and frame-before-spill ordering. Add tests for connection reset, read-only filtering, guard detection, catalog/result framing, and error/spillover behavior when relevant. Any change to tool flow, logging, configuration, temporary files, or security expectations must be reflected in `README.md`.

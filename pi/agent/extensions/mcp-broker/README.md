@@ -4,7 +4,7 @@ Pi extension that exposes the MCP broker to the agent via three meta-tools (`mcp
 
 ## What it does
 
-- **Meta-tools** — registers `mcp_search`, `mcp_describe`, and `mcp_call`, which share one long-lived MCP client connection to the broker. The agent discovers tools with `mcp_search`, inspects their schemas with `mcp_describe`, and invokes them with `mcp_call`. The upstream broker tool set stays out of the agent's tool list, so the prompt cache prefix stays stable regardless of how many broker tools are discovered.
+- **Meta-tools** — registers `mcp_search`, `mcp_describe`, and `mcp_call`, which share one long-lived MCP client connection to the broker. The agent discovers tools with `mcp_search`, inspects their schemas with `mcp_describe`, and invokes them with `mcp_call`. Broker-provided catalog metadata, schemas, and tool results are framed as untrusted external data. The upstream broker tool set stays out of the agent's tool list, so the prompt cache prefix stays stable regardless of how many broker tools are discovered.
 - **Tool menu in the system prompt** — on `session_start` the extension pre-fetches the broker's tool list. `before_agent_start` injects a per-namespace menu (e.g. `git: git_push, git_pull, …` / `github: list_pull_requests, pull_request_read, …`) plus a short decision rule into the system prompt. The agent can pick a tool and call `mcp_call` directly without an `mcp_search` round-trip.
 - **Guard** — when bash is invoked with direct `gh` or remote git (`push`, `pull`, `fetch`, `ls-remote`, `remote`), the bash still runs but a hidden steer is queued afterward naming likely broker tools to use next time. Local git is unaffected. Detection is a heuristic; false positives are harmless because nothing is blocked.
 
@@ -73,9 +73,15 @@ env:
 ---
 ```
 
+## External content safety
+
+Broker-provided tool names, descriptions, schemas, call results, and remote error messages are external data. Results from all three meta-tools are wrapped in a `BEGIN/END UNTRUSTED EXTERNAL MCP ... CONTENT` envelope that tells the agent to treat embedded text as data, not instructions. Delimiter-like lines inside broker content are escaped, image blocks stay inside the surrounding frame, and embedded text resources are normalized to framed text blocks. Image payloads above 5,000,000 aggregate base64 characters are serialized as text so normal spillover bounds them instead of sending an unbounded inline image. Broker-reported error content is wrapped the same way, after an extension-authored error marker.
+
+The per-session broker menu applies the same boundary around the dynamic catalog while keeping extension-authored usage and read-only rules outside it. Static local validation and read-only rejection messages remain unwrapped. Caught configuration, transport, and read-only-check failures use an extension-authored summary plus a framed error payload because those messages may include remote content.
+
 ## Large output spillover
 
-When an `mcp_call` result exceeds **25,000 characters** of joined text, the extension writes the full output to a temporary file and returns a short envelope instead:
+When a successful `mcp_search`, `mcp_describe`, or `mcp_call` result exceeds **25,000 characters** of joined text, the extension writes the full wrapped output to a temporary file and returns a short wrapped envelope instead:
 
 ```
 <persisted-output>
@@ -90,20 +96,20 @@ Use the read tool on the path above to fetch the full content.
 </persisted-output>
 ```
 
-File location: `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt`. Files are written with owner-only permissions and old spillover files are cleaned up lazily by the shared spillover helper.
+File location: `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt`. The shared directory is required to be owned by the current user and is restricted to mode `0700`; files use mode `0600`. Old spillover files are cleaned up lazily by the shared spillover helper.
 
 **Scope and edge cases:**
 
-- Only `mcp_call` is affected. `mcp_search` and `mcp_describe` outputs are bounded by design and are never spilled.
-- Error responses are never spilled — they pass through inline regardless of size.
+- Successful meta-tool results, broker-reported errors, and caught configuration/transport messages can spill. Static local validation and read-only rejection messages remain inline.
+- Content is framed as untrusted before persistence, so reading a spill file preserves the trust boundary. The returned preview envelope is framed again because its inner preview may end before the persisted content's closing marker.
 - Multi-block results: all text blocks are joined and measured together; if the total exceeds the threshold, the joined text is spilled and image blocks are preserved inline.
-- Write failure (disk full, permissions): the extension falls back to returning the original content inline rather than failing the tool call.
+- Write failure (disk full, permissions): the extension falls back to returning the wrapped original content inline rather than failing the tool call.
 
 ## Logging
 
-Failed `mcp_call` invocations write a retained diagnostic log under `${tmpdir()}/pi-extension-logs/mcp-broker/`, and the returned tool error includes the log path when logging succeeds. Logs are written with owner-only permissions and cleaned up lazily by the shared logging helper. These logs may contain broker tool names, arguments implied by error output, and raw failure messages.
+Failed `mcp_call` invocations write a retained diagnostic log under `${tmpdir()}/pi-extension-logs/mcp-broker/`, and the returned tool error includes the log path when logging succeeds. Logs are written with owner-only permissions and cleaned up lazily by the shared logging helper. Broker tool names and failure messages are retained inside an untrusted-content frame.
 
-Large-output spillover writes temporary output files as described above; those files may contain raw broker tool output. If a spillover write fails, the extension returns the original content inline.
+Large-output spillover writes temporary output files as described above; those files may contain raw broker tool output inside the untrusted-content frame. If a spillover write fails, the extension returns the wrapped original content inline.
 
 ## Guard behavior
 

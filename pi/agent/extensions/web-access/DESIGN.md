@@ -4,7 +4,7 @@
 
 ## Architecture
 
-- `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content in an untrusted-content envelope, and renders compact tool output.
+- `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content, applies large-output spillover, and renders compact tool output.
 - `config.ts` loads Tavily/Jina API keys from Pi settings and environment variables.
 - `search.ts` implements provider fallback for search: Tavily first when configured, then Jina Search.
 - `fetch.ts` implements generic web-page extraction: local Readability/Turndown first, then Jina Reader fallback.
@@ -77,13 +77,17 @@ GitHub rate-limit-looking errors are converted into recoverable tool-result mess
 
 ## External content safety
 
-All successful search/fetch content is wrapped with `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT`. Preserve this envelope. Search snippets, fetched pages, repository files, and PDFs can contain prompt injection; they must be framed as untrusted data for the agent.
+All successful search/fetch content and remote provider/fetch error messages are wrapped with `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT`. Preserve this envelope and escape delimiter-like lines from external payloads. Search snippets, fetched pages, repository files, PDFs, and remote error bodies can contain prompt injection; they must be framed as untrusted data for the agent.
+
+Wrap before spillover so persisted files retain the trust boundary. When content spills, wrap the returned preview envelope again because its inner preview may be truncated before the persisted content's closing marker. Keep renderer-only previews bounded in `details` rather than copying the complete result.
 
 Do not add behavior that treats fetched content as extension instructions, Pi settings, tool arguments, or command input without explicit validation.
 
 ## Temporary files and cleanup
 
 GitHub clones are stored under `/tmp/pi-github-repos` and clone directories older than 7 days are deleted best-effort during GitHub fetches. The clone path is intentionally returned so the agent can inspect files with normal tools. These clones may contain arbitrary public repository contents and should not be treated as sanitized.
+
+Wrapped result or remote-error output above the shared threshold is stored under `${tmpdir()}/pi-extension-spillover`; the directory must be a real current-user-owned directory and is restricted to mode `0700`, while files use mode `0600` and lazy seven-day cleanup. Spill files contain the full wrapped external content. Directory validation or persistence failures fall back to the wrapped inline result.
 
 The extension writes no retained diagnostic logs.
 
@@ -98,4 +102,4 @@ The extension writes no retained diagnostic logs.
 
 ## Change guidance
 
-When adding providers or URL routes, keep routing explicit and update tests for fallback behavior. Preserve untrusted-content wrapping for every successful external content path. If adding logs, temp files, authentication, cleanup, or browser execution, update README security/config/logging sections and keep secrets out of results.
+When adding providers or URL routes, keep routing explicit and update tests for fallback behavior. Preserve untrusted-content wrapping for every successful external content path, the frame-before-spill ordering, and bounded renderer details. If changing logs, temp files, authentication, cleanup, or browser execution, update README security/config/logging sections and keep secrets out of results.

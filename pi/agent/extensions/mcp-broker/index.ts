@@ -13,6 +13,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { registerConfigCommand } from "../_shared/config.ts";
+import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { BrokerClient, type BrokerTool } from "./client.ts";
 import { loadMcpBrokerConfig } from "./config.ts";
 import initGuard from "./guard.ts";
@@ -78,7 +79,7 @@ export function buildBrokerPrompt(
     .join("\n");
   const base = [
     'MCP broker tools (call via mcp_call name="<namespace>.<tool>"):',
-    menu,
+    wrapUntrustedContent("EXTERNAL MCP TOOL CATALOG", menu),
     "",
     "Use mcp_describe for parameter schemas. Use mcp_search to discover tools by keyword.",
     "For remote git operations (push/pull/fetch/ls-remote/remote) and GitHub work, prefer these broker tools over bash gh/git — bash invocations of gh or remote git typically aren't authenticated in this environment.",

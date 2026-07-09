@@ -120,17 +120,22 @@ describe("buildEnvelope", () => {
     assert.ok(env.includes(`…${expectedTruncated} bytes truncated…`));
   });
 
-  test("truncated-byte marker is byte-accurate for multibyte chars", () => {
-    // Use multibyte characters so byte count != char count
-    const joinedText = "é".repeat(3000); // 2 bytes per char = 6000 bytes
-    const head = joinedText.slice(0, PREVIEW_BYTES);
-    const expectedTruncated =
-      Buffer.byteLength(joinedText, "utf8") - Buffer.byteLength(head, "utf8");
+  test("multibyte previews and truncated counts are byte-accurate", () => {
+    const joinedText = "é".repeat(3000);
     const env = buildEnvelope({
       filePath: "/tmp/t.txt",
       originalSize: joinedText.length,
       joinedText,
     });
+    const preview = env
+      .split(`Preview (first ${(PREVIEW_BYTES / 1024).toFixed(1)} KB):\n`)[1]
+      ?.split("\n\n…")[0];
+
+    assert.ok(preview);
+    assert.ok(Buffer.byteLength(preview, "utf8") <= PREVIEW_BYTES);
+    const expectedTruncated =
+      Buffer.byteLength(joinedText, "utf8") -
+      Buffer.byteLength(preview, "utf8");
     assert.ok(env.includes(`…${expectedTruncated} bytes truncated…`));
   });
 
@@ -198,6 +203,7 @@ describe("spillIfNeeded", () => {
     const written = await readFile(result.filePath, "utf8");
     assert.equal(written, bigText);
     assert.equal((await stat(result.filePath)).mode & 0o777, 0o600);
+    assert.equal((await stat(scratchDir)).mode & 0o777, 0o700);
 
     // Details
     assert.equal(result.originalSize, bigText.length);

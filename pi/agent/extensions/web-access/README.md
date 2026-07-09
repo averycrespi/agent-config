@@ -65,7 +65,7 @@ Example settings:
 
 ## External content safety
 
-Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT` envelope. The envelope reminds the agent that fetched web pages, search snippets, GitHub contents, and PDF text are external data rather than instructions.
+Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT` envelope. Remote provider/fetch error messages are framed too, while the renderer uses a bounded error preview. The envelope reminds the agent that fetched web pages, search snippets, GitHub contents, PDF text, and remote error bodies are external data rather than instructions. Delimiter-like lines inside external content are escaped. Content is wrapped before large-output spillover so the persisted file retains the same trust boundary.
 
 GitHub rate-limit failures are returned as recoverable tool-result messages with a retry/backoff hint instead of being treated as unrecoverable extension failures.
 
@@ -73,9 +73,11 @@ GitHub rate-limit failures are returned as recoverable tool-result messages with
 
 For GitHub repository URLs, `web_fetch` shallow-clones the repository and returns that clone path for follow-up exploration with Pi's built-in tools. Bare repository URLs clone to `/tmp/pi-github-repos/<owner>/<repo>`. `blob` and `tree` URLs with a ref clone to a ref-specific path such as `/tmp/pi-github-repos/<owner>/<repo>--<sanitized-ref>`, so branch/tag/commit URLs do not collide with the default-branch cache. If the clone already exists and contains a `.git` directory, it is reused. On each GitHub fetch, the extension best-effort deletes cached clone directories older than 7 days. These temp clones contain raw repository contents fetched from the requested public GitHub URL; raw file contents may also be returned directly for GitHub blob URLs.
 
+When wrapped search, fetch, or remote-error output exceeds 25,000 joined text characters, the full wrapped content is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a wrapped `<persisted-output>` envelope with a preview and path for the `read` tool. The spill directory is restricted to the current user with mode `0700`, files use mode `0600`, and old files are cleaned up lazily after 7 days. If directory validation or persistence fails, the full wrapped content is returned inline.
+
 ## Logging
 
-This extension does not write retained logs or diagnostic files.
+This extension does not write retained logs or diagnostic files. Large-output spill files and GitHub clone caches are temporary artifacts described above; both may contain raw external content and should not be treated as sanitized.
 
 ## Prior art
 

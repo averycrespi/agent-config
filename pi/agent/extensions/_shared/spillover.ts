@@ -1,4 +1,12 @@
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -32,6 +40,15 @@ function formatKilobytes(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
+function utf8Head(text: string, maxBytes: number): string {
+  const buffer = Buffer.from(text, "utf8");
+  if (buffer.length <= maxBytes) return text;
+
+  let end = maxBytes;
+  while (end > 0 && (buffer[end] & 0xc0) === 0x80) end -= 1;
+  return buffer.subarray(0, end).toString("utf8");
+}
+
 /** Build the persisted-output envelope string. */
 export function buildEnvelope({
   filePath,
@@ -39,7 +56,7 @@ export function buildEnvelope({
   joinedText,
 }: EnvelopeParams): string {
   const kb = (originalSize / 1024).toFixed(1);
-  const head = joinedText.slice(0, PREVIEW_BYTES);
+  const head = utf8Head(joinedText, PREVIEW_BYTES);
   const truncatedBytes =
     Buffer.byteLength(joinedText, "utf8") - Buffer.byteLength(head, "utf8");
 
@@ -121,7 +138,20 @@ export async function spillIfNeeded(
   let filePath: string | undefined;
 
   try {
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    const dirInfo = await lstat(dir);
+    const currentUid =
+      typeof process.getuid === "function" ? process.getuid() : undefined;
+    if (
+      !dirInfo.isDirectory() ||
+      dirInfo.isSymbolicLink() ||
+      (currentUid !== undefined && dirInfo.uid !== currentUid)
+    ) {
+      throw new Error(
+        "spillover directory is not an owner-controlled directory",
+      );
+    }
+    await chmod(dir, 0o700);
     if (!cleanedDirs.has(dir)) {
       cleanedDirs.add(dir);
       await cleanupOldSpilloverFiles(dir);
