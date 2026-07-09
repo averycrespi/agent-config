@@ -62,15 +62,11 @@ Ask if any changes are needed before creating.
 
 ### 5. Create via the MCP Broker
 
-After the user approves the draft, create the ticket through the available Jira/Atlassian broker tool:
-
-1. `mcp_search` with a query like `"jira create"` or `"atlassian"` to find the create-issue tool
-2. `mcp_describe` on the candidate tool to read its argument schema
-3. `mcp_call` with the exact tool name and an arguments object matching the schema
+After the user approves the draft, create the ticket through the available Jira/Atlassian broker tool, following the global broker discovery and schema guidance in `AGENTS.md`.
 
 Report back with the ticket key and link.
 
-If the broker is unavailable (configuration error from `mcp_call`), surface the error and stop — do not fall back to drafting the ticket elsewhere.
+If the broker is unavailable, surface the configuration or authentication error and stop — do not fall back to drafting the ticket elsewhere.
 
 ## Resources
 

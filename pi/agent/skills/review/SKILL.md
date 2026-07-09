@@ -22,7 +22,7 @@ Supported target modes:
 Matches pattern: `https://github.com/<owner>/<repo>/pull/<number>`
 
 1. Extract `<owner>`, `<repo>`, and `<number>` from the URL.
-2. Use `mcp_call` for remote PR data, passing exact GitHub broker tool names from the system-prompt menu or `mcp_search` results. Use `mcp_describe` before the first call when the schema is unknown.
+2. Use the broker-backed GitHub tools for remote PR data, following the global broker discovery and schema guidance in `AGENTS.md`.
 3. Fetch PR context with `name: "github.pull_request_read"`:
    - `method: "get"` for title, body, and metadata
    - `method: "get_diff"` for the unified diff
@@ -32,7 +32,7 @@ Matches pattern: `https://github.com/<owner>/<repo>/pull/<number>`
    - `method: "get_review_comments"` for inline review threads/comments
 4. If the PR belongs to the current local repository, fetch the PR head without checking it out:
    - Resolve the repo root with local git, compare the local `origin` URL to `<owner>/<repo>`, and only use this path when they match.
-   - Use `mcp_call` with `name: "git.fetch"`, `repo_path: <absolute repo root>`, `remote: "origin"`, and a refspec such as `+refs/pull/<number>/head:refs/remotes/origin/pr/<number>`.
+   - Use the broker-backed `git.fetch` tool with the absolute repo root, remote `origin`, and a refspec such as `+refs/pull/<number>/head:refs/remotes/origin/pr/<number>`.
    - Inspect fetched branch contents locally via git object reads and diffs, such as `git diff <default-branch>...refs/remotes/origin/pr/<number>` and `git show refs/remotes/origin/pr/<number>:<path>`.
    - Do not run `git checkout`, `git switch`, or otherwise move the working tree to the PR branch.
 5. If MCP broker returns a configuration or authentication error, report that remote PR review requires broker access and stop.
