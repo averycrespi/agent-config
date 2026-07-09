@@ -6,6 +6,7 @@ extensions: extra-context, web-access, mcp-broker
 env:
   MCP_BROKER_READONLY: "1"
   MCP_BROKER_APPROVAL_MODE: "reject"
+model: openai-codex/gpt-5.6-luna
 thinking: medium
 disable_skills: true
 disable_prompt_templates: true

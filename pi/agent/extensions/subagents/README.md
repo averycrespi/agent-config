@@ -23,13 +23,13 @@ Agent types are loaded dynamically from `~/.pi/agent/agents/*.md` at startup. Th
 
 The built-in types:
 
-| Type         | Tools                                                                           | Extensions                                  | Model           | Thinking |
-| ------------ | ------------------------------------------------------------------------------- | ------------------------------------------- | --------------- | -------- |
-| `explorer`   | read, bash, ls, find, grep                                                      | `extra-context`                             | inherits parent | medium   |
-| `reviewer`   | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | inherits parent | high     |
-| `scout`      | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | medium   |
-| `researcher` | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | inherits parent | high     |
-| `analyst`    | read, bash, ls, find, grep, mcp_search, mcp_describe, mcp_call                  | `extra-context`, `mcp-broker`               | inherits parent | high     |
+| Type         | Tools                                                                           | Extensions                                  | Model         | Thinking |
+| ------------ | ------------------------------------------------------------------------------- | ------------------------------------------- | ------------- | -------- |
+| `explorer`   | read, bash, ls, find, grep                                                      | `extra-context`                             | GPT-5.6 Terra | medium   |
+| `reviewer`   | read, ls, find, grep, mcp_search, mcp_describe, mcp_call                        | `extra-context`, `mcp-broker`               | GPT-5.6 Terra | high     |
+| `scout`      | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | GPT-5.6 Luna  | medium   |
+| `researcher` | read, ls, find, grep, mcp_search, mcp_describe, mcp_call, web_search, web_fetch | `extra-context`, `mcp-broker`, `web-access` | GPT-5.6 Terra | high     |
+| `analyst`    | read, bash, ls, find, grep, mcp_search, mcp_describe, mcp_call                  | `extra-context`, `mcp-broker`               | GPT-5.6 Terra | high     |
 
 Built-in agent types are intended for read-only work, but the effective tool boundary is read-mostly because `explorer` and `analyst` include `bash` for local inspection and data reduction. Their prompts forbid filesystem mutations, installs, formatting, and file redirects, but `bash` is not mechanically read-only. Because Pi's `--tools` flag is an allowlist across built-in, extension, and custom tools, agent definitions that enable tool-providing extensions must also list those extension tool names. `reviewer` adds read-only broker access (MCP search, describe, and call restricted to tools annotated `readOnlyHint`). `scout` is the faster default for external lookup, while `researcher` is the slower, evidence-heavier option. Both `scout` and `researcher` add web search and fetch via the `web-access` extension. `analyst` distills noisy logs, traces, metrics, query results, or large local outputs into patterns, representative examples, hypotheses, and follow-up queries. If you want a writable subagent, add a custom agent markdown file with a broader tool set.
 
