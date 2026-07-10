@@ -31,26 +31,32 @@ function collapseHome(cwd: string, homeDir?: string): string {
   return cwd;
 }
 
-function buildGitSummarySegment(summary: GitSummary): string {
-  const parts = [summary.ref];
+function buildGitSummarySegment(
+  summary: GitSummary,
+  theme: FooterTheme,
+): string {
+  const parts = [theme.fg("accent", summary.ref)];
   const tracking = `${summary.behind ? `↓${summary.behind}` : ""}${
     summary.ahead ? `↑${summary.ahead}` : ""
   }`;
-  if (tracking) parts.push(tracking);
-  if (summary.conflicts) parts.push(`✖${summary.conflicts}`);
-  if (summary.staged) parts.push(`●${summary.staged}`);
-  if (summary.changed) parts.push(`✚${summary.changed}`);
-  if (summary.untracked) parts.push(`…${summary.untracked}`);
-  if (summary.stashes) parts.push(`⚑${summary.stashes}`);
-  if (parts.length === 1) parts.push("✔");
+  if (tracking) parts.push(theme.fg("muted", tracking));
+  if (summary.conflicts) parts.push(theme.fg("error", `✖${summary.conflicts}`));
+  if (summary.staged) parts.push(theme.fg("warning", `●${summary.staged}`));
+  if (summary.changed) parts.push(theme.fg("warning", `✚${summary.changed}`));
+  if (summary.untracked)
+    parts.push(theme.fg("warning", `…${summary.untracked}`));
+  if (summary.stashes) parts.push(theme.fg("muted", `⚑${summary.stashes}`));
+  if (parts.length === 1) parts.push(theme.fg("success", "✔"));
   return parts.join(" ");
 }
 
-function buildCwdSegment(state: FooterState): string {
+function buildCwdSegment(state: FooterState, theme: FooterTheme): string {
   const cwd = collapseHome(state.cwd, state.homeDir);
   if (state.gitSummary)
-    return `${cwd} [${buildGitSummarySegment(state.gitSummary)}]`;
-  return state.gitBranch ? `${cwd} [${state.gitBranch}]` : cwd;
+    return `${cwd} [${buildGitSummarySegment(state.gitSummary, theme)}]`;
+  return state.gitBranch
+    ? `${cwd} [${theme.fg("accent", state.gitBranch)}]`
+    : cwd;
 }
 
 function formatTokens(value: number): string {
@@ -185,7 +191,7 @@ export function renderFooterLines(
   if (width <= 0) return [""];
 
   const separator = theme.fg("dim", " · ");
-  const left = buildCwdSegment(state);
+  const left = buildCwdSegment(state, theme);
   const right = joinFittingSegments(
     buildStatusSegments(state, theme),
     width,
@@ -211,7 +217,7 @@ export function renderFooterLine(
 
   const separator = theme.fg("dim", " · ");
   const segments = [
-    buildCwdSegment(state),
+    buildCwdSegment(state, theme),
     ...buildStatusSegments(state, theme),
   ];
   return joinFittingSegments(segments, width, separator);

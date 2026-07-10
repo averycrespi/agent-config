@@ -32,6 +32,20 @@ function renderUsage(stats: UsageStats) {
   };
 }
 
+function createRecordingTheme() {
+  const calls: Array<[string, string]> = [];
+  return {
+    calls,
+    recordingTheme: {
+      ...theme,
+      fg(color: string, text: string) {
+        calls.push([color, text]);
+        return theme.fg(color, text);
+      },
+    },
+  };
+}
+
 test("renderFooterLine renders statusline segments in priority order", () => {
   const line = renderFooterLine(
     {
@@ -146,6 +160,61 @@ test("renderFooterLine appends the git branch to the working directory in bracke
   );
 });
 
+test("renderFooterLine styles git summary fields by meaning", () => {
+  const { calls, recordingTheme } = createRecordingTheme();
+
+  renderFooterLine(
+    {
+      cwd: "/repo",
+      gitSummary: {
+        ref: "feature/git-summary",
+        ahead: 3,
+        behind: 2,
+        conflicts: 1,
+        staged: 2,
+        changed: 4,
+        untracked: 1,
+        stashes: 2,
+      },
+    },
+    200,
+    recordingTheme,
+  );
+
+  assert.deepEqual(
+    calls.filter(([color]) => color !== "dim"),
+    [
+      ["accent", "feature/git-summary"],
+      ["muted", "↓2↑3"],
+      ["error", "✖1"],
+      ["warning", "●2"],
+      ["warning", "✚4"],
+      ["warning", "…1"],
+      ["muted", "⚑2"],
+    ],
+  );
+});
+
+test("renderFooterLine styles fallback git branches with the accent color", () => {
+  const { calls, recordingTheme } = createRecordingTheme();
+
+  renderFooterLine(
+    {
+      cwd: "/repo",
+      gitBranch: "feature/statusline-git",
+    },
+    200,
+    recordingTheme,
+  );
+
+  assert.ok(
+    calls.some(
+      ([color, text]) =>
+        color === "accent" && text === "feature/statusline-git",
+    ),
+  );
+});
+
 test("renderFooterLine appends a clean checkmark for clean git summaries", () => {
   const line = renderFooterLine(
     {
@@ -164,6 +233,17 @@ test("renderFooterLine appends a clean checkmark for clean git summaries", () =>
     stripAnsi(line),
     "~/Workspace/agent-config [main ✔] · ctx 42%/200k · gpt-5-codex · medium",
   );
+
+  const { calls, recordingTheme } = createRecordingTheme();
+  renderFooterLine(
+    {
+      cwd: "/repo",
+      gitSummary: { ref: "main" },
+    },
+    200,
+    recordingTheme,
+  );
+  assert.ok(calls.some(([color, text]) => color === "success" && text === "✔"));
 });
 
 test("renderFooterLine appends compact git summary symbols to the working directory", () => {

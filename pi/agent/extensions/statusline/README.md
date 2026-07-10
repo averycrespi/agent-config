@@ -12,7 +12,7 @@ Pi extension that renders a footer with the current working directory, git branc
 
 When the working directory is in a git repository, a compact git summary is appended to the working directory in brackets. Detached HEAD states render as `detached: <short-hash>`. Git summary lookup runs asynchronously with short timeouts, so footer rendering is not blocked by a slow repository; the footer keeps the last known summary while a refresh is pending or fails.
 
-Git summary symbols follow the compact style popularized by bash-git-prompt:
+Git summary symbols follow the compact style popularized by bash-git-prompt. The branch uses the theme accent; clean state uses success; conflicts use error; staged, changed, and untracked indicators use warning; and tracking and stash indicators use muted text.
 
 | Symbol | Meaning                                      |
 | ------ | -------------------------------------------- |
