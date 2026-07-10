@@ -84,18 +84,19 @@ function buildUsageSegment(
   if (!usage) return undefined;
 
   const { label, stats } = usage;
+  const labelText = theme.fg("muted", label);
   if (stats.balance !== undefined) {
     const reset = stats.primary?.resetAfterSeconds;
     return reset === undefined
-      ? `${label} $${stats.balance}`
-      : `${label} $${stats.balance} ${formatDuration(reset)}`;
+      ? `${labelText} $${stats.balance}`
+      : `${labelText} $${stats.balance} ${theme.fg("muted", formatDuration(reset))}`;
   }
 
   if (stats.limitReached) {
     const reset = stats.primary?.resetAfterSeconds;
     return reset === undefined
-      ? `${label} limit`
-      : `${label} limit ${formatDuration(reset)}`;
+      ? `${labelText} limit`
+      : `${labelText} limit ${theme.fg("muted", formatDuration(reset))}`;
   }
 
   const primaryPercent = stats.primary?.usedPercent;
@@ -103,7 +104,7 @@ function buildUsageSegment(
   const primaryReset = stats.primary?.resetAfterSeconds;
 
   if (primaryPercent === undefined && secondaryPercent === undefined) {
-    return label;
+    return labelText;
   }
 
   let percentText = "";
@@ -116,9 +117,11 @@ function buildUsageSegment(
   }
 
   const resetText =
-    primaryReset === undefined ? "" : ` ${formatDuration(primaryReset)}`;
+    primaryReset === undefined
+      ? ""
+      : ` ${theme.fg("muted", formatDuration(primaryReset))}`;
 
-  return `${label} ${percentText}${resetText}`;
+  return `${labelText} ${percentText}${resetText}`;
 }
 
 function buildContextSegment(
@@ -133,7 +136,12 @@ function buildContextSegment(
       ? "?%"
       : colorizePercent(percent, theme);
 
-  return `ctx ${percentText}/${formatTokens(contextUsage.contextWindow)}`;
+  const labelText = theme.fg("muted", "ctx");
+  const windowText = theme.fg(
+    "muted",
+    `/${formatTokens(contextUsage.contextWindow)}`,
+  );
+  return `${labelText} ${percentText}${windowText}`;
 }
 
 function buildThinkingSegment(
@@ -158,7 +166,7 @@ function buildStatusSegments(state: FooterState, theme: FooterTheme): string[] {
   return [
     buildUsageSegment(state.usage, theme),
     buildContextSegment(state.contextUsage, theme),
-    state.modelId,
+    state.modelId ? theme.fg("muted", state.modelId) : undefined,
     buildThinkingSegment(state, theme),
   ].filter((segment): segment is string => Boolean(segment));
 }

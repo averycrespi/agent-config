@@ -32,7 +32,7 @@ The repository segment stays on the left and the remaining status segments are r
 Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
 ```
 
-Left-to-right priority is preserved within the status segment when the terminal is narrow: provider quota, context, model, then thinking. Status text uses the normal foreground color by default; quota and context percentages switch to warning/error colors above the configured thresholds, and the thinking level uses the active theme's corresponding thinking-level color.
+Left-to-right priority is preserved within the status segment when the terminal is narrow: provider quota, context, model, then thinking. Provider and context labels, reset durations, context capacity, and the model ID use muted text. Quota and context percentages use the normal foreground by default and switch to warning/error colors above the configured thresholds. The thinking level uses the active theme's corresponding thinking-level color.
 
 The footer updates on session start, model changes, thinking-level changes, and after each turn. Successful provider usage fetching is debounced to one API call per provider/model every 60 seconds.
 

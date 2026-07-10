@@ -78,6 +78,35 @@ test("renderFooterLine renders statusline segments in priority order", () => {
   );
 });
 
+test("renderFooterLine mutes status labels and supporting metadata", () => {
+  const { calls, recordingTheme } = createRecordingTheme();
+
+  renderFooterLine(
+    {
+      cwd: "/repo",
+      usage: renderUsage({
+        primary: { usedPercent: 45, resetAfterSeconds: 2 * 3600 },
+        secondary: { usedPercent: 20, resetAfterSeconds: 3 * 24 * 3600 },
+      }),
+      contextUsage: { percent: 42, contextWindow: 200_000 },
+      modelId: "gpt-5-codex",
+    },
+    200,
+    recordingTheme,
+  );
+
+  assert.deepEqual(
+    calls.filter(([color]) => color === "muted"),
+    [
+      ["muted", "Codex"],
+      ["muted", "2h"],
+      ["muted", "ctx"],
+      ["muted", "/200k"],
+      ["muted", "gpt-5-codex"],
+    ],
+  );
+});
+
 test("renderFooterLine colors thinking levels with their theme tokens", () => {
   const expectedTokens = {
     off: "thinkingOff",
