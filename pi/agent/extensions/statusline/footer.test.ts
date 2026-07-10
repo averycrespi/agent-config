@@ -64,6 +64,42 @@ test("renderFooterLine renders statusline segments in priority order", () => {
   );
 });
 
+test("renderFooterLine colors thinking levels with their theme tokens", () => {
+  const expectedTokens = {
+    off: "thinkingOff",
+    minimal: "thinkingMinimal",
+    low: "thinkingLow",
+    medium: "thinkingMedium",
+    high: "thinkingHigh",
+    xhigh: "thinkingXhigh",
+  } as const;
+
+  for (const [level, expectedToken] of Object.entries(expectedTokens)) {
+    const calls: Array<[string, string]> = [];
+    const recordingTheme = {
+      ...theme,
+      fg(color: string, text: string) {
+        calls.push([color, text]);
+        return theme.fg(color, text);
+      },
+    };
+
+    renderFooterLine(
+      {
+        cwd: "/repo",
+        thinking: level,
+      },
+      200,
+      recordingTheme,
+    );
+
+    assert.ok(
+      calls.some(([color, text]) => color === expectedToken && text === level),
+      `${level} should use ${expectedToken}`,
+    );
+  }
+});
+
 test("renderFooterLine colors statusline percentages above warning and error thresholds", () => {
   const line = renderFooterLine(
     {

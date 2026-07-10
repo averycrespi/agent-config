@@ -130,9 +130,22 @@ function buildContextSegment(
   return `ctx ${percentText}/${formatTokens(contextUsage.contextWindow)}`;
 }
 
-function buildThinkingSegment(state: FooterState): string | undefined {
+function buildThinkingSegment(
+  state: FooterState,
+  theme: FooterTheme,
+): string | undefined {
   if (!state.thinking) return undefined;
-  return state.thinking;
+
+  const color = {
+    off: "thinkingOff",
+    minimal: "thinkingMinimal",
+    low: "thinkingLow",
+    medium: "thinkingMedium",
+    high: "thinkingHigh",
+    xhigh: "thinkingXhigh",
+  }[state.thinking];
+
+  return color ? theme.fg(color, state.thinking) : state.thinking;
 }
 
 function buildStatusSegments(state: FooterState, theme: FooterTheme): string[] {
@@ -140,7 +153,7 @@ function buildStatusSegments(state: FooterState, theme: FooterTheme): string[] {
     buildUsageSegment(state.usage, theme),
     buildContextSegment(state.contextUsage, theme),
     state.modelId,
-    buildThinkingSegment(state),
+    buildThinkingSegment(state, theme),
   ].filter((segment): segment is string => Boolean(segment));
 }
 
