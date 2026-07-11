@@ -84,11 +84,11 @@ export function validateOutputSchema(
       if (!Array.isArray(value.enum) || value.enum.length === 0) {
         errors.push(`${currentPath}.enum must be a non-empty array`);
       } else {
-        value.enum.forEach((entry, index) => {
-          if (!isJsonScalar(entry)) {
+        for (let index = 0; index < value.enum.length; index += 1) {
+          if (!isJsonScalar(value.enum[index])) {
             errors.push(`${currentPath}.enum[${index}] must be a JSON scalar`);
           }
-        });
+        }
       }
     }
     if ("const" in value && !isJsonScalar(value.const)) {
@@ -115,7 +115,8 @@ export function validateOutputSchema(
           );
         } else {
           const names = new Set<string>();
-          value.required.forEach((entry, index) => {
+          for (let index = 0; index < value.required.length; index += 1) {
+            const entry = value.required[index];
             if (typeof entry !== "string") {
               errors.push(`${currentPath}.required[${index}] must be a string`);
             } else if (names.has(entry)) {
@@ -123,7 +124,7 @@ export function validateOutputSchema(
             } else {
               names.add(entry);
             }
-          });
+          }
         }
       }
 

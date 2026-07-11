@@ -133,6 +133,22 @@ test("schema rejects non-scalar enum entries and non-finite numbers", () => {
   }
 });
 
+test("schema rejects sparse arrays as non-JSON definitions", () => {
+  const sparseRequired = new Array(1);
+  const sparseEnum = new Array(1);
+  assert.match(
+    validateOutputSchema({
+      type: "object",
+      required: sparseRequired,
+    }).join("\n"),
+    /output_schema\.required\[0\].*string/,
+  );
+  assert.match(
+    validateOutputSchema({ enum: sparseEnum }).join("\n"),
+    /output_schema\.enum\[0\].*JSON scalar/,
+  );
+});
+
 test("schema rejects non-JSON and cyclic definitions", () => {
   const cyclic: Record<string, unknown> = { type: "object" };
   cyclic.properties = { self: cyclic };
