@@ -4,7 +4,9 @@
 
 ## Architecture
 
-- `index.ts` registers `spawn_agents`, injects delegation guidance into the system prompt, loads agent definitions, validates requests, orchestrates parallel runs, combines results, and applies output spillover.
+- `index.ts` registers `spawn_agents`, injects delegation guidance into the system prompt, loads agent definitions, validates requests, schedules direct runs, combines results, and applies output spillover.
+- `config.ts` parses the global/env-only direct concurrency setting and registers `/subagents-config`.
+- `pool.ts` owns the extension-internal resizable FIFO concurrency gate.
 - `loader.ts` discovers markdown agent definitions and parses their frontmatter into `AgentDefinition` objects.
 - `spawn.ts` builds child Pi CLI arguments, resolves extensions, enforces recursion depth, spawns `pi --mode json`, streams JSONL events, extracts the final assistant message, handles aborts, and manages logs/spillover.
 - `activity.ts` tracks live per-agent progress from child JSONL events and clears UI activity when complete.
@@ -29,16 +31,19 @@ README owns the user-facing version of the same policy. Keep `AGENTS.md` at the 
 
 ## Spawn lifecycle
 
-Each `spawn_agents` call validates all requested specs before launching. Validation failures return one recoverable tool error and launch no children. Valid specs run concurrently with `Promise.all`, and result order follows input order.
+Each `spawn_agents` call validates all requested specs before launching. Validation failures, including batches over the fixed 16-item ceiling, return one recoverable tool error and launch no children. Valid specs retain index-aligned `Promise.all` fan-in, but each launch first acquires one extension-owned FIFO gate. The gate defaults to four active direct children, is configured from global settings or `SUBAGENTS_MAX_CONCURRENCY`, and is hard-clamped to 16. Project settings are intentionally ignored because overlapping calls from different cwd values share the same gate. Configuration is reloaded and the gate resized before each direct execution.
 
 For each agent:
 
-1. Resolve agent definition.
-2. Create an activity tracker.
-3. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, system prompt, env, cwd, parent session file, and abort signal.
-4. Feed child JSONL events into the tracker.
-5. Format success or failure into that agent's result section.
-6. Finalize activity and clear UI hooks.
+1. Wait in the queued activity state and acquire direct-child capacity.
+2. Resolve the already-prevalidated agent definition.
+3. Create an activity tracker.
+4. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, system prompt, env, cwd, parent session file, and abort signal.
+5. Feed child JSONL events into the tracker.
+6. Format success or failure into that agent's result section.
+7. Finalize activity, clear UI hooks, and release capacity exactly once.
+
+Queue admission is abort-aware. Cancellation removes queued waiters without consuming capacity, marks them terminally aborted, emits their updated activity, and never launches them. Running children continue through `spawnSubagent()`'s existing signal path, while completed results remain unchanged. Gate errors reject normally rather than being recast as cancellation. Result order follows input order regardless of admission or completion order.
 
 Combined output is a Markdown document with one `## <agent> · <intent>` section per input. Large combined output goes through shared spillover.
 
@@ -95,6 +100,8 @@ Both individual `stdout`/`stderr` fields and combined tool output can spill to t
 
 ## Boundaries and non-goals
 
+- Workflows reuse the child-process engine and activity tracker through `api.ts`, but retain their worker-side scheduler and policy; the direct gate does not control workflow concurrency.
+- No per-agent concurrency policy; the gate is shared across direct calls.
 - No subagent session inheritance through the `spawn_agents` tool.
 - No automatic merging of subagent decisions into workspace changes.
 - No parallel write coordination; built-in agents are read-mostly by tool boundary and read-only by prompt convention.

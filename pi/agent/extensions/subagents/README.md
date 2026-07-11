@@ -8,7 +8,7 @@ For programmatic integration from other extensions, see [API.md](./API.md).
 
 ### `spawn_agents`
 
-Launch one or more subagents in parallel. Each runs independently in its own context window with a fixed tool set determined by the agent type. Pass a single agent when delegating one task; pass multiple when you have independent tasks that can run concurrently. Results are returned as a combined document once all agents complete.
+Launch one or more subagents through a bounded concurrency queue. Each runs independently in its own context window with a fixed tool set determined by the agent type. Pass a single agent when delegating one task; pass multiple when you have independent tasks that can run concurrently. Each call accepts at most 16 agents. Results are returned as a combined document once all agents complete.
 
 **Parameters:**
 
@@ -69,11 +69,27 @@ When loaded, the extension hooks `before_agent_start` to append delegation guida
 
 ## Configuration
 
-This extension has no `extension:subagents` settings and does not register a `/subagents-config` command. Subagent types are configured by markdown files with YAML frontmatter; see [Agent file format](#agent-file-format). Agent files control the tool allowlist, extensions, model, thinking level, skill/template availability, and child-process environment.
+Direct `spawn_agents` calls share one extension-wide FIFO concurrency gate. The gate defaults to four running children and is hard-clamped to 16. Only the global Pi settings file and the environment control this gate; project `.pi/settings.json` values are deliberately ignored. A valid environment override wins over the global setting. Invalid environment values produce a warning and leave a valid global setting in effect; invalid global values fall back to the default.
 
-| Field      | Default                         | Environment override  | Description                                                       |
+| Field            | Default | Environment override        | Description                                                                            |
+| ---------------- | ------- | --------------------------- | -------------------------------------------------------------------------------------- |
+| `maxConcurrency` | `4`     | `SUBAGENTS_MAX_CONCURRENCY` | Global maximum direct children running concurrently; project settings ignored; `1..16` |
+
+```json
+{
+  "extension:subagents": {
+    "maxConcurrency": 4
+  }
+}
+```
+
+Use `/subagents-config` to inspect the effective parsed configuration and any warnings. Changes are reloaded before each direct tool execution. This setting does not change the fixed limit of 16 agents per call and does not control workflow concurrency.
+
+Subagent types remain configured by markdown files with YAML frontmatter; see [Agent file format](#agent-file-format). Agent files control the tool allowlist, extensions, model, thinking level, skill/template availability, and child-process environment.
+
+| Source     | Default                         | Environment override  | Description                                                       |
 | ---------- | ------------------------------- | --------------------- | ----------------------------------------------------------------- |
-| `agentDir` | Pi's default agent directory    | `PI_CODING_AGENT_DIR` | Agent directory to search for `agents/*.md` subagent definitions. |
+| agent dir  | Pi's default agent directory    | `PI_CODING_AGENT_DIR` | Agent directory to search for `agents/*.md` subagent definitions. |
 | agent file | `agents/<name>.md` under Pi dir | none                  | Markdown frontmatter and prompt body defining each subagent type. |
 
 ## Logging
@@ -85,12 +101,13 @@ Retained logs may contain raw subagent output, tool results, command output, and
 ## Notes
 
 - `intent` is required for every agent and drives activity titles — keep it short and descriptive
-- Requests are prevalidated before spawning; blank intents or unknown agent types return one recoverable tool error and no subagents are launched
+- Requests are prevalidated before spawning; blank intents, unknown agent types, or batches over 16 return one recoverable tool error and no subagents are launched
 - Each subagent starts with a fresh context; session inheritance is not supported through the tool
 - Built-in agents load `extra-context` so user-configured context files are available in child Pi processes
 - `reviewer`, `scout`, `researcher`, and `analyst` require the `mcp-broker` extension to be installed and discoverable. `scout` and `researcher` additionally require `web-access`
 - Built-in agent types disable skills and prompt templates for tighter, role-specific behavior
-- All agents in a single `spawn_agents` call run concurrently; result order matches input order
+- Direct calls share the configured bounded queue, including overlapping calls; queued cancellation prevents launch, while completed results are preserved and running children receive the existing abort signal
+- Result order matches input order regardless of launch or completion order
 
 ## Agent file format
 

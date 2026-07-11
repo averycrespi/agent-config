@@ -11,6 +11,9 @@ export const BUILTIN_TOOLS = [
 ] as const;
 
 export const MAX_SUBAGENT_DEPTH = 5;
+export const DEFAULT_MAX_CONCURRENCY = 4;
+export const MAX_CONCURRENCY_CEILING = 16;
+export const MAX_AGENTS_PER_CALL = 16;
 
 export type BuiltinTool = (typeof BUILTIN_TOOLS)[number];
 export type InheritSession = "none" | "fork";

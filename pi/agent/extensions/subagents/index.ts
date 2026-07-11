@@ -1,6 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   buildSpawnAgentsParams,
+  DEFAULT_MAX_CONCURRENCY,
+  MAX_AGENTS_PER_CALL,
   type AgentDefinition,
   type SpawnAgentItem,
   type SpawnAgentsParams,
@@ -12,8 +14,15 @@ import {
 } from "./activity.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import { formatSpawnFailure, spawnSubagent } from "./spawn.ts";
+
+export const _spawnSubagent = { fn: spawnSubagent };
 import { loadAgents } from "./loader.ts";
 import { getActivity, renderAgentsCall, renderAgentsResult } from "./render.ts";
+import {
+  loadSubagentsConfig,
+  registerSubagentsConfigCommand,
+} from "./config.ts";
+import { createConcurrencyGate, type ConcurrencyGate } from "./pool.ts";
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
 
@@ -76,6 +85,11 @@ export function validateSpawnAgentSpecs(
   agentMap: Map<string, AgentDefinition>,
 ): string[] {
   const errors: string[] = [];
+  if (specs.length > MAX_AGENTS_PER_CALL) {
+    errors.push(
+      `agents must contain at most ${MAX_AGENTS_PER_CALL} agents (received ${specs.length})`,
+    );
+  }
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
     if (!spec.intent.trim()) {
@@ -158,7 +172,7 @@ async function runSpawn(
     onUpdate,
   });
 
-  const result = await spawnSubagent({
+  const result = await _spawnSubagent.fn({
     prompt,
     toolAllowlist: agent.tools,
     extensionAllowlist: agent.extensions,
@@ -202,13 +216,14 @@ async function runSpawn(
   };
 }
 
-async function runParallelSpawn(
+export async function runParallelSpawn(
   pi: ExtensionAPI,
   specs: SpawnAgentItem[],
   agentMap: Map<string, AgentDefinition>,
   ctx: SpawnCtx,
   toolCallId: string,
-  onUpdate?: OnUpdate,
+  onUpdate: OnUpdate | undefined,
+  gate: ConcurrencyGate,
 ): Promise<{
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
@@ -226,7 +241,7 @@ async function runParallelSpawn(
   const states: SubagentRunState[] = specs.map((s) => ({
     intent: s.intent,
     agentType: s.agent,
-    phase: "starting",
+    phase: "queued",
     recentEvents: [],
     toolUseCount: 0,
     totalTokens: 0,
@@ -241,48 +256,74 @@ async function runParallelSpawn(
     });
   }
 
+  emitCombined();
+
+  function cancelledBeforeLaunch(i: number) {
+    const errorMessage = "Subagent cancelled before launch";
+    states[i] = {
+      ...states[i],
+      phase: "aborted",
+      resolved: true,
+      errorMessage,
+      lastUpdateAt: Date.now(),
+    };
+    emitCombined();
+    return {
+      content: text(`Error: ${errorMessage}`),
+      details: { exitCode: null, aborted: true },
+    };
+  }
+
   const results = await Promise.all(
     specs.map(async (spec, i) => {
-      const agent = agentMap.get(spec.agent);
-      if (!agent) {
-        states[i].resolved = true;
-        emitCombined();
-        return {
-          content: text(`Error: unknown agent type "${spec.agent}"`),
-          details: { exitCode: 1, aborted: false },
-        };
-      }
-      const result = await runSpawn(
-        pi,
-        agent,
-        normalizeIntent(spec.intent),
-        spec.prompt,
-        ctx,
-        `${toolCallId}:${i}`,
-        (event) => {
-          const activity = getActivity(event.details);
-          if (activity) {
-            activity.agentType = spec.agent;
-            states[i] = activity;
-          }
+      const release = await gate.acquire(ctx.signal);
+      if (!release) return cancelledBeforeLaunch(i);
+
+      try {
+        if (ctx.signal?.aborted) return cancelledBeforeLaunch(i);
+        const agent = agentMap.get(spec.agent);
+        if (!agent) {
+          states[i].resolved = true;
           emitCombined();
-        },
-      );
-      const finalActivity = getActivity(result.details);
-      if (finalActivity) {
-        finalActivity.agentType = spec.agent;
-        states[i] = finalActivity;
+          return {
+            content: text(`Error: unknown agent type "${spec.agent}"`),
+            details: { exitCode: 1, aborted: false },
+          };
+        }
+        const result = await runSpawn(
+          pi,
+          agent,
+          normalizeIntent(spec.intent),
+          spec.prompt,
+          ctx,
+          `${toolCallId}:${i}`,
+          (event) => {
+            const activity = getActivity(event.details);
+            if (activity) {
+              activity.agentType = spec.agent;
+              states[i] = activity;
+            }
+            emitCombined();
+          },
+        );
+        const finalActivity = getActivity(result.details);
+        if (finalActivity) {
+          finalActivity.agentType = spec.agent;
+          states[i] = finalActivity;
+        }
+        states[i].resolved = true;
+        const errorText = result.content[0]?.text;
+        if (errorText?.startsWith("Error:")) {
+          states[i].errorMessage = errorText;
+        }
+        if (typeof result.details.logFile === "string") {
+          states[i].logFile = result.details.logFile;
+        }
+        emitCombined();
+        return result;
+      } finally {
+        release();
       }
-      states[i].resolved = true;
-      const errorText = result.content[0]?.text;
-      if (errorText?.startsWith("Error:")) {
-        states[i].errorMessage = errorText;
-      }
-      if (typeof result.details.logFile === "string") {
-        states[i].logFile = result.details.logFile;
-      }
-      emitCombined();
-      return result;
     }),
   );
 
@@ -320,6 +361,9 @@ export default function (pi: ExtensionAPI) {
   const agents = loadAgents();
   const agentMap = new Map(agents.map((a) => [a.name, a]));
   const agentDescription = buildAgentDescription(agents);
+  const directGate = createConcurrencyGate(DEFAULT_MAX_CONCURRENCY);
+
+  registerSubagentsConfigCommand(pi);
 
   pi.on("before_agent_start", async (event: { systemPrompt: string }) => {
     return {
@@ -340,6 +384,12 @@ export default function (pi: ExtensionAPI) {
       onUpdate,
       ctx,
     ) {
+      const warnings: string[] = [];
+      const config = await loadSubagentsConfig(ctx.cwd, warnings);
+      directGate.setLimit(config.maxConcurrency);
+      if (ctx.hasUI) {
+        for (const warning of warnings) ctx.ui.notify(warning, "warning");
+      }
       return await runParallelSpawn(
         pi,
         params.agents,
@@ -354,6 +404,7 @@ export default function (pi: ExtensionAPI) {
         },
         toolCallId,
         onUpdate,
+        directGate,
       );
     },
     renderCall(args, theme, context) {
