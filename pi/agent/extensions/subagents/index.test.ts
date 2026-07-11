@@ -1,6 +1,14 @@
 import { mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { THRESHOLD_CHARS } from "../_shared/spillover.ts";
@@ -14,7 +22,11 @@ import {
   validateSpawnAgentSpecs,
 } from "./index.ts";
 import { createConcurrencyGate } from "./pool.ts";
-import type { AgentDefinition, SpawnAgentItem } from "./types.ts";
+import {
+  buildSpawnAgentsParams,
+  type AgentDefinition,
+  type SpawnAgentItem,
+} from "./types.ts";
 
 // ─── normalizeIntent ─────────────────────────────────────────────────────────
 
@@ -77,13 +89,14 @@ test("buildDelegationGuidance: includes triggers, exclusions, and agent list", (
 
 // ─── validateSpawnAgentSpecs ────────────────────────────────────────────────
 
-test("validateSpawnAgentSpecs: reports all invalid agents before spawn", () => {
-  const errors = validateSpawnAgentSpecs(
+test("validateSpawnAgentSpecs: reports all invalid agents before spawn", async () => {
+  const errors = await validateSpawnAgentSpecs(
     [
       { agent: "explorer", intent: "   ", prompt: "Inspect files" },
       { agent: "missing", intent: "reviewer", prompt: "Review change" },
     ],
     new Map([["explorer", agent("explorer", "Read-only research")]]),
+    process.cwd(),
   );
 
   assert.deepEqual(errors, [
@@ -92,10 +105,11 @@ test("validateSpawnAgentSpecs: reports all invalid agents before spawn", () => {
   ]);
 });
 
-test("validateSpawnAgentSpecs: accepts known agents with non-empty intents", () => {
-  const errors = validateSpawnAgentSpecs(
+test("validateSpawnAgentSpecs: accepts known agents with non-empty intents", async () => {
+  const errors = await validateSpawnAgentSpecs(
     [{ agent: "explorer", intent: " inspect ", prompt: "Inspect files" }],
     new Map([["explorer", agent("explorer", "Read-only research")]]),
+    process.cwd(),
   );
 
   assert.deepEqual(errors, []);
@@ -150,6 +164,205 @@ async function flush(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
+
+test("validateSpawnAgentSpecs collects thinking, file, and schema errors", async () => {
+  const root = await mkdtemp(join(tmpdir(), "subagent-validation-"));
+  const directory = join(root, "directory");
+  const unreadable = join(root, "unreadable.txt");
+  try {
+    await mkdir(directory);
+    await writeFile(unreadable, "secret");
+    await chmod(unreadable, 0o000);
+    const errors = await validateSpawnAgentSpecs(
+      [
+        {
+          agent: "explorer",
+          intent: "validate",
+          prompt: "inspect",
+          thinking: "extreme",
+          files: ["", "missing.txt", directory, unreadable],
+          output_schema: { type: ["string", "null"], minimum: 1 },
+        } as any,
+      ],
+      new Map([["explorer", agent("explorer", "Read-only research")]]),
+      root,
+    );
+    const joined = errors.join("\n");
+    assert.match(joined, /agents\[0\]\.thinking/);
+    assert.match(joined, /agents\[0\]\.files\[0\].*non-empty/);
+    assert.match(joined, /agents\[0\]\.files\[1\].*readable regular file/);
+    assert.match(joined, /agents\[0\]\.files\[2\].*regular file/);
+    assert.match(joined, /agents\[0\]\.files\[3\].*readable regular file/);
+    assert.match(joined, /agents\[0\]\.output_schema\.type/);
+    assert.match(joined, /agents\[0\]\.output_schema\.minimum/);
+  } finally {
+    await chmod(unreadable, 0o600).catch(() => {});
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("validateSpawnAgentSpecs accepts relative, absolute, and symlinked readable files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "subagent-files-"));
+  const relative = "relative.txt";
+  const absolute = join(root, "absolute.txt");
+  const link = join(root, "link.txt");
+  try {
+    await writeFile(join(root, relative), "relative");
+    await writeFile(absolute, "absolute");
+    await symlink(absolute, link);
+    const errors = await validateSpawnAgentSpecs(
+      [
+        {
+          agent: "explorer",
+          intent: "files",
+          prompt: "inspect",
+          files: [relative, absolute, link],
+          output_schema: { type: "object", properties: {} },
+        } as any,
+      ],
+      new Map([["explorer", agent("explorer", "Read-only research")]]),
+      root,
+    );
+    assert.deepEqual(errors, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("validateSpawnAgentSpecs rejects non-object output schemas", async () => {
+  const errors = await validateSpawnAgentSpecs(
+    [
+      {
+        agent: "explorer",
+        intent: "schema",
+        prompt: "inspect",
+        output_schema: null,
+      } as any,
+    ],
+    new Map([["explorer", agent("explorer", "Read-only research")]]),
+    process.cwd(),
+  );
+  assert.match(
+    errors.join("\n"),
+    /agents\[0\]\.output_schema must be an object/,
+  );
+});
+
+test("spawn_agents schema exposes controlled item options but not model", () => {
+  const schema = buildSpawnAgentsParams("agent") as any;
+  const itemProperties = schema.properties.agents.items.properties;
+  assert.ok(itemProperties.thinking);
+  assert.ok(itemProperties.files);
+  assert.ok(itemProperties.output_schema);
+  assert.equal(itemProperties.model, undefined);
+  assert.match(
+    itemProperties.files.description,
+    /selected model.*retained logs/i,
+  );
+});
+
+test("runParallelSpawn passes thinking, files, and output schema to the engine", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "subagent-pass-through-"));
+  const file = join(root, "context.txt");
+  let invocation: any;
+  const stub = mock.method(_spawnSubagent, "fn", async (value: any) => {
+    invocation = value;
+    return successfulOutcome("done");
+  });
+  t.after(async () => {
+    stub.mock.restore();
+    await rm(root, { recursive: true, force: true });
+  });
+  await writeFile(file, "context");
+  const explorer = agent("explorer", "Read-only research");
+  explorer.thinking = "low";
+
+  await runParallelSpawn(
+    spawnPi(),
+    [
+      {
+        agent: "explorer",
+        intent: "options",
+        prompt: "inspect",
+        thinking: "xhigh",
+        files: [file],
+        output_schema: { type: "string" },
+      } as any,
+    ],
+    new Map([[explorer.name, explorer]]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(1),
+  );
+
+  assert.equal(invocation.thinking, "xhigh");
+  assert.deepEqual(invocation.files, [file]);
+  assert.deepEqual(invocation.output, { schema: { type: "string" } });
+});
+
+test("thinking omission preserves agent and parent fallbacks", async (t) => {
+  const invocations: any[] = [];
+  const stub = mock.method(_spawnSubagent, "fn", async (value: any) => {
+    invocations.push(value);
+    return successfulOutcome("done");
+  });
+  t.after(() => stub.mock.restore());
+  const defined = agent("defined", "Defined thinking");
+  defined.thinking = "high";
+  const inherited = agent("inherited", "Parent thinking");
+
+  await runParallelSpawn(
+    { getThinkingLevel: () => "medium" } as any,
+    [
+      { agent: "defined", intent: "defined", prompt: "one" },
+      { agent: "inherited", intent: "inherited", prompt: "two" },
+    ],
+    new Map([
+      [defined.name, defined],
+      [inherited.name, inherited],
+    ]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(2),
+  );
+
+  assert.equal(invocations[0].thinking, "high");
+  assert.equal(invocations[1].thinking, "medium");
+});
+
+test("unsupported output schema rejects the whole batch before spawn", async (t) => {
+  const stub = mock.method(_spawnSubagent, "fn", async () =>
+    successfulOutcome("unexpected"),
+  );
+  t.after(() => stub.mock.restore());
+  const explorer = agent("explorer", "Read-only research");
+  const result = await runParallelSpawn(
+    spawnPi(),
+    [
+      { agent: "explorer", intent: "valid", prompt: "one" },
+      {
+        agent: "explorer",
+        intent: "invalid",
+        prompt: "two",
+        output_schema: {
+          anyOf: [{ type: "string" }],
+          type: ["string", "null"],
+        },
+      } as any,
+    ],
+    new Map([[explorer.name, explorer]]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(2),
+  );
+  assert.equal(stub.mock.callCount(), 0);
+  assert.equal(result.details.validationError, true);
+  assert.match(result.content[0]!.text, /agents\[1\]\.output_schema\.anyOf/);
+  assert.match(result.content[0]!.text, /agents\[1\]\.output_schema\.type/);
+});
 
 test("runParallelSpawn rejects 17 items atomically", async (t) => {
   const stub = mock.method(_spawnSubagent, "fn", async () =>

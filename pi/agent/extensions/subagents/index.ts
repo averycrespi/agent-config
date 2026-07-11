@@ -1,8 +1,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { access, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { resolve } from "node:path";
 import {
   buildSpawnAgentsParams,
   DEFAULT_MAX_CONCURRENCY,
   MAX_AGENTS_PER_CALL,
+  THINKING_LEVELS,
   type AgentDefinition,
   type SpawnAgentItem,
   type SpawnAgentsParams,
@@ -23,6 +27,7 @@ import {
   registerSubagentsConfigCommand,
 } from "./config.ts";
 import { createConcurrencyGate, type ConcurrencyGate } from "./pool.ts";
+import { validateOutputSchema } from "./schema.ts";
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
 
@@ -80,10 +85,11 @@ Do not delegate when:
 Pass all independent agents in one spawn_agents call — they execute in parallel. A single-agent call is correct for one isolated task. Brief each agent like a colleague who just arrived: include the goal, paths/artifacts, criteria, constraints, and expected output. Available agent types: ${agentList}.`;
 }
 
-export function validateSpawnAgentSpecs(
+export async function validateSpawnAgentSpecs(
   specs: SpawnAgentItem[],
   agentMap: Map<string, AgentDefinition>,
-): string[] {
+  cwd: string,
+): Promise<string[]> {
   const errors: string[] = [];
   if (specs.length > MAX_AGENTS_PER_CALL) {
     errors.push(
@@ -98,6 +104,42 @@ export function validateSpawnAgentSpecs(
     if (!agentMap.has(spec.agent)) {
       errors.push(
         `agents[${i}].agent "${spec.agent}" is not a known agent type`,
+      );
+    }
+    if (
+      spec.thinking !== undefined &&
+      !(THINKING_LEVELS as readonly string[]).includes(spec.thinking)
+    ) {
+      errors.push(
+        `agents[${i}].thinking must be one of: ${THINKING_LEVELS.join(", ")}`,
+      );
+    }
+    for (let j = 0; j < (spec.files?.length ?? 0); j += 1) {
+      const file = spec.files![j]!;
+      if (!file.trim()) {
+        errors.push(`agents[${i}].files[${j}] must be non-empty`);
+        continue;
+      }
+      const absolutePath = resolve(cwd, file);
+      try {
+        const metadata = await stat(absolutePath);
+        if (!metadata.isFile()) {
+          errors.push(`agents[${i}].files[${j}] must name a regular file`);
+          continue;
+        }
+        await access(absolutePath, constants.R_OK);
+      } catch {
+        errors.push(
+          `agents[${i}].files[${j}] must name a readable regular file`,
+        );
+      }
+    }
+    if (spec.output_schema !== undefined) {
+      errors.push(
+        ...validateOutputSchema(
+          spec.output_schema,
+          `agents[${i}].output_schema`,
+        ),
       );
     }
   }
@@ -147,8 +189,7 @@ export async function spillSubagentOutput(
 async function runSpawn(
   pi: ExtensionAPI,
   agent: AgentDefinition,
-  intent: string,
-  prompt: string,
+  spec: SpawnAgentItem,
   ctx: SpawnCtx,
   toolCallId: string,
   onUpdate?: OnUpdate,
@@ -156,6 +197,7 @@ async function runSpawn(
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
 }> {
+  const intent = normalizeIntent(spec.intent);
   const tracker: SubagentActivityTracker = createSubagentActivityTracker({
     toolCallId,
     roleLabel:
@@ -173,16 +215,21 @@ async function runSpawn(
   });
 
   const result = await _spawnSubagent.fn({
-    prompt,
+    prompt: spec.prompt,
     toolAllowlist: agent.tools,
     extensionAllowlist: agent.extensions,
+    files: spec.files,
     model: agent.model ?? modelSelectorFromCtx(ctx),
-    thinking: agent.thinking ?? thinkingLevelFromPi(pi),
+    thinking: spec.thinking ?? agent.thinking ?? thinkingLevelFromPi(pi),
     systemPrompt: agent.systemPrompt,
     inheritSession: "none",
     parentSessionFile: ctx.sessionManager.getSessionFile(),
     disableSkills: agent.disableSkills,
     disablePromptTemplates: agent.disablePromptTemplates,
+    output:
+      spec.output_schema !== undefined
+        ? { schema: spec.output_schema }
+        : undefined,
     logId: toolCallId,
     cwd: ctx.cwd,
     env: agent.env,
@@ -228,7 +275,11 @@ export async function runParallelSpawn(
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
 }> {
-  const validationErrors = validateSpawnAgentSpecs(specs, agentMap);
+  const validationErrors = await validateSpawnAgentSpecs(
+    specs,
+    agentMap,
+    ctx.cwd,
+  );
   if (validationErrors.length > 0) {
     return {
       content: text(
@@ -293,8 +344,7 @@ export async function runParallelSpawn(
         const result = await runSpawn(
           pi,
           agent,
-          normalizeIntent(spec.intent),
-          spec.prompt,
+          spec,
           ctx,
           `${toolCallId}:${i}`,
           (event) => {

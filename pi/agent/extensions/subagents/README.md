@@ -12,12 +12,17 @@ Launch one or more subagents through a bounded concurrency queue. Each runs inde
 
 **Parameters:**
 
-| Parameter         | Type   | Required | Description                                                             |
-| ----------------- | ------ | -------- | ----------------------------------------------------------------------- |
-| `agents`          | array  | yes      | List of agents to run concurrently (minimum 1)                          |
-| `agents[].agent`  | string | yes      | Agent type: `explorer`, `reviewer`, `scout`, `researcher`, or `analyst` |
-| `agents[].intent` | string | yes      | Short label shown in activity titles (3–6 words)                        |
-| `agents[].prompt` | string | yes      | Full task — brief the agent like a colleague who just walked in         |
+| Parameter                | Type     | Required | Description                                                                                     |
+| ------------------------ | -------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `agents`                 | array    | yes      | List of agents to run concurrently (minimum 1, maximum 16)                                      |
+| `agents[].agent`         | string   | yes      | Agent type: `explorer`, `reviewer`, `scout`, `researcher`, or `analyst`                         |
+| `agents[].intent`        | string   | yes      | Short label shown in activity titles (3–6 words)                                                |
+| `agents[].prompt`        | string   | yes      | Full task — brief the agent like a colleague who just walked in                                 |
+| `agents[].thinking`      | string   | no       | `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`; overrides agent and parent thinking      |
+| `agents[].files`         | string[] | no       | Readable regular files attached to this child using Pi's native `@file` handling                |
+| `agents[].output_schema` | object   | no       | Supported JSON Schema subset that activates the existing validated structured-output child path |
+
+Per-item model selection is intentionally unavailable. Agent definitions continue to own model selection, with the parent model used when an agent definition omits it.
 
 Agent types are loaded dynamically from `~/.pi/agent/agents/*.md` at startup. The built-in types are defined in `pi/agent/agents/` in this repo and symlinked via `make stow`. Custom agents can be added by dropping additional `.md` files in that directory — no code changes required.
 
@@ -45,7 +50,25 @@ Use subagents for read-mostly work that would otherwise expand the main context,
 
 Do not delegate when the task requires editing files, a deterministic command would answer faster, the work needs unstated conversation context, or the steps are tightly sequential. Put all independent branches in one `spawn_agents` call so they run concurrently; use a single-agent call for one isolated task.
 
-**Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
+### File attachments
+
+Relative file paths resolve from the tool's current working directory; absolute paths are retained. Preflight follows symlinks and accepts any readable regular file, including files outside the workspace. It does not impose attachment-count, byte-size, or content-type limits. Pi owns native `@file` formatting, attachment sizing, and context-window behavior; the extension does not read or inline file contents.
+
+Attached file contents are sent to the selected model/provider. They may also appear in child tool/model output, retained failure logs, or combined spillover files. Only attach data appropriate for those destinations.
+
+### Supported output schemas
+
+`output_schema` accepts a deliberately narrow, recursively validated JSON Schema subset:
+
+- optional single-string `type`: `null`, `boolean`, `object`, `array`, `number`, `integer`, or `string` (type arrays are unsupported);
+- non-empty `enum` arrays and `const` values containing JSON scalars only;
+- string `title` and `description` annotations;
+- for objects, unique-string `required`, recursively validated `properties`, and boolean `additionalProperties`; `additionalProperties: false` requires `properties`;
+- for arrays, one recursively validated `items` schema.
+
+Unknown keywords, structural keywords on the wrong type, malformed nested definitions, and non-JSON values are rejected atomically before any child launches. `$ref`, composition/conditional keywords, tuple items, nullable type arrays, and numeric or string bounds are not supported. Omit `output_schema` for normal prose behavior.
+
+**Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, including a structured-output contract failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
 
 ## UI behavior
 
@@ -96,12 +119,12 @@ Subagent types remain configured by markdown files with YAML frontmatter; see [A
 
 Each child process writes raw stdout and stderr to a managed temp log while it runs. Successful subagent logs are deleted after the process exits. Failed or aborted subagents retain their log under `${tmpdir()}/pi-extension-logs/subagents/`, and the path is shown in the tool result and activity rendering.
 
-Retained logs may contain raw subagent output, tool results, command output, and stderr. Spillover files may contain the full raw combined subagent response. Do not treat these artifacts as sanitized output. Managed logs and spillover files are written with owner-only permissions and old files are cleaned up lazily by the shared helpers.
+Retained logs may contain raw subagent output, tool results, command output, structured values, attached file contents echoed through model/tool output, and stderr. Spillover files may contain the full raw combined subagent response. Do not treat these artifacts as sanitized output. Managed logs and spillover files are written with owner-only permissions and old files are cleaned up lazily by the shared helpers.
 
 ## Notes
 
 - `intent` is required for every agent and drives activity titles — keep it short and descriptive
-- Requests are prevalidated before spawning; blank intents, unknown agent types, or batches over 16 return one recoverable tool error and no subagents are launched
+- Requests are prevalidated before spawning; blank intents, unknown agent types, invalid thinking levels, invalid files, unsupported schemas, or batches over 16 return one recoverable tool error and no subagents are launched
 - Each subagent starts with a fresh context; session inheritance is not supported through the tool
 - Built-in agents load `extra-context` so user-configured context files are available in child Pi processes
 - `reviewer`, `scout`, `researcher`, and `analyst` require the `mcp-broker` extension to be installed and discoverable. `scout` and `researcher` additionally require `web-access`

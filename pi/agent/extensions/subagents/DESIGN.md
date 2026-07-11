@@ -7,6 +7,7 @@
 - `index.ts` registers `spawn_agents`, injects delegation guidance into the system prompt, loads agent definitions, validates requests, schedules direct runs, combines results, and applies output spillover.
 - `config.ts` parses the global/env-only direct concurrency setting and registers `/subagents-config`.
 - `pool.ts` owns the extension-internal resizable FIFO concurrency gate.
+- `schema.ts` recursively validates the public tool's deliberately narrow JSON Schema subset.
 - `loader.ts` discovers markdown agent definitions and parses their frontmatter into `AgentDefinition` objects.
 - `spawn.ts` builds child Pi CLI arguments, resolves extensions, enforces recursion depth, spawns `pi --mode json`, streams JSONL events, extracts the final assistant message, handles aborts, and manages logs/spillover.
 - `activity.ts` tracks live per-agent progress from child JSONL events and clears UI activity when complete.
@@ -31,14 +32,16 @@ README owns the user-facing version of the same policy. Keep `AGENTS.md` at the 
 
 ## Spawn lifecycle
 
-Each `spawn_agents` call validates all requested specs before launching. Validation failures, including batches over the fixed 16-item ceiling, return one recoverable tool error and launch no children. Valid specs retain index-aligned `Promise.all` fan-in, but each launch first acquires one extension-owned FIFO gate. The gate defaults to four active direct children, is configured from global settings or `SUBAGENTS_MAX_CONCURRENCY`, and is hard-clamped to 16. Project settings are intentionally ignored because overlapping calls from different cwd values share the same gate. Configuration is reloaded and the gate resized before each direct execution.
+Each `spawn_agents` call validates all requested specs before launching. Preflight collects blank intents, unknown agents, invalid thinking overrides, invalid file attachments, unsupported schemas, and batches over the fixed 16-item ceiling into one recoverable error and launches no children. File checks resolve relative paths from `ctx.cwd`, follow symlinks, and require readable regular files; workspace containment, attachment count, size, and content type are deliberately not policy boundaries. The normal filesystem check/use race is accepted because Pi remains authoritative when consuming native `@file` arguments.
+
+Valid specs retain index-aligned `Promise.all` fan-in, but each launch first acquires one extension-owned FIFO gate. The gate defaults to four active direct children, is configured from global settings or `SUBAGENTS_MAX_CONCURRENCY`, and is hard-clamped to 16. Project settings are intentionally ignored because overlapping calls from different cwd values share the same gate. Configuration is reloaded and the gate resized before each direct execution.
 
 For each agent:
 
 1. Wait in the queued activity state and acquire direct-child capacity.
 2. Resolve the already-prevalidated agent definition.
 3. Create an activity tracker.
-4. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, system prompt, env, cwd, parent session file, and abort signal.
+4. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, native file arguments, optional structured schema, system prompt, env, cwd, parent session file, and abort signal.
 5. Feed child JSONL events into the tracker.
 6. Format success or failure into that agent's result section.
 7. Finalize activity, clear UI hooks, and release capacity exactly once.
@@ -64,7 +67,9 @@ Child stdout is Pi JSONL. `spawn.ts` ignores session events for activity, forwar
 
 ## Structured output
 
-Structured output is a programmatic API feature, not part of the public `spawn_agents` tool schema. When `SpawnInvocation.output` is set, `spawn.ts` writes a temporary schema file, loads the generic `structured-output` extension in the child Pi invocation, appends system-prompt instructions requiring `structured_output` as the final action, and passes the schema file through `PI_STRUCTURED_OUTPUT_SCHEMA_FILE`.
+Structured output remains default-off, but the public tool can opt in per item through `output_schema`. `schema.ts` protects the engine boundary by recursively rejecting unsupported types, keywords, misplaced structural constraints, malformed definitions, non-scalar enum/const values, and non-JSON data before any child launches. The accepted subset intentionally excludes type arrays, references, composition and conditionals, bounds, and tuple items. The programmatic `SpawnInvocation.output` API remains unchanged and is not restricted by this public preflight layer.
+
+When `SpawnInvocation.output` is set, `spawn.ts` writes a temporary schema file, loads the generic `structured-output` extension in the child Pi invocation, appends system-prompt instructions requiring `structured_output` as the final action, and passes the schema file through `PI_STRUCTURED_OUTPUT_SCHEMA_FILE`.
 
 The parent captures the tool's `tool_execution_end` event from JSON mode and stores `result.details.value`. A successful child process is converted to a failed `SpawnOutcome` if the output tool was not called, returned an error, omitted `details.value`, or failed parent-side validation. This keeps structured output as a hard phase boundary for workflow fan-in while preserving `stdout` as diagnostic fallback text.
 
@@ -102,6 +107,8 @@ Both individual `stdout`/`stderr` fields and combined tool output can spill to t
 
 - Workflows reuse the child-process engine and activity tracker through `api.ts`, but retain their worker-side scheduler and policy; the direct gate does not control workflow concurrency.
 - No per-agent concurrency policy; the gate is shared across direct calls.
+- No raw model override in the public tool; agent definitions retain model ownership.
+- No extension-side file inlining or workspace-only attachment policy; Pi owns native attachment formatting and context limits.
 - No subagent session inheritance through the `spawn_agents` tool.
 - No automatic merging of subagent decisions into workspace changes.
 - No parallel write coordination; built-in agents are read-mostly by tool boundary and read-only by prompt convention.

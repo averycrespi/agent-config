@@ -1,4 +1,5 @@
-import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 
 export const BUILTIN_TOOLS = [
   "read",
@@ -14,8 +15,17 @@ export const MAX_SUBAGENT_DEPTH = 5;
 export const DEFAULT_MAX_CONCURRENCY = 4;
 export const MAX_CONCURRENCY_CEILING = 16;
 export const MAX_AGENTS_PER_CALL = 16;
+export const THINKING_LEVELS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
 
 export type BuiltinTool = (typeof BUILTIN_TOOLS)[number];
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export type InheritSession = "none" | "fork";
 export type SubagentPhase = string;
 
@@ -36,6 +46,9 @@ export interface SpawnAgentItem {
   agent: string;
   intent: string;
   prompt: string;
+  thinking?: ThinkingLevel;
+  files?: string[];
+  output_schema?: Record<string, unknown>;
 }
 
 export interface SpawnAgentsParams {
@@ -76,6 +89,24 @@ export function buildSpawnAgentsParams(agentDescription: string) {
           description: "Short label for this agent",
         }),
         prompt: Type.String({ description: "Task for this agent" }),
+        thinking: Type.Optional(
+          StringEnum(THINKING_LEVELS, {
+            description:
+              "Thinking level override for this item; otherwise uses the agent definition or parent level",
+          }),
+        ),
+        files: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Readable regular files attached with native @file handling. Contents are sent to the selected model/provider and may appear in retained logs or spillover output.",
+          }),
+        ),
+        output_schema: Type.Optional(
+          Type.Record(Type.String(), Type.Unknown(), {
+            description:
+              "Supported JSON Schema subset for a validated machine-readable result",
+          }),
+        ),
       }),
       { minItems: 1, description: "Agents to run in parallel" },
     ),
