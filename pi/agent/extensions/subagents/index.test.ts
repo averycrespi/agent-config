@@ -364,6 +364,182 @@ test("unsupported output schema rejects the whole batch before spawn", async (t)
   assert.match(result.content[0]!.text, /agents\[1\]\.output_schema\.type/);
 });
 
+test("structured successes render JSON and preserve null in envelopes", async (t) => {
+  const outcomes = [
+    {
+      ...successfulOutcome("diagnostic prose"),
+      structured: { ok: true, value: { answer: 42 } },
+    },
+    {
+      ...successfulOutcome("diagnostic null"),
+      structured: { ok: true, value: null },
+    },
+  ];
+  const stub = mock.method(_spawnSubagent, "fn", async () => outcomes.shift()!);
+  t.after(() => stub.mock.restore());
+  const explorer = agent("explorer", "Read-only research");
+  const result = await runParallelSpawn(
+    spawnPi(),
+    [
+      {
+        agent: "explorer",
+        intent: "object",
+        prompt: "one",
+        output_schema: { type: "object", properties: {} },
+      },
+      {
+        agent: "explorer",
+        intent: "null",
+        prompt: "two",
+        output_schema: { type: "null" },
+      },
+    ],
+    new Map([[explorer.name, explorer]]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(2),
+  );
+
+  assert.match(result.content[0]!.text, /```json\n\{\n  "answer": 42\n\}\n```/);
+  assert.match(result.content[0]!.text, /```json\nnull\n```/);
+  assert.deepEqual(result.details.structured, [
+    { requested: true, ok: true, value: { answer: 42 } },
+    { requested: true, ok: true, value: null },
+  ]);
+  assert.equal(result.details.failed, 0);
+  assert.equal(result.details.allOk, true);
+});
+
+test("structured contract failures with zero exit codes fail the aggregate", async (t) => {
+  const codes = [
+    "structured_output_not_called",
+    "structured_output_malformed",
+    "structured_output_incomplete",
+    "structured_output_invalid",
+    "structured_output_tool_error",
+  ];
+  const stub = mock.method(_spawnSubagent, "fn", async () => {
+    const code = codes.shift()!;
+    return {
+      ok: false,
+      aborted: false,
+      stdout: "diagnostic",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      errorMessage: `structured failure: ${code}`,
+      structured: { ok: false, code, errors: [code] },
+    } as any;
+  });
+  t.after(() => stub.mock.restore());
+  const explorer = agent("explorer", "Read-only research");
+  const result = await runParallelSpawn(
+    spawnPi(),
+    Array.from({ length: 5 }, (_, index) => ({
+      agent: "explorer",
+      intent: `failure ${index}`,
+      prompt: `failure ${index}`,
+      output_schema: { type: "string" },
+    })),
+    new Map([[explorer.name, explorer]]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(5),
+  );
+
+  assert.equal(result.details.failed, 5);
+  assert.equal(result.details.allOk, false);
+  const structured = result.details.structured as Array<any>;
+  assert.equal(structured.length, 5);
+  assert.ok(
+    structured.every(
+      (entry) =>
+        entry.requested === true &&
+        entry.ok === false &&
+        /structured failure/.test(entry.error),
+    ),
+  );
+});
+
+test("mixed prose and structured results retain input-aligned envelopes", async (t) => {
+  const outcomes = [
+    successfulOutcome("plain result"),
+    {
+      ...successfulOutcome("structured diagnostic"),
+      structured: { ok: true, value: "value" },
+    },
+    {
+      ok: false,
+      aborted: false,
+      stdout: "partial",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+      errorMessage: "contract failed",
+      structured: { ok: false, errors: ["contract failed"] },
+    },
+  ];
+  const stub = mock.method(_spawnSubagent, "fn", async () => outcomes.shift()!);
+  t.after(() => stub.mock.restore());
+  const explorer = agent("explorer", "Read-only research");
+  const result = await runParallelSpawn(
+    spawnPi(),
+    [
+      { agent: "explorer", intent: "prose", prompt: "one" },
+      {
+        agent: "explorer",
+        intent: "success",
+        prompt: "two",
+        output_schema: { type: "string" },
+      },
+      {
+        agent: "explorer",
+        intent: "failure",
+        prompt: "three",
+        output_schema: { type: "string" },
+      },
+    ],
+    new Map([[explorer.name, explorer]]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(3),
+  );
+
+  assert.match(result.content[0]!.text, /## explorer · prose\n\nplain result/);
+  assert.deepEqual(result.details.structured, [
+    { requested: false },
+    { requested: true, ok: true, value: "value" },
+    { requested: true, ok: false, error: "contract failed" },
+  ]);
+  assert.equal(result.details.failed, 1);
+});
+
+test("prose-only batches preserve section bodies and omit structured details", async (t) => {
+  const stub = mock.method(_spawnSubagent, "fn", async () =>
+    successfulOutcome("unchanged prose"),
+  );
+  t.after(() => stub.mock.restore());
+  const explorer = agent("explorer", "Read-only research");
+  const result = await runParallelSpawn(
+    spawnPi(),
+    [{ agent: "explorer", intent: "prose", prompt: "one" }],
+    new Map([[explorer.name, explorer]]),
+    spawnContext(),
+    "call",
+    undefined,
+    createConcurrencyGate(1),
+  );
+
+  assert.equal(
+    result.content[0]!.text,
+    "## explorer · prose\n\nunchanged prose",
+  );
+  assert.equal("structured" in result.details, false);
+});
+
 test("runParallelSpawn rejects 17 items atomically", async (t) => {
   const stub = mock.method(_spawnSubagent, "fn", async () =>
     successfulOutcome("unexpected"),
@@ -511,7 +687,9 @@ test("cancellation preserves completed output and aborts queued items without la
 
   const resultPromise = runParallelSpawn(
     spawnPi(),
-    specs(4),
+    specs(4).map((spec, index) =>
+      index === 3 ? { ...spec, output_schema: { type: "string" } } : spec,
+    ),
     new Map([[explorer.name, explorer]]),
     spawnContext(controller.signal),
     "call",
@@ -532,6 +710,13 @@ test("cancellation preserves completed output and aborts queued items without la
 
   assert.equal(launches, 2);
   assert.match(result.content[0]!.text, /completed output/);
+  assert.equal(result.details.failed, 3);
+  assert.equal(result.details.allOk, false);
+  assert.deepEqual((result.details.structured as Array<any>)[3], {
+    requested: true,
+    ok: false,
+    error: "Subagent cancelled before launch",
+  });
   const states = result.details.agents as Array<any>;
   assert.equal(states[0].phase, "done");
   assert.equal(states[1].phase, "aborted");

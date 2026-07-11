@@ -243,6 +243,8 @@ async function runSpawn(
     return {
       content: text(formatSpawnFailure(result)),
       details: {
+        ok: false,
+        structuredError: result.errorMessage ?? formatSpawnFailure(result),
         aborted: result.aborted,
         exitCode: result.exitCode,
         signal: result.signal,
@@ -254,9 +256,24 @@ async function runSpawn(
     };
   }
 
+  if (spec.output_schema !== undefined && result.structured?.ok) {
+    return {
+      content: text(
+        `\`\`\`json\n${JSON.stringify(result.structured.value, null, 2)}\n\`\`\``,
+      ),
+      details: {
+        ok: true,
+        exitCode: result.exitCode,
+        structuredValue: result.structured.value,
+        activity: tracker.state,
+      },
+    };
+  }
+
   return {
     content: text(result.stdout),
     details: {
+      ok: true,
       exitCode: result.exitCode,
       activity: tracker.state,
     },
@@ -321,7 +338,12 @@ export async function runParallelSpawn(
     emitCombined();
     return {
       content: text(`Error: ${errorMessage}`),
-      details: { exitCode: null, aborted: true },
+      details: {
+        ok: false,
+        exitCode: null,
+        aborted: true,
+        structuredError: errorMessage,
+      },
     };
   }
 
@@ -338,7 +360,12 @@ export async function runParallelSpawn(
           emitCombined();
           return {
             content: text(`Error: unknown agent type "${spec.agent}"`),
-            details: { exitCode: 1, aborted: false },
+            details: {
+              ok: false,
+              exitCode: 1,
+              aborted: false,
+              structuredError: `Unknown agent type: ${spec.agent}`,
+            },
           };
         }
         const result = await runSpawn(
@@ -377,10 +404,27 @@ export async function runParallelSpawn(
     }),
   );
 
-  const failed = results.filter((r) => {
-    const ec = r.details.exitCode;
-    return (typeof ec === "number" && ec !== 0) || r.details.aborted === true;
-  }).length;
+  const failed = results.filter((result) => result.details.ok === false).length;
+
+  const structured = specs.some((spec) => spec.output_schema !== undefined)
+    ? results.map((result, index) => {
+        if (specs[index]!.output_schema === undefined) {
+          return { requested: false } as const;
+        }
+        if (result.details.ok === true && "structuredValue" in result.details) {
+          return {
+            requested: true,
+            ok: true,
+            value: result.details.structuredValue,
+          } as const;
+        }
+        const error =
+          typeof result.details.structuredError === "string"
+            ? result.details.structuredError
+            : (result.content[0]?.text ?? "Structured subagent failed");
+        return { requested: true, ok: false, error } as const;
+      })
+    : undefined;
 
   const parts = results.map((r, i) => {
     const header = `## ${specs[i].agent} · ${specs[i].intent}`;
@@ -400,6 +444,7 @@ export async function runParallelSpawn(
       total: specs.length,
       failed,
       allOk: failed === 0,
+      ...(structured ? { structured } : {}),
       ...spilled.details,
     },
   };

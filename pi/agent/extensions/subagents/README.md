@@ -68,7 +68,19 @@ Attached file contents are sent to the selected model/provider. They may also ap
 
 Unknown keywords, structural keywords on the wrong type, malformed nested definitions, and non-JSON values are rejected atomically before any child launches. `$ref`, composition/conditional keywords, tuple items, nullable type arrays, and numeric or string bounds are not supported. Omit `output_schema` for normal prose behavior.
 
-**Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. On failure, including a structured-output contract failure, the agent's section contains a formatted error including exit code and stderr. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
+**Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. Prose-only section bodies are unchanged. A structured success renders the validated value as fenced, formatted JSON. On failure, including a structured-output contract failure, the agent's section contains a formatted error including available process diagnostics. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
+
+When any item requests `output_schema`, `details.structured` is an input-aligned array:
+
+```json
+[
+  { "requested": false },
+  { "requested": true, "ok": true, "value": null },
+  { "requested": true, "ok": false, "error": "contract failed" }
+]
+```
+
+The envelope distinguishes prose items, successful JSON values (including `null`), and failed contracts. Missing or malformed structured tool calls, incomplete calls, tool errors, schema-invalid values, process failures, and cancellation use the failed envelope. These failures increment aggregate `failed` and make `allOk` false even when the child process exited zero. Prose-only batches omit `details.structured` entirely.
 
 ## UI behavior
 

@@ -71,7 +71,9 @@ Structured output remains default-off, but the public tool can opt in per item t
 
 When `SpawnInvocation.output` is set, `spawn.ts` writes a temporary schema file, loads the generic `structured-output` extension in the child Pi invocation, appends system-prompt instructions requiring `structured_output` as the final action, and passes the schema file through `PI_STRUCTURED_OUTPUT_SCHEMA_FILE`.
 
-The parent captures the tool's `tool_execution_end` event from JSON mode and stores `result.details.value`. A successful child process is converted to a failed `SpawnOutcome` if the output tool was not called, returned an error, omitted `details.value`, or failed parent-side validation. This keeps structured output as a hard phase boundary for workflow fan-in while preserving `stdout` as diagnostic fallback text.
+The parent captures the tool's `tool_execution_end` event from JSON mode and stores `result.details.value`. A successful child process is converted to a failed `SpawnOutcome` if the output tool was not called, returned an error, omitted `details.value`, or failed parent-side validation. `index.ts` trusts that engine outcome rather than revalidating values: internal item results carry explicit `details.ok`, structured successes render as fenced JSON, and aggregate failure counts use `details.ok` instead of exit-code heuristics.
+
+If any direct item requested a schema, fan-in adds an input-aligned `details.structured` discriminated envelope. Unrequested items use `{ requested: false }`; successes include `{ requested: true, ok: true, value }`, preserving JSON `null`; contract, process, and cancellation failures include `{ requested: true, ok: false, error }`. Prose-only batches omit the field and preserve their visible section bodies. This keeps structured output as a hard phase boundary for direct and workflow fan-in while preserving child `stdout` as diagnostic fallback text.
 
 Temporary schema files are created under the system temp directory with owner-only permissions and removed after the child process exits. Retained failure logs may still include raw structured values because logs contain child JSON events.
 
