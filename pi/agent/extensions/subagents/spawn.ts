@@ -85,6 +85,7 @@ export interface SpawnOutcome {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
   errorMessage?: string;
+  errorCode?: "provider_error" | "provider_schema_rejected";
   logFile?: string;
   structured?: StructuredOutputResult;
 }
@@ -223,7 +224,14 @@ function captureStructuredOutput(
   capture.value = (details as { value?: unknown }).value;
 }
 
-function terminalAssistantError(message: unknown): string | null | undefined {
+type ProviderFailure = {
+  message: string;
+  code: "provider_error" | "provider_schema_rejected";
+};
+
+function terminalAssistantError(
+  message: unknown,
+): ProviderFailure | null | undefined {
   if (!message || typeof message !== "object") return undefined;
   const record = message as {
     role?: unknown;
@@ -232,9 +240,16 @@ function terminalAssistantError(message: unknown): string | null | undefined {
   };
   if (record.role !== "assistant") return undefined;
   if (record.stopReason !== "error") return null;
-  return typeof record.errorMessage === "string" && record.errorMessage.trim()
-    ? record.errorMessage
-    : "subagent provider error";
+  const errorMessage =
+    typeof record.errorMessage === "string" && record.errorMessage.trim()
+      ? record.errorMessage
+      : "subagent provider error";
+  return {
+    message: errorMessage,
+    code: /invalid schema for function/i.test(errorMessage)
+      ? "provider_schema_rejected"
+      : "provider_error",
+  };
 }
 
 function reduceJsonLine(
@@ -242,7 +257,7 @@ function reduceJsonLine(
   onEvent: ((event: unknown) => void) | undefined,
   currentText: string,
   structuredCapture?: StructuredCapture,
-  onTerminalError?: (message: string | undefined) => void,
+  onTerminalError?: (failure: ProviderFailure | undefined) => void,
 ): string {
   const line = rawLine.trim();
   if (!line) return currentText;
@@ -498,7 +513,7 @@ async function runSpawn(
         }
       : undefined;
     let sawAgentEnd = false;
-    let terminalError: string | undefined;
+    let terminalError: ProviderFailure | undefined;
     let child: ReturnType<typeof _nodeSpawn> | undefined;
     let killTimer: NodeJS.Timeout | undefined;
     let postAgentEndTimer: NodeJS.Timeout | undefined;
@@ -547,7 +562,8 @@ async function runSpawn(
                   stderr: stderrBuffer,
                   exitCode: 0,
                   signal: null,
-                  errorMessage: terminalError,
+                  errorMessage: terminalError?.message,
+                  errorCode: terminalError?.code,
                 },
                 output,
                 structuredCapture,
@@ -606,8 +622,8 @@ async function runSpawn(
           onChildEvent,
           finalText,
           structuredCapture,
-          (message) => {
-            terminalError = message;
+          (failure) => {
+            terminalError = failure;
           },
         );
         newlineIndex = stdoutBuffer.indexOf("\n");
@@ -636,8 +652,8 @@ async function runSpawn(
           onChildEvent,
           finalText,
           structuredCapture,
-          (message) => {
-            terminalError = message;
+          (failure) => {
+            terminalError = failure;
           },
         );
         stdoutBuffer = "";
@@ -655,8 +671,9 @@ async function runSpawn(
             signal: sig,
             errorMessage: ok
               ? undefined
-              : (terminalError ??
+              : (terminalError?.message ??
                 `subagent exited with code ${code ?? "unknown"}`),
+            errorCode: terminalError?.code,
           },
           output,
           structuredCapture,

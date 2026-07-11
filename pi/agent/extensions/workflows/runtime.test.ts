@@ -261,6 +261,35 @@ test("agent retries retryable failures when requested", async () => {
   assert.deepEqual(prompts, ["flaky", "flaky"]);
 });
 
+test("agent retries skip permanent provider schema rejections", async () => {
+  let calls = 0;
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([
+        () => agent("invalid schema", { retries: 2 }),
+      ]);
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async () => {
+        calls += 1;
+        return {
+          ok: false,
+          text: null,
+          error: "provider rejected tool schema",
+          errorCode: "provider_schema_rejected",
+        } as any;
+      },
+    },
+  );
+
+  assert.equal(calls, 1);
+  assert.equal(
+    (result.result as any)[0].error.code,
+    "provider_schema_rejected",
+  );
+});
+
 test("runtime previews cyclic workflow results safely", async () => {
   const updates: any[] = [];
   const result = await runWorkflow(

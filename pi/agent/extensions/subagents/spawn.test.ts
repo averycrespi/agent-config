@@ -768,6 +768,7 @@ test("spawnSubagent: provider errors fail structured runs instead of becoming no
 
     assert.equal(result.ok, false);
     assert.equal(result.structured, undefined);
+    assert.equal(result.errorCode, "provider_schema_rejected");
     assert.equal(
       result.errorMessage,
       "Invalid schema for function 'structured_output'",
@@ -882,6 +883,7 @@ test("spawnSubagent: provider errors fail prose runs after agent_end", async () 
     });
 
     assert.equal(result.ok, false);
+    assert.equal(result.errorCode, "provider_error");
     assert.equal(result.errorMessage, "provider unavailable");
   } finally {
     spawnStub.mock.restore();

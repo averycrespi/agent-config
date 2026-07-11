@@ -63,7 +63,7 @@ Combined output is a Markdown document with one `## <agent> · <intent>` section
 
 The tool interface uses `inheritSession: "none"` so every subagent starts with a fresh context. Session inheritance is reserved for the programmatic API and must have an explicit parent session file.
 
-Child stdout is Pi JSONL. `spawn.ts` ignores session events for activity, forwards other events to callbacks, extracts final text from `message_end` or the last assistant message in `agent_end`, and captures structured output from the generic `structured_output` tool when requested. An unrecovered final assistant message with `stopReason: "error"` makes the outcome fail with its provider error even when the Pi subprocess exits zero or remains alive briefly after `agent_end`; a later successful assistant message clears an earlier transient error. stderr is recorded and surfaced as activity events.
+Child stdout is Pi JSONL. `spawn.ts` ignores session events for activity, forwards other events to callbacks, extracts final text from `message_end` or the last assistant message in `agent_end`, and captures structured output from the generic `structured_output` tool when requested. An unrecovered final assistant message with `stopReason: "error"` makes the outcome fail with its provider error even when the Pi subprocess exits zero or remains alive briefly after `agent_end`; a later successful assistant message clears an earlier transient error. Provider tool-schema rejections use `provider_schema_rejected`, while other provider failures use `provider_error`, allowing workflow retries to skip permanent schema failures without suppressing retries for transient provider errors. stderr is recorded and surfaced as activity events.
 
 ## Structured output
 

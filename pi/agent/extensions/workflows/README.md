@@ -149,7 +149,7 @@ The extension does not keep a workflow run database. Progress logs and per-subag
 - `workflow must call agent()`: include a syntactic `agent(...)` call in the script.
 - `agent type ... is not allowed`: use one of the read-mostly built-in agents listed above.
 - `workflow worker exited`: check for a thrown script error, infinite loop, or cancellation.
-- Branch failures inside `parallelSettled()` include stable `error.code` values. Retryable subagent failures can be retried with `agent(prompt, { retries: 1 })`; policy rejections and aborts are not retried.
+- Branch failures inside `parallelSettled()` include stable `error.code` values. Retryable subagent failures can be retried with `agent(prompt, { retries: 1 })`; policy rejections, timeouts, aborts, and permanent provider tool-schema rejections are not retried. Other provider failures remain retryable.
 
 ## Prior art
 

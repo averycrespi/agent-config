@@ -37,6 +37,8 @@ export type WorkflowErrorCode =
   | "agent_spawn_exception"
   | "subagent_failed"
   | "subagent_aborted"
+  | "provider_error"
+  | "provider_schema_rejected"
   | "structured_output_not_called"
   | "structured_output_incomplete"
   | "structured_output_tool_error"

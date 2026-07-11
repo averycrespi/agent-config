@@ -125,6 +125,7 @@ function isRetryableAgentFailure(response: WorkflowAgentResponse): boolean {
     "workflow_aborted",
     "workflow_timeout",
     "agent_timeout",
+    "provider_schema_rejected",
   ]).has(response.errorCode ?? "subagent_failed");
 }
 
@@ -544,7 +545,7 @@ export function createWorkflowAgentSpawner(
     refreshActivity();
     const code: WorkflowErrorCode = outcome.aborted
       ? "subagent_aborted"
-      : (outcome.structured?.code ?? "subagent_failed");
+      : (outcome.errorCode ?? outcome.structured?.code ?? "subagent_failed");
     return {
       ok: false,
       text: null,
