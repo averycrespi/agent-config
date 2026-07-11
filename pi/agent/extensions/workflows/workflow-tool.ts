@@ -45,7 +45,8 @@ function formatFinal(result: Awaited<ReturnType<typeof runWorkflow>>): string {
   const body = safeStringify(result.result);
   return [
     `Workflow ${result.meta.name} completed in ${(result.durationMs / 1000).toFixed(1)}s.`,
-    `Failures: ${result.failureCount}`,
+    `Agent failures: ${result.agentFailureCount}`,
+    `Branch failures: ${result.loggedBranchFailureCount} logged, ${result.settledBranchFailureCount} settled`,
     "",
     body ?? "null",
   ].join("\n");
@@ -148,7 +149,9 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           details: {
             meta: result.meta,
             durationMs: result.durationMs,
-            failureCount: result.failureCount,
+            agentFailureCount: result.agentFailureCount,
+            loggedBranchFailureCount: result.loggedBranchFailureCount,
+            settledBranchFailureCount: result.settledBranchFailureCount,
             agents: [...agentStates.values()],
             phases: result.phases,
             logs: result.logs,

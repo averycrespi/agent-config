@@ -58,7 +58,7 @@ Notable `SpawnInvocation` fields:
 - `env` — extra environment variables merged into the child process; `PI_SUBAGENT_DEPTH` is always set by the spawner and overrides any caller-provided value
 - `output` — optional `StructuredOutputSpec` for machine-readable results. When present, the spawner writes a temporary schema file, loads the generic `structured-output` extension in the child process, instructs the child to call `structured_output` as the final action, captures the tool result from Pi JSON events, and validates it before returning.
 
-`SpawnOutcome` reports whether the spawn succeeded and includes the final `stdout`, `stderr`, exit metadata, optional `errorMessage` / `logFile`, and optional `structured` result when `output` was requested.
+`SpawnOutcome` reports whether the spawn succeeded and includes the final `stdout`, `stderr`, exit metadata, optional `errorMessage` / `logFile`, and optional `structured` result when `output` was requested. An unrecovered final assistant JSON event with `stopReason: "error"` produces a failed outcome with the provider's error message even if the child process exits zero. A later successful assistant message clears an earlier transient provider error.
 
 ### Structured output
 
@@ -98,7 +98,7 @@ interface StructuredOutputResult {
 }
 ```
 
-If structured output is requested and the child does not call `structured_output`, the child tool errors, or the captured value fails parent-side validation, `SpawnOutcome.ok` is `false` and `structured.ok` is `false`. `stdout` is still preserved as diagnostic fallback text.
+If structured output is requested and the child does not call `structured_output`, the child tool errors, or the captured value fails parent-side validation, `SpawnOutcome.ok` is `false` and `structured.ok` is `false`. Provider/process failures can fail the outcome before a structured contract is evaluated, in which case `structured` may be absent. `stdout` is still preserved as diagnostic fallback text.
 
 ### `formatSpawnFailure(outcome: SpawnOutcome): string`
 

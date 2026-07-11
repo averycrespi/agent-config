@@ -82,7 +82,9 @@ export interface WorkflowSnapshot {
   phases: string[];
   logs: WorkflowLogEntry[];
   agents: WorkflowAgentState[];
-  failureCount: number;
+  agentFailureCount: number;
+  loggedBranchFailureCount: number;
+  settledBranchFailureCount: number;
   startedAt: number;
   finishedAt?: number;
   resultPreview?: string;
@@ -96,7 +98,9 @@ export interface WorkflowRunResult {
   logs: WorkflowLogEntry[];
   agents: WorkflowAgentState[];
   phases: string[];
-  failureCount: number;
+  agentFailureCount: number;
+  loggedBranchFailureCount: number;
+  settledBranchFailureCount: number;
   durationMs: number;
 }
 

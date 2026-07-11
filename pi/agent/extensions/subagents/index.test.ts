@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { THRESHOLD_CHARS } from "../_shared/spillover.ts";
 import {
   buildAgentDescription,
+  createSubagentsConfigReloader,
   _spawnSubagent,
   buildDelegationGuidance,
   normalizeIntent,
@@ -73,6 +74,26 @@ test("buildAgentDescription: non-empty list enumerates name and description", ()
 
 // ─── buildDelegationGuidance ────────────────────────────────────────────────
 
+test("config reload ignores older reads that finish after newer reads", async () => {
+  const first = deferred<{ maxConcurrency: number }>();
+  const second = deferred<{ maxConcurrency: number }>();
+  let calls = 0;
+  const applied: number[] = [];
+  const reload = createSubagentsConfigReloader(
+    { setLimit: (limit: number) => applied.push(limit) },
+    async () => (++calls === 1 ? first.promise : second.promise),
+  );
+
+  const older = reload("/older", []);
+  const newer = reload("/newer", []);
+  second.resolve({ maxConcurrency: 2 });
+  await newer;
+  first.resolve({ maxConcurrency: 8 });
+  await older;
+
+  assert.deepEqual(applied, [2]);
+});
+
 test("buildDelegationGuidance: includes triggers, exclusions, and agent list", () => {
   const text = buildDelegationGuidance([
     agent("explorer", "Read-only repo exploration"),
@@ -107,6 +128,27 @@ test("validateSpawnAgentSpecs: reports all invalid agents before spawn", async (
   assert.deepEqual(errors, [
     "agents[0].intent is required",
     'agents[1].agent "missing" is not a known agent type',
+  ]);
+});
+
+test("validateSpawnAgentSpecs: oversized batches stop before item preflight", async () => {
+  const oversized = specs(17);
+  oversized[0] = {
+    agent: "missing",
+    intent: " ",
+    prompt: "must not inspect",
+    files: ["/definitely/missing"],
+    output_schema: { type: "string", minLength: 1 },
+  };
+
+  const errors = await validateSpawnAgentSpecs(
+    oversized,
+    new Map([["explorer", agent("explorer", "Read-only research")]]),
+    process.cwd(),
+  );
+
+  assert.deepEqual(errors, [
+    "agents must contain at most 16 agents (received 17)",
   ]);
 });
 

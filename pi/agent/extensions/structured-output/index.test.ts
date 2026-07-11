@@ -117,6 +117,53 @@ test("extension registers structured_output when schema file is configured", asy
   }
 });
 
+test("extension wraps non-object root schemas for provider tools and unwraps values", async () => {
+  const schemasAndValues: Array<[Record<string, unknown>, unknown]> = [
+    [{ type: "null" }, null],
+    [{ type: "boolean" }, true],
+    [{ type: "number" }, 1.5],
+    [{ type: "integer" }, 2],
+    [{ type: "string" }, "done"],
+    [{ type: "array", items: { type: "string" } }, ["done"]],
+    [{}, { arbitrary: true }],
+  ];
+
+  for (const [schema, value] of schemasAndValues) {
+    const root = join(
+      tmpdir(),
+      `structured-output-envelope-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const agentDir = join(root, "agent");
+    const cwd = join(root, "project");
+    const schemaFile = join(root, "schema.json");
+    await mkdir(join(cwd, ".pi"), { recursive: true });
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(schemaFile, JSON.stringify(schema));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE = schemaFile;
+
+    try {
+      const harness = makePi();
+      structuredOutputExtension(harness.pi as any);
+      await harness.emit("session_start", { cwd });
+
+      assert.equal(harness.tools[0].parameters.type, "object");
+      assert.deepEqual(harness.tools[0].parameters.required, ["value"]);
+      assert.deepEqual(
+        JSON.parse(
+          JSON.stringify(harness.tools[0].parameters.properties.value),
+        ),
+        schema,
+      );
+      assert.equal(harness.tools[0].parameters.additionalProperties, false);
+      const result = await harness.tools[0].execute("tool-1", { value });
+      assert.deepEqual(result.details, { value });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test("extension skips invalid schema files", async () => {
   const root = join(
     tmpdir(),

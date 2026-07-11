@@ -252,7 +252,9 @@ export async function runWorkflow(
   const logs: WorkflowLogEntry[] = [];
   const agents: WorkflowAgentState[] = [];
   const phases: string[] = [];
-  let failureCount = 0;
+  let agentFailureCount = 0;
+  let loggedBranchFailureCount = 0;
+  let settledBranchFailureCount = 0;
   let currentPhase: string | undefined;
   let result: unknown;
   let finished = false;
@@ -267,7 +269,9 @@ export async function runWorkflow(
     phases,
     logs,
     agents,
-    failureCount,
+    agentFailureCount,
+    loggedBranchFailureCount,
+    settledBranchFailureCount,
     startedAt,
     ...(finished
       ? { finishedAt: Date.now(), resultPreview: preview(result) }
@@ -307,7 +311,10 @@ export async function runWorkflow(
             message: String(event.message ?? ""),
             timestamp: Date.now(),
           });
-          if (event.level === "error") failureCount += 1;
+          emit(snapshot(), options.onUpdate);
+        } else if (event.type === "branch-failure") {
+          if (event.settled === true) settledBranchFailureCount += 1;
+          else loggedBranchFailureCount += 1;
           emit(snapshot(), options.onUpdate);
         } else if (event.type === "phase") {
           currentPhase = String(event.name ?? "").trim();
@@ -350,6 +357,7 @@ export async function runWorkflow(
             options.spawnAgent,
             agentTimeoutMs,
           ).then((response) => {
+            if (!response.ok) agentFailureCount += 1;
             try {
               worker.postMessage({
                 type: "agent-response",
@@ -398,7 +406,9 @@ export async function runWorkflow(
     logs,
     agents,
     phases,
-    failureCount,
+    agentFailureCount,
+    loggedBranchFailureCount,
+    settledBranchFailureCount,
     durationMs,
   };
 }

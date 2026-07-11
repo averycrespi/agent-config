@@ -167,7 +167,9 @@ test("parallel aggregates branch failures as null and logs them", async () => {
     },
   );
   assert.deepEqual(result.result, ["ok", null]);
-  assert.equal(result.failureCount, 1);
+  assert.equal(result.agentFailureCount, 1);
+  assert.equal(result.loggedBranchFailureCount, 1);
+  assert.equal(result.settledBranchFailureCount, 0);
   assert.match(result.logs.at(-1)?.message ?? "", /boom/);
 });
 
@@ -189,7 +191,9 @@ test("runtime converts rejected spawn promises into agent failures", async () =>
   );
 
   assert.deepEqual(result.result, ["ok", null]);
-  assert.equal(result.failureCount, 1);
+  assert.equal(result.agentFailureCount, 1);
+  assert.equal(result.loggedBranchFailureCount, 1);
+  assert.equal(result.settledBranchFailureCount, 0);
   assert.match(result.logs.at(-1)?.message ?? "", /spawn exploded/);
 });
 
@@ -225,7 +229,9 @@ test("parallelSettled preserves branch failure codes", async () => {
       },
     },
   ]);
-  assert.equal(result.failureCount, 0);
+  assert.equal(result.agentFailureCount, 1);
+  assert.equal(result.loggedBranchFailureCount, 0);
+  assert.equal(result.settledBranchFailureCount, 1);
 });
 
 test("agent retries retryable failures when requested", async () => {

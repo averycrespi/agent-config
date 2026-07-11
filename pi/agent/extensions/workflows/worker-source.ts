@@ -95,6 +95,7 @@ async function runParallel(thunks, options, settle) {
       }
       catch (error) {
         const serialized = serializeError(error);
+        post({ type: "branch-failure", settled: settle });
         if (settle) results[index] = { ok: false, error: serialized };
         else { post({ type: "log", level: "error", message: serialized.message }); results[index] = null; }
       }

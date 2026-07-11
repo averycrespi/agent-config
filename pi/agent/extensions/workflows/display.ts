@@ -14,20 +14,28 @@ export function formatWorkflowResult(details: unknown, text: string): string {
     | {
         meta?: { name?: string };
         durationMs?: number;
-        failureCount?: number;
+        agentFailureCount?: number;
+        loggedBranchFailureCount?: number;
+        settledBranchFailureCount?: number;
         spilled?: boolean;
       }
     | undefined;
   const name = info?.meta?.name ? ` ${info.meta.name}` : "";
-  const failures = info?.failureCount
-    ? `, ${info.failureCount} failure${info.failureCount === 1 ? "" : "s"}`
+  const agentFailures = info?.agentFailureCount
+    ? `, ${info.agentFailureCount} agent failure${info.agentFailureCount === 1 ? "" : "s"}`
+    : "";
+  const branchFailures =
+    (info?.loggedBranchFailureCount ?? 0) +
+    (info?.settledBranchFailureCount ?? 0);
+  const branches = branchFailures
+    ? `, ${branchFailures} branch failure${branchFailures === 1 ? "" : "s"}`
     : "";
   const duration =
     typeof info?.durationMs === "number"
       ? ` in ${formatDuration(info.durationMs)}`
       : "";
   const first = text.trim().split("\n").find(Boolean);
-  return `✓ workflow${name}${duration}${failures}${first ? ` — ${first.slice(0, 80)}` : ""}`;
+  return `✓ workflow${name}${duration}${agentFailures}${branches}${first ? ` — ${first.slice(0, 80)}` : ""}`;
 }
 
 function countAgents(snapshot: WorkflowSnapshot): {
@@ -54,15 +62,23 @@ function workflowHeader(
   );
   const name = snapshot.meta?.name ?? "workflow";
   const { running, done, failed } = countAgents(snapshot);
-  const counts =
-    snapshot.agents.length > 0
-      ? options.final
-        ? ` · ${done} done · ${failed} failed`
-        : ` · ${done} done · ${running} running · ${failed} failed`
-      : "";
+  const agentFailures = snapshot.agentFailureCount ?? failed;
+  const hasCounts = snapshot.agents.length > 0 || agentFailures > 0;
+  let counts = hasCounts
+    ? options.final
+      ? ` · ${done} done · ${agentFailures} agent${agentFailures === 1 ? "" : "s"} failed`
+      : ` · ${done} done · ${running} running · ${agentFailures} agent${agentFailures === 1 ? "" : "s"} failed`
+    : "";
+  const logged = snapshot.loggedBranchFailureCount ?? 0;
+  const settled = snapshot.settledBranchFailureCount ?? 0;
+  if (logged > 0) {
+    counts += ` · ${logged} logged branch failure${logged === 1 ? "" : "s"}`;
+  }
+  if (settled > 0) {
+    counts += ` · ${settled} settled branch failure${settled === 1 ? "" : "s"}`;
+  }
   if (options.final) {
-    const status = failed > 0 ? "failed" : "✓";
-    return `${theme.bold("Workflow")}: ${name} ${status} · ${elapsed}${counts}`;
+    return `${theme.bold("Workflow")}: ${name} ✓ · ${elapsed}${counts}`;
   }
   const phase = snapshot.phase ? ` · ${snapshot.phase}` : "";
   return `${theme.bold("Workflow")}: ${name}${phase}${counts} · ${elapsed}`;
@@ -147,7 +163,7 @@ export function renderWorkflowResult(
     return new Text(theme.fg("error", text.split("\n")[0]), 0, 0);
 
   const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
-  if (snapshot?.agents?.length) {
+  if (snapshot) {
     return getTruncatedText(
       context.lastComponent,
       renderSnapshot(snapshot, theme, { final: true }),

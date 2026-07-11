@@ -52,6 +52,14 @@ function createStructuredOutputTool(
   schema: JsonSchema,
   config: StructuredOutputConfig,
 ) {
+  const wrapped = schema.type !== "object";
+  const parameters = wrapped
+    ? Type.Object(
+        { value: Type.Unsafe(schema) },
+        { additionalProperties: false },
+      )
+    : Type.Unsafe(schema);
+
   return {
     name: STRUCTURED_OUTPUT_TOOL_NAME,
     label: "Structured Output",
@@ -59,8 +67,9 @@ function createStructuredOutputTool(
       "Return a final schema-backed machine-readable answer. Use this as your last action when structured output is required.",
     promptSnippet:
       "Emit a final structured answer as a terminating tool result",
-    parameters: Type.Unsafe(schema),
+    parameters,
     async execute(_toolCallId: string, params: unknown) {
+      const value = wrapped ? (params as { value: unknown }).value : params;
       return {
         content: [
           {
@@ -68,7 +77,7 @@ function createStructuredOutputTool(
             text: "Structured output captured",
           },
         ],
-        details: { value: params },
+        details: { value },
         terminate: config.terminate,
       };
     },

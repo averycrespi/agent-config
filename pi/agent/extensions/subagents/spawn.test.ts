@@ -727,6 +727,171 @@ test("spawnSubagent: spills oversized final stdout", async () => {
   }
 });
 
+test("spawnSubagent: provider errors fail structured runs instead of becoming not-called", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage: "Invalid schema for function 'structured_output'",
+          },
+        })}\n`,
+      );
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+      output: { schema: { type: "null" } },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.structured, undefined);
+    assert.equal(
+      result.errorMessage,
+      "Invalid schema for function 'structured_output'",
+    );
+  } finally {
+    spawnStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
+test("spawnSubagent: a later successful assistant message clears a retried provider error", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage: "temporary provider error",
+          },
+        })}\n${JSON.stringify({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "recovered" }],
+            stopReason: "stop",
+          },
+        })}\n`,
+      );
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.stdout, "recovered");
+  } finally {
+    spawnStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
+test("spawnSubagent: provider errors fail prose runs after agent_end", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+
+  const timerStub = mock.method(_timers, "setTimeout", ((
+    fn: (...args: any[]) => void,
+    ms?: number,
+  ) => {
+    if (ms === POST_AGENT_END_GRACE_MS) queueMicrotask(() => fn());
+    return { ms } as unknown as NodeJS.Timeout;
+  }) as typeof setTimeout);
+  const clearStub = mock.method(_timers, "clearTimeout", () => {});
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+    child.kill = () => true;
+
+    setImmediate(() => {
+      child.stdout.emit(
+        "data",
+        `${JSON.stringify({
+          type: "agent_end",
+          messages: [
+            {
+              role: "assistant",
+              content: [],
+              stopReason: "error",
+              errorMessage: "provider unavailable",
+            },
+          ],
+        })}\n`,
+      );
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.errorMessage, "provider unavailable");
+  } finally {
+    spawnStub.mock.restore();
+    timerStub.mock.restore();
+    clearStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
 test("spawnSubagent: resolves after agent_end if process hangs", async () => {
   const prev = process.env.PI_SUBAGENT_DEPTH;
   process.env.PI_SUBAGENT_DEPTH = "0";

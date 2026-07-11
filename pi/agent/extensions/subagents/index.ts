@@ -92,9 +92,9 @@ export async function validateSpawnAgentSpecs(
 ): Promise<string[]> {
   const errors: string[] = [];
   if (specs.length > MAX_AGENTS_PER_CALL) {
-    errors.push(
+    return [
       `agents must contain at most ${MAX_AGENTS_PER_CALL} agents (received ${specs.length})`,
-    );
+    ];
   }
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
@@ -452,11 +452,31 @@ export async function runParallelSpawn(
 
 // ─── extension entry point ────────────────────────────────────────────────────
 
+type LoadSubagentsConfig = (
+  cwd: string,
+  warnings?: string[],
+) => Promise<{ maxConcurrency: number }>;
+
+export function createSubagentsConfigReloader(
+  gate: Pick<ConcurrencyGate, "setLimit">,
+  loadConfig: LoadSubagentsConfig = loadSubagentsConfig,
+) {
+  let latestGeneration = 0;
+  return async (cwd: string, warnings: string[]): Promise<void> => {
+    const generation = ++latestGeneration;
+    const config = await loadConfig(cwd, warnings);
+    if (generation === latestGeneration) {
+      gate.setLimit(config.maxConcurrency);
+    }
+  };
+}
+
 export default function (pi: ExtensionAPI) {
   const agents = loadAgents();
   const agentMap = new Map(agents.map((a) => [a.name, a]));
   const agentDescription = buildAgentDescription(agents);
   const directGate = createConcurrencyGate(DEFAULT_MAX_CONCURRENCY);
+  const reloadConfig = createSubagentsConfigReloader(directGate);
 
   registerSubagentsConfigCommand(pi);
 
@@ -480,8 +500,7 @@ export default function (pi: ExtensionAPI) {
       ctx,
     ) {
       const warnings: string[] = [];
-      const config = await loadSubagentsConfig(ctx.cwd, warnings);
-      directGate.setLimit(config.maxConcurrency);
+      await reloadConfig(ctx.cwd, warnings);
       if (ctx.hasUI) {
         for (const warning of warnings) ctx.ui.notify(warning, "warning");
       }

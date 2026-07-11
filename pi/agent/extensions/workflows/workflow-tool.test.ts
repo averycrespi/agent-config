@@ -80,6 +80,30 @@ export async function run() {
   assert.match(result.content[0].text, /<persisted-output>/);
 });
 
+test("workflow tool reports agent, logged, and settled failures separately", async () => {
+  const harness = makePi();
+  registerWorkflowTool(harness.pi as any);
+  const script = `export const meta = { name: "counts", description: "counts" };
+export async function run() {
+  return await parallelSettled([
+    () => agent("blocked", { agent: "writer" }),
+  ]);
+}`;
+  const result = await harness.tool.execute(
+    "wf-count-test",
+    { script },
+    undefined,
+    undefined,
+    { cwd: "/tmp" },
+  );
+
+  assert.match(result.content[0].text, /Agent failures: 1/);
+  assert.match(result.content[0].text, /Branch failures: 0 logged, 1 settled/);
+  assert.equal(result.details.agentFailureCount, 1);
+  assert.equal(result.details.loggedBranchFailureCount, 0);
+  assert.equal(result.details.settledBranchFailureCount, 1);
+});
+
 test("workflow tool formats cyclic final results safely", async () => {
   const harness = makePi();
   registerWorkflowTool(harness.pi as any);
@@ -149,7 +173,9 @@ test("renderSnapshot shows compact workflow agent rows and logs", () => {
           startedAt: 1,
         },
       ],
-      failureCount: 0,
+      agentFailureCount: 0,
+      loggedBranchFailureCount: 0,
+      settledBranchFailureCount: 0,
       startedAt: Date.now(),
     },
     theme,
@@ -161,6 +187,32 @@ test("renderSnapshot shows compact workflow agent rows and logs", () => {
   assert.match(lines[3], /^● reviewer: b · initializing/);
   assert.equal(lines[4], "");
   assert.match(lines[6], /hello/);
+});
+
+test("renderSnapshot keeps completed status while showing handled failures", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const lines = renderSnapshot(
+    {
+      meta: { name: "counts", description: "Counts" },
+      phases: [],
+      logs: [],
+      agents: [],
+      agentFailureCount: 1,
+      loggedBranchFailureCount: 0,
+      settledBranchFailureCount: 1,
+      startedAt: 1,
+      finishedAt: 1001,
+    },
+    theme,
+    { final: true },
+  );
+
+  assert.match(lines[0], /^Workflow: counts ✓ · 1s/);
+  assert.match(lines[0], /1 agent failed/);
+  assert.match(lines[0], /1 settled branch failure/);
 });
 
 test("renderWorkflowResult uses one final workflow header when snapshot exists", () => {
@@ -203,7 +255,9 @@ test("renderWorkflowResult uses one final workflow header when snapshot exists",
               },
             },
           ],
-          failureCount: 0,
+          agentFailureCount: 0,
+          loggedBranchFailureCount: 0,
+          settledBranchFailureCount: 0,
           startedAt: 1,
           finishedAt: 1001,
         },
@@ -214,7 +268,7 @@ test("renderWorkflowResult uses one final workflow header when snapshot exists",
     { state: {}, invalidate() {} },
   );
   const lines = component.render(120);
-  assert.match(lines[0], /^Workflow: audit ✓ · 1s · 1 done · 0 failed$/);
+  assert.match(lines[0], /^Workflow: audit ✓ · 1s · 1 done · 0 agents failed$/);
   assert.match(lines[2], /^✓ explorer: a · 1 tool use · 1s$/);
   assert.ok(!lines.some((line) => line.startsWith("✓ workflow")));
   assert.ok(!lines.some((line) => line.includes("Workflow audit completed")));

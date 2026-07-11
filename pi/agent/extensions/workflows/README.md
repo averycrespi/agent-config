@@ -15,7 +15,7 @@ Parameters:
 | `script` | Yes      | Raw JavaScript workflow source. It must start with literal `export const meta = { name, description }`. |
 | `args`   | No       | Any JSON value exposed to the script as the `args` global.                                              |
 
-The tool returns the workflow result text. Its registered prompt guidelines are the single model-facing source for workflow selection and safety guidance; the extension does not inject a duplicate before-agent-start block. During execution, the tool UI shows the workflow phase, aggregate counts, recent `log(...)` messages, and compact one-line rows for each subagent: status, agent type, intent, stable stats, latest activity at the end, and failure log paths when available. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
+The tool returns the workflow result text. Its registered prompt guidelines are the single model-facing source for workflow selection and safety guidance; the extension does not inject a duplicate before-agent-start block. During execution, the tool UI shows the workflow phase, aggregate counts, recent `log(...)` messages, and compact one-line rows for each subagent: status, agent type, intent, stable stats, latest activity at the end, and failure log paths when available. Final text and details report agent failures separately from logged `parallel()` branch failures and settled `parallelSettled()` failures. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
 
 ## Script format
 
@@ -87,7 +87,17 @@ export async function run() {
 
 Without `output`, `agent()` keeps the original behavior and resolves to the subagent's final text. If structured output is requested but the child does not call the output tool, starts but does not finish it, returns a malformed tool result, or fails validation, the agent call fails with a structured error code such as `structured_output_not_called`, `structured_output_incomplete`, `structured_output_malformed`, or `structured_output_invalid`. Inside `parallel()`, that branch is logged and becomes `null`; inside `parallelSettled()`, the branch returns an explicit `{ ok: false, error }` record.
 
-Supported parent-side validation covers plain JSON Schema `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`. The child Pi tool still receives the full schema as its tool parameter schema.
+Supported parent-side validation covers plain JSON Schema `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`. The child extension uses explicit object-root schemas directly. Other roots are placed under an internal provider-compatible object envelope and unwrapped before the workflow receives the value, so arrays, scalars, and `null` retain their original result shape.
+
+## Failure accounting
+
+A workflow that returns normally is reported as completed even when its script deliberately handles branch errors. The final result keeps three counters distinct:
+
+- `agentFailureCount`: final failed `agent()` calls after bounded retries, including policy rejection and timeout;
+- `loggedBranchFailureCount`: failures caught by `parallel()`, logged, and replaced with `null`;
+- `settledBranchFailureCount`: failures caught and returned explicitly by `parallelSettled()`.
+
+These categories can overlap: one failed agent call inside `parallelSettled()` increments both the agent and settled-branch counters. This is intentional. The TUI uses the same completed-workflow status and labels agent and branch failures separately instead of treating handled failures as an unqualified workflow failure.
 
 ## Safety restrictions
 

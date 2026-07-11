@@ -68,6 +68,8 @@ Attached file contents are sent to the selected model/provider. They may also ap
 
 Unknown keywords, structural keywords on the wrong type, malformed nested definitions, and non-JSON values are rejected atomically before any child launches. `$ref`, composition/conditional keywords, tuple items, nullable type arrays, and numeric or string bounds are not supported. Omit `output_schema` for normal prose behavior.
 
+All accepted root types, including arrays, scalars, and `null`, are supported even when the selected provider requires function parameters to have an object root; the child extension applies and removes an internal provider envelope. Structured output still depends on the model making the required final tool call. Prefer `low` or `medium` thinking over `off` for machine-readable boundaries where tool-call reliability matters. Direct calls report missing or incomplete output as a contract failure and do not retry automatically.
+
 **Returns** a single document with each agent's result under a `## <type> · <intent>` heading, separated by `---`. Prose-only section bodies are unchanged. A structured success renders the validated value as fenced, formatted JSON. On failure, including a structured-output contract failure, the agent's section contains a formatted error including available process diagnostics. If the combined text exceeds the shared spillover threshold, the full output is written to `${tmpdir()}/pi-extension-spillover/<toolCallId>.txt` and the tool returns a short `<persisted-output>` envelope with the path and preview.
 
 When any item requests `output_schema`, `details.structured` is an input-aligned array:
@@ -80,7 +82,7 @@ When any item requests `output_schema`, `details.structured` is an input-aligned
 ]
 ```
 
-The envelope distinguishes prose items, successful JSON values (including `null`), and failed contracts. Missing or malformed structured tool calls, incomplete calls, tool errors, schema-invalid values, process failures, and cancellation use the failed envelope. These failures increment aggregate `failed` and make `allOk` false even when the child process exited zero. Prose-only batches omit `details.structured` entirely.
+The envelope distinguishes prose items, successful JSON values (including `null`), and failed contracts. Missing or malformed structured tool calls, incomplete calls, tool errors, schema-invalid values, provider/process failures, and cancellation use the failed envelope. Provider-terminal errors are surfaced directly rather than being mistaken for successful empty output or a missing structured tool call. These failures increment aggregate `failed` and make `allOk` false even when the child process exited zero. Prose-only batches omit `details.structured` entirely.
 
 ## UI behavior
 
@@ -118,7 +120,7 @@ Direct `spawn_agents` calls share one extension-wide FIFO concurrency gate. The 
 }
 ```
 
-Use `/subagents-config` to inspect the effective parsed configuration and any warnings. Changes are reloaded before each direct tool execution. This setting does not change the fixed limit of 16 agents per call and does not control workflow concurrency.
+Use `/subagents-config` to inspect the effective parsed configuration and any warnings. Changes are reloaded before each direct tool execution. When overlapping calls finish asynchronous config reads out of order, only the newest-started reload may resize the shared gate. This setting does not change the fixed limit of 16 agents per call and does not control workflow concurrency.
 
 Subagent types remain configured by markdown files with YAML frontmatter; see [Agent file format](#agent-file-format). Agent files control the tool allowlist, extensions, model, thinking level, skill/template availability, and child-process environment.
 
@@ -136,7 +138,7 @@ Retained logs may contain raw subagent output, tool results, command output, str
 ## Notes
 
 - `intent` is required for every agent and drives activity titles — keep it short and descriptive
-- Requests are prevalidated before spawning; blank intents, unknown agent types, invalid thinking levels, invalid files, unsupported schemas, or batches over 16 return one recoverable tool error and no subagents are launched
+- Requests are prevalidated before spawning; batches over 16 return the ceiling error immediately, while in-range batches collect blank intents, unknown agent types, invalid thinking levels, invalid files, and unsupported schemas into one recoverable error; no invalid batch launches subagents
 - Each subagent starts with a fresh context; session inheritance is not supported through the tool
 - Built-in agents load `extra-context` so user-configured context files are available in child Pi processes
 - `reviewer`, `scout`, `researcher`, and `analyst` require the `mcp-broker` extension to be installed and discoverable. `scout` and `researcher` additionally require `web-access`

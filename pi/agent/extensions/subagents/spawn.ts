@@ -223,11 +223,26 @@ function captureStructuredOutput(
   capture.value = (details as { value?: unknown }).value;
 }
 
+function terminalAssistantError(message: unknown): string | null | undefined {
+  if (!message || typeof message !== "object") return undefined;
+  const record = message as {
+    role?: unknown;
+    stopReason?: unknown;
+    errorMessage?: unknown;
+  };
+  if (record.role !== "assistant") return undefined;
+  if (record.stopReason !== "error") return null;
+  return typeof record.errorMessage === "string" && record.errorMessage.trim()
+    ? record.errorMessage
+    : "subagent provider error";
+}
+
 function reduceJsonLine(
   rawLine: string,
   onEvent: ((event: unknown) => void) | undefined,
   currentText: string,
   structuredCapture?: StructuredCapture,
+  onTerminalError?: (message: string | undefined) => void,
 ): string {
   const line = rawLine.trim();
   if (!line) return currentText;
@@ -240,6 +255,8 @@ function reduceJsonLine(
     captureStructuredOutput(event, structuredCapture);
 
     if (event.type === "message_end") {
+      const error = terminalAssistantError(event.message);
+      if (error !== undefined) onTerminalError?.(error ?? undefined);
       return extractTextFromMessage(event.message) || currentText;
     }
 
@@ -249,6 +266,8 @@ function reduceJsonLine(
         for (let i = messages.length - 1; i >= 0; i -= 1) {
           const message = messages[i] as { role?: unknown } | undefined;
           if (message?.role === "assistant") {
+            const error = terminalAssistantError(message);
+            if (error !== undefined) onTerminalError?.(error ?? undefined);
             const text = extractTextFromMessage(message);
             if (text) return text;
           }
@@ -479,6 +498,7 @@ async function runSpawn(
         }
       : undefined;
     let sawAgentEnd = false;
+    let terminalError: string | undefined;
     let child: ReturnType<typeof _nodeSpawn> | undefined;
     let killTimer: NodeJS.Timeout | undefined;
     let postAgentEndTimer: NodeJS.Timeout | undefined;
@@ -521,12 +541,13 @@ async function runSpawn(
             finish(
               applyStructuredContract(
                 {
-                  ok: true,
+                  ok: terminalError === undefined,
                   aborted: false,
                   stdout: finalText,
                   stderr: stderrBuffer,
                   exitCode: 0,
                   signal: null,
+                  errorMessage: terminalError,
                 },
                 output,
                 structuredCapture,
@@ -585,6 +606,9 @@ async function runSpawn(
           onChildEvent,
           finalText,
           structuredCapture,
+          (message) => {
+            terminalError = message;
+          },
         );
         newlineIndex = stdoutBuffer.indexOf("\n");
       }
@@ -612,11 +636,14 @@ async function runSpawn(
           onChildEvent,
           finalText,
           structuredCapture,
+          (message) => {
+            terminalError = message;
+          },
         );
         stdoutBuffer = "";
       }
 
-      const ok = code === 0 && !aborted;
+      const ok = code === 0 && !aborted && terminalError === undefined;
       finish(
         applyStructuredContract(
           {
@@ -628,7 +655,8 @@ async function runSpawn(
             signal: sig,
             errorMessage: ok
               ? undefined
-              : `subagent exited with code ${code ?? "unknown"}`,
+              : (terminalError ??
+                `subagent exited with code ${code ?? "unknown"}`),
           },
           output,
           structuredCapture,

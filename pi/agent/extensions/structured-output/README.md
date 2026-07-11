@@ -6,12 +6,12 @@ Generic Pi extension that registers a schema-backed final structured output tool
 
 ### `structured_output`
 
-Registered only when `schemaFile` resolves to a JSON object. The JSON object is used as the tool parameter schema.
+Registered only when `schemaFile` resolves to a JSON object. Schemas with an explicit object root are used directly as the tool parameter schema. Other roots are placed under an internal required `value` property so providers that require function parameters to have an object root can still return arrays, scalars, `null`, or values accepted by an untyped schema.
 
 The tool returns:
 
 - `content`: `Structured output captured`
-- `details.value`: the schema-validated tool parameters
+- `details.value`: the schema-validated value, with any internal provider envelope removed
 - `terminate`: the configured `terminate` value
 
 The tool name, label, description, and result details shape are fixed so other extensions can rely on a stable contract. Use the task prompt or schema property descriptions for task-specific instructions.
