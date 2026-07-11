@@ -82,7 +82,7 @@ Do not delegate when:
 - the subagent would need unstated conversation context or user-owned decisions
 - the work is tightly sequential or delegation would mostly duplicate effort
 
-Pass all independent agents in one spawn_agents call — they execute in parallel. A single-agent call is correct for one isolated task. Brief each agent like a colleague who just arrived: include the goal, paths/artifacts, criteria, constraints, and expected output. Available agent types: ${agentList}.`;
+Pass independent agents in one spawn_agents call; at most 16 agents are accepted, and a bounded queue controls execution rather than launching every item simultaneously. A single-agent call is correct for one isolated task. Per-item thinking, files, and output_schema are optional. The model remains controlled by agent definitions. Use structured schemas only when machine-readable fan-in is needed. Brief each agent like a colleague who just arrived: include the goal, paths/artifacts, criteria, constraints, and expected output. Available agent types: ${agentList}.`;
 }
 
 export async function validateSpawnAgentSpecs(

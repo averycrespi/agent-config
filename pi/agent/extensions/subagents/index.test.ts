@@ -85,6 +85,11 @@ test("buildDelegationGuidance: includes triggers, exclusions, and agent list", (
   assert.match(text, /editing files/);
   assert.match(text, /explorer: Read-only repo exploration/);
   assert.match(text, /reviewer: Read-only review/);
+  assert.match(text, /at most 16 agents/);
+  assert.match(text, /bounded queue/);
+  assert.match(text, /thinking, files, and output_schema/);
+  assert.match(text, /model.*agent definitions/);
+  assert.match(text, /structured schemas.*machine-readable fan-in/);
 });
 
 // ─── validateSpawnAgentSpecs ────────────────────────────────────────────────
