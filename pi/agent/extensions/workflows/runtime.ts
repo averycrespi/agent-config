@@ -194,8 +194,6 @@ async function spawnAttemptWithTimeout(
     return withFailureContext(await spawnAgent(request), request, phase);
   }
 
-  const controller = new AbortController();
-  const abort = () => controller.abort(request.signal?.reason ?? abortError());
   if (request.signal?.aborted) {
     const budgetAborted = isBudgetAbort(request.signal);
     return failedResponse(
@@ -205,9 +203,10 @@ async function spawnAttemptWithTimeout(
       phase,
     );
   }
-  request.signal?.addEventListener("abort", abort, { once: true });
 
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let removeAbortListener: (() => void) | undefined;
   try {
     return await new Promise<WorkflowAgentResponse>((resolve, reject) => {
       let settled = false;
@@ -217,6 +216,24 @@ async function spawnAttemptWithTimeout(
         if (timer) clearTimeout(timer);
         resolve(response);
       };
+      const abort = () => {
+        controller.abort(request.signal?.reason ?? abortError());
+        const budgetAborted = isBudgetAbort(request.signal);
+        finish(
+          failedResponse(
+            budgetAborted ? "workflow_budget_exceeded" : "workflow_aborted",
+            budgetAborted
+              ? "workflow token budget exceeded"
+              : "workflow aborted",
+            request,
+            phase,
+          ),
+        );
+      };
+      request.signal?.addEventListener("abort", abort, { once: true });
+      removeAbortListener = () =>
+        request.signal?.removeEventListener("abort", abort);
+
       timer = setTimeout(() => {
         controller.abort(new Error(agentTimeoutMessage(timeoutMs)));
         finish(
@@ -231,12 +248,16 @@ async function spawnAttemptWithTimeout(
 
       spawnAgent({ ...request, signal: controller.signal }).then(
         (response) => finish(withFailureContext(response, request, phase)),
-        reject,
+        (error) => {
+          if (settled) return;
+          settled = true;
+          reject(error);
+        },
       );
     });
   } finally {
     if (timer) clearTimeout(timer);
-    request.signal?.removeEventListener("abort", abort);
+    removeAbortListener?.();
   }
 }
 

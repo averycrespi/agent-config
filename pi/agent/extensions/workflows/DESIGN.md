@@ -1,83 +1,101 @@
 # workflows extension design
 
-The `workflows` extension owns deterministic foreground orchestration above the lower-level `subagents` process API. It should remain a narrow, safe primitive until background execution, persistence, saved scripts, and writable coordination are designed separately.
+The `workflows` extension owns deterministic foreground orchestration above the curated `subagents` process API. It keeps privileged policy, model resolution, accounting, and cancellation in the host while a separate killable worker executes minimal read-mostly workflow scripts.
 
 ## Architecture
 
-- `index.ts` registers the extension and `/workflows-config`; it does not inject a separate before-agent-start prompt.
-- `config.ts` loads the whole-workflow and per-agent timeout settings from Pi settings and environment overrides.
-- `workflow-tool.ts` defines the `workflow` tool schema and canonical prompt guidelines, validates scripts, connects runtime progress to partial updates, applies final-output spillover, loads config, and loads public subagent definitions.
-- `parser.ts` performs AST-level validation and extracts literal metadata.
-- `runtime.ts` starts the killable worker, mediates worker-to-parent RPC, tracks snapshots, and implements the narrow subagent policy wrapper.
-- `worker-source.ts` builds the worker module that exposes only workflow globals to user scripts.
-- `display.ts` provides compact width-aware call/result rendering.
-- `types.ts` contains shared runtime and snapshot types.
+- `index.ts` registers the extension and `/workflows-config`.
+- `config.ts` loads all seven timeout, concurrency, budget, and fixed-tier settings through shared precedence helpers.
+- `workflow-tool.ts` defines canonical tool guidance, creates one ledger per execution, wires host policy/runtime options, streams progress, and applies final spillover.
+- `parser.ts` performs AST guardrail validation and extracts literal metadata.
+- `ledger.ts` synchronously reserves logical calls and accounts cumulative observed tokens by request and retry attempt.
+- `runtime.ts` owns the worker RPC boundary, retries, cancellation causes, policy enforcement, model resolution, and activity tracking.
+- `worker-source.ts` exposes deterministic script globals and the advisory budget mirror.
+- `display.ts`, `safe-stringify.ts`, and `types.ts` own rendering, safe previews, and shared contracts.
 
-## Runtime boundary
+Imports from subagents must remain limited to `../subagents/api.ts`. The ledger is internal and has no persisted or cross-run state.
 
-Workflow script logic runs in a separate Node worker created from generated module source. The parent can terminate this worker on cancellation or whole-workflow timeout, which prevents runaway script loops from blocking the main Pi process. Runtime-owned cancellation also aborts the signal passed to in-flight subagent requests so child processes are not left running after the workflow boundary closes. Each `agent(...)` call also has its own timeout; if that timer fires, the runtime aborts that subagent signal and returns an `agent_timeout` failure to the worker without failing sibling branches. The worker is not the only safety layer: scripts are also parsed before execution and dangerous globals are shadowed in the generated module.
+## Runtime and security boundary
 
-Do not replace the worker with same-process `vm` execution. If the runtime changes, it must keep an explicitly killable boundary or an interpreter with equivalent cancellation guarantees.
+Workflow JavaScript runs in generated module source inside a separate Node worker. Parent cancellation or the whole-workflow timeout aborts active subagents and terminates the worker. Per-agent timeouts abort only that attempt. Token exhaustion uses a separate controller: it aborts active subagents but deliberately leaves the worker alive so `parallel()` and `parallelSettled()` can complete fan-in.
 
-## Script validation invariants
+The worker receives only `args`, `cwd`, a normalized concurrency limit, an advisory budget snapshot, and deterministic globals. It receives no filesystem, network, environment, raw configured model selector, session inheritance, or writable-agent capability. Dangerous globals are shadowed, but parser validation remains a guardrail rather than a complete JavaScript sandbox. Do not replace the worker with same-process `vm` execution unless equivalent killability is proven.
 
-`parser.ts` must continue to enforce these Phase 1 rules before worker execution:
+## Script validation
 
-- first statement is literal `export const meta = { name, description }`
-- no imports, re-exports, dynamic imports, or `require`
-- no direct filesystem/network/process/global/buffer/worker/timer APIs
-- no `Date.now`, `new Date`, or `Math.random`
-- at least one syntactic `agent()` call
+`parser.ts` enforces:
 
-Validation is a guardrail, not a complete JavaScript sandbox. Keep the worker context minimal and avoid adding new globals unless their deterministic and security implications are tested.
+- literal `export const meta = { name, description }` as the first statement;
+- no imports, re-exports, dynamic imports, `require`, direct filesystem/network/process/global/buffer/worker/timer APIs, or nondeterministic clock/random calls;
+- at least one syntactic direct `agent()` or `verify()` call.
 
-## State and progress
+`report()` is local and non-spawning, so it does not satisfy the last rule. Indirect aliases are not statically inferred.
 
-Workflow state is in-memory for one foreground tool call. Snapshots include metadata, current phase, phase history, recent logs, agent states, per-subagent activity snapshots, separate final-agent/logged-branch/settled-branch failure counts, timings, and result preview. Result previews use `safe-stringify.ts` so cyclic or otherwise unusual but structured-cloneable return values cannot turn a completed worker run into a formatting failure. `workflow-tool.ts` merges runtime snapshots with subagent state updates before sending partial tool updates.
+## State and ledger
 
-There is no persisted run database in Phase 1.
+Workflow progress is in-memory for one foreground call. Snapshots retain metadata, phases, logs, agent activity, timings, previews, and separate final-agent/logged-branch/settled-branch failure counts.
 
-## Subagents integration
+One `WorkflowRunLedger` is shared by `runWorkflow()` and `createWorkflowAgentSpawner()` for a tool execution. Its synchronous operations prevent concurrent RPC messages from oversubscribing the call cap. It tracks:
 
-The extension imports only from `../subagents/api.ts`. Phase 0 intentionally promotes `loadAgents`, `AgentDefinition`, and `BuiltinTool` so workflows does not import subagents internals.
+- a reservation set keyed by logical worker request ID;
+- latest cumulative tokens keyed by `(requestId, attempt)`;
+- independent call-cap and sticky token-threshold conditions;
+- fresh immutable snapshots and listeners.
 
-The wrapper in `createWorkflowAgentSpawner` owns policy:
+Repeated activity records for one attempt replace that attempt's previous cumulative total. Retries use distinct attempt keys and therefore add to earlier usage while reusing the same logical reservation. Disabled limits appear as `null` in snapshots even though configuration uses `0`.
 
-- default agent type is `explorer`
-- allowed agent types are `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`
-- `inheritSession` is always `"none"`
-- arbitrary `env` is not forwarded
-- cancellation signal is propagated
-- model and thinking defaults come from the parent only when the selected agent does not specify them
-- optional structured output is forwarded only as `{ output: { schema } }`
-- per-agent timeout is runtime-owned, configurable by default, and overridable per call with `timeoutMs`
-- bounded retry counts are clamped before dispatch and are applied only by runtime-owned retry logic
+The worker's lexical `budget` facade is frozen. Its accessors read a hidden snapshot replaced by parent messages. This mirror can lag streamed usage and is optimization/advice only; every authoritative reservation and cancellation remains host-side.
 
-Do not expose raw `SpawnInvocation` fields to workflow scripts.
+## Subagent and model policy
 
-When a workflow calls `agent(prompt, { output: { schema } })`, the worker sends the schema through the parent RPC, `createWorkflowAgentSpawner` passes it to `spawnSubagent()`, and `subagents` loads the generic `structured-output` child extension. Non-object roots use an internal object envelope at the provider boundary and are unwrapped before RPC fan-in. A successful structured outcome resolves the worker-side `agent()` promise to the parsed value. Text output remains the default for calls without `output`. Structured failures are ordinary agent failures with stable error codes and diagnostics; `parallel()` logs them and uses `null` for that branch, while `parallelSettled()` returns explicit failure records.
+`createWorkflowAgentSpawner()` is the read-mostly policy boundary:
 
-## Concurrency and failures
+- default type is `explorer`;
+- allowed types are `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`;
+- `inheritSession` is always `"none"`, arbitrary environment is not forwarded, and the effective signal is propagated;
+- structured output is forwarded only through the existing `{ output: { schema } }` contract;
+- retries are bounded to 0–2 and per-agent timeout remains runtime-owned.
 
-`parallel()` accepts thunks rather than already-started promises so the runtime controls concurrency. It preserves input order. A branch failure is logged and its result becomes `null`, allowing fan-in code to continue. `parallelSettled()` shares the same bounded scheduler but returns `{ ok: true, value }` or `{ ok: false, error }` records without logging those expected failures, so scripts can make explicit recovery decisions. `pipeline()` applies sequential stages per item while using `parallel()` across items.
+Policy-valid agent type and model alias checks happen before the ledger reservation. Invalid calls do not consume a logical slot. A retry calls the same spawner with the same request ID and a distinct internal attempt number.
 
-The runtime tracks three non-equivalent counters. `agentFailureCount` counts final failed agent RPCs after retries. `loggedBranchFailureCount` counts catches in `parallel()`. `settledBranchFailureCount` counts catches in `parallelSettled()`. A failed agent inside either combinator therefore appears in both the agent counter and the corresponding branch counter. A script that returns normally remains a completed workflow; renderers show the counters without changing that outcome into an unqualified workflow failure.
+The worker RPC's optional `model` remains untrusted string data. The host recognizes only `small` and `big`, resolves them from host configuration, and rejects unknown or unconfigured aliases without spawning. Resolution precedence is requested configured tier, selected agent definition model, then parent model. Raw provider/model selectors never enter worker data or responses.
 
-If a top-level script error escapes `run()`, the whole workflow tool call fails. Parent-side subagent dispatch must always answer worker RPC with either a success response or an agent failure response; unexpected `spawnAgent` rejections are converted into worker-visible agent failures instead of leaving `agent()` promises pending. Per-agent timeouts are also converted into worker-visible `agent_timeout` failures so `parallelSettled()` can preserve sibling results. Agent failure responses should carry stable `WorkflowErrorCode` values and context details. Runtime retry is deliberately bounded and skips non-retryable classes such as policy rejection, timeouts, aborts, and `provider_schema_rejected`; generic `provider_error` remains retryable because it can represent a transient outage.
+## Verification and report gates
 
-## Rendering and output
+`verify()` is worker standard-library composition over `agent()`, not a privileged RPC. It validates its claim/options, defaults to `reviewer`, constructs an evidence-oriented prompt, and requests strict `{ confirmed: boolean, reasons: string[] }` output. A valid refutation resolves `{ ok: false, reasons }`; execution and structured-output failures remain ordinary agent failures.
 
-Renderers use shared width-aware helpers. Workflows and direct `spawn_agents` calls both reuse `subagents/render.ts`'s compact per-agent progress formatter so every subagent fits on one row. Final output goes through shared spillover, so large raw workflow results are stored in a managed temp file instead of flooding the context.
+`report()` is entirely local. It awaits `gate(value)`, returns the original value only for `true` or an object with `ok === true`, and otherwise throws `workflow_report_rejected`. Plain-object reasons are normalized to string array members and attached exactly as `{ reasons }`. Exceptions thrown by a gate propagate unchanged.
 
-Subagent logs and spillover output may contain raw tool/model output. Keep documentation explicit about this behavior.
+Both failure kinds naturally compose with the existing combinators. `workflow_report_rejected` is a script/gate error, not a retry class.
+
+## Concurrency, retries, and budget enforcement
+
+The effective scheduler limit defaults to four and is hard-capped at 16 in both config normalization and direct runtime normalization. Worker `parallel()` requests are independently normalized and clamped to that effective limit.
+
+Logical-call exhaustion returns `workflow_run_cap_exceeded` only to the denied request; admitted work continues. Token exhaustion is independent and sticky. Each streamed child event first updates the activity tracker, then records its cumulative total for the current attempt. The final tracker state is recorded again after completion. On threshold transition, runtime pushes a snapshot and aborts the dedicated budget controller. New spawns and retries then fail with `workflow_budget_exceeded`.
+
+Abort cause is preserved through composed workflow/budget/per-attempt signals. An attempt is labeled `workflow_budget_exceeded` only when its effective signal was first aborted by the tagged budget reason. Earlier timeout, parent cancellation, provider failure, policy rejection, and script errors keep their original codes. A prior run-cap denial cannot suppress a later token abort of admitted work.
+
+`parallel()` logs branch failures and substitutes `null`; `parallelSettled()` returns typed records; `pipeline()` applies sequential stages per item with the same scheduler. Final failure counters preserve their prior semantics, so handled budget or report errors do not introduce a new top-level result schema.
+
+## Rendering, logging, and output
+
+`workflow-tool.ts` merges runtime snapshots with subagent activity updates. Shared width-aware renderers keep one compact row per subagent. Final output uses shared safe stringification and spillover.
+
+No run database, budget journal, script store, or response cache is introduced. Subagent logs and spillover may contain raw tool/model output, as documented in the user README.
 
 ## Non-goals
 
-Phase 1 does not include background execution, a `/workflows` TUI, saved scripts, journaled resume, model tiers, worktree isolation, or writable workflow coordination. It includes only small bounded per-agent retries, not a generalized retry policy framework. Structured output is intentionally limited to per-subagent workflow fan-in and does not define whole-workflow result schemas.
+- Background execution, a workflow navigator, retained runs, journaling/resume, run IDs, saved scripts, or response caching.
+- Writable workflow agents, parallel implementation, session inheritance, git worktree isolation, or writable coordination.
+- Arbitrary script model selectors, user-defined alias maps, changes to agent Markdown model declarations, or changes to direct `spawn_agents` behavior.
+- Cost budgets, estimates, reservations, per-phase/per-agent quotas, or generalized quota infrastructure.
+- A generalized quality-helper, voting, consensus, router, loop, or evaluator framework beyond `verify()` and `report()`.
 
 ## Change guidance
 
-- Add tests before broadening script globals or subagent options.
-- Keep public API imports limited to `subagents/api.ts`.
-- Prefer deterministic helper semantics over LLM-router behavior.
-- Treat writable workflows as a new design, not a small option toggle.
+- Keep privileged enforcement and raw selector resolution host-side.
+- Preserve synchronous reservation/accounting and independent call/token conditions.
+- Feed accounting from every streamed child event, not activity-render callbacks.
+- Add real-worker tests before broadening globals or worker RPC options.
+- Keep public imports limited to `subagents/api.ts` and do not broaden writable capabilities as a small option toggle.

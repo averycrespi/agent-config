@@ -36,7 +36,7 @@ Supporting rails keep the loop safer and more inspectable:
 
 - **Route authenticated external access** through `mcp-broker` instead of exposing credentials directly to the agent
 - **Use direct web access** through `web-access` for public search and page fetching
-- **Orchestrate multi-agent checks** with foreground `workflow` scripts that fan out read-mostly subagents
+- **Orchestrate multi-agent checks** with foreground `workflow` scripts that fan out read-mostly subagents under host-enforced concurrency and run budgets, structured verification/report gates, and fixed model-tier routing
 
 This turns Pi from a chat interface with tools into a more structured development harness.
 
@@ -65,7 +65,7 @@ Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamica
 - holistic review of diffs, plans, and branches
 - signal analysis for logs, traces, metrics, and large outputs
 
-The [`workflows`](pi/agent/extensions/workflows/) extension adds foreground JavaScript orchestration for those read-mostly subagents, so the main agent can run deterministic fan-out/fan-in checks while streaming compact progress.
+The [`workflows`](pi/agent/extensions/workflows/) extension adds foreground JavaScript orchestration for those read-mostly subagents, including bounded host-enforced concurrency and run budgets, structured verification/report gates, and fixed host-resolved model tiers while streaming compact progress.
 
 ### Extension Development
 

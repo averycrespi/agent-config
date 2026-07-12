@@ -1,158 +1,157 @@
 # workflows extension
 
-The `workflows` extension provides a foreground `workflow` tool for deterministic JavaScript orchestration scripts. A workflow can fan out read-mostly subagents, collect their results, and return a compact final answer while streaming progress updates.
+The `workflows` extension provides a foreground `workflow` tool for deterministic JavaScript orchestration. A workflow can fan out read-mostly subagents, verify claims, gate reports, and return a compact result while the host enforces concurrency and run budgets.
 
-This is a Phase 1 MVP. It is for research, review, audit, and exploration workflows, not parallel implementation or workspace mutation.
+This is a Phase 1 implementation for research, review, audit, and exploration—not parallel implementation or workspace mutation.
 
 ## Tool
 
 ### `workflow`
 
-Parameters:
+| Field    | Required | Description                                                                              |
+| -------- | -------- | ---------------------------------------------------------------------------------------- |
+| `script` | Yes      | Raw JavaScript source starting with literal `export const meta = { name, description }`. |
+| `args`   | No       | Any JSON value exposed to the script as `args`.                                          |
 
-| Field    | Required | Description                                                                                             |
-| -------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `script` | Yes      | Raw JavaScript workflow source. It must start with literal `export const meta = { name, description }`. |
-| `args`   | No       | Any JSON value exposed to the script as the `args` global.                                              |
-
-The tool returns the workflow result text. Its registered prompt guidelines are the single model-facing source for workflow selection and safety guidance; the extension does not inject a duplicate before-agent-start block. During execution, the tool UI shows the workflow phase, aggregate counts, recent `log(...)` messages, and compact one-line rows for each subagent: status, agent type, intent, stable stats, latest activity at the end, and failure log paths when available. Final text and details report agent failures separately from logged `parallel()` branch failures and settled `parallelSettled()` failures. Large final output is persisted through the shared spillover helper and replaced with a preview envelope that includes the temp file path.
-
-## Script format
-
-Every script must start with literal metadata and call `agent()` at least once:
+The script must contain a syntactic direct `agent()` or `verify()` call. The tool runs in the foreground, streams compact phase/subagent progress, and reports agent failures separately from handled `parallel()` and `parallelSettled()` branch failures. Large final output uses the shared spillover helper.
 
 ```js
 export const meta = {
   name: "repo-audit",
-  description: "Fan out focused repository audits",
+  description: "Audit and verify repository concerns",
 };
 
 export async function run() {
   phase("inspect");
-  const topics = args?.topics ?? ["tests", "docs", "security"];
-  const results = await parallel(
-    topics.map(
+  const findings = await parallel(
+    ["tests", "docs", "security"].map(
       (topic) => () =>
         agent(`Audit the repository for ${topic} issues.`, {
           agent: "explorer",
           intent: topic,
+          model: "small",
         }),
     ),
   );
-  return results;
-}
-```
-
-Supported globals:
-
-| Global            | Description                                                                                                                                                                                                                                                                                                                                                 |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent`           | Runs one read-mostly subagent: `agent(prompt, { agent?, intent?, output?, retries?, timeoutMs? })`. Defaults to `explorer`; when `output: { schema }` is provided, resolves to the parsed structured value instead of Markdown text. `retries` is clamped to 0–2 and retries safe failures only. `timeoutMs` overrides the per-agent timeout for that call. |
-| `parallel`        | Runs an array of thunks with bounded concurrency and preserves input ordering. Branch failures are logged and returned as `null`.                                                                                                                                                                                                                           |
-| `parallelSettled` | Runs an array of thunks with bounded concurrency and preserves input ordering. Each branch returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`, so scripts can recover from partial failure explicitly.                                                                                                                    |
-| `pipeline`        | Runs sequential stages for each item, using `parallel` across items.                                                                                                                                                                                                                                                                                        |
-| `phase`           | Sets the current progress phase.                                                                                                                                                                                                                                                                                                                            |
-| `log`             | Adds a progress log entry.                                                                                                                                                                                                                                                                                                                                  |
-| `args`            | The optional JSON `args` value from the tool call.                                                                                                                                                                                                                                                                                                          |
-| `cwd`             | Current working directory string.                                                                                                                                                                                                                                                                                                                           |
-
-## Structured subagent output
-
-Use `output` when workflow fan-in needs machine-readable data from a subagent. The workflow runtime asks `subagents` to load the generic `structured-output` extension in the child process, captures the `structured_output` tool result from Pi JSON events, validates it against the provided JSON Schema subset, and resolves `agent()` to the parsed value.
-
-```js
-export const meta = {
-  name: "repo-map",
-  description: "Collect structured repository findings",
-};
-
-export async function run() {
-  const findingSchema = {
-    type: "object",
-    required: ["files", "summary"],
-    properties: {
-      files: { type: "array", items: { type: "string" } },
-      summary: { type: "string" },
-    },
-    additionalProperties: false,
-  };
-
-  return await agent("Find auth entrypoints", {
-    agent: "explorer",
-    intent: "auth map",
-    output: { schema: findingSchema },
+  return await report(findings, {
+    gate: (value) =>
+      verify(`These findings are evidence-backed: ${JSON.stringify(value)}`),
   });
 }
 ```
 
-Without `output`, `agent()` keeps the original behavior and resolves to the subagent's final text. If structured output is requested but the child does not call the output tool, starts but does not finish it, returns a malformed tool result, or fails validation, the agent call fails with a structured error code such as `structured_output_not_called`, `structured_output_incomplete`, `structured_output_malformed`, or `structured_output_invalid`. Inside `parallel()`, that branch is logged and becomes `null`; inside `parallelSettled()`, the branch returns an explicit `{ ok: false, error }` record.
+## Script globals
 
-Supported parent-side validation covers plain JSON Schema `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`. The child extension uses explicit object-root schemas directly. Other roots are placed under an internal provider-compatible object envelope and unwrapped before the workflow receives the value, so arrays, scalars, and `null` retain their original result shape.
+| Global            | Description                                                                                                                                                                                                                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent`           | `agent(prompt, { agent?, intent?, output?, model?, retries?, timeoutMs? })` runs one read-mostly subagent. It defaults to `explorer`. Structured `output: { schema }` resolves to the parsed value. `model` accepts only configured `"small"` or `"big"` aliases. Retries are clamped to 0–2. |
+| `verify`          | `verify(claim, { agent?, intent?, context?, model?, retries?, timeoutMs? })` asks a structured verifier, defaulting to `reviewer`, and resolves `{ ok, reasons }`. A supported refutation is data (`ok: false`); execution or structured-output failures reject like `agent()`.               |
+| `report`          | `report(value, { gate })` awaits `gate(value)` and returns the original value only for `true` or `{ ok: true }`. Other verdicts reject with `workflow_report_rejected`; string-array verdict reasons are normalized into the error. Gate exceptions propagate unchanged.                      |
+| `budget`          | Frozen advisory facade with `total`, `spent()`, `remaining()`, `launched`, and `maxAgents`. Disabled limits appear as `null`; unlimited token remaining is `Infinity`. Updates can lag, so authoritative enforcement is host-side.                                                            |
+| `parallel`        | Runs thunks with bounded concurrency and input ordering. Failures are logged and become `null`.                                                                                                                                                                                               |
+| `parallelSettled` | Uses the same scheduler and returns `{ ok: true, value }` or `{ ok: false, error: { code, message, details? } }`.                                                                                                                                                                             |
+| `pipeline`        | Runs sequential stages per item while using `parallel()` across items.                                                                                                                                                                                                                        |
+| `phase` / `log`   | Updates the current phase or adds a progress log.                                                                                                                                                                                                                                             |
+| `args` / `cwd`    | Tool-call JSON arguments and the current working-directory string.                                                                                                                                                                                                                            |
 
-## Failure accounting
+The scheduler defaults to four concurrent thunks, is configurable up to a host ceiling of 16, and clamps each `parallel(..., { concurrency })` request to the effective limit.
 
-A workflow that returns normally is reported as completed even when its script deliberately handles branch errors. The final result keeps three counters distinct:
+## Structured output and verification
 
-- `agentFailureCount`: final failed `agent()` calls after bounded retries, including policy rejection and timeout;
-- `loggedBranchFailureCount`: failures caught by `parallel()`, logged, and replaced with `null`;
-- `settledBranchFailureCount`: failures caught and returned explicitly by `parallelSettled()`.
+Use `output` when fan-in needs machine-readable values. The host forwards only `{ output: { schema } }` through the curated subagents API. The child uses the generic `structured-output` extension, and the host validates plain JSON Schema `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`.
 
-These categories can overlap: one failed agent call inside `parallelSettled()` increments both the agent and settled-branch counters. This is intentional. The TUI uses the same completed-workflow status and labels agent and branch failures separately instead of treating handled failures as an unqualified workflow failure.
+Failures such as `structured_output_not_called`, `structured_output_incomplete`, `structured_output_malformed`, and `structured_output_invalid` compose with `parallel()` and `parallelSettled()` like other agent failures. `verify()` uses the same path with a strict `{ confirmed: boolean, reasons: string[] }` schema.
+
+```js
+export const meta = { name: "verify", description: "Verify a release claim" };
+
+export async function run() {
+  const verdict = await verify(
+    "All acceptance criteria have concrete evidence",
+    {
+      context: { checks: args.checks },
+      model: "big",
+    },
+  );
+  return await report(args, { gate: () => verdict });
+}
+```
+
+## Budgets and failures
+
+`maxAgentsPerRun` counts policy-valid logical `agent()` calls. Retry attempts reuse the same slot. Reaching this cap rejects later calls with `workflow_run_cap_exceeded` but does not abort already admitted work.
+
+`maxTokensPerRun` observes streamed child token usage across every retry attempt. Meeting or exceeding a positive limit is sticky: active subagents are aborted, retries and later spawns are prevented, and affected attempts fail with `workflow_budget_exceeded`. The worker remains alive, allowing `parallelSettled()` to fan in prior successes and typed failures. Token accounting reacts to observed usage, so some overshoot is possible and the `budget` mirror is not a reservation system.
+
+`workflow_report_rejected` is produced only when a report gate returns a non-passing verdict. A thrown gate error is not relabeled. Timeouts, parent cancellation, policy failures, and provider failures retain their own codes rather than being inferred from current budget state.
+
+A normally returning workflow is still reported as completed when it deliberately handles branch failures. Final counters remain distinct:
+
+- `agentFailureCount`: final failed logical agent calls after retries;
+- `loggedBranchFailureCount`: failures caught by `parallel()`;
+- `settledBranchFailureCount`: failures returned by `parallelSettled()`.
+
+## Model aliases
+
+Scripts never receive raw provider/model selectors. `model: "small"` and `model: "big"` cross the worker RPC only as aliases and are validated and resolved by the host. A configured requested tier overrides the selected agent definition's model and the parent model. Omitting `model` preserves agent-definition-then-parent fallback. Unknown or unconfigured aliases fail with `agent_policy_rejected` without spawning.
 
 ## Safety restrictions
 
-Scripts are parsed before execution. The MVP rejects:
+Scripts are parsed before execution and reject imports, `require`, filesystem/network/worker/process/global/buffer/timer APIs, and nondeterminism such as `Date.now`, `new Date`, and `Math.random`. A direct `agent()` or `verify()` call is required; `report()` alone does not satisfy this guardrail.
 
-- imports, re-exports, dynamic `import()`, and `require`
-- filesystem, network, worker, process, global, buffer, and timer APIs
-- nondeterminism such as `Date.now`, `new Date`, and `Math.random`
-- scripts without a syntactic `agent()` call
-
-Script execution runs in a separate killable Node worker. The worker receives only the MVP globals above. The subagent wrapper always uses `inheritSession: "none"`, does not pass arbitrary environment variables, propagates cancellation, and permits only read-mostly built-in agent types: `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`.
+Execution runs in a separate killable Node worker. It receives only deterministic workflow globals, `args`, `cwd`, alias strings, and advisory budget snapshots—not filesystem, network, environment, raw model selectors, session inheritance, or writable-agent capabilities. The host permits only `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`, always with `inheritSession: "none"`.
 
 ## Configuration
 
-Configure via `extension:workflows` in Pi settings. Environment variables override settings when set. Use `/workflows-config` to display the effective parsed config.
+Configure `extension:workflows` in Pi settings. Environment variables override settings only when valid. Invalid settings fall back to defaults with a warning; invalid environment values warn and leave valid lower-precedence settings intact. Use `/workflows-config` to display all effective parsed fields. Model selectors are displayed as non-sensitive configuration.
 
-| Field               | Default   | Environment override            | Description                                                                                        |
-| ------------------- | --------- | ------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `workflowTimeoutMs` | `3600000` | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Positive integer timeout, in milliseconds, for the whole foreground workflow.                      |
-| `agentTimeoutMs`    | `600000`  | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Positive integer default timeout, in milliseconds, for each `agent(...)` call inside the workflow. |
-
-Example settings:
+| Field               | Default   | Environment override            | Description                                                                        |
+| ------------------- | --------- | ------------------------------- | ---------------------------------------------------------------------------------- |
+| `workflowTimeoutMs` | `3600000` | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Positive integer whole-workflow timeout in milliseconds.                           |
+| `agentTimeoutMs`    | `600000`  | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Positive integer default per-agent timeout in milliseconds.                        |
+| `maxConcurrency`    | `4`       | `WORKFLOWS_MAX_CONCURRENCY`     | Positive integer scheduler limit; values above 16 are clamped with a warning.      |
+| `maxTokensPerRun`   | `0`       | `WORKFLOWS_MAX_TOKENS_PER_RUN`  | Non-negative observed-token limit; `0` disables it.                                |
+| `maxAgentsPerRun`   | `100`     | `WORKFLOWS_MAX_AGENTS_PER_RUN`  | Non-negative logical-agent limit; `0` disables it.                                 |
+| `modelTierSmall`    | `""`      | `WORKFLOWS_MODEL_TIER_SMALL`    | Trimmed full Pi model selector for the fixed `small` alias; empty is unconfigured. |
+| `modelTierBig`      | `""`      | `WORKFLOWS_MODEL_TIER_BIG`      | Trimmed full Pi model selector for the fixed `big` alias; empty is unconfigured.   |
 
 ```json
 {
   "extension:workflows": {
     "workflowTimeoutMs": 3600000,
-    "agentTimeoutMs": 600000
+    "agentTimeoutMs": 600000,
+    "maxConcurrency": 4,
+    "maxTokensPerRun": 0,
+    "maxAgentsPerRun": 100,
+    "modelTierSmall": "openai/example-small",
+    "modelTierBig": "anthropic/example-big"
   }
 }
 ```
 
-A workflow script can override the per-agent timeout for one branch with `agent("prompt", { timeoutMs: 120000 })`. If one agent times out inside `parallel()` the branch is logged and returns `null`; inside `parallelSettled()` it returns `{ ok: false, error: { code: "agent_timeout", ... } }`.
-
 ## Logging and retained output
 
-The extension does not keep a workflow run database. Progress logs and per-subagent activity snapshots live only in the tool result details for the active call. Subagent failures may produce retained logs through the `subagents` extension. Large workflow final output is written by the shared spillover helper under the system temp directory and may contain raw model/tool output. Final output and progress previews use safe stringification, so cyclic objects and `bigint` values do not crash an otherwise completed workflow. Spillover files are owner-readable and cleaned best-effort by the shared helper after its retention window.
+The extension does not keep a workflow run database, scripts, budget journals, or model responses. Progress and ledger state live only for the active foreground call. Subagent failures may produce retained logs through `subagents`. Shared spillover files under the system temp directory may contain raw model/tool output, are owner-readable, and are cleaned best-effort after the retention window.
 
 ## Limitations
 
-- Foreground tool calls only; no background manager or `/workflows` navigator.
-- No journaled resume or saved workflow library.
-- No writable workflow mode or git worktree isolation.
-- No model tiers or quality-helper standard library.
+- No background manager or `/workflows` navigator.
+- No journaled resume, run IDs, saved workflows, response cache, or persistence.
+- No writable workflow mode, parallel implementation, session inheritance, or git worktree coordination.
+- No arbitrary script-selected model IDs or user-defined alias maps.
+- No general quality-helper framework beyond the narrow `verify()` and `report()` primitives.
 
 ## Troubleshooting
 
-- `script must start with...`: make metadata the first statement, before comments that parse as statements or any setup code.
-- `workflow must call agent()`: include a syntactic `agent(...)` call in the script.
-- `agent type ... is not allowed`: use one of the read-mostly built-in agents listed above.
-- `workflow worker exited`: check for a thrown script error, infinite loop, or cancellation.
-- Branch failures inside `parallelSettled()` include stable `error.code` values. Retryable subagent failures can be retried with `agent(prompt, { retries: 1 })`; policy rejections, timeouts, aborts, and permanent provider tool-schema rejections are not retried. Other provider failures remain retryable.
+- `script must start with...`: make literal metadata the first statement.
+- `workflow must call agent() or verify()`: add a direct syntactic call; `report()` alone is not spawning work.
+- `agent type ... is not allowed`: use a read-mostly built-in agent listed above.
+- `model alias ... is not configured`: configure the corresponding fixed tier or omit `model`.
+- `workflow worker exited`: check for a script error, infinite loop, timeout, or cancellation.
+- Retryable provider failures may use `retries: 1`; policy, cap, budget, timeout, abort, and permanent provider schema failures are not retried.
 
 ## Prior art
 
-- [Claude Code dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code) — model-authored JavaScript orchestration for fan-out subagent work, the core interaction pattern this MVP adapts to Pi.
-- [Michaelliv/pi-dynamic-workflows](https://github.com/michaelliv/pi-dynamic-workflows) — Pi workflow extension that influenced the MVP shape: raw JavaScript scripts, globals such as `agent`, `parallel`, `pipeline`, `phase`, `log`, `args`, and foreground progress.
-- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — Pi package demonstrating later-stage ideas such as background runs, navigators, journaling, saved workflows, model tiers, richer retries, and worktree isolation. Those broader workflow-management features are intentionally out of scope for this Phase 1 implementation.
+- [Claude Code dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code) — model-authored JavaScript orchestration for fan-out subagent work.
+- [Michaelliv/pi-dynamic-workflows](https://github.com/michaelliv/pi-dynamic-workflows) — influenced the raw-script, deterministic-global, foreground-progress shape.
+- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — demonstrates broader background, navigation, journaling, saved-workflow, retry, and worktree ideas that remain out of scope here.

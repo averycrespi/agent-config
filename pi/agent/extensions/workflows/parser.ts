@@ -131,8 +131,32 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
   if (!hasSpawningCall)
     fail("workflow must call agent() or verify() at least once");
 
-  const firstStart = first.getStart(source);
-  const firstEnd = first.getEnd();
-  const executableScript = `${script.slice(0, firstStart)}const meta = ${textOf(source, (first as ts.VariableStatement).declarationList.declarations[0].initializer!)};${script.slice(firstEnd)}`;
+  const replacements: Array<{ start: number; end: number; text: string }> = [
+    {
+      start: first.getStart(source),
+      end: first.getEnd(),
+      text: `const meta = ${textOf(source, (first as ts.VariableStatement).declarationList.declarations[0].initializer!)};`,
+    },
+  ];
+  for (const statement of source.statements.slice(1)) {
+    for (const modifier of (ts.canHaveModifiers(statement)
+      ? ts.getModifiers(statement)
+      : []) ?? []) {
+      if (modifier.kind === ts.SyntaxKind.ExportKeyword) {
+        replacements.push({
+          start: modifier.getStart(source),
+          end: modifier.getEnd(),
+          text: "",
+        });
+      }
+    }
+  }
+  let executableScript = script;
+  for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
+    executableScript =
+      executableScript.slice(0, replacement.start) +
+      replacement.text +
+      executableScript.slice(replacement.end);
+  }
   return { script, executableScript, meta };
 }

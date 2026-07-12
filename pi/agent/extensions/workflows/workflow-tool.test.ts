@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import registerWorkflowsExtension from "./index.ts";
 import { registerWorkflowTool } from "./workflow-tool.ts";
+import { DEFAULT_WORKFLOW_CONFIG } from "./config.ts";
+import { formatConfigForDisplay } from "../_shared/config.ts";
 import {
   renderSnapshot,
   renderWorkflowCall,
@@ -45,6 +47,73 @@ test("extension relies on tool prompt guidelines without duplicate prompt inject
 
   assert.deepEqual(beforeAgentStartPrompts, []);
   assert.ok(registeredTool.promptGuidelines.length > 0);
+  const guidance = [
+    registeredTool.description,
+    ...registeredTool.promptGuidelines,
+  ].join("\n");
+  for (const term of [
+    "verify",
+    "report",
+    "budget",
+    "concurrency",
+    "workflow_run_cap_exceeded",
+    "workflow_budget_exceeded",
+    'model: "small"',
+    'model: "big"',
+  ]) {
+    assert.match(
+      guidance,
+      new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+  }
+});
+
+test("workflows config display includes all seven effective fields", () => {
+  const display = formatConfigForDisplay(
+    "workflows",
+    DEFAULT_WORKFLOW_CONFIG as unknown as Record<string, unknown>,
+  );
+  for (const field of [
+    "workflowTimeoutMs",
+    "agentTimeoutMs",
+    "maxConcurrency",
+    "maxTokensPerRun",
+    "maxAgentsPerRun",
+    "modelTierSmall",
+    "modelTierBig",
+  ]) {
+    assert.match(display, new RegExp(`"${field}"`));
+  }
+  assert.match(display, /"modelTierSmall": ""/);
+});
+
+test("workflow tool surfaces config warnings during execution", async () => {
+  const harness = makePi();
+  const notifications: Array<[string, string]> = [];
+  registerWorkflowTool(harness.pi as any, async (_cwd, warnings = []) => {
+    warnings.push("Ignoring invalid maxTokensPerRun; using default.");
+    return DEFAULT_WORKFLOW_CONFIG;
+  });
+  await harness.tool.execute(
+    "wf-warning",
+    {
+      script: `export const meta = { name: "warning", description: "warning" };
+export async function run() { if (false) await agent("unused"); return "ok"; }`,
+    },
+    undefined,
+    undefined,
+    {
+      cwd: "/tmp",
+      ui: {
+        notify(message: string, level: string) {
+          notifications.push([message, level]);
+        },
+      },
+    },
+  );
+  assert.deepEqual(notifications, [
+    ["Ignoring invalid maxTokensPerRun; using default.", "warning"],
+  ]);
 });
 
 test("workflow tool returns validation errors as tool text", async () => {

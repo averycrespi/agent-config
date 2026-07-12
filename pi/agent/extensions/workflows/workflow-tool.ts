@@ -13,7 +13,7 @@ import { renderWorkflowCall, renderWorkflowResult } from "./display.ts";
 const workflowParamsSchema = Type.Object({
   script: Type.String({
     description:
-      "Raw JavaScript workflow script. Must start with `export const meta = { name, description }` and call agent() at least once.",
+      "Raw JavaScript workflow script. Must start with `export const meta = { name, description }` and call agent() or verify() at least once.",
   }),
   args: Type.Optional(
     Type.Any({
@@ -75,7 +75,8 @@ export function registerWorkflowTool(
     description: `Execute a deterministic foreground JavaScript workflow that orchestrates isolated read-mostly subagents.
 
 Scripts must start with literal metadata: export const meta = { name: "...", description: "..." }.
-Use the globals agent(prompt, { agent?, intent?, output?, retries?, timeoutMs? }), parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Use the globals agent(prompt, { agent?, intent?, output?, model?, retries?, timeoutMs? }), verify(claim, options?), report(value, { gate }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Concurrency is bounded by configuration. Model may only be the configured "small" or "big" alias. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
       "Run a deterministic foreground JavaScript workflow that fans out isolated read-mostly subagents.",
@@ -86,6 +87,9 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
       "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
       "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
+      "Use `verify(claim, options?)` for a structured reviewer verdict and `report(value, { gate })` to reject a final value when an awaited gate does not pass.",
+      "Treat `budget` as an advisory snapshot only. `workflow_run_cap_exceeded` denies later calls, while `workflow_budget_exceeded` aborts active agents and prevents retries or new spawns.",
+      'Set `model: "small"` or `model: "big"` only when that fixed alias is configured; arbitrary model selectors are rejected host-side.',
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
       "Use `timeoutMs` on an agent call when one slow branch should fail without exhausting the whole workflow timeout.",
     ],
@@ -106,6 +110,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
 
       const warnings: string[] = [];
       const config = await loadConfig(ctx.cwd, warnings);
+      if (warnings.length > 0) ctx.ui.notify(warnings.join("\n"), "warning");
 
       const ledger = createWorkflowRunLedger({
         maxTokens: config.maxTokensPerRun,

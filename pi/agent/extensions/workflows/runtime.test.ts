@@ -600,13 +600,19 @@ test("retries reuse a logical reservation and accumulate every attempt", async (
   let attempt = 0;
   const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
     attempt += 1;
-    invocation.onEvent({
-      type: "message_end",
-      message: {
-        role: "assistant",
-        usage: { totalTokens: attempt === 1 ? 5 : 7 },
-      },
-    });
+    if (attempt === 1) {
+      for (const totalTokens of [2, 3]) {
+        invocation.onEvent({
+          type: "message_end",
+          message: { role: "assistant", usage: { totalTokens } },
+        });
+      }
+    } else {
+      invocation.onEvent({
+        type: "message_end",
+        message: { role: "assistant", usage: { totalTokens: 7 } },
+      });
+    }
     if (attempt === 1) {
       return {
         ...successfulOutcome(""),
@@ -694,6 +700,7 @@ test("streamed token exhaustion aborts active agents but leaves worker fan-in al
           once: true,
         }),
       );
+      await new Promise((resolve) => setTimeout(resolve, 40));
     }
     return {
       ...successfulOutcome(""),
@@ -715,7 +722,7 @@ test("streamed token exhaustion aborts active agents but leaves worker fan-in al
           () => agent("fast"), () => agent("cross"), () => agent("blocked")
         ]);
       }`),
-      { cwd: "/tmp", ledger, spawnAgent },
+      { cwd: "/tmp", ledger, spawnAgent, agentTimeoutMs: 20 },
     );
     const branches = result.result as any[];
     assert.deepEqual(branches[0], { ok: true, value: "fast" });
@@ -816,6 +823,32 @@ test("budget is an immutable advisory worker facade", async () => {
     assignmentRejected: true,
     redefineRejected: true,
     frozen: true,
+  });
+});
+
+test("workflow scripts cannot access worker RPC or budget backing state", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      if (false) await agent("unused");
+      let backingMutationRejected = false;
+      try { budgetSnapshot = { total: 1, used: 1, launched: 1, maxAgents: 1 }; }
+      catch { backingMutationRejected = true; }
+      return {
+        parentPort: typeof parentPort,
+        workerData: typeof workerData,
+        pending: typeof pending,
+        budgetSnapshot: typeof budgetSnapshot,
+        backingMutationRejected,
+      };
+    }`),
+    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+  );
+  assert.deepEqual(result.result, {
+    parentPort: "undefined",
+    workerData: "undefined",
+    pending: "undefined",
+    budgetSnapshot: "undefined",
+    backingMutationRejected: true,
   });
 });
 
