@@ -8,6 +8,7 @@ import {
   DEFAULT_AGENT_TYPE,
   DEFAULT_MAX_CONCURRENCY,
   DEFAULT_TIMEOUT_MS,
+  MAX_CONCURRENCY,
   READ_MOSTLY_AGENT_TYPES,
   type WorkflowAgentPolicyOptions,
   type WorkflowAgentRequest,
@@ -56,6 +57,15 @@ function agentTimeoutMessage(timeoutMs: number): string {
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function normalizeMaxConcurrency(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_MAX_CONCURRENCY;
+  }
+  const parsed = Math.trunc(value);
+  if (parsed <= 0 || parsed !== value) return DEFAULT_MAX_CONCURRENCY;
+  return Math.min(parsed, MAX_CONCURRENCY);
 }
 
 function clampRetries(value: unknown): number {
@@ -284,7 +294,7 @@ export async function runWorkflow(
   const worker = _worker.create(buildWorkerSource(parsed.executableScript), {
     args: options.args,
     cwd: options.cwd,
-    maxConcurrency: DEFAULT_MAX_CONCURRENCY,
+    maxConcurrency: normalizeMaxConcurrency(options.maxConcurrency),
   });
 
   const timeout = setTimeout(() => {

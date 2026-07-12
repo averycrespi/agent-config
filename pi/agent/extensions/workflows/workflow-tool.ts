@@ -141,6 +141,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           onUpdate: emit,
           timeoutMs: config.workflowTimeoutMs,
           agentTimeoutMs: config.agentTimeoutMs,
+          maxConcurrency: config.maxConcurrency,
         });
         const finalText = formatFinal(result);
         const spilled = await spillIfNeeded(text(finalText), toolCallId);

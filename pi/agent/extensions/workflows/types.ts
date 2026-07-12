@@ -14,7 +14,10 @@ export const READ_MOSTLY_AGENT_TYPES = new Set([
   "analyst",
 ]);
 export const DEFAULT_MAX_CONCURRENCY = 4;
+export const MAX_CONCURRENCY = 16;
 export const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
+
+export type WorkflowModelTier = "small" | "big";
 
 export interface WorkflowMeta {
   name: string;
@@ -47,6 +50,9 @@ export type WorkflowErrorCode =
   | "workflow_aborted"
   | "workflow_timeout"
   | "agent_timeout"
+  | "workflow_budget_exceeded"
+  | "workflow_run_cap_exceeded"
+  | "workflow_report_rejected"
   | "workflow_script_error";
 
 export interface WorkflowFailureDetails {
@@ -114,6 +120,7 @@ export interface WorkflowRuntimeOptions {
   spawnAgent: (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse>;
   timeoutMs?: number;
   agentTimeoutMs?: number;
+  maxConcurrency?: number;
 }
 
 export interface WorkflowAgentRequest {
@@ -124,6 +131,7 @@ export interface WorkflowAgentRequest {
   output?: StructuredOutputSpec;
   retries?: number;
   timeoutMs?: number;
+  model?: string;
   signal?: AbortSignal;
 }
 
@@ -145,6 +153,7 @@ export interface WorkflowAgentPolicyOptions {
   logId: string;
   agents: AgentDefinition[];
   model?: string;
+  modelTiers?: Partial<Record<WorkflowModelTier, string>>;
   thinking?: string;
   onAgentUpdate?: (state: WorkflowAgentState) => void;
 }

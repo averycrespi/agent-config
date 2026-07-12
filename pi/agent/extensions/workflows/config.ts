@@ -4,17 +4,28 @@ import {
   readExtensionSettings,
   readPiSettingsFiles,
 } from "../_shared/config.ts";
+import { DEFAULT_MAX_CONCURRENCY, MAX_CONCURRENCY } from "./types.ts";
 
 export const WORKFLOWS_EXTENSION_NAME = "workflows";
 
 export type WorkflowConfig = {
   workflowTimeoutMs: number;
   agentTimeoutMs: number;
+  maxConcurrency: number;
+  maxTokensPerRun: number;
+  maxAgentsPerRun: number;
+  modelTierSmall: string;
+  modelTierBig: string;
 };
 
 export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   workflowTimeoutMs: 60 * 60 * 1000,
   agentTimeoutMs: 10 * 60 * 1000,
+  maxConcurrency: DEFAULT_MAX_CONCURRENCY,
+  maxTokensPerRun: 0,
+  maxAgentsPerRun: 100,
+  modelTierSmall: "",
+  modelTierBig: "",
 };
 
 type PlainObject = Record<string, unknown>;
@@ -30,13 +41,61 @@ function parsePositiveInteger(value: unknown): number | undefined {
   return undefined;
 }
 
-function parseTimeoutField(
+function parseNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+  }
+  return undefined;
+}
+
+function parsePositiveField(
   value: unknown,
-  field: keyof WorkflowConfig,
+  field: "workflowTimeoutMs" | "agentTimeoutMs",
   warnings: string[],
 ): number {
   const parsed = parsePositiveInteger(value);
   if (parsed !== undefined) return parsed;
+  if (value !== undefined)
+    warnings.push(`Ignoring invalid ${field}; using default.`);
+  return DEFAULT_WORKFLOW_CONFIG[field];
+}
+
+function parseConcurrency(value: unknown, warnings: string[]): number {
+  const parsed = parsePositiveInteger(value);
+  if (parsed === undefined) {
+    if (value !== undefined)
+      warnings.push("Ignoring invalid maxConcurrency; using default.");
+    return DEFAULT_MAX_CONCURRENCY;
+  }
+  if (parsed > MAX_CONCURRENCY) {
+    warnings.push(`Clamping maxConcurrency to ${MAX_CONCURRENCY}.`);
+    return MAX_CONCURRENCY;
+  }
+  return parsed;
+}
+
+function parseLimit(
+  value: unknown,
+  field: "maxTokensPerRun" | "maxAgentsPerRun",
+  warnings: string[],
+): number {
+  const parsed = parseNonNegativeInteger(value);
+  if (parsed !== undefined) return parsed;
+  if (value !== undefined)
+    warnings.push(`Ignoring invalid ${field}; using default.`);
+  return DEFAULT_WORKFLOW_CONFIG[field];
+}
+
+function parseModelTier(
+  value: unknown,
+  field: "modelTierSmall" | "modelTierBig",
+  warnings: string[],
+): string {
+  if (typeof value === "string") return value.trim();
   if (value !== undefined)
     warnings.push(`Ignoring invalid ${field}; using default.`);
   return DEFAULT_WORKFLOW_CONFIG[field];
@@ -47,19 +106,52 @@ export function readEnvSettings(
   warnings: string[] = [],
 ): Partial<WorkflowConfig> {
   const settings: Partial<WorkflowConfig> = {};
-  const workflowTimeoutMs = parsePositiveInteger(
-    env.WORKFLOWS_WORKFLOW_TIMEOUT_MS,
-  );
-  if (workflowTimeoutMs !== undefined)
-    settings.workflowTimeoutMs = workflowTimeoutMs;
-  else if (env.WORKFLOWS_WORKFLOW_TIMEOUT_MS) {
-    warnings.push("Ignoring invalid WORKFLOWS_WORKFLOW_TIMEOUT_MS.");
+  const positiveFields = [
+    ["WORKFLOWS_WORKFLOW_TIMEOUT_MS", "workflowTimeoutMs"],
+    ["WORKFLOWS_AGENT_TIMEOUT_MS", "agentTimeoutMs"],
+  ] as const;
+  for (const [environment, field] of positiveFields) {
+    const raw = env[environment];
+    if (raw === undefined) continue;
+    const parsed = parsePositiveInteger(raw);
+    if (parsed !== undefined) settings[field] = parsed;
+    else warnings.push(`Ignoring invalid ${environment}.`);
   }
 
-  const agentTimeoutMs = parsePositiveInteger(env.WORKFLOWS_AGENT_TIMEOUT_MS);
-  if (agentTimeoutMs !== undefined) settings.agentTimeoutMs = agentTimeoutMs;
-  else if (env.WORKFLOWS_AGENT_TIMEOUT_MS) {
-    warnings.push("Ignoring invalid WORKFLOWS_AGENT_TIMEOUT_MS.");
+  const concurrencyRaw = env.WORKFLOWS_MAX_CONCURRENCY;
+  if (concurrencyRaw !== undefined) {
+    const parsed = parsePositiveInteger(concurrencyRaw);
+    if (parsed === undefined) {
+      warnings.push("Ignoring invalid WORKFLOWS_MAX_CONCURRENCY.");
+    } else {
+      settings.maxConcurrency = Math.min(parsed, MAX_CONCURRENCY);
+      if (parsed > MAX_CONCURRENCY) {
+        warnings.push(
+          `Clamping WORKFLOWS_MAX_CONCURRENCY to ${MAX_CONCURRENCY}.`,
+        );
+      }
+    }
+  }
+
+  const limitFields = [
+    ["WORKFLOWS_MAX_TOKENS_PER_RUN", "maxTokensPerRun"],
+    ["WORKFLOWS_MAX_AGENTS_PER_RUN", "maxAgentsPerRun"],
+  ] as const;
+  for (const [environment, field] of limitFields) {
+    const raw = env[environment];
+    if (raw === undefined) continue;
+    const parsed = parseNonNegativeInteger(raw);
+    if (parsed !== undefined) settings[field] = parsed;
+    else warnings.push(`Ignoring invalid ${environment}.`);
+  }
+
+  const modelFields = [
+    ["WORKFLOWS_MODEL_TIER_SMALL", "modelTierSmall"],
+    ["WORKFLOWS_MODEL_TIER_BIG", "modelTierBig"],
+  ] as const;
+  for (const [environment, field] of modelFields) {
+    const raw = env[environment];
+    if (raw !== undefined) settings[field] = raw.trim();
   }
   return settings;
 }
@@ -69,16 +161,33 @@ export function normalizeWorkflowConfig(
   warnings: string[] = [],
 ): WorkflowConfig {
   return {
-    workflowTimeoutMs: parseTimeoutField(
+    workflowTimeoutMs: parsePositiveField(
       value.workflowTimeoutMs,
       "workflowTimeoutMs",
       warnings,
     ),
-    agentTimeoutMs: parseTimeoutField(
+    agentTimeoutMs: parsePositiveField(
       value.agentTimeoutMs,
       "agentTimeoutMs",
       warnings,
     ),
+    maxConcurrency: parseConcurrency(value.maxConcurrency, warnings),
+    maxTokensPerRun: parseLimit(
+      value.maxTokensPerRun,
+      "maxTokensPerRun",
+      warnings,
+    ),
+    maxAgentsPerRun: parseLimit(
+      value.maxAgentsPerRun,
+      "maxAgentsPerRun",
+      warnings,
+    ),
+    modelTierSmall: parseModelTier(
+      value.modelTierSmall,
+      "modelTierSmall",
+      warnings,
+    ),
+    modelTierBig: parseModelTier(value.modelTierBig, "modelTierBig", warnings),
   };
 }
 

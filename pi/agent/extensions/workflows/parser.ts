@@ -71,8 +71,11 @@ function readMeta(node: ts.Statement): WorkflowMeta | undefined {
   return { name: name.trim(), description: description.trim() };
 }
 
-function isAgentCall(node: ts.CallExpression): boolean {
-  return ts.isIdentifier(node.expression) && node.expression.text === "agent";
+function isSpawningCall(node: ts.CallExpression): boolean {
+  return (
+    ts.isIdentifier(node.expression) &&
+    (node.expression.text === "agent" || node.expression.text === "verify")
+  );
 }
 
 export function parseWorkflowScript(script: string): ParsedWorkflow {
@@ -89,7 +92,7 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
   if (!meta)
     fail("script must start with: export const meta = { name, description }");
 
-  let hasAgentCall = false;
+  let hasSpawningCall = false;
 
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node)) {
@@ -97,7 +100,7 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
     }
     if (ts.isExportDeclaration(node)) fail("re-exports are not allowed");
     if (ts.isCallExpression(node)) {
-      if (isAgentCall(node)) hasAgentCall = true;
+      if (isSpawningCall(node)) hasSpawningCall = true;
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword)
         fail("dynamic import is not allowed");
       if (
@@ -125,7 +128,8 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
   }
 
   for (const statement of source.statements) visit(statement);
-  if (!hasAgentCall) fail("workflow must call agent() at least once");
+  if (!hasSpawningCall)
+    fail("workflow must call agent() or verify() at least once");
 
   const firstStart = first.getStart(source);
   const firstEnd = first.getEnd();

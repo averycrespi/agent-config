@@ -79,9 +79,14 @@ async function agent(prompt, options = {}) {
   return await new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
 }
 
+function concurrencyLimit(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) return workerData.maxConcurrency;
+  return Math.min(value, workerData.maxConcurrency);
+}
+
 async function runParallel(thunks, options, settle) {
   if (!Array.isArray(thunks)) throw new Error(settle ? "parallelSettled expects an array of thunks" : "parallel expects an array of thunks");
-  const max = Math.max(1, Math.min(Number(options.concurrency ?? workerData.maxConcurrency) || workerData.maxConcurrency, workerData.maxConcurrency));
+  const max = concurrencyLimit(options.concurrency ?? workerData.maxConcurrency);
   const results = new Array(thunks.length).fill(null);
   let next = 0;
   async function runOne() {

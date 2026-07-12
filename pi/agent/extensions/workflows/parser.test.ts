@@ -45,12 +45,25 @@ test("rejects imports, require, filesystem/network primitives, and nondeterminis
   for (const script of cases) assert.throws(() => parseWorkflowScript(script));
 });
 
-test("rejects scripts that never call agent", () => {
-  assert.throws(
-    () =>
-      parseWorkflowScript(
-        `export const meta = { name: "x", description: "x" };\nexport async function run() { return 1; }`,
-      ),
-    /must call agent/,
+test("accepts a direct verify call as spawning work", () => {
+  assert.doesNotThrow(() =>
+    parseWorkflowScript(
+      `export const meta = { name: "x", description: "x" };\nexport async function run() { return verify("claim"); }`,
+    ),
   );
+});
+
+test("rejects scripts without a direct agent or verify call", () => {
+  for (const body of [
+    "return 1",
+    "return report(1, { gate: async () => true })",
+  ]) {
+    assert.throws(
+      () =>
+        parseWorkflowScript(
+          `export const meta = { name: "x", description: "x" };\nexport async function run() { ${body}; }`,
+        ),
+      /must call agent\(\) or verify\(\)/,
+    );
+  }
 });

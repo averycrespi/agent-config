@@ -47,6 +47,46 @@ test("runtime exposes args, phase, log, parallel ordering, and pipeline", async 
   assert.deepEqual(updates[0].agents, []);
 });
 
+test("runtime defensively normalizes configured and per-call concurrency", async () => {
+  async function observedMax(
+    maxConcurrency: number | undefined,
+    perCall: string,
+    count = 20,
+  ): Promise<number> {
+    let active = 0;
+    let maximum = 0;
+    const thunks = Array.from(
+      { length: count },
+      (_, index) => `() => agent("${index}")`,
+    ).join(",");
+    await runWorkflow(
+      script(`export async function run() {
+        return await parallel([${thunks}], { concurrency: ${perCall} });
+      }`),
+      {
+        cwd: "/tmp",
+        maxConcurrency,
+        spawnAgent: async () => {
+          active += 1;
+          maximum = Math.max(maximum, active);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          active -= 1;
+          return { ok: true, text: "ok" };
+        },
+      },
+    );
+    return maximum;
+  }
+
+  assert.equal(await observedMax(2, "20"), 2);
+  assert.equal(await observedMax(99, "20"), 16);
+  for (const value of [undefined, Number.NaN, 1.5, 0, -1]) {
+    assert.equal(await observedMax(value, "20", 8), 4);
+  }
+  assert.equal(await observedMax(3, "1.5", 8), 3);
+  assert.equal(await observedMax(3, "0", 8), 3);
+});
+
 test("runtime resolves agent calls with structured output values when requested", async () => {
   const requests: any[] = [];
   const result = await runWorkflow(
