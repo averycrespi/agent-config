@@ -517,6 +517,8 @@ async function runSpawn(
     let child: ReturnType<typeof _nodeSpawn> | undefined;
     let killTimer: NodeJS.Timeout | undefined;
     let postAgentEndTimer: NodeJS.Timeout | undefined;
+    let terminating = false;
+    let forcedAfterAgentEnd = false;
 
     const finish = (outcome: SpawnOutcome) => {
       if (finished) return;
@@ -535,6 +537,8 @@ async function runSpawn(
     };
 
     const startKillSequence = () => {
+      if (terminating) return;
+      terminating = true;
       child?.kill("SIGTERM");
       killTimer = _timers.setTimeout(() => {
         child?.kill("SIGKILL");
@@ -552,23 +556,8 @@ async function runSpawn(
         if (record.type === "agent_end" && !sawAgentEnd) {
           sawAgentEnd = true;
           postAgentEndTimer = _timers.setTimeout(() => {
+            forcedAfterAgentEnd = true;
             startKillSequence();
-            finish(
-              applyStructuredContract(
-                {
-                  ok: terminalError === undefined,
-                  aborted: false,
-                  stdout: finalText,
-                  stderr: stderrBuffer,
-                  exitCode: 0,
-                  signal: null,
-                  errorMessage: terminalError?.message,
-                  errorCode: terminalError?.code,
-                },
-                output,
-                structuredCapture,
-              ),
-            );
           }, POST_AGENT_END_GRACE_MS);
         }
       }
@@ -659,7 +648,10 @@ async function runSpawn(
         stdoutBuffer = "";
       }
 
-      const ok = code === 0 && !aborted && terminalError === undefined;
+      const ok =
+        (code === 0 || forcedAfterAgentEnd) &&
+        !aborted &&
+        terminalError === undefined;
       finish(
         applyStructuredContract(
           {

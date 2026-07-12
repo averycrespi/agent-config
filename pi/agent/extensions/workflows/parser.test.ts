@@ -41,6 +41,9 @@ test("rejects imports, require, filesystem/network primitives, and nondeterminis
     `export const meta = { name: "x", description: "x" };\nDate.now();\nagent("x");`,
     `export const meta = { name: "x", description: "x" };\nnew Date();\nagent("x");`,
     `export const meta = { name: "x", description: "x" };\nMath.random();\nagent("x");`,
+    `export const meta = { name: "x", description: "x" };\nconst Clock = Date;\nagent(String(Clock));`,
+    `export const meta = { name: "x", description: "x" };\nperformance.now();\nagent("x");`,
+    `export const meta = { name: "x", description: "x" };\ncrypto.randomUUID();\nagent("x");`,
   ];
   for (const script of cases) assert.throws(() => parseWorkflowScript(script));
 });

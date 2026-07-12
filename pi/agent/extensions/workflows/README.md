@@ -81,7 +81,7 @@ export async function run() {
 
 `maxAgentsPerRun` counts policy-valid logical `agent()` calls. Retry attempts reuse the same slot. Reaching this cap rejects later calls with `workflow_run_cap_exceeded` but does not abort already admitted work.
 
-`maxTokensPerRun` observes streamed child token usage across every retry attempt. Meeting or exceeding a positive limit is sticky: active subagents are aborted, retries and later spawns are prevented, and affected attempts fail with `workflow_budget_exceeded`. The worker remains alive, allowing `parallelSettled()` to fan in prior successes and typed failures. Token accounting reacts to observed usage, so some overshoot is possible and the `budget` mirror is not a reservation system.
+`maxTokensPerRun` observes streamed child token usage across every retry attempt. Meeting or exceeding a positive limit is sticky: active subagents are aborted, retries and later spawns are prevented, and affected attempts fail with `workflow_budget_exceeded`. The sandbox process remains alive, allowing `parallelSettled()` to fan in prior successes and typed failures. Token accounting reacts to observed usage, so some overshoot is possible and the `budget` mirror is not a reservation system.
 
 `workflow_report_rejected` is produced only when a report gate returns a non-passing verdict. A thrown gate error is not relabeled. Timeouts, parent cancellation, policy failures, and provider failures retain their own codes rather than being inferred from current budget state.
 
@@ -93,13 +93,15 @@ A normally returning workflow is still reported as completed when it deliberatel
 
 ## Model aliases
 
-Scripts never receive raw provider/model selectors. `model: "small"` and `model: "big"` cross the worker RPC only as aliases and are validated and resolved by the host. A configured requested tier overrides the selected agent definition's model and the parent model. Omitting `model` preserves agent-definition-then-parent fallback. Unknown or unconfigured aliases fail with `agent_policy_rejected` without spawning.
+Scripts never receive raw provider/model selectors. `model: "small"` and `model: "big"` cross the sandbox RPC only as aliases and are validated and resolved by the host. A configured requested tier overrides the selected agent definition's model and the parent model. Omitting `model` preserves agent-definition-then-parent fallback. Unknown or unconfigured aliases fail with `agent_policy_rejected` without spawning.
 
 ## Safety restrictions
 
-Scripts are parsed before execution and reject imports, `require`, filesystem/network/worker/process/global/buffer/timer APIs, and nondeterminism such as `Date.now`, `new Date`, and `Math.random`. A direct `agent()` or `verify()` call is required; `report()` alone does not satisfy this guardrail.
+Scripts are parsed before execution and reject imports, `require`, filesystem/network/worker/process/global/buffer/timer APIs, and nondeterministic clocks, randomness, performance counters, and cryptography. A direct `agent()` or `verify()` call is required; `report()` alone does not satisfy this guardrail.
 
-Execution runs in a separate killable Node worker. It receives only deterministic workflow globals, `args`, `cwd`, alias strings, and advisory budget snapshots—not filesystem, network, environment, raw model selectors, session inheritance, or writable-agent capabilities. The host permits only `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`, always with `inheritSession: "none"`.
+Execution runs in a separate killable Node child process with an empty environment, Node permission mode enabled without filesystem, network, child-process, worker, addon, or inspector grants, and string code generation disabled. The process receives only deterministic workflow globals, `args`, `cwd`, alias strings, and advisory budget snapshots over IPC. `process` is hidden and `Math.random` is absent. The host validates every RPC request and permits only `explorer`, `scout`, `researcher`, `reviewer`, and `analyst`, always with `inheritSession: "none"`. Workflow spawning applies a fixed non-mutating tool allowlist, so `bash`, `write`, `edit`, and any other agent-definition tools outside that list are removed.
+
+The extension fails closed when the active Node runtime does not support `--permission` and `--disallow-code-generation-from-strings`.
 
 ## Configuration
 
@@ -133,7 +135,7 @@ The default aliases use the `openai-codex` provider and require it to be authent
 
 ## Logging and retained output
 
-The extension does not keep a workflow run database, scripts, budget journals, or model responses. Progress and ledger state live only for the active foreground call. Subagent failures may produce retained logs through `subagents`. Shared spillover files under the system temp directory may contain raw model/tool output, are owner-readable, and are cleaned best-effort after the retention window.
+The extension does not keep a workflow run database, scripts, budget journals, or model responses. Progress and ledger state live only for the active foreground call. A script may retain at most 100 `log()` entries of 2,000 characters each and 100 phase entries of 200 characters each; exceeding either entry cap fails the script, and the host independently enforces the same storage bounds. Subagent failures may produce retained logs through `subagents`. Shared spillover files under the system temp directory may contain raw model/tool output, are owner-readable, and are cleaned best-effort after the retention window.
 
 ## Limitations
 
@@ -149,7 +151,7 @@ The extension does not keep a workflow run database, scripts, budget journals, o
 - `workflow must call agent() or verify()`: add a direct syntactic call; `report()` alone is not spawning work.
 - `agent type ... is not allowed`: use a read-mostly built-in agent listed above.
 - `model alias ... is not configured`: configure the corresponding fixed tier or omit `model`.
-- `workflow worker exited`: check for a script error, infinite loop, timeout, or cancellation.
+- `workflow sandbox exited`: check for an unsupported Node runtime, script error, infinite loop, timeout, or cancellation.
 - Retryable provider failures may use `retries: 1`; policy, cap, budget, timeout, abort, and permanent provider schema failures are not retried.
 
 ## Prior art

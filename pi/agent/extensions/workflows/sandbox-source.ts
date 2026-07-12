@@ -1,27 +1,46 @@
-export function buildWorkerSource(executableScript: string): string {
-  const workflowBody = `"use strict";\nconst budget = __budgetFacade;\n${executableScript}\nreturn typeof run === "function" ? await run() : undefined;`;
-  return (
-    `
-import { parentPort, workerData } from "node:worker_threads";
+export const MAX_WORKFLOW_LOG_ENTRIES = 100;
+export const MAX_WORKFLOW_LOG_MESSAGE_CHARS = 2_000;
+export const MAX_WORKFLOW_PHASE_ENTRIES = 100;
+export const MAX_WORKFLOW_PHASE_CHARS = 200;
 
-const process = undefined;
-const require = undefined;
-const global = undefined;
-const globalThis = undefined;
-const Buffer = undefined;
-const setTimeout = undefined;
-const setInterval = undefined;
-const setImmediate = undefined;
-const fetch = undefined;
-const WebSocket = undefined;
-const Worker = undefined;
+export function buildSandboxSource(executableScript: string): string {
+  const workflowModule = `${executableScript}\nexport const __workflowResult = typeof run === "function" ? await run() : undefined;`;
+  const workflowModuleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(workflowModule)}`;
+  return `
+import nodeProcess from "node:process";
 
-let nextRequestId = 1;
-const pending = new Map();
+const sandboxGlobal = globalThis;
+let resolveInit;
+const earlyMessages = [];
+let receiveMessage = (message) => earlyMessages.push(message);
+const initPromise = new Promise((resolve) => { resolveInit = resolve; });
+
+nodeProcess.on("message", (message) => {
+  if (message?.type === "workflow-init" && resolveInit) {
+    const resolve = resolveInit;
+    resolveInit = undefined;
+    resolve(message.workerData);
+    return;
+  }
+  receiveMessage(message);
+});
 
 function post(message) {
-  parentPort.postMessage(message);
+  structuredClone(message);
+  if (!nodeProcess.send) throw new Error("workflow sandbox IPC is unavailable");
+  nodeProcess.send(message);
 }
+
+async function postTerminal(message) {
+  structuredClone(message);
+  if (!nodeProcess.send) throw new Error("workflow sandbox IPC is unavailable");
+  await new Promise((resolve, reject) => {
+    nodeProcess.send(message, (error) => error ? reject(error) : resolve());
+  });
+}
+
+post({ type: "sandbox-ready" });
+const workerData = await initPromise;
 
 class WorkflowAgentError extends Error {
   constructor(response) {
@@ -40,9 +59,11 @@ class WorkflowReportError extends Error {
   }
 }
 
+let nextRequestId = 1;
+const pending = new Map();
 let budgetSnapshot = Object.freeze({ ...workerData.budget });
 
-parentPort.on("message", (message) => {
+function handleMessage(message) {
   if (!message) return;
   if (message.type === "budget-update") {
     budgetSnapshot = Object.freeze({ ...message.budget });
@@ -55,7 +76,10 @@ parentPort.on("message", (message) => {
   if (message.response?.ok) {
     entry.resolve(message.response.hasStructured ? message.response.value : message.response.text);
   } else entry.reject(new WorkflowAgentError(message.response));
-});
+}
+
+receiveMessage = handleMessage;
+for (const message of earlyMessages.splice(0)) handleMessage(message);
 
 const args = workerData.args;
 const cwd = workerData.cwd;
@@ -72,21 +96,80 @@ function serialize(value) {
   try { return JSON.stringify(value); } catch { return String(value); }
 }
 
+const droppedCloneValue = Symbol("droppedCloneValue");
+
+function cloneSafe(value, seen = new WeakMap()) {
+  if (typeof value === "function" || typeof value === "symbol") return droppedCloneValue;
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return seen.get(value);
+  if (Array.isArray(value)) {
+    const clone = [];
+    seen.set(value, clone);
+    for (const item of value) {
+      const cloned = cloneSafe(item, seen);
+      clone.push(cloned === droppedCloneValue ? undefined : cloned);
+    }
+    return clone;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    try { return structuredClone(value); } catch { return undefined; }
+  }
+  const clone = {};
+  seen.set(value, clone);
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+    if (!descriptor.enumerable || !("value" in descriptor)) continue;
+    const cloned = cloneSafe(descriptor.value, seen);
+    if (cloned !== droppedCloneValue) clone[key] = cloned;
+  }
+  return clone;
+}
+
+function readOwnDataValue(value, key) {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) return droppedCloneValue;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && "value" in descriptor ? descriptor.value : droppedCloneValue;
+  } catch {
+    return droppedCloneValue;
+  }
+}
+
 function serializeError(error) {
+  const rawCode = readOwnDataValue(error, "code");
+  const rawMessage = readOwnDataValue(error, "message");
+  const rawDetails = readOwnDataValue(error, "details");
+  const code = typeof rawCode === "string" && rawCode ? rawCode : "workflow_script_error";
+  const details = rawDetails === droppedCloneValue ? undefined : cloneSafe(rawDetails);
+  const message = typeof rawMessage === "string" && rawMessage
+    ? rawMessage
+    : typeof error === "string" && error
+      ? error
+      : "workflow script failed";
   return {
-    code: error?.code || "workflow_script_error",
-    message: error?.message || String(error),
-    ...(error?.details ? { details: error.details } : {}),
+    code,
+    message,
+    ...(details === undefined ? {} : { details }),
   };
 }
 
-function log(message) {
-  post({ type: "log", level: "info", message: serialize(message) });
+let workflowLogCount = 0;
+function postLog(level, message) {
+  if (workflowLogCount >= ${MAX_WORKFLOW_LOG_ENTRIES}) throw new Error("workflow log limit exceeded");
+  workflowLogCount += 1;
+  post({ type: "log", level, message: String(message).slice(0, ${MAX_WORKFLOW_LOG_MESSAGE_CHARS}) });
 }
 
+function log(message) {
+  postLog("info", serialize(message));
+}
+
+let workflowPhaseCount = 0;
 function phase(name) {
   if (typeof name !== "string" || !name.trim()) throw new Error("phase name must be a non-empty string");
-  post({ type: "phase", name: name.trim() });
+  if (workflowPhaseCount >= ${MAX_WORKFLOW_PHASE_ENTRIES}) throw new Error("workflow phase limit exceeded");
+  workflowPhaseCount += 1;
+  post({ type: "phase", name: name.trim().slice(0, ${MAX_WORKFLOW_PHASE_CHARS}) });
 }
 
 async function agent(prompt, options = {}) {
@@ -94,14 +177,20 @@ async function agent(prompt, options = {}) {
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("agent options must be an object");
   const allowed = new Set(["agent", "intent", "output", "model", "retries", "timeoutMs"]);
   for (const key of Object.keys(options)) {
-    if (!allowed.has(key)) throw new Error(` +
-    "`agent option ${key} is not allowed`" +
-    `);
+    if (!allowed.has(key)) throw new Error("agent option " + key + " is not allowed");
   }
   if (options.model !== undefined && typeof options.model !== "string") throw new Error("agent model must be a string alias");
   const requestId = nextRequestId++;
-  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output, model: options.model, retries: options.retries, timeoutMs: options.timeoutMs });
-  return await new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
+  const message = { type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output, model: options.model, retries: options.retries, timeoutMs: options.timeoutMs };
+  structuredClone(message);
+  const response = new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
+  try {
+    post(message);
+  } catch (error) {
+    pending.delete(requestId);
+    throw error;
+  }
+  return await response;
 }
 
 const verifierOutput = {
@@ -121,9 +210,7 @@ async function verify(claim, options = {}) {
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("verify options must be an object");
   const allowed = new Set(["agent", "intent", "context", "model", "retries", "timeoutMs"]);
   for (const key of Object.keys(options)) {
-    if (!allowed.has(key)) throw new Error(` +
-    "`verify option ${key} is not allowed`" +
-    `);
+    if (!allowed.has(key)) throw new Error("verify option " + key + " is not allowed");
   }
   const context = options.context === undefined ? "" : "\\n\\nContext:\\n" + serialize(options.context);
   const verdict = await agent(
@@ -177,12 +264,14 @@ async function runParallel(thunks, options, settle) {
       try {
         const value = await thunk();
         results[index] = settle ? { ok: true, value } : value;
-      }
-      catch (error) {
+      } catch (error) {
         const serialized = serializeError(error);
         post({ type: "branch-failure", settled: settle });
         if (settle) results[index] = { ok: false, error: serialized };
-        else { post({ type: "log", level: "error", message: serialized.message }); results[index] = null; }
+        else {
+          postLog("error", serialized.message);
+          results[index] = null;
+        }
       }
     }
   }
@@ -208,17 +297,31 @@ async function pipeline(items, ...stages) {
   }));
 }
 
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-const workflowMain = new AsyncFunction(
-  "agent", "verify", "report", "__budgetFacade", "parallel", "parallelSettled", "pipeline", "phase", "log", "args", "cwd",
-  "process", "require", "global", "globalThis", "Buffer", "setTimeout", "setInterval", "setImmediate", "fetch", "XMLHttpRequest", "WebSocket", "Worker", "importScripts",
-  ${JSON.stringify(workflowBody)},
-);
-const __workflowResult = await workflowMain(
-  agent, verify, report, budget, parallel, parallelSettled, pipeline, phase, log, args, cwd,
-  undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-);
-post({ type: "result", result: __workflowResult });
-`
-  );
+const safeMath = Object.create(null);
+for (const key of Object.getOwnPropertyNames(Math)) {
+  if (key !== "random") Object.defineProperty(safeMath, key, Object.getOwnPropertyDescriptor(Math, key));
+}
+Object.freeze(safeMath);
+
+const globals = { agent, verify, report, budget, parallel, parallelSettled, pipeline, phase, log, args, cwd };
+for (const [name, value] of Object.entries(globals)) {
+  Object.defineProperty(sandboxGlobal, name, { value, writable: false, configurable: false });
+}
+Object.defineProperty(sandboxGlobal, "Math", { value: safeMath, writable: false, configurable: false });
+Object.defineProperty(sandboxGlobal, "process", { value: undefined, writable: false, configurable: false });
+
+let terminalMessage;
+try {
+  const workflowModule = await import(${JSON.stringify(workflowModuleUrl)});
+  terminalMessage = { type: "result", result: workflowModule.__workflowResult };
+  structuredClone(terminalMessage);
+} catch (error) {
+  terminalMessage = { type: "script-error", error: serializeError(error) };
+}
+try {
+  await postTerminal(terminalMessage);
+} finally {
+  nodeProcess.disconnect();
+}
+`;
 }

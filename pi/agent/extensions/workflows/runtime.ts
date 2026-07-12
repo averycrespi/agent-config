@@ -1,8 +1,9 @@
-import { Worker } from "node:worker_threads";
+import { spawn as nodeSpawn, type Serializable } from "node:child_process";
 import {
   createSubagentActivityTracker,
   formatSpawnFailure,
   spawnSubagent,
+  validateOutputSchema,
 } from "../subagents/api.ts";
 import {
   DEFAULT_AGENT_TYPE,
@@ -23,15 +24,88 @@ import {
 } from "./types.ts";
 import type { ParsedWorkflow } from "./types.ts";
 import { safeStringify } from "./safe-stringify.ts";
-import { buildWorkerSource } from "./worker-source.ts";
+import {
+  buildSandboxSource,
+  MAX_WORKFLOW_LOG_ENTRIES,
+  MAX_WORKFLOW_LOG_MESSAGE_CHARS,
+  MAX_WORKFLOW_PHASE_CHARS,
+  MAX_WORKFLOW_PHASE_ENTRIES,
+} from "./sandbox-source.ts";
 
 export const _spawnSubagent = { fn: spawnSubagent };
-export const _worker = {
-  create: (source: string, workerData: unknown) =>
-    new Worker(new URL(`data:text/javascript,${encodeURIComponent(source)}`), {
-      workerData,
-    }),
-};
+export const _spawnSandbox = { fn: nodeSpawn };
+
+const READ_ONLY_WORKFLOW_TOOLS = new Set([
+  "read",
+  "ls",
+  "find",
+  "grep",
+  "mcp_search",
+  "mcp_describe",
+  "mcp_call",
+  "web_search",
+  "web_fetch",
+]);
+
+interface SandboxProcess {
+  on(event: "message", listener: (message: unknown) => void): SandboxProcess;
+  on(event: "error", listener: (error: Error) => void): SandboxProcess;
+  on(event: "exit", listener: (code: number | null) => void): SandboxProcess;
+  postMessage(message: unknown): void;
+  terminate(): Promise<void>;
+}
+
+function createSandboxProcess(
+  source: string,
+  workerData: unknown,
+): SandboxProcess {
+  const requiredFlags = [
+    "--permission",
+    "--disallow-code-generation-from-strings",
+  ];
+  for (const flag of requiredFlags) {
+    if (!process.allowedNodeEnvironmentFlags.has(flag)) {
+      throw new Error(`workflow sandbox requires Node support for ${flag}`);
+    }
+  }
+
+  const child = _spawnSandbox.fn(
+    process.execPath,
+    [...requiredFlags, "--input-type=module", "-"],
+    {
+      env: {},
+      serialization: "advanced",
+      stdio: ["pipe", "ignore", "ignore", "ipc"],
+      windowsHide: true,
+    },
+  );
+  child.stdin?.on("error", () => undefined);
+  child.stdin?.end(source);
+  child.on("message", (message) => {
+    if (
+      message &&
+      typeof message === "object" &&
+      (message as { type?: unknown }).type === "sandbox-ready"
+    ) {
+      child.send({ type: "workflow-init", workerData });
+    }
+  });
+
+  const sandbox: SandboxProcess = {
+    on(event, listener): SandboxProcess {
+      child.on(event, listener as never);
+      return sandbox;
+    },
+    postMessage(message): void {
+      if (!child.connected) throw new Error("workflow sandbox IPC is closed");
+      child.send(message as Serializable);
+    },
+    async terminate(): Promise<void> {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    },
+  };
+  return sandbox;
+}
 
 function preview(value: unknown, max = 240): string {
   const text = safeStringify(value);
@@ -177,11 +251,14 @@ function resolveAgentTimeoutMs(
   request: WorkflowAgentRequest,
   defaultTimeoutMs: number | undefined,
 ): number | undefined {
-  const value = request.timeoutMs ?? defaultTimeoutMs;
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
-  return Math.trunc(parsed);
+  const normalize = (value: unknown): number | undefined => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1) return undefined;
+    return Math.trunc(parsed);
+  };
+  const fallback = normalize(defaultTimeoutMs);
+  if (request.timeoutMs === undefined) return fallback;
+  return normalize(request.timeoutMs) ?? fallback;
 }
 
 async function spawnAttemptWithTimeout(
@@ -207,19 +284,18 @@ async function spawnAttemptWithTimeout(
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let removeAbortListener: (() => void) | undefined;
+  let forcedResponse: WorkflowAgentResponse | undefined;
   try {
     return await new Promise<WorkflowAgentResponse>((resolve, reject) => {
-      let settled = false;
-      const finish = (response: WorkflowAgentResponse) => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        resolve(response);
+      const force = (response: WorkflowAgentResponse, reason: unknown) => {
+        if (forcedResponse) return;
+        forcedResponse = response;
+        controller.abort(reason);
       };
       const abort = () => {
-        controller.abort(request.signal?.reason ?? abortError());
+        const reason = request.signal?.reason ?? abortError();
         const budgetAborted = isBudgetAbort(request.signal);
-        finish(
+        force(
           failedResponse(
             budgetAborted ? "workflow_budget_exceeded" : "workflow_aborted",
             budgetAborted
@@ -228,6 +304,7 @@ async function spawnAttemptWithTimeout(
             request,
             phase,
           ),
+          reason,
         );
       };
       request.signal?.addEventListener("abort", abort, { once: true });
@@ -235,23 +312,26 @@ async function spawnAttemptWithTimeout(
         request.signal?.removeEventListener("abort", abort);
 
       timer = setTimeout(() => {
-        controller.abort(new Error(agentTimeoutMessage(timeoutMs)));
-        finish(
+        const reason = new Error(agentTimeoutMessage(timeoutMs));
+        force(
           failedResponse(
             "agent_timeout",
             agentTimeoutMessage(timeoutMs),
             request,
             phase,
           ),
+          reason,
         );
       }, timeoutMs);
 
       spawnAgent({ ...request, signal: controller.signal }).then(
-        (response) => finish(withFailureContext(response, request, phase)),
+        (response) =>
+          resolve(
+            forcedResponse ?? withFailureContext(response, request, phase),
+          ),
         (error) => {
-          if (settled) return;
-          settled = true;
-          reject(error);
+          if (forcedResponse) resolve(forcedResponse);
+          else reject(error);
         },
       );
     });
@@ -325,7 +405,7 @@ export async function runWorkflow(
   let currentPhase: string | undefined;
   let result: unknown;
   let finished = false;
-  let terminationReason: "timeout" | "aborted" | "worker_error" | undefined;
+  let terminationReason: "timeout" | "aborted" | "sandbox_error" | undefined;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const agentTimeoutMs = options.agentTimeoutMs;
   const workflowAbort = new AbortController();
@@ -349,17 +429,20 @@ export async function runWorkflow(
 
   if (options.signal?.aborted) throw abortError();
 
-  const worker = _worker.create(buildWorkerSource(parsed.executableScript), {
-    args: options.args,
-    cwd: options.cwd,
-    maxConcurrency: normalizeMaxConcurrency(options.maxConcurrency),
-    budget: options.ledger?.snapshot() ?? {
-      total: null,
-      used: 0,
-      launched: 0,
-      maxAgents: null,
+  const worker = createSandboxProcess(
+    buildSandboxSource(parsed.executableScript),
+    {
+      args: options.args,
+      cwd: options.cwd,
+      maxConcurrency: normalizeMaxConcurrency(options.maxConcurrency),
+      budget: options.ledger?.snapshot() ?? {
+        total: null,
+        used: 0,
+        launched: 0,
+        maxAgents: null,
+      },
     },
-  });
+  );
 
   const unsubscribeLedger = options.ledger?.subscribe((budget) => {
     try {
@@ -392,20 +475,29 @@ export async function runWorkflow(
         if (!message || typeof message !== "object") return;
         const event = message as { type?: string; [key: string]: unknown };
         if (event.type === "log") {
-          logs.push({
-            level: event.level === "error" ? "error" : "info",
-            message: String(event.message ?? ""),
-            timestamp: Date.now(),
-          });
-          emit(snapshot(), options.onUpdate);
+          if (logs.length < MAX_WORKFLOW_LOG_ENTRIES) {
+            logs.push({
+              level: event.level === "error" ? "error" : "info",
+              message: String(event.message ?? "").slice(
+                0,
+                MAX_WORKFLOW_LOG_MESSAGE_CHARS,
+              ),
+              timestamp: Date.now(),
+            });
+            emit(snapshot(), options.onUpdate);
+          }
         } else if (event.type === "branch-failure") {
           if (event.settled === true) settledBranchFailureCount += 1;
           else loggedBranchFailureCount += 1;
           emit(snapshot(), options.onUpdate);
         } else if (event.type === "phase") {
-          currentPhase = String(event.name ?? "").trim();
-          if (currentPhase) phases.push(currentPhase);
-          emit(snapshot(), options.onUpdate);
+          if (phases.length < MAX_WORKFLOW_PHASE_ENTRIES) {
+            currentPhase = String(event.name ?? "")
+              .trim()
+              .slice(0, MAX_WORKFLOW_PHASE_CHARS);
+            if (currentPhase) phases.push(currentPhase);
+            emit(snapshot(), options.onUpdate);
+          }
         } else if (event.type === "agent") {
           const request = event as {
             requestId?: unknown;
@@ -429,9 +521,6 @@ export async function runWorkflow(
             ...(typeof request.intent === "string"
               ? { intent: request.intent }
               : {}),
-            ...(isStructuredOutputSpec(request.output)
-              ? { output: request.output }
-              : {}),
             ...(typeof request.model === "string"
               ? { model: request.model }
               : {}),
@@ -441,6 +530,32 @@ export async function runWorkflow(
               ? { timeoutMs: Number(request.timeoutMs) }
               : {}),
           };
+          const outputError = validateStructuredOutput(request.output);
+          if (outputError) {
+            const validationRequest = {
+              ...agentRequest,
+              intent:
+                agentRequest.intent?.trim() ||
+                agentRequest.agent?.trim() ||
+                DEFAULT_AGENT_TYPE,
+            };
+            agentFailureCount += 1;
+            worker.postMessage({
+              type: "agent-response",
+              requestId,
+              response: failedResponse(
+                "agent_policy_rejected",
+                outputError,
+                validationRequest,
+                currentPhase,
+              ),
+            });
+            emit(snapshot(), options.onUpdate);
+            return;
+          }
+          if (isStructuredOutputSpec(request.output)) {
+            agentRequest.output = request.output;
+          }
           void spawnWithRetries(
             agentRequest,
             currentPhase,
@@ -464,10 +579,26 @@ export async function runWorkflow(
           result = event.result;
           finished = true;
           resolve();
+        } else if (event.type === "script-error") {
+          const serialized = event.error as {
+            code?: unknown;
+            message?: unknown;
+            details?: unknown;
+          };
+          const error = new Error(
+            typeof serialized?.message === "string"
+              ? serialized.message
+              : "workflow script failed",
+          ) as Error & { code?: string; details?: unknown };
+          if (typeof serialized?.code === "string")
+            error.code = serialized.code;
+          if (serialized?.details !== undefined)
+            error.details = serialized.details;
+          reject(error);
         }
       });
       worker.on("error", (error) => {
-        terminationReason = terminationReason ?? "worker_error";
+        terminationReason = terminationReason ?? "sandbox_error";
         workflowAbort.abort(error);
         reject(error);
       });
@@ -476,7 +607,7 @@ export async function runWorkflow(
         if (terminationReason === "timeout") reject(timeoutError(timeoutMs));
         else if (terminationReason === "aborted" || options.signal?.aborted)
           reject(abortError());
-        else reject(new Error(`workflow worker exited with code ${code}`));
+        else reject(new Error(`workflow sandbox exited with code ${code}`));
       });
     });
   } finally {
@@ -504,6 +635,15 @@ export async function runWorkflow(
   };
 }
 
+function validateStructuredOutput(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (!isStructuredOutputSpec(value)) {
+    return "output must contain an object schema";
+  }
+  const errors = validateOutputSchema(value.schema, "output.schema");
+  return errors.length > 0 ? errors.join("; ") : undefined;
+}
+
 function isStructuredOutputSpec(value: unknown): value is {
   schema: Record<string, unknown>;
 } {
@@ -523,6 +663,15 @@ export function createWorkflowAgentSpawner(
 ): (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse> {
   const agentMap = new Map(options.agents.map((agent) => [agent.name, agent]));
   return async (request) => {
+    const outputError = validateStructuredOutput(request.output);
+    if (outputError) {
+      return failedResponse(
+        "agent_policy_rejected",
+        outputError,
+        request,
+        undefined,
+      );
+    }
     const requestedType = request.agent?.trim() || DEFAULT_AGENT_TYPE;
     if (!READ_MOSTLY_AGENT_TYPES.has(requestedType)) {
       const message = `agent type ${JSON.stringify(requestedType)} is not allowed in workflows`;
@@ -630,10 +779,13 @@ export function createWorkflowAgentSpawner(
     const outcome = await _spawnSubagent.fn({
       prompt: request.prompt,
       output: request.output,
-      toolAllowlist: agent.tools,
+      toolAllowlist: agent.tools.filter((tool) =>
+        READ_ONLY_WORKFLOW_TOOLS.has(tool),
+      ),
       extensionAllowlist: agent.extensions,
       model: selectedModel,
       thinking: agent.thinking ?? options.thinking,
+      env: agent.env,
       systemPrompt: agent.systemPrompt,
       inheritSession: "none",
       disableSkills: agent.disableSkills,

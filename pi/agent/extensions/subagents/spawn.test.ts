@@ -842,7 +842,8 @@ test("spawnSubagent: provider errors fail prose runs after agent_end", async () 
     fn: (...args: any[]) => void,
     ms?: number,
   ) => {
-    if (ms === POST_AGENT_END_GRACE_MS) queueMicrotask(() => fn());
+    if (ms === POST_AGENT_END_GRACE_MS || ms === 2_000)
+      queueMicrotask(() => fn());
     return { ms } as unknown as NodeJS.Timeout;
   }) as typeof setTimeout);
   const clearStub = mock.method(_timers, "clearTimeout", () => {});
@@ -852,7 +853,11 @@ test("spawnSubagent: provider errors fail prose runs after agent_end", async () 
     child.stderr = new EventEmitter();
     child.stdout.setEncoding = () => {};
     child.stderr.setEncoding = () => {};
-    child.kill = () => true;
+    child.kill = (signal: string) => {
+      if (signal === "SIGKILL")
+        queueMicrotask(() => child.emit("close", null, signal));
+      return true;
+    };
 
     setImmediate(() => {
       child.stdout.emit(
@@ -902,20 +907,26 @@ test("spawnSubagent: resolves after agent_end if process hangs", async () => {
     fn: (...args: any[]) => void,
     ms?: number,
   ) => {
-    if (ms === POST_AGENT_END_GRACE_MS) {
+    if (ms === POST_AGENT_END_GRACE_MS || ms === 2_000) {
       queueMicrotask(() => fn());
     }
     return { ms } as unknown as NodeJS.Timeout;
   }) as typeof setTimeout);
   const clearStub = mock.method(_timers, "clearTimeout", () => {});
 
+  const killSignals: string[] = [];
   const spawnStub = mock.method(_spawn, "fn", () => {
     const child = new EventEmitter() as any;
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
     child.stdout.setEncoding = () => {};
     child.stderr.setEncoding = () => {};
-    child.kill = () => true;
+    child.kill = (signal: string) => {
+      killSignals.push(signal);
+      if (signal === "SIGKILL")
+        queueMicrotask(() => child.emit("close", null, signal));
+      return true;
+    };
 
     setImmediate(() => {
       child.stdout.emit(
@@ -946,6 +957,8 @@ test("spawnSubagent: resolves after agent_end if process hangs", async () => {
     assert.equal(result.ok, true);
     assert.equal(result.aborted, false);
     assert.equal(result.stdout, "done");
+    assert.equal(result.signal, "SIGKILL");
+    assert.deepEqual(killSignals, ["SIGTERM", "SIGKILL"]);
   } finally {
     spawnStub.mock.restore();
     timerStub.mock.restore();

@@ -9,6 +9,7 @@ export type {
 export type { AgentDefinition, BuiltinTool } from "./types.ts";
 
 export { createSubagentActivityTracker } from "./activity.ts";
+export { validateOutputSchema } from "./schema.ts";
 export type {
   SubagentActivityOptions,
   SubagentActivityTracker,

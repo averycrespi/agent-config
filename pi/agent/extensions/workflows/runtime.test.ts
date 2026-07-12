@@ -71,6 +71,62 @@ test("runtime exposes args, phase, log, parallel ordering, and pipeline", async 
   assert.deepEqual(updates[0].agents, []);
 });
 
+test("runtime bounds workflow log volume and message size", async () => {
+  const long = await runWorkflow(
+    script(`export async function run() {
+      if (false) await agent("unused");
+      log("x".repeat(3000));
+      return "done";
+    }`),
+    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+  );
+  assert.equal(long.logs.length, 1);
+  assert.equal(long.logs[0].message.length, 2_000);
+
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() {
+        if (false) await agent("unused");
+        for (let index = 0; index < 101; index += 1) log(index);
+      }`),
+      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+    ),
+    /workflow log limit exceeded/,
+  );
+
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() {
+        if (false) await agent("unused");
+        return await parallel(Array.from({ length: 101 }, () => () => {
+          throw new Error("x".repeat(3000));
+        }));
+      }`),
+      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+    ),
+    /workflow log limit exceeded/,
+  );
+
+  const longPhase = await runWorkflow(
+    script(`export async function run() {
+      if (false) await agent("unused");
+      phase("x".repeat(300));
+    }`),
+    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+  );
+  assert.equal(longPhase.phases[0].length, 200);
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() {
+        if (false) await agent("unused");
+        for (let index = 0; index < 101; index += 1) phase(String(index));
+      }`),
+      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+    ),
+    /workflow phase limit exceeded/,
+  );
+});
+
 test("runtime defensively normalizes configured and per-call concurrency", async () => {
   async function observedMax(
     maxConcurrency: number | undefined,
@@ -265,6 +321,41 @@ test("report awaits gates, returns original values, and normalizes rejections", 
   ]);
 });
 
+test("workflow rejects unsupported structured schemas before spawning", async () => {
+  let spawnCount = 0;
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([() => agent("go", {
+        output: { schema: { oneOf: [{ type: "string" }, { type: "number" }] } },
+      })]);
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async () => {
+        spawnCount += 1;
+        return { ok: true, text: "must not spawn" };
+      },
+    },
+  );
+
+  assert.equal(spawnCount, 0);
+  assert.deepEqual(result.result, [
+    {
+      ok: false,
+      error: {
+        code: "agent_policy_rejected",
+        message: "output.schema.oneOf is unsupported",
+        details: {
+          code: "agent_policy_rejected",
+          message: "output.schema.oneOf is unsupported",
+          agentId: 1,
+          intent: "explorer",
+        },
+      },
+    },
+  ]);
+});
+
 test("workflow agent spawner returns structured values from spawn outcomes", async () => {
   const agents: AgentDefinition[] = [
     {
@@ -323,6 +414,16 @@ test("workflow agent spawner returns structured values from spawn outcomes", asy
         },
       },
     });
+
+    const invalid = await spawn({
+      id: 2,
+      prompt: "invalid",
+      output: { schema: { oneOf: [{ type: "string" }] } },
+    } as any);
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.errorCode, "agent_policy_rejected");
+    assert.match(invalid.error ?? "", /oneOf is unsupported/);
+    assert.equal(calls.length, 1);
   } finally {
     stub.mock.restore();
   }
@@ -684,7 +785,7 @@ test("token exhaustion prevents a retry after a retryable provider failure", asy
   }
 });
 
-test("streamed token exhaustion aborts active agents but leaves worker fan-in alive", async () => {
+test("streamed token exhaustion aborts active agents but leaves sandbox fan-in alive", async () => {
   const ledger = createWorkflowRunLedger({ maxTokens: 10 });
   const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
     if (invocation.prompt === "fast") return successfulOutcome("fast");
@@ -785,7 +886,7 @@ test("token enforcement remains active after the logical call cap denies work", 
   }
 });
 
-test("budget is an immutable advisory worker facade", async () => {
+test("budget is an immutable advisory sandbox facade", async () => {
   const ledger = createWorkflowRunLedger();
   const result = await runWorkflow(
     script(`export async function run() {
@@ -829,7 +930,75 @@ test("budget is an immutable advisory worker facade", async () => {
   });
 });
 
-test("workflow scripts cannot access worker RPC or budget backing state", async () => {
+test("workflow disables string code generation inside the sandbox", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      if (false) await agent("unused");
+      const probe = (factory) => {
+        try { return factory(); }
+        catch (error) { return error.name; }
+      };
+      return {
+        direct: probe(() => Function("return typeof process")()),
+        constructor: probe(() => (() => {}).constructor("return typeof process")()),
+      };
+    }`),
+    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+  );
+  assert.deepEqual(result.result, {
+    direct: "EvalError",
+    constructor: "EvalError",
+  });
+});
+
+test("parallelSettled normalizes non-string codes and clone-unsafe details", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      if (false) await agent("unused");
+      return await parallelSettled([
+        () => {
+          const error = new Error("clone-safe failure");
+          error.code = 25;
+          error.details = { kept: "yes", dropped: () => true };
+          Object.defineProperty(error.details, "explosive", {
+            enumerable: true,
+            get() { throw new Error("getter exploded"); },
+          });
+          throw error;
+        },
+        () => {
+          const error = {};
+          for (const key of ["code", "message", "details", "toString"]) {
+            Object.defineProperty(error, key, {
+              get() { throw new Error("error getter exploded"); },
+            });
+          }
+          throw error;
+        },
+      ]);
+    }`),
+    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+  );
+  assert.deepEqual(result.result, [
+    {
+      ok: false,
+      error: {
+        code: "workflow_script_error",
+        message: "clone-safe failure",
+        details: { kept: "yes" },
+      },
+    },
+    {
+      ok: false,
+      error: {
+        code: "workflow_script_error",
+        message: "workflow script failed",
+      },
+    },
+  ]);
+});
+
+test("workflow scripts cannot access sandbox RPC or budget backing state", async () => {
   const result = await runWorkflow(
     script(`export async function run() {
       if (false) await agent("unused");
@@ -838,6 +1007,7 @@ test("workflow scripts cannot access worker RPC or budget backing state", async 
       catch { backingMutationRejected = true; }
       return {
         parentPort: typeof parentPort,
+        nodeProcess: typeof nodeProcess,
         workerData: typeof workerData,
         pending: typeof pending,
         budgetSnapshot: typeof budgetSnapshot,
@@ -848,6 +1018,7 @@ test("workflow scripts cannot access worker RPC or budget backing state", async 
   );
   assert.deepEqual(result.result, {
     parentPort: "undefined",
+    nodeProcess: "undefined",
     workerData: "undefined",
     pending: "undefined",
     budgetSnapshot: "undefined",
@@ -857,6 +1028,76 @@ test("workflow scripts cannot access worker RPC or budget backing state", async 
 
 test("runtime default workflow timeout is one hour", () => {
   assert.equal(DEFAULT_TIMEOUT_MS, 60 * 60 * 1000);
+});
+
+test("invalid per-call agent timeouts fall back to the configured default", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([() => agent("slow", { timeoutMs: 0 })]);
+    }`),
+    {
+      cwd: "/tmp",
+      timeoutMs: 500,
+      agentTimeoutMs: 20,
+      spawnAgent: async (request) =>
+        await new Promise((resolve) => {
+          request.signal?.addEventListener(
+            "abort",
+            () =>
+              resolve({
+                ok: false,
+                text: null,
+                error: "aborted",
+                errorCode: "subagent_aborted",
+              }),
+            { once: true },
+          );
+        }),
+    },
+  );
+  assert.equal((result.result as any)[0].error.code, "agent_timeout");
+});
+
+test("agent timeout waits for termination before releasing scheduler capacity", async () => {
+  let active = 0;
+  let maximum = 0;
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([
+        () => agent("slow", { timeoutMs: 10 }),
+        () => agent("next"),
+      ], { concurrency: 1 });
+    }`),
+    {
+      cwd: "/tmp",
+      timeoutMs: 500,
+      spawnAgent: async (request) => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        if (request.prompt === "slow") {
+          await new Promise<void>((resolve) => {
+            request.signal?.addEventListener(
+              "abort",
+              () => setTimeout(resolve, 30),
+              { once: true },
+            );
+          });
+          active -= 1;
+          return {
+            ok: false,
+            text: null,
+            error: "terminated",
+            errorCode: "subagent_aborted",
+          };
+        }
+        active -= 1;
+        return { ok: true, text: "next" };
+      },
+    },
+  );
+  assert.equal(maximum, 1);
+  assert.equal((result.result as any)[0].error.code, "agent_timeout");
+  assert.deepEqual((result.result as any)[1], { ok: true, value: "next" });
 });
 
 test("agent timeout fails only that agent branch", async () => {
@@ -872,7 +1113,13 @@ test("agent timeout fails only that agent branch", async () => {
       timeoutMs: 1_000,
       spawnAgent: async (request) => {
         if (request.prompt === "fast") return { ok: true, text: "fast ok" };
-        return await new Promise(() => undefined);
+        return await new Promise((resolve) => {
+          request.signal?.addEventListener(
+            "abort",
+            () => resolve({ ok: false, text: null, error: "terminated" }),
+            { once: true },
+          );
+        });
       },
     },
   );
@@ -922,7 +1169,7 @@ test("workflow timeout aborts in-flight agent requests", async () => {
   assert.equal(signalAborted, true);
 });
 
-test("aborts runaway worker promptly", async () => {
+test("aborts runaway sandbox promptly", async () => {
   const controller = new AbortController();
   const promise = runWorkflow(
     script(
@@ -943,8 +1190,9 @@ test("agent spawner uses safe spawn defaults and rejects writable agents", async
     {
       name: "explorer",
       description: "Explore",
-      tools: ["read"],
+      tools: ["read", "bash"],
       extensions: [],
+      env: { MCP_BROKER_READONLY: "1" },
       systemPrompt: "Explore only",
       disableSkills: true,
       disablePromptTemplates: true,
@@ -990,7 +1238,7 @@ test("agent spawner uses safe spawn defaults and rejects writable agents", async
   });
   assert.equal((await spawn({ id: 1, prompt: "go" })).text, "done");
   assert.equal(calls[0].inheritSession, "none");
-  assert.equal(calls[0].env, undefined);
+  assert.deepEqual(calls[0].env, { MCP_BROKER_READONLY: "1" });
   assert.deepEqual(calls[0].toolAllowlist, ["read"]);
   assert.equal(calls[0].cwd, "/repo");
   assert.equal(calls[0].model, "p/m");

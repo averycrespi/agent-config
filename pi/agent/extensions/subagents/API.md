@@ -10,6 +10,7 @@ import {
   spawnSubagent,
   formatSpawnFailure,
   createSubagentActivityTracker,
+  validateOutputSchema,
 } from "../subagents/api.ts";
 import type {
   AgentDefinition,
@@ -71,6 +72,10 @@ interface StructuredOutputSpec {
 ```
 
 `schema` is written to a temporary JSON file and passed to the child through `PI_STRUCTURED_OUTPUT_SCHEMA_FILE`. The parent-side validator supports the common plain JSON Schema subset used by workflows: `type`, `required`, `properties`, `items`, `enum`, `const`, and `additionalProperties: false`.
+
+### `validateOutputSchema(schema: unknown, path?: string): string[]`
+
+Validates a schema against that supported subset without spawning. It returns every validation error with a qualified path, or an empty array when valid. Integrations that accept schemas from a separate process must call this before forwarding the schema to `spawnSubagent(...)`; malformed or unsupported schemas must not silently downgrade to prose output.
 
 `StructuredOutputResult`:
 
