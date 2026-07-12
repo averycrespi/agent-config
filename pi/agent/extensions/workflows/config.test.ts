@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { join, resolve } from "node:path";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   DEFAULT_WORKFLOW_CONFIG,
   normalizeWorkflowConfig,
@@ -14,6 +16,10 @@ test("workflow config exposes all defaults", () => {
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxConcurrency, 4);
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxTokensPerRun, 0);
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxAgentsPerRun, 100);
+  assert.equal(
+    DEFAULT_WORKFLOW_CONFIG.userWorkflowsDir,
+    join(getAgentDir(), "workflows"),
+  );
   assert.equal(
     DEFAULT_WORKFLOW_CONFIG.modelTierSmall,
     "openai-codex/gpt-5.6-luna",
@@ -34,6 +40,7 @@ test("workflow config accepts settings and environment overrides", () => {
       maxAgentsPerRun: 12,
       modelTierSmall: " openai/small ",
       modelTierBig: "anthropic/big",
+      userWorkflowsDir: " saved-workflows ",
     }),
     {
       workflowTimeoutMs: 12_000,
@@ -43,6 +50,7 @@ test("workflow config accepts settings and environment overrides", () => {
       maxAgentsPerRun: 12,
       modelTierSmall: "openai/small",
       modelTierBig: "anthropic/big",
+      userWorkflowsDir: resolve("saved-workflows"),
     },
   );
 
@@ -55,6 +63,7 @@ test("workflow config accepts settings and environment overrides", () => {
       WORKFLOWS_MAX_AGENTS_PER_RUN: "0",
       WORKFLOWS_MODEL_TIER_SMALL: " openai/small ",
       WORKFLOWS_MODEL_TIER_BIG: " ",
+      WORKFLOWS_USER_WORKFLOWS_DIR: " /private/workflows ",
     } as NodeJS.ProcessEnv),
     {
       workflowTimeoutMs: 9_000,
@@ -64,6 +73,7 @@ test("workflow config accepts settings and environment overrides", () => {
       maxAgentsPerRun: 0,
       modelTierSmall: "openai/small",
       modelTierBig: "",
+      userWorkflowsDir: "/private/workflows",
     },
   );
 });
@@ -79,6 +89,7 @@ test("workflow config rejects invalid settings with warnings", () => {
         maxTokensPerRun: -1,
         maxAgentsPerRun: 1.5,
         modelTierSmall: 42,
+        userWorkflowsDir: "   ",
       },
       warnings,
     ),
@@ -91,7 +102,27 @@ test("workflow config rejects invalid settings with warnings", () => {
     "Ignoring invalid maxTokensPerRun; using default.",
     "Ignoring invalid maxAgentsPerRun; using default.",
     "Ignoring invalid modelTierSmall; using default.",
+    "Ignoring invalid userWorkflowsDir; using default.",
   ]);
+});
+
+test("workflow config resolves relative workflow directories against the call cwd", () => {
+  assert.equal(
+    normalizeWorkflowConfig(
+      { userWorkflowsDir: "private/workflows" },
+      [],
+      "/project",
+    ).userWorkflowsDir,
+    "/project/private/workflows",
+  );
+  assert.equal(
+    normalizeWorkflowConfig(
+      { userWorkflowsDir: "/absolute/workflows" },
+      [],
+      "/project",
+    ).userWorkflowsDir,
+    "/absolute/workflows",
+  );
 });
 
 test("workflow config clamps concurrency above the host ceiling", () => {
@@ -122,6 +153,7 @@ test("invalid environment values do not override lower-precedence settings", () 
         WORKFLOWS_MAX_CONCURRENCY: "nope",
         WORKFLOWS_MAX_TOKENS_PER_RUN: "-1",
         WORKFLOWS_MAX_AGENTS_PER_RUN: "1.2",
+        WORKFLOWS_USER_WORKFLOWS_DIR: "   ",
       } as NodeJS.ProcessEnv,
       warnings,
     ),
@@ -131,5 +163,6 @@ test("invalid environment values do not override lower-precedence settings", () 
     "Ignoring invalid WORKFLOWS_MAX_CONCURRENCY.",
     "Ignoring invalid WORKFLOWS_MAX_TOKENS_PER_RUN.",
     "Ignoring invalid WORKFLOWS_MAX_AGENTS_PER_RUN.",
+    "Ignoring invalid WORKFLOWS_USER_WORKFLOWS_DIR.",
   ]);
 });

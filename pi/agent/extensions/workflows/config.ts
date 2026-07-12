@@ -1,4 +1,5 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { join, resolve } from "node:path";
 import {
   mergeExtensionConfig,
   readExtensionSettings,
@@ -16,6 +17,7 @@ export type WorkflowConfig = {
   maxAgentsPerRun: number;
   modelTierSmall: string;
   modelTierBig: string;
+  userWorkflowsDir: string;
 };
 
 export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
@@ -26,6 +28,7 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   maxAgentsPerRun: 100,
   modelTierSmall: "openai-codex/gpt-5.6-luna",
   modelTierBig: "openai-codex/gpt-5.6-sol",
+  userWorkflowsDir: join(getAgentDir(), "workflows"),
 };
 
 type PlainObject = Record<string, unknown>;
@@ -101,6 +104,18 @@ function parseModelTier(
   return DEFAULT_WORKFLOW_CONFIG[field];
 }
 
+function parseWorkflowsDir(
+  value: unknown,
+  cwd: string,
+  warnings: string[],
+): string {
+  if (typeof value === "string" && value.trim())
+    return resolve(cwd, value.trim());
+  if (value !== undefined)
+    warnings.push("Ignoring invalid userWorkflowsDir; using default.");
+  return DEFAULT_WORKFLOW_CONFIG.userWorkflowsDir;
+}
+
 export function readEnvSettings(
   env: NodeJS.ProcessEnv = process.env,
   warnings: string[] = [],
@@ -145,6 +160,12 @@ export function readEnvSettings(
     else warnings.push(`Ignoring invalid ${environment}.`);
   }
 
+  const workflowsDir = env.WORKFLOWS_USER_WORKFLOWS_DIR;
+  if (workflowsDir !== undefined) {
+    if (workflowsDir.trim()) settings.userWorkflowsDir = workflowsDir.trim();
+    else warnings.push("Ignoring invalid WORKFLOWS_USER_WORKFLOWS_DIR.");
+  }
+
   const modelFields = [
     ["WORKFLOWS_MODEL_TIER_SMALL", "modelTierSmall"],
     ["WORKFLOWS_MODEL_TIER_BIG", "modelTierBig"],
@@ -159,6 +180,7 @@ export function readEnvSettings(
 export function normalizeWorkflowConfig(
   value: PlainObject,
   warnings: string[] = [],
+  cwd: string = process.cwd(),
 ): WorkflowConfig {
   return {
     workflowTimeoutMs: parsePositiveField(
@@ -188,6 +210,7 @@ export function normalizeWorkflowConfig(
       warnings,
     ),
     modelTierBig: parseModelTier(value.modelTierBig, "modelTierBig", warnings),
+    userWorkflowsDir: parseWorkflowsDir(value.userWorkflowsDir, cwd, warnings),
   };
 }
 
@@ -212,5 +235,5 @@ export async function loadWorkflowConfig(
     ),
     envSettings: readEnvSettings(process.env, warnings) as PlainObject,
   });
-  return normalizeWorkflowConfig(merged, warnings);
+  return normalizeWorkflowConfig(merged, warnings, cwd);
 }
