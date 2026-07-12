@@ -30,8 +30,12 @@ export interface ParsedWorkflow {
   meta: WorkflowMeta;
 }
 
+export type WorkflowAction = "run" | "list" | "validate";
+
 export interface WorkflowParams {
-  script: string;
+  action: WorkflowAction;
+  script?: string;
+  name?: string;
   args?: unknown;
 }
 

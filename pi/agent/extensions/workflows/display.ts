@@ -133,11 +133,14 @@ export function renderSnapshot(
   return lines;
 }
 
-export function renderWorkflowCall(
-  _params: unknown,
-  _theme: any,
-  context: any,
-) {
+export function renderWorkflowCall(params: unknown, _theme: any, context: any) {
+  const action = (params as { action?: string } | undefined)?.action;
+  if (action === "list" || action === "validate") {
+    const name = (params as { name?: string }).name;
+    return getTruncatedText(context.lastComponent, [
+      `workflow ${action}${name ? ` ${name}` : ""}`,
+    ]);
+  }
   const t = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
   t.setText("");
   return t;
@@ -159,8 +162,47 @@ export function renderWorkflowResult(
   }
   clearPartialTimer(context);
   const text = getResultText(result);
-  if (text.startsWith("Error:"))
-    return new Text(theme.fg("error", text.split("\n")[0]), 0, 0);
+  if (text.startsWith("Error:") || text.startsWith("Invalid workflow input:")) {
+    return getTruncatedText(context.lastComponent, [
+      theme.fg("error", text.split("\n")[0]),
+    ]);
+  }
+
+  if (result.details?.action === "list") {
+    const inventory = result.details.inventory as
+      | {
+          storeDir?: string;
+          entries?: Array<{
+            name?: string;
+            filename?: string;
+            description?: string;
+            valid?: boolean;
+            diagnostic?: string;
+          }>;
+          truncated?: string;
+        }
+      | undefined;
+    const lines = [
+      `saved workflows · ${inventory?.storeDir ?? "unknown store"}`,
+      ...(inventory?.entries ?? []).map((entry) =>
+        entry.valid
+          ? `✓ ${entry.name ?? entry.filename}${entry.description ? ` — ${entry.description}` : ""}`
+          : `✗ ${entry.name ?? entry.filename} — ${entry.diagnostic ?? "invalid"}`,
+      ),
+      ...(inventory?.truncated ? [`… ${inventory.truncated}`] : []),
+    ];
+    return getTruncatedText(context.lastComponent, lines);
+  }
+
+  if (result.details?.action === "validate") {
+    const name = result.details.meta?.name ?? "workflow";
+    const source = result.details.sourceFile
+      ? ` · ${result.details.sourceFile}`
+      : " · inline";
+    return getTruncatedText(context.lastComponent, [
+      `${theme.fg("success", "✓")} validated ${name}${source}`,
+    ]);
+  }
 
   const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
   if (snapshot) {
