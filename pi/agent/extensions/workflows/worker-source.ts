@@ -140,6 +140,12 @@ async function verify(claim, options = {}) {
   return { ok: verdict.confirmed, reasons: verdict.reasons };
 }
 
+function isPlainObject(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 async function report(value, options) {
   if (options == null || typeof options !== "object" || Array.isArray(options) || typeof options.gate !== "function") {
     throw new Error("report options must contain a callable gate");
@@ -147,7 +153,7 @@ async function report(value, options) {
   if (Object.keys(options).some((key) => key !== "gate")) throw new Error("report only accepts the gate option");
   const verdict = await options.gate(value);
   if (verdict === true || (verdict !== null && typeof verdict === "object" && !Array.isArray(verdict) && verdict.ok === true)) return value;
-  const reasons = verdict !== null && typeof verdict === "object" && !Array.isArray(verdict) && Array.isArray(verdict.reasons)
+  const reasons = isPlainObject(verdict) && Array.isArray(verdict.reasons)
     ? verdict.reasons.filter((reason) => typeof reason === "string")
     : [];
   throw new WorkflowReportError(reasons);
