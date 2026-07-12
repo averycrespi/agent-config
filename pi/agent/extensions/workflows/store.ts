@@ -108,7 +108,9 @@ async function readCandidate(
     await _storeHooks.beforeReadCandidate(root, filename);
     const handle = await open(
       path,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
     );
     try {
       const actualPath = await openedPath(handle.fd);
@@ -222,11 +224,7 @@ export async function inventoryWorkflows(
   if (!root.resolved) return { storeDir: root.configured, entries: [] };
 
   const dirents = (await readdir(root.resolved, { withFileTypes: true }))
-    .filter(
-      (entry) =>
-        entry.name.endsWith(".js") &&
-        (entry.isFile() || entry.isSymbolicLink()),
-    )
+    .filter((entry) => entry.name.endsWith(".js") && !entry.isDirectory())
     .sort((a, b) => a.name.localeCompare(b.name));
   const entries: WorkflowInventoryEntry[] = [];
   let aggregateBytes = 0;
@@ -327,7 +325,7 @@ export function formatWorkflowInventory(
   details: WorkflowInventory;
 } {
   const lines = [
-    `Saved workflows: ${inventory.storeDir}`,
+    `Saved workflows: ${cleanLine(inventory.storeDir, MAX_INVENTORY_TEXT_BYTES)}`,
     ...inventory.entries.map((entry) => JSON.stringify(entry)),
     ...(inventory.truncated ? [`[truncated] ${inventory.truncated}`] : []),
   ];

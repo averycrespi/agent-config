@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import test, { mock } from "node:test";
 import {
@@ -130,6 +131,17 @@ test("saved identity follows canonical parser behavior for duplicate metadata pr
   );
 });
 
+test("non-regular named entries reject without blocking", async (t) => {
+  const dir = await fixture(t);
+  const fifo = join(dir, "pipe.js");
+  const created = spawnSync("mkfifo", [fifo]);
+  if (created.status !== 0) t.skip("mkfifo is unavailable");
+  const inventory = await inventoryWorkflows(dir);
+  assert.equal(inventory.entries[0]?.valid, false);
+  assert.match(inventory.entries[0]?.diagnostic ?? "", /regular file/);
+  await assert.rejects(() => resolveSavedWorkflow(dir, "pipe"), /regular file/);
+});
+
 test("configured root may be a symlink but entries may not be", async (t) => {
   const parent = await fixture(t);
   const target = join(parent, "target");
@@ -224,6 +236,26 @@ test("inventory marks aggregate truncation and formatter bounds hostile metadata
     ),
   );
   assert.ok(formatted.details.entries.length > 0);
+
+  const hostilePath =
+    "/tmp/\u001b]8;;https://example.com\u0007store\u001b]8;;\u0007";
+  const hostile = formatWorkflowInventory({
+    storeDir: hostilePath,
+    entries: [
+      {
+        filename: "safe.js",
+        name: "safe",
+        valid: true,
+        description: "safe",
+        sourcePath: `${hostilePath}/safe.js`,
+      },
+    ],
+  });
+  assert.doesNotMatch(hostile.text, /\u001b|\u0007/);
+  assert.equal(
+    hostile.details.entries[0]?.sourcePath,
+    `${hostilePath}/safe.js`,
+  );
 });
 
 test("unreadable entries are invalid where permissions are enforced", async (t) => {
