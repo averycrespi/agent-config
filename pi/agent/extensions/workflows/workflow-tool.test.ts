@@ -262,6 +262,54 @@ test("renderSnapshot shows compact workflow agent rows and logs", () => {
   assert.match(lines[6], /hello/);
 });
 
+test("renderSnapshot keeps multiline activity within one physical row", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const lines = renderSnapshot(
+    {
+      meta: { name: "audit", description: "Audit" },
+      phases: [],
+      logs: [],
+      agents: [
+        {
+          id: 1,
+          agent: "analyst",
+          intent: "inspect",
+          prompt: "inspect",
+          status: "running",
+          startedAt: 1,
+          activity: {
+            intent: "inspect",
+            agentType: "analyst",
+            phase: "bash",
+            recentEvents: [
+              {
+                kind: "tool",
+                text: "bash: python3 - <<'PY'\nprint('ok')\nPY",
+              },
+            ],
+            toolUseCount: 1,
+            totalTokens: 10,
+            resolved: false,
+            startedAt: 1,
+            lastUpdateAt: 1001,
+          },
+        },
+      ],
+      agentFailureCount: 0,
+      loggedBranchFailureCount: 0,
+      settledBranchFailureCount: 0,
+      startedAt: 1,
+    },
+    theme,
+  );
+
+  assert.ok(lines.every((line) => !/[\r\n]/.test(line)));
+  assert.match(lines[2], /bash: python3 - <<'PY' print\('ok'\) PY/);
+});
+
 test("renderSnapshot keeps completed status while showing handled failures", () => {
   const theme = {
     bold: (text: string) => text,

@@ -68,15 +68,18 @@ function compactTypeLabel(agent: SubagentRunState): string {
   return agent.agentType ?? "agent";
 }
 
+function compactActivityText(text: string): string {
+  return text.replace(/\s*[\r\n]+\s*/g, " ");
+}
+
 function compactRecentActivity(agent: SubagentRunState): string | undefined {
   const lastEvent = agent.recentEvents?.[agent.recentEvents.length - 1];
   if (lastEvent?.text) {
-    return lastEvent.kind === "stderr"
-      ? `stderr: ${lastEvent.text}`
-      : lastEvent.text;
+    const text = compactActivityText(lastEvent.text);
+    return lastEvent.kind === "stderr" ? `stderr: ${text}` : text;
   }
-  if (agent.currentCommand) return agent.currentCommand;
-  if (agent.lastCommand) return agent.lastCommand;
+  if (agent.currentCommand) return compactActivityText(agent.currentCommand);
+  if (agent.lastCommand) return compactActivityText(agent.lastCommand);
   if (
     agent.phase &&
     !["starting", "done", "error", "aborted"].includes(agent.phase)
