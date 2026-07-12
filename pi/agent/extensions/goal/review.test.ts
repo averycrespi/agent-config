@@ -58,6 +58,7 @@ test("validateReviewOutput enforces the exact bounded contract and filters confi
   for (const invalid of [
     { ...clean, extra: true },
     { summary: "", findings: [] },
+    { summary: "x".repeat(1_001), findings: [] },
     {
       summary: "x",
       findings: [
@@ -82,11 +83,45 @@ test("validateReviewOutput enforces the exact bounded contract and filters confi
     },
     {
       summary: "x",
+      findings: [
+        {
+          severity: "important",
+          confidence: 101,
+          description: "x",
+          evidence: "x",
+        },
+      ],
+    },
+    {
+      summary: "x",
+      findings: [
+        {
+          severity: "important",
+          confidence: 90,
+          description: "x",
+          evidence: "x",
+          extra: true,
+        },
+      ],
+    },
+    {
+      summary: "x",
       findings: Array.from({ length: 11 }, () => ({
         severity: "suggestion",
         confidence: 90,
         description: "x",
         evidence: "x",
+      })),
+    },
+    {
+      summary: "x",
+      findings: Array.from({ length: 10 }, () => ({
+        severity: "suggestion",
+        confidence: 90,
+        description: "d".repeat(800),
+        evidence: "e".repeat(500),
+        location: "l".repeat(200),
+        suggested_fix: "f".repeat(500),
       })),
     },
   ])
@@ -152,6 +187,27 @@ test("runGoalReview forwards reviewer policy in a fresh session", async (t) => {
     "summary",
     "findings",
   ]);
+});
+
+test("runGoalReview rejects project-local reviewer extension shadows", async (t) => {
+  mock.method(_reviewDeps, "loadAgents", () => [reviewer]);
+  mock.method(_reviewDeps, "hasProjectExtensionShadow", () => true);
+  let spawned = false;
+  mock.method(_reviewDeps, "spawnSubagent", async () => {
+    spawned = true;
+    throw new Error("must not spawn");
+  });
+  t.after(() => mock.restoreAll());
+
+  const result = await runGoalReview({
+    goalId: "g",
+    objective: "o",
+    evidence: "e",
+    cwd: "/repo",
+    timeoutSeconds: 1,
+  });
+  assert.equal(result.kind, "failure");
+  assert.equal(spawned, false);
 });
 
 test("runGoalReview fails closed for missing reviewer and invalid output", async (t) => {

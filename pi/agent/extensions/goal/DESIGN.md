@@ -93,7 +93,7 @@ Because extension-provided compaction can replace Pi's default compaction result
 
 ## Security and boundaries
 
-The goal objective, completion evidence, prior findings, and reviewer output are untrusted data. Review prompts use shared boundary escaping, inherit no parent conversation, and preserve the reviewer's configured least-privilege tools/extensions/model/thinking/environment/system prompt/skill restrictions. The feature must not add write tools or automatic shell verification. Prompt injection protections in steering text must keep objectives below system/developer instructions. Do not move raw objectives into higher-priority instruction channels.
+The goal objective, completion evidence, prior findings, and reviewer output are untrusted data. Review prompts use shared boundary escaping, inherit no parent conversation, and preserve the reviewer's configured least-privilege tools/extensions/model/thinking/environment/system prompt/skill restrictions. The feature must not add write tools or automatic shell verification. It fails closed if a project-local extension shadows any extension named by the reviewer definition, preventing child startup code from weakening the configured reviewer policy. Prompt injection protections in steering text must keep objectives below system/developer instructions. Do not move raw objectives into higher-priority instruction channels.
 
 Timeout and parent cancellation compose into the child signal. The runner waits for `spawnSubagent()` to settle its process cleanup before returning, then clears timers/listeners. Raw child output stays in subagent diagnostics rather than persisted review state. Late outcomes are harmless because only the store can apply a matching token.
 

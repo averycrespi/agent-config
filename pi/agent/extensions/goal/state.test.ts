@@ -75,6 +75,39 @@ test("persisted parser ignores invalid nested review without losing legacy goal"
   assert.equal(parsed?.goal?.review, undefined);
 });
 
+test("persisted parser preserves review claims above the default evidence limit", () => {
+  const claimEvidence = "e".repeat(5_000);
+  const parsed = parsePersistedGoalState({
+    goal: {
+      id: "goal-large",
+      objective: "Configured large evidence",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 2,
+      review: {
+        status: "fix_required",
+        attemptCount: 1,
+        fixRoundsUsed: 0,
+        claimEvidence,
+        summary: "Requires a fix",
+        findings: [
+          {
+            severity: "important",
+            confidence: 90,
+            description: "Issue",
+            evidence: "artifact",
+          },
+        ],
+        startedAt: 1,
+        updatedAt: 2,
+      },
+    },
+  });
+
+  assert.equal(parsed?.goal?.review?.claimEvidence.length, 5_000);
+  assert.equal(parsed?.goal?.review?.status, "fix_required");
+});
+
 test("persisted goal state parser accepts auto-run snapshots", () => {
   const parsed = parsePersistedGoalState({
     goal: {

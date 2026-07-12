@@ -113,6 +113,7 @@ test("goal_update keeps first blocking review active and exhausts the next", asy
   const pi = makePi();
   const store = createGoalStore(() => 3);
   store.setGoal("Fix all cases", 100);
+  const requests: any[] = [];
   const finding = {
     severity: "important" as const,
     confidence: 95,
@@ -124,11 +125,14 @@ test("goal_update keeps first blocking review active and exhausts the next", asy
     reviewEnabled: true,
     reviewMaxFixRounds: 1,
     reviewTimeoutSeconds: 30,
-    reviewRunner: async () => ({
-      kind: "block",
-      summary: "Blocked",
-      findings: [finding],
-    }),
+    reviewRunner: async (request) => {
+      requests.push(request);
+      return {
+        kind: "block",
+        summary: "Blocked",
+        findings: [finding],
+      };
+    },
   });
   const tool = pi.tools.get("goal_update");
   const first = await tool.execute(
@@ -147,9 +151,46 @@ test("goal_update keeps first blocking review active and exhausts the next", asy
     undefined,
     { cwd: "/repo" },
   );
+  assert.equal(requests[1].priorFindings.length, 1);
   assert.equal(store.getGoal()?.review?.status, "exhausted");
   assert.equal(store.getGoal()?.status, "paused");
   assert.match(second.content[0].text, /exhausted/i);
+});
+
+test("goal_update persists before await and ignores a stale deferred result", async () => {
+  const pi = makePi();
+  const store = createGoalStore(() => 5);
+  store.setGoal("Avoid stale completion", 100);
+  let settle!: (result: any) => void;
+  registerGoalTools(pi, store, {
+    evidenceMaxChars: 100,
+    reviewEnabled: true,
+    reviewMaxFixRounds: 1,
+    reviewTimeoutSeconds: 30,
+    reviewRunner: async () =>
+      await new Promise((resolve) => {
+        settle = resolve;
+      }),
+  });
+
+  const pending = pi.tools
+    .get("goal_update")
+    .execute(
+      "1",
+      { status: "complete", evidence: "proof" },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+  assert.equal(pi.entries.length, 1);
+  assert.equal((pi.entries[0].data as any).goal.review.status, "reviewing");
+  store.pause();
+  settle({ kind: "pass", summary: "Late clean result", findings: [] });
+  const result = await pending;
+
+  assert.equal(store.getGoal()?.status, "paused");
+  assert.equal(pi.entries.length, 1);
+  assert.match(result.content[0].text, /became stale/i);
 });
 
 test("goal_update fails closed when review is unavailable", async () => {

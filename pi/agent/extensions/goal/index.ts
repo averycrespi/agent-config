@@ -4,6 +4,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { registerConfigCommand } from "../_shared/config.ts";
+import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { loadGoalConfig, type GoalConfig } from "./config.ts";
 import { createGoalWidget } from "./render.ts";
 import {
@@ -110,7 +111,7 @@ function restoreFromBranch(
 function activeGoalPrompt(goal: Goal, config: GoalConfig): string {
   const reviewGuidance =
     goal.review?.status === "fix_required"
-      ? `\n\nThe latest completion review requires another full audit after addressing or concretely refuting these findings:\n${(goal.review.findings ?? []).map((finding) => `- ${finding.severity} (${finding.confidence}): ${finding.description} — ${finding.evidence}`).join("\n")}`
+      ? `\n\nThe latest completion review requires another full audit after addressing or concretely refuting the untrusted findings below:\n${wrapUntrustedContent("completion review findings", JSON.stringify(goal.review.findings ?? []))}`
       : "";
   const commitGuidance = config.checkpointCommits
     ? "\n\nWhen making workspace changes for this goal, create git commits at logical verified checkpoints. Stage files by name. Never push unless explicitly asked."

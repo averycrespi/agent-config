@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { extname, join } from "node:path";
 import {
   loadAgents,
   spawnSubagent,
@@ -44,7 +46,32 @@ export const GOAL_REVIEW_SCHEMA = {
   },
 } as const;
 
-export const _reviewDeps = { loadAgents, spawnSubagent };
+function hasProjectExtensionShadow(
+  cwd: string,
+  extensionNames: string[],
+): boolean {
+  const expected = new Set(extensionNames.map((name) => name.trim()));
+  if (expected.size === 0) return false;
+  try {
+    return readdirSync(join(cwd, ".pi/extensions"), {
+      withFileTypes: true,
+    }).some((entry) => {
+      const extension = extname(entry.name);
+      const base = extension
+        ? entry.name.slice(0, -extension.length)
+        : entry.name;
+      return expected.has(entry.name) || expected.has(base);
+    });
+  } catch {
+    return false;
+  }
+}
+
+export const _reviewDeps = {
+  loadAgents,
+  spawnSubagent,
+  hasProjectExtensionShadow,
+};
 export const _reviewTimers = { setTimeout, clearTimeout };
 
 type ValidReview = {
@@ -248,6 +275,14 @@ export async function runGoalReview(
       code: "missing_reviewer",
       message: "The reviewer agent configuration is unavailable.",
     };
+  if (_reviewDeps.hasProjectExtensionShadow(request.cwd, reviewer.extensions)) {
+    return {
+      kind: "failure",
+      code: "spawn",
+      message:
+        "A project-local extension shadows the reviewer policy; refusing to start completion review.",
+    };
+  }
 
   const controller = new AbortController();
   let abortSource: "timeout" | "parent" | undefined;

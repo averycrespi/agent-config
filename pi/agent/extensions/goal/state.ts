@@ -706,7 +706,6 @@ function parseReview(value: unknown): GoalReviewState | undefined {
     (candidate.fixRoundsUsed as number) < 0 ||
     typeof candidate.claimEvidence !== "string" ||
     !candidate.claimEvidence.trim() ||
-    candidate.claimEvidence.length > 4_000 ||
     typeof candidate.startedAt !== "number" ||
     typeof candidate.updatedAt !== "number" ||
     (candidate.attemptToken !== undefined &&
@@ -718,8 +717,7 @@ function parseReview(value: unknown): GoalReviewState | undefined {
         candidate.summary.length > 1_000)) ||
     (candidate.overrideReason !== undefined &&
       (typeof candidate.overrideReason !== "string" ||
-        !candidate.overrideReason.trim() ||
-        candidate.overrideReason.length > 4_000)) ||
+        !candidate.overrideReason.trim())) ||
     (candidate.overriddenAt !== undefined &&
       typeof candidate.overriddenAt !== "number")
   )
@@ -761,7 +759,6 @@ function parseReview(value: unknown): GoalReviewState | undefined {
       ...(typeof raw.logFile === "string" ? { logFile: raw.logFile } : {}),
     };
   }
-  if (JSON.stringify(candidate).length > 20_000) return undefined;
   return {
     status: candidate.status,
     attemptCount: candidate.attemptCount as number,
