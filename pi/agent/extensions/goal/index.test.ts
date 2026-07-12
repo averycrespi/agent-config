@@ -492,7 +492,7 @@ test("agent_end stops auto-run at session time budget", async () => {
   assert.equal(pi.sentMessages.length, 0);
 });
 
-test("agent_end stops auto-run after terminal provider error", async () => {
+test("provider errors stop auto-run only after the agent settles", async () => {
   const pi = makePi();
   const ctx = makeCtx();
   createGoalExtension({
@@ -521,7 +521,7 @@ test("agent_end stops auto-run after terminal provider error", async () => {
         {
           role: "assistant",
           stopReason: "error",
-          errorMessage: "Retry failed after 3 attempts: provider unavailable",
+          errorMessage: "provider unavailable",
         },
       ],
     },
@@ -529,12 +529,95 @@ test("agent_end stops auto-run after terminal provider error", async () => {
   );
 
   assert.equal(pi.sentMessages.length, 1);
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "running");
+
+  await pi.handlers.get("agent_settled")({}, ctx);
+
   assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "stopped");
   assert.equal(
     (pi.entries.at(-1)?.data as any).autoRun.stopReason,
     "provider_error",
   );
   assert.match(ctx.notifications.at(-1)?.msg, /provider error/i);
+});
+
+test("a successful provider retry clears the pending error", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal").handler("Recover and continue", ctx);
+
+  await pi.handlers.get("agent_end")(
+    {
+      messages: [
+        {
+          role: "assistant",
+          stopReason: "error",
+          errorMessage: "503 service unavailable",
+        },
+      ],
+    },
+    ctx,
+  );
+  await pi.handlers.get("agent_end")(
+    { messages: [{ role: "assistant", stopReason: "stop" }] },
+    ctx,
+  );
+  await pi.handlers.get("agent_settled")({}, ctx);
+
+  assert.equal(pi.sentMessages.length, 2);
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "running");
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.continuationTurns, 1);
+});
+
+test("an aborted assistant stops auto-run immediately", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal").handler("Respect cancellation", ctx);
+
+  await pi.handlers.get("agent_end")(
+    { messages: [{ role: "assistant", stopReason: "aborted" }] },
+    ctx,
+  );
+
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "stopped");
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.stopReason, "aborted");
+  assert.match(ctx.notifications.at(-1)?.msg, /aborted/i);
 });
 
 test("tool_call blocks ask_user only while goal auto-run is running", async () => {

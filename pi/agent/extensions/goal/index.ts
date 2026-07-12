@@ -133,22 +133,27 @@ function sendUserMessage(
   if (typeof sender === "function") sender.call(pi, content, options);
 }
 
-function getTerminalProviderError(messages: unknown): string | undefined {
+function getAssistantFailure(
+  messages: unknown,
+): { reason: "error" | "aborted"; message: string } | undefined {
   if (!Array.isArray(messages)) return undefined;
   const lastMessage = messages.at(-1) as
     | { role?: unknown; stopReason?: unknown; errorMessage?: unknown }
     | undefined;
-  if (lastMessage?.role !== "assistant") return undefined;
   if (
-    lastMessage.stopReason !== "error" &&
-    lastMessage.stopReason !== "aborted"
+    lastMessage?.role !== "assistant" ||
+    (lastMessage.stopReason !== "error" && lastMessage.stopReason !== "aborted")
   ) {
     return undefined;
   }
-  return typeof lastMessage.errorMessage === "string" &&
-    lastMessage.errorMessage.trim().length > 0
-    ? lastMessage.errorMessage.trim()
-    : `Assistant stopped with ${lastMessage.stopReason}.`;
+  return {
+    reason: lastMessage.stopReason,
+    message:
+      typeof lastMessage.errorMessage === "string" &&
+      lastMessage.errorMessage.trim().length > 0
+        ? lastMessage.errorMessage.trim()
+        : `Assistant stopped with ${lastMessage.stopReason}.`,
+  };
 }
 
 function summarizeProviderError(message: string): string {
@@ -164,6 +169,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
   return function goalExtension(pi: ExtensionAPI) {
     const store = createGoalStore();
     let config = DEFAULT_RUNTIME_CONFIG;
+    let pendingProviderError: string | undefined;
     let unsubscribe: (() => void) | undefined;
 
     registerGoalTools(pi, store, {
@@ -358,6 +364,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
 
     pi.on("session_start", async (_event, ctx) => {
       unsubscribe?.();
+      pendingProviderError = undefined;
       await loadRuntimeConfig(ctx);
       restoreFromBranch(store, ctx);
       unsubscribe = store.subscribe((state) =>
@@ -367,6 +374,7 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
     });
 
     pi.on("session_tree", async (_event, ctx) => {
+      pendingProviderError = undefined;
       await loadRuntimeConfig(ctx);
       restoreFromBranch(store, ctx);
       renderWidget(pi, ctx, config, store.getState());
@@ -420,6 +428,13 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
     });
 
     pi.on("agent_end", async (event: { messages?: unknown }, ctx) => {
+      const failure = getAssistantFailure(event.messages);
+      if (failure?.reason === "error") {
+        pendingProviderError = failure.message;
+      } else {
+        pendingProviderError = undefined;
+      }
+
       const goal = store.getGoal();
       if (!config.autoRunEnabled) {
         stopAutoRun(
@@ -431,17 +446,11 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       }
       if (!goal || goal.status !== "active") return undefined;
       if (store.getAutoRun()?.status !== "running") return undefined;
-      const terminalProviderError = getTerminalProviderError(event.messages);
-      if (terminalProviderError) {
-        stopAutoRun(
-          ctx,
-          "provider_error",
-          `Goal auto-run stopped after provider error: ${summarizeProviderError(
-            terminalProviderError,
-          )}`,
-        );
+      if (failure?.reason === "aborted") {
+        stopAutoRun(ctx, "aborted", "Goal auto-run stopped: agent aborted.");
         return undefined;
       }
+      if (failure?.reason === "error") return undefined;
       if (typeof (ctx as any).hasPendingMessages === "function") {
         const hasPending = await (ctx as any).hasPendingMessages();
         if (hasPending) return undefined;
@@ -458,6 +467,23 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       });
       return undefined;
     });
+
+    (pi as any).on(
+      "agent_settled",
+      async (_event: unknown, ctx: ExtensionContext) => {
+        if (!pendingProviderError) return undefined;
+        const message = pendingProviderError;
+        pendingProviderError = undefined;
+        stopAutoRun(
+          ctx,
+          "provider_error",
+          `Goal auto-run stopped after provider error: ${summarizeProviderError(
+            message,
+          )}`,
+        );
+        return undefined;
+      },
+    );
 
     pi.on("session_before_compact", async (event: any) => {
       const goal = store.getGoal();

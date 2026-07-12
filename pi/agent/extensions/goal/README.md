@@ -25,10 +25,12 @@ After each `agent_end`, the extension schedules one follow-up user message when:
 - auto-run is `running`
 - `autoRunEnabled` is true
 - `autoRunMaxContinuations` and `autoRunMaxActiveMinutes` have not been exhausted
-- the last assistant message did not end with a provider error or abort
+- the last assistant message completed successfully
 - Pi reports no pending messages, when that API is available
 
-The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, a provider error/abort occurs, or a continuation/time bound is exhausted. Budget exhaustion and provider errors do not change goal status; the goal remains `active`, and auto-run records a stop reason such as `turn_budget`, `time_budget`, or `provider_error`.
+Provider errors are evaluated only after Pi reports that the agent has settled, so Pi's built-in retries and compaction recovery can run first. A successful retry clears the pending error and auto-run continues. If the provider error remains when the agent settles, auto-run stops. An aborted assistant stops auto-run immediately rather than being treated as a retryable provider failure.
+
+The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, aborted, left with a provider error after settlement, or a continuation/time bound is exhausted. These stop conditions do not change goal status; the goal remains `active`, and auto-run records a reason such as `turn_budget`, `time_budget`, `provider_error`, or `aborted`.
 
 Use `/goal-renew` to start or restart auto-run for the current active goal without changing the objective. Renewal creates a fresh auto-run session: it resets the continuation count and auto-run time budget, but it does not reset goal usage counters such as active goal time, tokens, or assistant turns.
 

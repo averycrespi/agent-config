@@ -44,11 +44,13 @@ After each `agent_end`, the extension schedules one follow-up only when all gate
 - auto-run is enabled in config;
 - a goal exists and is active;
 - auto-run status is `running`;
-- the last assistant message did not terminate with provider error or abort;
+- the last assistant message completed successfully;
 - Pi has no pending messages, when that API is available;
 - continuation and elapsed-time budgets are not exhausted.
 
-User input stops auto-run unless the input source is `extension`, which prevents the extension's own follow-up messages from stopping the loop. Budget exhaustion and provider errors stop auto-run but do not mark the goal failed or complete.
+`agent_end` occurs before Pi decides whether to retry a failed provider request. The extension therefore remembers provider errors without stopping auto-run, clears the pending error when a later attempt succeeds, and stops only if the error remains at `agent_settled`. Aborted assistant runs stop immediately because they commonly represent explicit cancellation rather than a transient provider failure.
+
+User input stops auto-run unless the input source is `extension`, which prevents the extension's own follow-up messages from stopping the loop. Budget exhaustion, settled provider errors, and aborts stop auto-run but do not mark the goal failed or complete.
 
 ## Prompt steering and completion rule
 

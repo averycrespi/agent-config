@@ -54,6 +54,8 @@ function formatStopReason(reason: AutoRunStopReason): string {
       return "time budget";
     case "provider_error":
       return "provider error";
+    case "aborted":
+      return "aborted";
   }
 }
 

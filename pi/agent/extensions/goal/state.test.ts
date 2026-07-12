@@ -80,6 +80,19 @@ test("persisted goal state parser accepts auto-run snapshots", () => {
   assert.equal(parsed?.autoRun?.stopReason, "turn_budget");
 });
 
+test("persisted goal state parser accepts aborted auto-run snapshots", () => {
+  const parsed = parsePersistedGoalState({
+    autoRun: {
+      status: "stopped",
+      updatedAt: 3,
+      continuationTurns: 0,
+      stopReason: "aborted",
+    },
+  });
+
+  assert.equal(parsed?.autoRun?.stopReason, "aborted");
+});
+
 test("formatGoalState includes auto-run status", () => {
   const store = createGoalStore(() => 1);
   store.setGoal("Fix auth", 100);

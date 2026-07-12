@@ -93,6 +93,18 @@ test("appends disabled auto-run reasons to the usage line", () => {
     autoRunMaxContinuations: 10,
     autoRunMaxActiveMinutes: 60,
   });
+  const aborted = renderGoalWidgetLines(goalWithUsage, 120, undefined, {
+    showUsage: true,
+    autoRun: {
+      status: "stopped",
+      updatedAt: 1,
+      continuationTurns: 0,
+      stopReason: "aborted",
+    },
+    autoRunEnabled: true,
+    autoRunMaxContinuations: 10,
+    autoRunMaxActiveMinutes: 60,
+  });
   const paused = renderGoalWidgetLines(
     { ...goalWithUsage, status: "paused" },
     120,
@@ -108,6 +120,7 @@ test("appends disabled auto-run reasons to the usage line", () => {
 
   assert.match(configDisabled[1], /auto-run disabled \(config\)/);
   assert.match(stopped[1], /auto-run disabled \(continuation budget\)/);
+  assert.match(aborted[1], /auto-run disabled \(aborted\)/);
   assert.match(paused[1], /auto-run disabled \(goal paused\)/);
 });
 
