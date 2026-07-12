@@ -21,6 +21,7 @@ import {
 } from "./commands.ts";
 import { runClaimedCli, runTickCli } from "./cli.ts";
 import {
+  DEFAULT_CONFIG,
   SCHEDULED_TASKS_RUN_CLAIMED_CLI,
   SCHEDULED_TASKS_TSX_COMMAND,
   loadScheduledTasksConfigFromSettings,
@@ -226,6 +227,10 @@ test("extension contributes management skill only outside scheduled child runs",
   } finally {
     process.env = childPreviousEnv;
   }
+});
+
+test("scheduled-tasks defaults its root under the Pi agent directory", () => {
+  assert.equal(DEFAULT_CONFIG.rootDir, "~/.pi/agent/scheduled-tasks");
 });
 
 test("scheduled-tasks config loads global settings from the agent directory", async () => {

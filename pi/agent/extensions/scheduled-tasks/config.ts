@@ -44,7 +44,7 @@ export interface ScheduledTasksConfig {
 }
 
 export const DEFAULT_CONFIG: ScheduledTasksConfig = {
-  rootDir: "~/.pi/scheduled-tasks",
+  rootDir: "~/.pi/agent/scheduled-tasks",
   defaultTimeoutMinutes: 30,
   defaultTools: ["read", "grep", "find", "ls"],
   piCommand: "pi",

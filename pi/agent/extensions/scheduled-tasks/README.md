@@ -27,7 +27,7 @@ Settings are read from `extension:scheduled-tasks` plus environment overrides. E
 
 | Field                        | Default                          | Environment override                            | Description                                                                                                                              |
 | ---------------------------- | -------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `rootDir`                    | `~/.pi/scheduled-tasks`          | `SCHEDULED_TASKS_ROOT_DIR`                      | Persistent root containing tasks, handoffs, state, sessions, runs, and locks.                                                            |
+| `rootDir`                    | `~/.pi/agent/scheduled-tasks`    | `SCHEDULED_TASKS_ROOT_DIR`                      | Persistent root containing tasks, handoffs, state, sessions, runs, and locks.                                                            |
 | `defaultTimeoutMinutes`      | `30`                             | `SCHEDULED_TASKS_DEFAULT_TIMEOUT_MINUTES`       | Default child Pi timeout when a task omits `timeoutMinutes`.                                                                             |
 | `defaultTools`               | `["read", "grep", "find", "ls"]` | `SCHEDULED_TASKS_DEFAULT_TOOLS`                 | Comma-separated default tool allowlist when a task omits `tools`. Empty means `--no-tools` unless handoff adds `scheduled_task_handoff`. |
 | `piCommand`                  | `pi`                             | `SCHEDULED_TASKS_PI_COMMAND`                    | Executable path or command name used for final child Pi task runs.                                                                       |
@@ -52,7 +52,7 @@ Example:
 }
 ```
 
-Run `/scheduled-tasks-config` to inspect the effective parsed config. The extension writes no retained diagnostic logs outside the configured root, but `state/ticks.jsonl` records bounded scheduler tick history and run artifacts may include raw child output.
+Run `/scheduled-tasks-config` to inspect the effective parsed config. Changing the default does not move data from an older root; configure `rootDir` explicitly if you want to keep using an existing location. The extension writes no retained diagnostic logs outside the configured root, but `state/ticks.jsonl` records bounded scheduler tick history and run artifacts may include raw child output.
 
 ## Task files
 
@@ -211,7 +211,7 @@ Manual reinstall/proof sequence after a scheduler cron update:
 pi --mode json --no-session -p '/scheduled-tasks-install-cron'
 crontab -l | sed -n '/# BEGIN PI SCHEDULED TASKS/,/# END PI SCHEDULED TASKS/p'
 node_modules/.bin/tsx pi/agent/extensions/scheduled-tasks/tick-cli.ts --dry-run
-tail -n 5 "$HOME/.pi/scheduled-tasks/state/ticks.jsonl"
+tail -n 5 "$HOME/.pi/agent/scheduled-tasks/state/ticks.jsonl"
 ps -axo pid=,ppid=,etimes=,command= | grep -E 'tick-cli|run-claimed-cli|scheduled-tasks-(tick|run-claimed)' | grep -v grep
 ```
 

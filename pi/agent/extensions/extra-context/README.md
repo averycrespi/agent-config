@@ -40,7 +40,7 @@ Settings live under `extension:extra-context` in Pi settings. Environment variab
 | `files`               | `[]`    | `EXTRA_CONTEXT_FILES`                 | Context files to load. Env form is a comma-separated list.               |
 | `missingFileBehavior` | `warn`  | `EXTRA_CONTEXT_MISSING_FILE_BEHAVIOR` | How to handle unreadable files: `warn`, `ignore`, or `error`.            |
 
-Paths may be absolute, `~`-prefixed, or relative to the session cwd. For cross-project private context, prefer an absolute or `~` path outside any git repository.
+Paths may be absolute, `~`-prefixed, or relative to the session cwd. For cross-project private context, prefer `~/.pi/agent/extra-context/` or another path outside any git repository.
 
 Example global settings:
 
@@ -48,7 +48,7 @@ Example global settings:
 {
   "extension:extra-context": {
     "enabled": true,
-    "files": ["~/.private/pi/AGENTS.private.md"],
+    "files": ["~/.pi/agent/extra-context/AGENTS.private.md"],
     "missingFileBehavior": "warn"
   }
 }
@@ -57,7 +57,7 @@ Example global settings:
 Example environment override:
 
 ```sh
-export EXTRA_CONTEXT_FILES="$HOME/.private/pi/AGENTS.private.md"
+export EXTRA_CONTEXT_FILES="$HOME/.pi/agent/extra-context/AGENTS.private.md"
 ```
 
 ## Subagents
