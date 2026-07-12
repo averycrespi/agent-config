@@ -798,10 +798,12 @@ test("budget is an immutable advisory worker facade", async () => {
         maxAgents: budget.maxAgents,
       };
       let assignmentRejected = false;
+      let replacementRejected = false;
       let redefineRejected = false;
       try { budget.spent = () => 999; } catch { assignmentRejected = true; }
+      try { budget = { total: 999 }; } catch { replacementRejected = true; }
       try { Object.defineProperty(budget, "total", { value: 999 }); } catch { redefineRejected = true; }
-      return { before, assignmentRejected, redefineRejected, frozen: Object.isFrozen(budget) };
+      return { before, assignmentRejected, replacementRejected, redefineRejected, frozen: Object.isFrozen(budget) };
     }`),
     {
       cwd: "/tmp",
@@ -821,6 +823,7 @@ test("budget is an immutable advisory worker facade", async () => {
       maxAgents: null,
     },
     assignmentRejected: true,
+    replacementRejected: true,
     redefineRejected: true,
     frozen: true,
   });

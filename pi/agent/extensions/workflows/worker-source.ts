@@ -1,5 +1,5 @@
 export function buildWorkerSource(executableScript: string): string {
-  const workflowBody = `"use strict";\n${executableScript}\nreturn typeof run === "function" ? await run() : undefined;`;
+  const workflowBody = `"use strict";\nconst budget = __budgetFacade;\n${executableScript}\nreturn typeof run === "function" ? await run() : undefined;`;
   return (
     `
 import { parentPort, workerData } from "node:worker_threads";
@@ -204,7 +204,7 @@ async function pipeline(items, ...stages) {
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const workflowMain = new AsyncFunction(
-  "agent", "verify", "report", "budget", "parallel", "parallelSettled", "pipeline", "phase", "log", "args", "cwd",
+  "agent", "verify", "report", "__budgetFacade", "parallel", "parallelSettled", "pipeline", "phase", "log", "args", "cwd",
   "process", "require", "global", "globalThis", "Buffer", "setTimeout", "setInterval", "setImmediate", "fetch", "XMLHttpRequest", "WebSocket", "Worker", "importScripts",
   ${JSON.stringify(workflowBody)},
 );
