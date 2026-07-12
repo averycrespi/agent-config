@@ -517,66 +517,107 @@ test("extension registers workflows-list with live inventory output", async () =
   assert.match(notifications[0]![0], /^Saved workflows:/);
 });
 
-test("renderWorkflowCall suppresses noisy script metadata", () => {
+test("renderWorkflowCall uses a stable themed summary without inline source", () => {
+  const theme = {
+    bold: (value: string) => `<bold>${value}</bold>`,
+    fg: (color: string, value: string) => `<${color}>${value}</${color}>`,
+  };
   const component = renderWorkflowCall(
     {
       action: "run",
-      script: 'export const meta = { name: "x", description: "x" };',
+      script: 'export const meta = { name: "secret", description: "secret" };',
     },
-    {},
-    {},
+    theme,
+    { lastComponent: undefined },
   );
-  assert.deepEqual(component.render(80), []);
+  const line = component.render(120)[0]!;
+  assert.equal(
+    line,
+    "<toolTitle><bold>workflow</bold></toolTitle> <muted>run</muted>",
+  );
+  assert.doesNotMatch(line, /secret|export const/);
 });
 
-test("list and validate rendering is compact, width-aware, and source-free", () => {
+test("renderWorkflowCall bounds dynamic display fields before width truncation", () => {
+  const theme = {
+    bold: (value: string) => value,
+    fg: (_color: string, value: string) => value,
+  };
+  const component = renderWorkflowCall(
+    { action: "run", name: "x".repeat(10_000) },
+    theme,
+    { lastComponent: undefined },
+  );
+  assert.ok(visibleWidth(component.render(20_000)[0]!) < 2_100);
+});
+
+test("list and validate rendering is compact by default and detailed when expanded", () => {
   const theme = { fg: (_color: string, value: string) => value };
-  const list = renderWorkflowResult(
-    {
-      content: [
-        { type: "text", text: "raw inventory that should not be rendered" },
-      ],
-      details: {
-        action: "list",
-        inventory: {
-          storeDir: "/tmp/workflows",
-          entries: [
-            {
-              filename: "safe.js",
-              name: "safe",
-              description:
-                "one\nline\t\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",
-              valid: true,
-              sourcePath: "/tmp/workflows/safe.js",
-            },
-          ],
-        },
+  const result = {
+    content: [
+      { type: "text", text: "raw inventory that should not be rendered" },
+    ],
+    details: {
+      action: "list",
+      inventory: {
+        storeDir: "/tmp/workflows",
+        entries: [
+          {
+            filename: "safe.js",
+            name: "safe",
+            description:
+              "one\nline\t\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",
+            valid: true,
+            sourcePath: "/tmp/workflows/safe.js",
+          },
+        ],
       },
     },
-    {},
-    theme,
-    { state: {}, invalidate() {} },
+  };
+  const collapsed = renderWorkflowResult(result, { expanded: false }, theme, {
+    state: {},
+    invalidate() {},
+  });
+  assert.deepEqual(collapsed.render(120), ["✓ 1 saved workflow"]);
+
+  const expanded = renderWorkflowResult(result, { expanded: true }, theme, {
+    state: {},
+    invalidate() {},
+  });
+  assert.ok(
+    expanded.render(30).every((line: string) => visibleWidth(line) <= 30),
   );
-  assert.ok(list.render(30).every((line: string) => visibleWidth(line) <= 30));
+  assert.match(expanded.render(120).join("\n"), /saved workflows.*safe/s);
   assert.doesNotMatch(
-    list.render(120).join("\n"),
+    expanded.render(120).join("\n"),
     /raw inventory|\u001b|\u0007|\nline/,
   );
 
-  const validate = renderWorkflowResult(
-    {
-      content: [{ type: "text", text: "Workflow safe is valid." }],
-      details: {
-        action: "validate",
-        meta: { name: "safe", description: "safe" },
-        sourceFile: "/tmp/workflows/safe.js",
-      },
+  const validateResult = {
+    content: [{ type: "text", text: "Workflow safe is valid." }],
+    details: {
+      action: "validate",
+      meta: { name: "safe", description: "safe" },
+      sourceFile: "/tmp/workflows/safe.js",
     },
-    {},
+  };
+  const validateCollapsed = renderWorkflowResult(
+    validateResult,
+    { expanded: false },
     theme,
     { state: {}, invalidate() {} },
   );
-  assert.match(validate.render(120)[0], /validated safe/);
+  assert.deepEqual(validateCollapsed.render(120), ["✓ validated safe"]);
+  const validateExpanded = renderWorkflowResult(
+    validateResult,
+    { expanded: true },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  assert.match(
+    validateExpanded.render(120)[0],
+    /validated safe.*workflows\/safe.js/,
+  );
 });
 
 test("renderSnapshot shows compact workflow agent rows and logs", () => {
@@ -709,61 +750,224 @@ test("renderSnapshot keeps completed status while showing handled failures", () 
   assert.match(lines[0], /1 settled branch failure/);
 });
 
-test("renderWorkflowResult uses one final workflow header when snapshot exists", () => {
+test("renderWorkflowResult keeps run summaries compact until expanded", () => {
   const theme = {
     bold: (text: string) => text,
     fg: (_color: string, text: string) => text,
   };
-  const component = renderWorkflowResult(
-    {
-      content: [
-        {
-          type: "text",
-          text: "Workflow audit completed in 1.0s.\nFailures: 0\n\n[]",
-        },
-      ],
-      details: {
-        snapshot: {
-          meta: { name: "audit", description: "Audit" },
-          phase: "done",
-          phases: ["fanout", "done"],
-          logs: [],
-          agents: [
-            {
-              id: 1,
-              agent: "explorer",
+  const result = {
+    content: [
+      {
+        type: "text",
+        text: "Workflow audit completed in 1.0s.\nFailures: 0\n\n[]",
+      },
+    ],
+    details: {
+      snapshot: {
+        meta: { name: "audit", description: "Audit" },
+        phase: "done",
+        phases: ["fanout", "done"],
+        logs: [],
+        agents: [
+          {
+            id: 1,
+            agent: "explorer",
+            intent: "a",
+            prompt: "a",
+            status: "done",
+            startedAt: 1,
+            activity: {
               intent: "a",
-              prompt: "a",
-              status: "done",
+              agentType: "explorer",
+              phase: "done",
+              recentEvents: [],
+              toolUseCount: 1,
+              totalTokens: 0,
+              resolved: true,
               startedAt: 1,
-              activity: {
-                intent: "a",
-                agentType: "explorer",
-                phase: "done",
-                recentEvents: [],
-                toolUseCount: 1,
-                totalTokens: 0,
-                resolved: true,
-                startedAt: 1,
-                lastUpdateAt: 1001,
-              },
+              lastUpdateAt: 1001,
             },
-          ],
-          agentFailureCount: 0,
-          loggedBranchFailureCount: 0,
-          settledBranchFailureCount: 0,
-          startedAt: 1,
-          finishedAt: 1001,
-        },
+          },
+        ],
+        agentFailureCount: 0,
+        loggedBranchFailureCount: 0,
+        settledBranchFailureCount: 0,
+        startedAt: 1,
+        finishedAt: 1001,
       },
     },
-    { isPartial: false },
+  };
+  const collapsed = renderWorkflowResult(
+    result,
+    { isPartial: false, expanded: false },
     theme,
     { state: {}, invalidate() {} },
   );
-  const lines = component.render(120);
+  assert.deepEqual(collapsed.render(120), ["✓ audit · 1 done · 0 failed · 1s"]);
+
+  const expanded = renderWorkflowResult(
+    result,
+    { isPartial: false, expanded: true },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  const lines = expanded.render(120);
   assert.match(lines[0], /^Workflow: audit ✓ · 1s · 1 done · 0 agents failed$/);
   assert.match(lines[2], /^✓ explorer: a · 1 tool use · 1s$/);
   assert.ok(!lines.some((line) => line.startsWith("✓ workflow")));
   assert.ok(!lines.some((line) => line.includes("Workflow audit completed")));
+});
+
+test("partial workflow results are compact, expandable, and control-safe", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const result = {
+    content: [{ type: "text", text: "Running workflow audit..." }],
+    details: {
+      snapshot: {
+        meta: { name: "audit", description: "Audit" },
+        phase: "fanout",
+        phases: ["fanout"],
+        logs: [
+          {
+            level: "info",
+            message: "hello\nworld\u001b]8;;https://example.com\u0007link",
+            timestamp: 1,
+          },
+        ],
+        agents: [
+          {
+            id: 1,
+            agent: "explorer",
+            intent: "done",
+            prompt: "done",
+            status: "done",
+            startedAt: 1,
+          },
+          {
+            id: 2,
+            agent: "reviewer",
+            intent: "running",
+            prompt: "running",
+            status: "running",
+            startedAt: 1,
+            activity: {
+              intent: "running",
+              agentType: "reviewer",
+              phase: "bash",
+              recentEvents: [
+                {
+                  kind: "tool",
+                  text: "recent\u001b]8;;https://example.com\u0007link",
+                },
+              ],
+              toolUseCount: 1,
+              totalTokens: 10,
+              resolved: false,
+              startedAt: 1,
+              lastUpdateAt: 1001,
+            },
+          },
+        ],
+        agentFailureCount: 0,
+        loggedBranchFailureCount: 0,
+        settledBranchFailureCount: 0,
+        startedAt: Date.now(),
+      },
+    },
+  };
+  const collapsedContext = { state: {}, invalidate() {} };
+  const collapsed = renderWorkflowResult(
+    result,
+    { isPartial: true, expanded: false },
+    theme,
+    collapsedContext,
+  );
+  assert.match(
+    collapsed.render(120)[0],
+    /^Running audit · fanout · 1 done · 1 running · 0 failed · 0s$/,
+  );
+  assert.equal(collapsed.render(120).length, 1);
+
+  const expandedContext = { state: {}, invalidate() {} };
+  const expanded = renderWorkflowResult(
+    result,
+    { isPartial: true, expanded: true },
+    theme,
+    expandedContext,
+  );
+  const expandedText = expanded.render(160).join("\n");
+  assert.match(expandedText, /recentlink/);
+  assert.match(expandedText, /Logs.*hello worldlink/s);
+  assert.doesNotMatch(expandedText, /\u001b|\u0007/);
+
+  renderWorkflowResult(result, { isPartial: false }, theme, collapsedContext);
+  renderWorkflowResult(result, { isPartial: false }, theme, expandedContext);
+});
+
+test("renderWorkflowResult keeps contextual headers for errors", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+  };
+  const component = renderWorkflowResult(
+    { content: [{ type: "text", text: "provider exploded" }], details: {} },
+    { isPartial: false },
+    theme,
+    {
+      state: {},
+      invalidate() {},
+      isError: true,
+      args: { action: "run", name: "deep-research" },
+    },
+  );
+  assert.deepEqual(component.render(120), [
+    "<error>✗ workflow run deep-research</error>",
+    "<error>provider exploded</error>",
+  ]);
+});
+
+test("renderWorkflowResult preserves snapshot context on run errors", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const result = {
+    content: [{ type: "text", text: "Error: verifier failed" }],
+    details: {
+      action: "run",
+      snapshot: {
+        meta: { name: "audit", description: "Audit" },
+        phases: ["verify"],
+        logs: [],
+        agents: [],
+        agentFailureCount: 1,
+        loggedBranchFailureCount: 0,
+        settledBranchFailureCount: 0,
+        startedAt: 1,
+        finishedAt: 1001,
+      },
+    },
+  };
+  const collapsed = renderWorkflowResult(
+    result,
+    { isPartial: false, expanded: false },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  assert.deepEqual(collapsed.render(120), [
+    "✗ audit · 0 done · 1 failed · 1s",
+    "Error: verifier failed",
+  ]);
+
+  const expanded = renderWorkflowResult(
+    result,
+    { isPartial: false, expanded: true },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  assert.match(expanded.render(120)[0], /^Workflow: audit ✗ · 1s/);
+  assert.equal(expanded.render(120).at(-1), "Error: verifier failed");
 });

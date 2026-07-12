@@ -107,6 +107,12 @@ A normally returning workflow is still reported as completed when it deliberatel
 - `loggedBranchFailureCount`: failures caught by `parallel()`;
 - `settledBranchFailureCount`: failures returned by `parallelSettled()`.
 
+## TUI rendering
+
+Tool rows use compact action-oriented summaries by default. Running and completed workflows show the workflow name, agent counts, failures, phase when active, and elapsed time without exposing inline script source. Expand the tool row to inspect per-agent activity, recent workflow logs, saved inventory entries, or validation source paths.
+
+Errors retain context instead of replacing the row with a bare exception: run failures keep the latest workflow and agent summary, while earlier failures identify the attempted action and saved workflow name when available. Dynamic workflow, agent, activity, and log text is normalized before terminal rendering.
+
 ## Model aliases
 
 Scripts never receive raw provider/model selectors. `model: "small"` and `model: "big"` cross the sandbox RPC only as aliases and are validated and resolved by the host. A configured requested tier overrides the selected agent definition's model and the parent model. Omitting `model` preserves agent-definition-then-parent fallback. Unknown or unconfigured aliases fail with `agent_policy_rejected` without spawning.

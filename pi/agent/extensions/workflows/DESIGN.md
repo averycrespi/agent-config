@@ -97,7 +97,7 @@ Abort cause is preserved through composed workflow/budget/per-attempt signals. A
 
 ## Rendering, logging, and output
 
-`workflow-tool.ts` merges runtime snapshots with subagent activity updates. Shared width-aware renderers keep one compact row per subagent and compact source-free rows for list/validate actions. Script logs are capped at 100 entries × 2,000 characters and phases at 100 entries × 200 characters in both the sandbox and host, preventing unbounded IPC/state/TUI amplification. Final output uses shared safe stringification and spillover.
+`workflow-tool.ts` merges runtime snapshots with subagent activity updates. `display.ts` follows the repository tool-row grammar: every action has a stable source-free call summary; collapsed results show a compact themed status; expanded results reveal inventory, validation source, per-agent activity, and recent logs. Errors retain an action or workflow summary before the error message, and run errors preserve the latest snapshot. Dynamic display fields are bounded and control-character-normalized before the shared width-aware renderer truncates each logical line. Script logs are capped at 100 entries × 2,000 characters and phases at 100 entries × 200 characters in both the sandbox and host, preventing unbounded IPC/state/TUI amplification. Final output uses shared safe stringification and spillover.
 
 Saved definitions and exact run-input artifacts are persistent inputs, not durable runs. No run database, result store, budget journal, response cache, checkpoint, ledger snapshot, or model-response persistence is introduced. Script artifacts use seven-day best-effort retention. Subagent logs and separate spillover may contain raw tool/model output, as documented in the user README.
 

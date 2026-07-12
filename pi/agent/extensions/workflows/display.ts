@@ -1,4 +1,3 @@
-import { Text } from "@earendil-works/pi-tui";
 import { stripVTControlCharacters } from "node:util";
 import {
   clearPartialTimer,
@@ -10,12 +9,15 @@ import {
 import { agentProgressLine } from "../subagents/render.ts";
 import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
 
+const MAX_DISPLAY_CHARS = 2_000;
+
 function safeDisplay(value: unknown): string {
   return stripVTControlCharacters(String(value ?? ""))
     .replace(/[\r\n\t]+/g, " ")
     .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .slice(0, MAX_DISPLAY_CHARS);
 }
 
 export function formatWorkflowResult(details: unknown, text: string): string {
@@ -29,7 +31,7 @@ export function formatWorkflowResult(details: unknown, text: string): string {
         spilled?: boolean;
       }
     | undefined;
-  const name = info?.meta?.name ? ` ${info.meta.name}` : "";
+  const name = info?.meta?.name ? ` ${safeDisplay(info.meta.name)}` : "";
   const agentFailures = info?.agentFailureCount
     ? `, ${info.agentFailureCount} agent failure${info.agentFailureCount === 1 ? "" : "s"}`
     : "";
@@ -44,7 +46,7 @@ export function formatWorkflowResult(details: unknown, text: string): string {
       ? ` in ${formatDuration(info.durationMs)}`
       : "";
   const first = text.trim().split("\n").find(Boolean);
-  return `✓ workflow${name}${duration}${agentFailures}${branches}${first ? ` — ${first.slice(0, 80)}` : ""}`;
+  return `✓ workflow${name}${duration}${agentFailures}${branches}${first ? ` — ${safeDisplay(first).slice(0, 80)}` : ""}`;
 }
 
 function countAgents(snapshot: WorkflowSnapshot): {
@@ -64,7 +66,7 @@ function countAgents(snapshot: WorkflowSnapshot): {
 function workflowHeader(
   snapshot: WorkflowSnapshot,
   theme: any,
-  options: { final?: boolean } = {},
+  options: { final?: boolean; error?: boolean } = {},
 ): string {
   const elapsed = formatDuration(
     (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt,
@@ -87,10 +89,69 @@ function workflowHeader(
     counts += ` · ${settled} settled branch failure${settled === 1 ? "" : "s"}`;
   }
   if (options.final) {
-    return `${theme.bold("Workflow")}: ${name} ✓ · ${elapsed}${counts}`;
+    const glyph = options.error
+      ? theme.fg("error", "✗")
+      : theme.fg("success", "✓");
+    return `${theme.bold("Workflow")}: ${name} ${glyph} · ${elapsed}${counts}`;
   }
   const phase = snapshot.phase ? ` · ${safeDisplay(snapshot.phase)}` : "";
   return `${theme.bold("Workflow")}: ${name}${phase}${counts} · ${elapsed}`;
+}
+
+function compactSnapshotLine(
+  snapshot: WorkflowSnapshot,
+  theme: any,
+  final: boolean,
+  error = false,
+): string {
+  const elapsed = formatDuration(
+    Math.max(0, (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt),
+  );
+  const name = safeDisplay(snapshot.meta?.name ?? "workflow");
+  const phase =
+    !final && snapshot.phase ? ` · ${safeDisplay(snapshot.phase)}` : "";
+  const { running, done, failed } = countAgents(snapshot);
+  const agentFailures = snapshot.agentFailureCount ?? failed;
+  const branchFailures =
+    (snapshot.loggedBranchFailureCount ?? 0) +
+    (snapshot.settledBranchFailureCount ?? 0);
+  const branches =
+    branchFailures > 0 ? ` · ${branchFailures} branch failed` : "";
+  if (!final) {
+    return theme.fg(
+      "warning",
+      `Running ${name}${phase} · ${done} done · ${running} running · ${agentFailures} failed${branches} · ${elapsed}`,
+    );
+  }
+  const hasFailures = agentFailures > 0 || branchFailures > 0;
+  return theme.fg(
+    error ? "error" : hasFailures ? "warning" : "success",
+    `${error ? "✗" : hasFailures ? "!" : "✓"} ${name} · ${done} done · ${agentFailures} failed${branches} · ${elapsed}`,
+  );
+}
+
+function safeAgentActivity(
+  activity: NonNullable<WorkflowAgentState["activity"]>,
+): NonNullable<WorkflowAgentState["activity"]> {
+  const safeOptional = (value: string | undefined) =>
+    value === undefined ? undefined : safeDisplay(value);
+  return {
+    ...activity,
+    intent: safeDisplay(activity.intent),
+    agentType: safeOptional(activity.agentType),
+    phase: safeDisplay(activity.phase) as typeof activity.phase,
+    activeTool: safeOptional(activity.activeTool),
+    currentCommand: safeOptional(activity.currentCommand),
+    lastCommand: safeOptional(activity.lastCommand),
+    lastOutput: safeOptional(activity.lastOutput),
+    lastToolInfo: safeOptional(activity.lastToolInfo),
+    recentEvents: activity.recentEvents.map((event) => ({
+      ...event,
+      text: safeDisplay(event.text),
+    })),
+    errorMessage: safeOptional(activity.errorMessage),
+    logFile: safeOptional(activity.logFile),
+  };
 }
 
 function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
@@ -102,11 +163,11 @@ function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
         : agent.status === "aborted"
           ? "!"
           : "✗";
-  const label = `${glyph} ${agent.agent}: ${agent.intent}`;
+  const label = `${glyph} ${safeDisplay(agent.agent)}: ${safeDisplay(agent.intent)}`;
   if (agent.status === "running")
     return `${label} · ${theme.fg("muted", "initializing")}`;
   if (agent.status === "done") return `${label} · ${theme.fg("muted", "done")}`;
-  return `${label} · ${theme.fg("error", agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed")}`;
+  return `${label} · ${theme.fg("error", safeDisplay(agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed"))}`;
 }
 
 function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
@@ -116,7 +177,7 @@ function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
     theme.bold("Logs"),
     ...logs.map((log) => {
       const color = log.level === "error" ? "error" : "muted";
-      return theme.fg(color, `- ${log.message}`);
+      return theme.fg(color, `- ${safeDisplay(log.message)}`);
     }),
   ];
 }
@@ -124,7 +185,7 @@ function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
 export function renderSnapshot(
   snapshot: WorkflowSnapshot,
   theme: any,
-  options: { final?: boolean } = {},
+  options: { final?: boolean; error?: boolean } = {},
 ): string[] {
   const lines: string[] = [workflowHeader(snapshot, theme, options)];
   if (snapshot.agents.length > 0) {
@@ -132,7 +193,7 @@ export function renderSnapshot(
       "",
       ...snapshot.agents.map((agent) =>
         agent.activity
-          ? agentProgressLine(agent.activity, theme)
+          ? agentProgressLine(safeAgentActivity(agent.activity), theme)
           : fallbackAgentLine(agent, theme),
       ),
     );
@@ -142,22 +203,18 @@ export function renderSnapshot(
   return lines;
 }
 
-export function renderWorkflowCall(params: unknown, _theme: any, context: any) {
-  const action = (params as { action?: string } | undefined)?.action;
-  if (action === "list" || action === "validate") {
-    const name = (params as { name?: string }).name;
-    return getTruncatedText(context.lastComponent, [
-      `workflow ${action}${name ? ` ${name}` : ""}`,
-    ]);
-  }
-  const t = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-  t.setText("");
-  return t;
+export function renderWorkflowCall(params: unknown, theme: any, context: any) {
+  const input = params as { action?: string; name?: string } | undefined;
+  const action = safeDisplay(input?.action ?? "run");
+  const name = input?.name ? ` ${safeDisplay(input.name)}` : "";
+  return getTruncatedText(context.lastComponent, [
+    `${theme.fg("toolTitle", theme.bold("workflow"))} ${theme.fg("muted", `${action}${name}`)}`,
+  ]);
 }
 
 export function renderWorkflowResult(
   result: any,
-  { isPartial }: { isPartial?: boolean },
+  { isPartial, expanded }: { isPartial?: boolean; expanded?: boolean },
   theme: any,
   context: any,
 ) {
@@ -165,15 +222,44 @@ export function renderWorkflowResult(
     startPartialTimer(context);
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
     const lines = snapshot
-      ? renderSnapshot(snapshot, theme)
-      : ["Running workflow..."];
+      ? expanded
+        ? renderSnapshot(snapshot, theme)
+        : [compactSnapshotLine(snapshot, theme, false)]
+      : [theme.fg("warning", "workflow running...")];
     return getTruncatedText(context.lastComponent, lines);
   }
   clearPartialTimer(context);
   const text = getResultText(result);
-  if (text.startsWith("Error:") || text.startsWith("Invalid workflow input:")) {
+  if (
+    context.isError ||
+    text.startsWith("Error:") ||
+    text.startsWith("Invalid workflow input:")
+  ) {
+    const message = theme.fg(
+      "error",
+      safeDisplay(text.split("\n").find(Boolean) ?? "Workflow failed"),
+    );
+    const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
+    if (snapshot) {
+      const lines = expanded
+        ? [
+            ...renderSnapshot(snapshot, theme, { final: true, error: true }),
+            "",
+            message,
+          ]
+        : [compactSnapshotLine(snapshot, theme, true, true), message];
+      return getTruncatedText(context.lastComponent, lines);
+    }
+    const input = context.args as
+      | { action?: string; name?: string }
+      | undefined;
+    const action = safeDisplay(
+      result.details?.action ?? input?.action ?? "run",
+    );
+    const name = input?.name ? ` ${safeDisplay(input.name)}` : "";
     return getTruncatedText(context.lastComponent, [
-      theme.fg("error", text.split("\n")[0]),
+      theme.fg("error", `✗ workflow ${action}${name}`),
+      message,
     ]);
   }
 
@@ -191,9 +277,16 @@ export function renderWorkflowResult(
           truncated?: string;
         }
       | undefined;
-    const lines = [
+    const entries = inventory?.entries ?? [];
+    if (!expanded) {
+      const count = entries.length;
+      return getTruncatedText(context.lastComponent, [
+        `${theme.fg("success", "✓")} ${count} saved workflow${count === 1 ? "" : "s"}`,
+      ]);
+    }
+    return getTruncatedText(context.lastComponent, [
       `saved workflows · ${safeDisplay(inventory?.storeDir ?? "unknown store")}`,
-      ...(inventory?.entries ?? []).map((entry) => {
+      ...entries.map((entry) => {
         const name = safeDisplay(entry.name ?? entry.filename);
         return entry.valid
           ? `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`
@@ -202,15 +295,16 @@ export function renderWorkflowResult(
       ...(inventory?.truncated
         ? [`… ${safeDisplay(inventory.truncated)}`]
         : []),
-    ];
-    return getTruncatedText(context.lastComponent, lines);
+    ]);
   }
 
   if (result.details?.action === "validate") {
     const name = safeDisplay(result.details.meta?.name ?? "workflow");
-    const source = result.details.sourceFile
-      ? ` · ${safeDisplay(result.details.sourceFile)}`
-      : " · inline";
+    const source = expanded
+      ? result.details.sourceFile
+        ? ` · ${safeDisplay(result.details.sourceFile)}`
+        : " · inline"
+      : "";
     return getTruncatedText(context.lastComponent, [
       `${theme.fg("success", "✓")} validated ${name}${source}`,
     ]);
@@ -220,11 +314,13 @@ export function renderWorkflowResult(
   if (snapshot) {
     return getTruncatedText(
       context.lastComponent,
-      renderSnapshot(snapshot, theme, { final: true }),
+      expanded
+        ? renderSnapshot(snapshot, theme, { final: true })
+        : [compactSnapshotLine(snapshot, theme, true)],
     );
   }
 
   return getTruncatedText(context.lastComponent, [
-    formatWorkflowResult(result.details, text),
+    theme.fg("success", formatWorkflowResult(result.details, text)),
   ]);
 }
