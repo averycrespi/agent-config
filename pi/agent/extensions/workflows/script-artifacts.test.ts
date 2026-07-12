@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import test, { mock } from "node:test";
 import {
   _artifactNonce,
+  WORKFLOW_SCRIPT_FILE_PREFIX,
   cleanupOldWorkflowScripts,
   persistWorkflowScript,
   WORKFLOW_SCRIPT_RETENTION_MS,
@@ -79,18 +80,31 @@ test("rejects a symlinked artifact directory", async (t) => {
 test("cleanup removes only old regular js files", async (t) => {
   const dir = await fixture(t);
   await mkdir(dir);
-  const oldJs = join(dir, "old.js");
-  const boundaryJs = join(dir, "boundary.js");
-  const recentJs = join(dir, "recent.js");
+  const oldJs = join(dir, `${WORKFLOW_SCRIPT_FILE_PREFIX}old.js`);
+  const boundaryJs = join(dir, `${WORKFLOW_SCRIPT_FILE_PREFIX}boundary.js`);
+  const recentJs = join(dir, `${WORKFLOW_SCRIPT_FILE_PREFIX}recent.js`);
+  const unrelatedJs = join(dir, "unrelated.js");
   const unrelated = join(dir, "keep.txt");
   const target = join(dir, "target.js");
   const link = join(dir, "link.js");
-  for (const path of [oldJs, boundaryJs, recentJs, unrelated, target])
+  for (const path of [
+    oldJs,
+    boundaryJs,
+    recentJs,
+    unrelatedJs,
+    unrelated,
+    target,
+  ])
     await writeFile(path, "x");
   await symlink(target, link);
   const now = Date.now();
   await utimes(
     oldJs,
+    new Date(now - WORKFLOW_SCRIPT_RETENTION_MS - 1_000),
+    new Date(now - WORKFLOW_SCRIPT_RETENTION_MS - 1_000),
+  );
+  await utimes(
+    unrelatedJs,
     new Date(now - WORKFLOW_SCRIPT_RETENTION_MS - 1_000),
     new Date(now - WORKFLOW_SCRIPT_RETENTION_MS - 1_000),
   );
@@ -102,6 +116,13 @@ test("cleanup removes only old regular js files", async (t) => {
 
   await cleanupOldWorkflowScripts(dir, WORKFLOW_SCRIPT_RETENTION_MS, now);
   await assert.rejects(() => lstat(oldJs), /ENOENT/);
-  for (const path of [boundaryJs, recentJs, unrelated, target, link])
+  for (const path of [
+    boundaryJs,
+    recentJs,
+    unrelatedJs,
+    unrelated,
+    target,
+    link,
+  ])
     assert.ok(await lstat(path));
 });

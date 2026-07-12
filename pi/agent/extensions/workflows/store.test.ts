@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import test from "node:test";
+import test, { mock } from "node:test";
 import {
+  _storeHooks,
   formatWorkflowInventory,
   inventoryWorkflows,
   MAX_INVENTORY_ENTRIES,
@@ -99,6 +100,21 @@ test("inventory reports unsafe, mismatched, parser-failed, oversized, and symlin
   );
 });
 
+test("saved identity rejects whitespace hidden by parser metadata normalization", async (t) => {
+  const dir = await fixture(t);
+  await writeFile(
+    join(dir, "trimmed.js"),
+    `export const meta = { name: " trimmed ", description: "desc" };\nexport async function run() { return agent("read"); }`,
+  );
+  const inventory = await inventoryWorkflows(dir);
+  assert.equal(inventory.entries[0]?.valid, false);
+  assert.match(inventory.entries[0]?.diagnostic ?? "", /literal meta.name/);
+  await assert.rejects(
+    () => resolveSavedWorkflow(dir, "trimmed"),
+    /literal meta.name/,
+  );
+});
+
 test("saved identity follows canonical parser behavior for duplicate metadata properties", async (t) => {
   const dir = await fixture(t);
   await writeFile(
@@ -125,6 +141,30 @@ test("configured root may be a symlink but entries may not be", async (t) => {
   const resolved = await resolveSavedWorkflow(link, "valid");
   assert.equal(resolved.parsed.meta.name, "valid");
   assert.equal(resolved.sourcePath, join(target, "valid.js"));
+});
+
+test("root replacement cannot redirect an opened entry outside the resolved store", async (t) => {
+  const parent = await fixture(t);
+  const store = join(parent, "store");
+  const original = join(parent, "original");
+  const outside = join(parent, "outside");
+  await mkdir(store);
+  await mkdir(outside);
+  await writeFile(join(store, "safe.js"), script("safe", "inside"));
+  await writeFile(join(outside, "safe.js"), script("safe", "outside"));
+  mock.method(_storeHooks, "beforeReadCandidate", async () => {
+    mock.restoreAll();
+    await rename(store, original);
+    await symlink(outside, store);
+  });
+  t.after(() => mock.restoreAll());
+
+  const inventory = await inventoryWorkflows(store);
+  assert.equal(inventory.entries[0]?.valid, false);
+  assert.match(
+    inventory.entries[0]?.diagnostic ?? "",
+    /escapes the configured store/,
+  );
 });
 
 test("direct resolution validates names before access and rejects invalid definitions", async (t) => {

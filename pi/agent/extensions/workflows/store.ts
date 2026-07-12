@@ -13,6 +13,12 @@ export const MAX_INVENTORY_TEXT_BYTES = 32 * 1024;
 const MAX_DESCRIPTION_CHARS = 240;
 const MAX_DIAGNOSTIC_CHARS = 320;
 
+export const _storeHooks: {
+  beforeReadCandidate: (root: string, filename: string) => void | Promise<void>;
+} = {
+  beforeReadCandidate: () => {},
+};
+
 export interface WorkflowInventoryEntry {
   filename: string;
   name?: string;
@@ -79,6 +85,18 @@ function contained(root: string, path: string): boolean {
   );
 }
 
+async function openedPath(fd: number): Promise<string> {
+  let lastError: unknown;
+  for (const path of [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]) {
+    try {
+      return await realpath(path);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error("Unable to verify opened workflow path.");
+}
+
 async function readCandidate(
   root: string,
   filename: string,
@@ -87,24 +105,15 @@ async function readCandidate(
   if (!contained(root, path) || basename(path) !== filename)
     return { diagnostic: "Workflow path escapes the configured store." };
   try {
-    const linkInfo = await lstat(path);
-    if (linkInfo.isSymbolicLink())
-      return {
-        diagnostic: "Saved workflow entries may not be symbolic links.",
-      };
-    if (!linkInfo.isFile())
-      return { diagnostic: "Saved workflow entry is not a regular file." };
-    if (linkInfo.size > MAX_WORKFLOW_FILE_BYTES)
-      return {
-        diagnostic: `Saved workflow exceeds the 256 KiB file limit.`,
-        bytes: linkInfo.size,
-      };
-
+    await _storeHooks.beforeReadCandidate(root, filename);
     const handle = await open(
       path,
       constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
     );
     try {
+      const actualPath = await openedPath(handle.fd);
+      if (!contained(root, actualPath))
+        return { diagnostic: "Workflow path escapes the configured store." };
       const info = await handle.stat();
       if (!info.isFile())
         return { diagnostic: "Saved workflow entry is not a regular file." };
@@ -138,8 +147,12 @@ async function readCandidate(
       await handle.close();
     }
   } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
     return {
-      diagnostic: `Unable to read saved workflow: ${errorMessage(error)}`,
+      diagnostic:
+        code === "ELOOP"
+          ? "Saved workflow entries may not be symbolic links."
+          : `Unable to read saved workflow: ${errorMessage(error)}`,
     };
   }
 }
@@ -161,6 +174,19 @@ function validateSource(
     };
   try {
     const parsed = parseWorkflowScript(source);
+    if (
+      parsed.literalMeta.name !== parsed.meta.name ||
+      nameDiagnostic(parsed.literalMeta.name)
+    ) {
+      return {
+        filename,
+        name: stem,
+        valid: false,
+        diagnostic:
+          "The literal meta.name must match the saved-workflow naming rule without surrounding whitespace.",
+        sourcePath,
+      };
+    }
     if (parsed.meta.name !== stem) {
       return {
         filename,

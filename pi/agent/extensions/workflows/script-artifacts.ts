@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 
 export const WORKFLOW_SCRIPTS_DIR = join(tmpdir(), "pi-workflow-scripts");
 export const WORKFLOW_SCRIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const WORKFLOW_SCRIPT_FILE_PREFIX = "pi-workflow-";
 export const _artifactNonce = {
   fn: () => randomBytes(8).toString("hex"),
 };
@@ -47,7 +48,12 @@ export async function cleanupOldWorkflowScripts(
   }
   await Promise.all(
     entries
-      .filter((entry) => entry.name.endsWith(".js") && !entry.isSymbolicLink())
+      .filter(
+        (entry) =>
+          entry.name.startsWith(WORKFLOW_SCRIPT_FILE_PREFIX) &&
+          entry.name.endsWith(".js") &&
+          !entry.isSymbolicLink(),
+      )
       .map(async (entry) => {
         const path = join(dir, entry.name);
         try {
@@ -71,7 +77,10 @@ export async function persistWorkflowScript(
   const prefix = `${safePart(workflowName)}-${safePart(toolCallId)}`;
   for (let attempt = 0; attempt < 101; attempt += 1) {
     const nonce = _artifactNonce.fn();
-    const path = join(dir, `${prefix}-${nonce}.js`);
+    const path = join(
+      dir,
+      `${WORKFLOW_SCRIPT_FILE_PREFIX}${prefix}-${nonce}.js`,
+    );
     try {
       await writeFile(path, source, { flag: "wx", mode: 0o600 });
       await chmod(path, 0o600);

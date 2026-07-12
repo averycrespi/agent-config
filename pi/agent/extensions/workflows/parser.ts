@@ -33,7 +33,9 @@ function literalString(node: ts.Node | undefined): string | undefined {
   return node && ts.isStringLiteralLike(node) ? node.text : undefined;
 }
 
-function readMeta(node: ts.Statement): WorkflowMeta | undefined {
+function readMeta(
+  node: ts.Statement,
+): { meta: WorkflowMeta; literalMeta: WorkflowMeta } | undefined {
   if (!ts.isVariableStatement(node)) return undefined;
   if (
     (node.modifiers ?? []).some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)
@@ -72,7 +74,10 @@ function readMeta(node: ts.Statement): WorkflowMeta | undefined {
   }
   if (!name?.trim()) fail("meta.name is required");
   if (!description?.trim()) fail("meta.description is required");
-  return { name: name.trim(), description: description.trim() };
+  return {
+    meta: { name: name.trim(), description: description.trim() },
+    literalMeta: { name, description },
+  };
 }
 
 function isSpawningCall(node: ts.CallExpression): boolean {
@@ -92,8 +97,8 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
   );
   const first = source.statements[0];
   if (!first) fail("script is empty");
-  const meta = readMeta(first);
-  if (!meta)
+  const metadata = readMeta(first);
+  if (!metadata)
     fail("script must start with: export const meta = { name, description }");
 
   let hasSpawningCall = false;
@@ -162,5 +167,10 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
       replacement.text +
       executableScript.slice(replacement.end);
   }
-  return { script, executableScript, meta };
+  return {
+    script,
+    executableScript,
+    meta: metadata.meta,
+    literalMeta: metadata.literalMeta,
+  };
 }

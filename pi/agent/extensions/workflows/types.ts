@@ -28,6 +28,7 @@ export interface ParsedWorkflow {
   script: string;
   executableScript: string;
   meta: WorkflowMeta;
+  literalMeta: WorkflowMeta;
 }
 
 export type WorkflowAction = "run" | "list" | "validate";
