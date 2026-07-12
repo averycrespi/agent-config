@@ -54,7 +54,7 @@ export async function run() {
 | `phase` / `log`   | Updates the current phase or adds a progress log.                                                                                                                                                                                                                                             |
 | `args` / `cwd`    | Tool-call JSON arguments and the current working-directory string.                                                                                                                                                                                                                            |
 
-The scheduler defaults to four concurrent thunks, is configurable up to a host ceiling of 16, and clamps each `parallel(..., { concurrency })` request to the effective limit.
+The scheduler defaults to four concurrent thunks, is configurable up to a host ceiling of 16, and clamps each `parallel(..., { concurrency })` request to the effective limit. Final workflow results must be structured-cloneable; return budget values by calling `spent()` and `remaining()` rather than spreading the facade, whose methods are functions.
 
 ## Structured output and verification
 

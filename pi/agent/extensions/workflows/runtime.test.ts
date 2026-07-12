@@ -998,6 +998,22 @@ test("parallelSettled normalizes non-string codes and clone-unsafe details", asy
   ]);
 });
 
+test("workflow reports an actionable error for non-cloneable results", async () => {
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() {
+        if (false) await agent("unused");
+        return { ...budget };
+      }`),
+      {
+        cwd: "/tmp",
+        spawnAgent: async () => ({ ok: true, text: "unused" }),
+      },
+    ),
+    /workflow result must be structured-cloneable/,
+  );
+});
+
 test("workflow scripts cannot access sandbox RPC or budget backing state", async () => {
   const result = await runWorkflow(
     script(`export async function run() {

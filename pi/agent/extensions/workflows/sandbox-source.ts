@@ -314,7 +314,17 @@ let terminalMessage;
 try {
   const workflowModule = await import(${JSON.stringify(workflowModuleUrl)});
   terminalMessage = { type: "result", result: workflowModule.__workflowResult };
-  structuredClone(terminalMessage);
+  try {
+    structuredClone(terminalMessage);
+  } catch {
+    terminalMessage = {
+      type: "script-error",
+      error: {
+        code: "workflow_script_error",
+        message: "workflow result must be structured-cloneable",
+      },
+    };
+  }
 } catch (error) {
   terminalMessage = { type: "script-error", error: serializeError(error) };
 }

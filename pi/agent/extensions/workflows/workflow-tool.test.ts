@@ -60,6 +60,9 @@ test("extension relies on tool prompt guidelines without duplicate prompt inject
     "workflow_budget_exceeded",
     'model: "small"',
     'model: "big"',
+    "context?",
+    "resolves { ok, reasons }",
+    "gate: () => verdict",
   ]) {
     assert.match(
       guidance,

@@ -75,7 +75,7 @@ export function registerWorkflowTool(
     description: `Execute a deterministic foreground JavaScript workflow that orchestrates isolated read-mostly subagents.
 
 Scripts must start with literal metadata: export const meta = { name: "...", description: "..." }.
-Use the globals agent(prompt, { agent?, intent?, output?, model?, retries?, timeoutMs? }), verify(claim, options?), report(value, { gate }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Use the globals agent(prompt, { agent?, intent?, output?, model?, retries?, timeoutMs? }), verify(claim, { agent?, intent?, context?, model?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Concurrency is bounded by configuration. Model may only be the configured "small" or "big" alias. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
@@ -87,7 +87,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
       "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
       "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
-      "Use `verify(claim, options?)` for a structured reviewer verdict and `report(value, { gate })` to reject a final value when an awaited gate does not pass.",
+      "Use `verify(claim, { agent?, intent?, context?, model?, retries?, timeoutMs? })`; it resolves { ok, reasons }. Gate a report with `report(value, { gate: () => verdict })`, where the callable gate returns true or an object with `ok: true` to pass.",
       "Treat `budget` as an advisory snapshot only. `workflow_run_cap_exceeded` denies later calls, while `workflow_budget_exceeded` aborts active agents and prevents retries or new spawns.",
       'Set `model: "small"` or `model: "big"` only when that fixed alias is configured; arbitrary model selectors are rejected host-side.',
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
