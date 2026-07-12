@@ -5,6 +5,11 @@ import {
   normalizeBoundedText,
   type GoalStore,
 } from "./state.ts";
+import {
+  runGoalReview,
+  type GoalReviewRequest,
+  type GoalReviewResult,
+} from "./review.ts";
 
 export const STATE_ENTRY_TYPE = "goal-state";
 
@@ -44,7 +49,14 @@ function appendState(pi: ExtensionAPI, store: GoalStore): void {
 export function registerGoalTools(
   pi: ExtensionAPI,
   store: GoalStore,
-  options: { evidenceMaxChars: number; showUsage?: boolean },
+  options: {
+    evidenceMaxChars: number;
+    showUsage?: boolean;
+    reviewEnabled?: boolean;
+    reviewMaxFixRounds?: number;
+    reviewTimeoutSeconds?: number;
+    reviewRunner?: (request: GoalReviewRequest) => Promise<GoalReviewResult>;
+  },
 ): void {
   pi.registerTool({
     name: "goal_get",
@@ -77,7 +89,7 @@ export function registerGoalTools(
       "If evidence is incomplete, continue working or report the blocker instead.",
     ],
     parameters: createGoalUpdateParamsSchema(options.evidenceMaxChars),
-    async execute(_toolCallId, rawParams) {
+    async execute(_toolCallId, rawParams, signal, _onUpdate, ctx) {
       const params = rawParams as GoalUpdateParams;
       if (params.status !== "complete") {
         return errorResult('status must be "complete".', store);
@@ -109,12 +121,96 @@ export function registerGoalTools(
           store,
         );
       }
-      store.complete(evidence, options.evidenceMaxChars);
+      if (!options.reviewEnabled) {
+        store.complete(evidence, options.evidenceMaxChars);
+        appendState(pi, store);
+        return textResult(
+          formatGoalState(store.getState(), { showUsage: options.showUsage }),
+          store,
+        );
+      }
+
+      const priorFindings = goal.review?.findings;
+      const reviewing = store.beginReview(evidence, options.evidenceMaxChars);
+      if (!reviewing?.review.attemptToken) {
+        return errorResult("could not begin completion review.", store);
+      }
       appendState(pi, store);
-      return textResult(
-        formatGoalState(store.getState(), { showUsage: options.showUsage }),
-        store,
-      );
+      const request: GoalReviewRequest = {
+        goalId: reviewing.id,
+        objective: reviewing.objective,
+        evidence,
+        ...(priorFindings?.length ? { priorFindings } : {}),
+        cwd: ctx?.cwd ?? process.cwd(),
+        timeoutSeconds: options.reviewTimeoutSeconds ?? 600,
+        signal,
+      };
+      let result: GoalReviewResult;
+      try {
+        result = await (options.reviewRunner ?? runGoalReview)(request);
+      } catch (error) {
+        result = {
+          kind: "failure",
+          code: "spawn",
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const token = reviewing.review.attemptToken;
+      const applied =
+        result.kind === "pass"
+          ? store.applyReviewPass(
+              reviewing.id,
+              token,
+              result.summary,
+              result.findings,
+            )
+          : result.kind === "block"
+            ? store.applyReviewBlock(
+                reviewing.id,
+                token,
+                result.summary,
+                result.findings,
+                options.reviewMaxFixRounds ?? 1,
+              )
+            : store.applyReviewFailure(
+                reviewing.id,
+                token,
+                result.code,
+                result.message,
+                result.logFile,
+              );
+      if (applied === "stale") {
+        return textResult(
+          "Completion review became stale because the goal changed; no review result was applied.",
+          store,
+        );
+      }
+      appendState(pi, store);
+      const stateText = formatGoalState(store.getState(), {
+        showUsage: options.showUsage,
+      });
+      if (
+        result.kind === "block" &&
+        store.getGoal()?.review?.status === "fix_required"
+      ) {
+        return textResult(
+          `${stateText}\nValidate and fix reasonable blocking findings, or refute them with concrete evidence, then call goal_update again for a full re-review. Suggestions do not need to be fixed blindly.`,
+          store,
+        );
+      }
+      if (result.kind === "block") {
+        return textResult(
+          `${stateText}\nCompletion review fix rounds are exhausted. The goal is paused; a human may use /goal-approve <reason> or /goal-resume to start a new review cycle.`,
+          store,
+        );
+      }
+      if (result.kind === "failure") {
+        return textResult(
+          `${stateText}\nCompletion review is unavailable and the goal is paused. There is no automatic retry; use /goal-resume before trying again.`,
+          store,
+        );
+      }
+      return textResult(stateText, store);
     },
   });
 }

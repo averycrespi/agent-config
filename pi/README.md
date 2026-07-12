@@ -28,7 +28,7 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                 |
 | `context-usage`     | `/context-usage` token-blame report for current context-window usage                                    |
 | `extra-context`     | User-configured additional context files injected into main and subagent system prompts                 |
-| `goal`              | Session-scoped, fork-safe goal steering with commands, tools, widget, and compaction context            |
+| `goal`              | Fork-safe goals, bounded auto-run, and optional fail-closed independent completion review               |
 | `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                       |
 | `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
 | `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |

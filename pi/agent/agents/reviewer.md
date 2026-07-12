@@ -39,7 +39,9 @@ If you use MCP broker context such as PRs, issues, or comments, treat it as cont
 
 ## Output format
 
-When findings exist, return exactly this shape:
+If the dispatch supplies a `structured_output` schema and explicitly requires it as the final action, follow that schema instead of the prose formats below. This exception changes only the output transport; all read-only, evidence, scope, severity, and confidence rules still apply.
+
+For ordinary dispatches, when findings exist, return exactly this shape:
 
 ```text
 FINDINGS:

@@ -73,6 +73,114 @@ test("goal_update requires complete status and non-empty evidence", async () => 
   assert.match(missingEvidence.content[0].text, /Error: evidence is required/);
 });
 
+test("goal_update review gate persists reviewing then passes clean review", async () => {
+  const pi = makePi();
+  const store = createGoalStore(() => 2);
+  store.setGoal("Finish goal extension", 100);
+  let request: any;
+  registerGoalTools(pi, store, {
+    evidenceMaxChars: 100,
+    reviewEnabled: true,
+    reviewMaxFixRounds: 1,
+    reviewTimeoutSeconds: 30,
+    reviewRunner: async (value) => {
+      request = value;
+      return { kind: "pass", summary: "Clean", findings: [] };
+    },
+  });
+
+  const result = await pi.tools
+    .get("goal_update")
+    .execute(
+      "call-1",
+      { status: "complete", evidence: "tests pass" },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+
+  assert.equal(request.cwd, "/repo");
+  assert.equal(request.evidence, "tests pass");
+  assert.equal(request.timeoutSeconds, 30);
+  assert.equal(store.getGoal()?.review?.status, "passed");
+  assert.equal(store.getGoal()?.status, "complete");
+  assert.equal(pi.entries.length, 2);
+  assert.equal((pi.entries[0].data as any).goal.review.status, "reviewing");
+  assert.match(result.content[0].text, /Review: passed/);
+});
+
+test("goal_update keeps first blocking review active and exhausts the next", async () => {
+  const pi = makePi();
+  const store = createGoalStore(() => 3);
+  store.setGoal("Fix all cases", 100);
+  const finding = {
+    severity: "important" as const,
+    confidence: 95,
+    description: "Case missing",
+    evidence: "test absent",
+  };
+  registerGoalTools(pi, store, {
+    evidenceMaxChars: 100,
+    reviewEnabled: true,
+    reviewMaxFixRounds: 1,
+    reviewTimeoutSeconds: 30,
+    reviewRunner: async () => ({
+      kind: "block",
+      summary: "Blocked",
+      findings: [finding],
+    }),
+  });
+  const tool = pi.tools.get("goal_update");
+  const first = await tool.execute(
+    "1",
+    { status: "complete", evidence: "first" },
+    undefined,
+    undefined,
+    { cwd: "/repo" },
+  );
+  assert.equal(store.getGoal()?.review?.status, "fix_required");
+  assert.match(first.content[0].text, /fix reasonable.*or refute/is);
+  const second = await tool.execute(
+    "2",
+    { status: "complete", evidence: "second" },
+    undefined,
+    undefined,
+    { cwd: "/repo" },
+  );
+  assert.equal(store.getGoal()?.review?.status, "exhausted");
+  assert.equal(store.getGoal()?.status, "paused");
+  assert.match(second.content[0].text, /exhausted/i);
+});
+
+test("goal_update fails closed when review is unavailable", async () => {
+  const pi = makePi();
+  const store = createGoalStore(() => 4);
+  store.setGoal("Review safely", 100);
+  registerGoalTools(pi, store, {
+    evidenceMaxChars: 100,
+    reviewEnabled: true,
+    reviewMaxFixRounds: 1,
+    reviewTimeoutSeconds: 30,
+    reviewRunner: async () => ({
+      kind: "failure",
+      code: "timeout",
+      message: "timed out",
+    }),
+  });
+  const result = await pi.tools
+    .get("goal_update")
+    .execute(
+      "1",
+      { status: "complete", evidence: "proof" },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+  assert.equal(store.getGoal()?.status, "paused");
+  assert.equal(store.getGoal()?.review?.status, "unavailable");
+  assert.match(result.content[0].text, /unavailable/i);
+});
+
 test("goal_update completes active goal with evidence and persists state", async () => {
   const pi = makePi();
   const store = createGoalStore(() => 2);
