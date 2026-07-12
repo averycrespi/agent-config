@@ -258,6 +258,18 @@ test("zero fix rounds exhausts on the initial blocking review", () => {
   assert.equal(store.getGoal()?.review?.fixRoundsUsed, 0);
 });
 
+test("a reviewing claim cannot start a concurrent reviewer", () => {
+  const store = createGoalStore(() => 1);
+  store.setGoal("One reviewer", 100);
+  const first = store.beginReview("first", 100);
+  const second = store.beginReview("second", 100);
+
+  assert.equal(first?.review.status, "reviewing");
+  assert.equal(second, undefined);
+  assert.equal(store.getGoal()?.review?.attemptCount, 1);
+  assert.equal(store.getGoal()?.review?.claimEvidence, "first");
+});
+
 test("review compare-and-apply rejects stale results", () => {
   const store = createGoalStore(() => 1);
   const goal = store.setGoal("Avoid stale writes", 100);

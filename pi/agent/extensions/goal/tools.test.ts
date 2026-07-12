@@ -162,15 +162,18 @@ test("goal_update persists before await and ignores a stale deferred result", as
   const store = createGoalStore(() => 5);
   store.setGoal("Avoid stale completion", 100);
   let settle!: (result: any) => void;
+  let runnerCalls = 0;
   registerGoalTools(pi, store, {
     evidenceMaxChars: 100,
     reviewEnabled: true,
     reviewMaxFixRounds: 1,
     reviewTimeoutSeconds: 30,
-    reviewRunner: async () =>
-      await new Promise((resolve) => {
+    reviewRunner: async () => {
+      runnerCalls += 1;
+      return await new Promise((resolve) => {
         settle = resolve;
-      }),
+      });
+    },
   });
 
   const pending = pi.tools
@@ -184,6 +187,17 @@ test("goal_update persists before await and ignores a stale deferred result", as
     );
   assert.equal(pi.entries.length, 1);
   assert.equal((pi.entries[0].data as any).goal.review.status, "reviewing");
+  const concurrent = await pi.tools
+    .get("goal_update")
+    .execute(
+      "2",
+      { status: "complete", evidence: "second proof" },
+      undefined,
+      undefined,
+      { cwd: "/repo" },
+    );
+  assert.equal(runnerCalls, 1);
+  assert.match(concurrent.content[0].text, /review is already in progress/i);
   store.pause();
   settle({ kind: "pass", summary: "Late clean result", findings: [] });
   const result = await pending;

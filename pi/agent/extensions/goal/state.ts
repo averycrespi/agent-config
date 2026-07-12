@@ -405,7 +405,12 @@ export function createGoalStore(
     },
 
     beginReview(evidence, maxChars) {
-      if (!goal || goal.status !== "active") return undefined;
+      if (
+        !goal ||
+        goal.status !== "active" ||
+        goal.review?.status === "reviewing"
+      )
+        return undefined;
       const timestamp = now();
       const previous = goal.review;
       const fixRoundsUsed = previous?.fixRoundsUsed ?? 0;

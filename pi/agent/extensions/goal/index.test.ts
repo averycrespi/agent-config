@@ -607,6 +607,14 @@ test("/goal-approve is human-only, preserves review report, and /goal-resume res
     prompt.systemPrompt,
     /BEGIN UNTRUSTED COMPLETION REVIEW FINDINGS CONTENT[\s\S]*END UNTRUSTED COMPLETION REVIEW FINDINGS CONTENT/,
   );
+  const compaction = await pi.handlers.get("session_before_compact")(
+    { preparation: { firstKeptEntryId: "e1", tokensBefore: 123 } },
+    ctx,
+  );
+  assert.match(
+    compaction.compaction.summary,
+    /BEGIN UNTRUSTED COMPLETION REVIEW STATE CONTENT[\s\S]*END UNTRUSTED COMPLETION REVIEW STATE CONTENT/,
+  );
 
   snapshot.goal.status = "paused";
   snapshot.goal.review.status = "exhausted";

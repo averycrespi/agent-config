@@ -124,7 +124,17 @@ function buildCompactionSummary(goal: Goal): string {
     ? `\nEvidence: ${goal.completionEvidence}`
     : "";
   const review = goal.review
-    ? `\nReview: ${goal.review.status} (attempt ${goal.review.attemptCount}, fix rounds ${goal.review.fixRoundsUsed})${goal.review.summary ? `\nReview summary: ${goal.review.summary}` : ""}${(goal.review.findings ?? []).map((finding) => `\n- ${finding.severity} (${finding.confidence}): ${finding.description} — ${finding.evidence}`).join("")}${goal.review.failure ? `\nReview unavailable: ${goal.review.failure.message}` : ""}`
+    ? `\n${wrapUntrustedContent(
+        "completion review state",
+        JSON.stringify({
+          status: goal.review.status,
+          attemptCount: goal.review.attemptCount,
+          fixRoundsUsed: goal.review.fixRoundsUsed,
+          summary: goal.review.summary,
+          findings: goal.review.findings,
+          failure: goal.review.failure,
+        }),
+      )}`
     : "";
   return `## Active Goal\nStatus: ${goal.status}\nObjective: ${goal.objective}${evidence}${review}\nCompletion rule: Do not mark complete without concrete evidence covering every explicit requirement.`;
 }

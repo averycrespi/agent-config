@@ -108,6 +108,9 @@ export function registerGoalTools(
           store,
         );
       }
+      if (goal.review?.status === "reviewing") {
+        return errorResult("completion review is already in progress.", store);
+      }
       let evidence: string;
       try {
         evidence = normalizeBoundedText(
