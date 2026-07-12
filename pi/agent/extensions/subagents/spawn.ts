@@ -553,7 +553,11 @@ async function runSpawn(
     const onChildEvent = (event: unknown) => {
       if (event && typeof event === "object") {
         const record = event as { type?: string };
-        if (record.type === "agent_end" && !sawAgentEnd) {
+        if (record.type === "agent_start" && postAgentEndTimer) {
+          _timers.clearTimeout(postAgentEndTimer);
+          postAgentEndTimer = undefined;
+          sawAgentEnd = false;
+        } else if (record.type === "agent_end" && !sawAgentEnd) {
           sawAgentEnd = true;
           postAgentEndTimer = _timers.setTimeout(() => {
             forcedAfterAgentEnd = true;

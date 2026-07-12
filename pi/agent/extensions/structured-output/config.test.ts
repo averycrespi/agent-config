@@ -12,6 +12,7 @@ import {
 const ENV_NAMES = [
   "PI_STRUCTURED_OUTPUT_SCHEMA_FILE",
   "PI_STRUCTURED_OUTPUT_TERMINATE",
+  "PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS",
   "PI_CODING_AGENT_DIR",
 ] as const;
 
@@ -29,11 +30,13 @@ afterEach(() => {
 test("readEnvSettings maps structured output environment overrides", () => {
   process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE = " /tmp/schema.json ";
   process.env.PI_STRUCTURED_OUTPUT_TERMINATE = "0";
+  process.env.PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS = "2";
   const warnings: string[] = [];
 
   assert.deepEqual(readEnvSettings(process.env, warnings), {
     schemaFile: "/tmp/schema.json",
     terminate: false,
+    missingOutputReminders: 2,
   });
   assert.deepEqual(warnings, []);
 });
@@ -50,6 +53,7 @@ test("readEnvSettings warns on invalid boolean terminate", () => {
 test("loadStructuredOutputConfig defaults to no-op config", async () => {
   delete process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE;
   delete process.env.PI_STRUCTURED_OUTPUT_TERMINATE;
+  delete process.env.PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS;
 
   const root = join(
     tmpdir(),
@@ -66,6 +70,7 @@ test("loadStructuredOutputConfig defaults to no-op config", async () => {
       await loadStructuredOutputConfig(cwd),
       DEFAULT_STRUCTURED_OUTPUT_CONFIG,
     );
+    assert.equal(DEFAULT_STRUCTURED_OUTPUT_CONFIG.missingOutputReminders, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -74,6 +79,7 @@ test("loadStructuredOutputConfig defaults to no-op config", async () => {
 test("loadStructuredOutputConfig merges global, project, and env settings", async () => {
   delete process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE;
   delete process.env.PI_STRUCTURED_OUTPUT_TERMINATE;
+  delete process.env.PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS;
 
   const root = join(
     tmpdir(),
@@ -92,6 +98,7 @@ test("loadStructuredOutputConfig merges global, project, and env settings", asyn
         "extension:structured-output": {
           schemaFile: "/global/schema.json",
           terminate: false,
+          missingOutputReminders: 3,
         },
       }),
     );
@@ -108,6 +115,7 @@ test("loadStructuredOutputConfig merges global, project, and env settings", asyn
     assert.deepEqual(await loadStructuredOutputConfig(cwd), {
       schemaFile: "/project/schema.json",
       terminate: true,
+      missingOutputReminders: 3,
     });
   } finally {
     await rm(root, { recursive: true, force: true });

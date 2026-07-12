@@ -16,14 +16,17 @@ The tool returns:
 
 The tool name, label, description, and result details shape are fixed so other extensions can rely on a stable contract. Use the task prompt or schema property descriptions for task-specific instructions.
 
+If an agent settles without calling the tool, the extension sends a bounded same-session reminder so the agent can emit its completed work without restarting. Reminders stop after the configured limit, after successful capture, or after a terminal provider error.
+
 ## Configuration
 
 Settings are read from `extension:structured-output` in global and project Pi settings, then environment overrides are applied. Registering no `schemaFile` leaves the extension inactive and registers no agent tool.
 
-| Field        | Default | Environment override               | Description                                                    |
-| ------------ | ------- | ---------------------------------- | -------------------------------------------------------------- |
-| `schemaFile` | unset   | `PI_STRUCTURED_OUTPUT_SCHEMA_FILE` | Path to a JSON schema file. Empty or unset means no-op.        |
-| `terminate`  | `true`  | `PI_STRUCTURED_OUTPUT_TERMINATE`   | Whether `structured_output` returns a terminating tool result. |
+| Field                    | Default | Environment override                            | Description                                                                        |
+| ------------------------ | ------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `schemaFile`             | unset   | `PI_STRUCTURED_OUTPUT_SCHEMA_FILE`              | Path to a JSON schema file. Empty or unset means no-op.                            |
+| `terminate`              | `true`  | `PI_STRUCTURED_OUTPUT_TERMINATE`                | Whether `structured_output` returns a terminating tool result.                     |
+| `missingOutputReminders` | `1`     | `PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS` | Same-session reminders after settling without a tool call; `0` disables reminders. |
 
 Boolean environment overrides accept `1`/`true`/`yes` and `0`/`false`/`no`.
 
@@ -33,7 +36,8 @@ Example settings:
 {
   "extension:structured-output": {
     "schemaFile": "/tmp/final-answer.schema.json",
-    "terminate": true
+    "terminate": true,
+    "missingOutputReminders": 1
   }
 }
 ```

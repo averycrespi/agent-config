@@ -9,6 +9,7 @@ import { STRUCTURED_OUTPUT_TOOL_NAME } from "./api.ts";
 const ENV_NAMES = [
   "PI_STRUCTURED_OUTPUT_SCHEMA_FILE",
   "PI_STRUCTURED_OUTPUT_TERMINATE",
+  "PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS",
   "PI_CODING_AGENT_DIR",
 ] as const;
 
@@ -27,6 +28,7 @@ function makePi() {
   const handlers = new Map<string, Function[]>();
   const tools: any[] = [];
   const commands: string[] = [];
+  const userMessages: Array<{ content: string; options: unknown }> = [];
   return {
     pi: {
       registerTool(tool: any) {
@@ -38,12 +40,16 @@ function makePi() {
       on(name: string, handler: Function) {
         handlers.set(name, [...(handlers.get(name) ?? []), handler]);
       },
+      sendUserMessage(content: string, options: unknown) {
+        userMessages.push({ content, options });
+      },
     },
     tools,
     commands,
-    async emit(name: string, ctx: any) {
+    userMessages,
+    async emit(name: string, ctx: any, event: unknown = {}) {
       for (const handler of handlers.get(name) ?? []) {
-        await handler({}, ctx);
+        await handler(event, ctx);
       }
     },
   };
@@ -112,6 +118,115 @@ test("extension registers structured_output when schema file is configured", asy
     });
     assert.deepEqual(result.details, { value: { summary: "done" } });
     assert.equal(result.terminate, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("extension sends the configured number of bounded reminders when output is missing", async () => {
+  const root = join(
+    tmpdir(),
+    `structured-output-reminder-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "project");
+  const schemaFile = join(root, "schema.json");
+  await mkdir(join(cwd, ".pi"), { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(schemaFile, JSON.stringify({ type: "object" }));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE = schemaFile;
+  process.env.PI_STRUCTURED_OUTPUT_MISSING_OUTPUT_REMINDERS = "2";
+
+  try {
+    const harness = makePi();
+    structuredOutputExtension(harness.pi as any);
+    const ctx = {
+      cwd,
+      isIdle: () => true,
+      hasPendingMessages: async () => false,
+    };
+    await harness.emit("session_start", ctx);
+    await harness.emit("agent_settled", ctx);
+    await harness.emit("before_agent_start", ctx);
+    await harness.emit("agent_settled", ctx);
+    await harness.emit("before_agent_start", ctx);
+    await harness.emit("agent_settled", ctx);
+
+    assert.equal(harness.userMessages.length, 2);
+    assert.match(harness.userMessages[0]!.content, /structured_output/);
+    assert.deepEqual(harness.userMessages[0]!.options, {
+      deliverAs: "followUp",
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("extension suppresses reminders for terminal provider errors and recovers after retry", async () => {
+  const root = join(
+    tmpdir(),
+    `structured-output-provider-error-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "project");
+  const schemaFile = join(root, "schema.json");
+  await mkdir(join(cwd, ".pi"), { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(schemaFile, JSON.stringify({ type: "object" }));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE = schemaFile;
+
+  try {
+    const harness = makePi();
+    structuredOutputExtension(harness.pi as any);
+    const ctx = {
+      cwd,
+      isIdle: () => true,
+      hasPendingMessages: async () => false,
+    };
+    await harness.emit("session_start", ctx);
+    await harness.emit("agent_end", ctx, {
+      messages: [
+        { role: "assistant", stopReason: "error", errorMessage: "unavailable" },
+      ],
+    });
+    await harness.emit("agent_settled", ctx);
+    assert.deepEqual(harness.userMessages, []);
+
+    await harness.emit("agent_end", ctx, {
+      messages: [{ role: "assistant", stopReason: "stop" }],
+    });
+    await harness.emit("agent_settled", ctx);
+    assert.equal(harness.userMessages.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("extension does not remind after structured output is captured", async () => {
+  const root = join(
+    tmpdir(),
+    `structured-output-captured-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "project");
+  const schemaFile = join(root, "schema.json");
+  await mkdir(join(cwd, ".pi"), { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(schemaFile, JSON.stringify({ type: "object" }));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE = schemaFile;
+
+  try {
+    const harness = makePi();
+    structuredOutputExtension(harness.pi as any);
+    const ctx = { cwd, isIdle: () => true };
+    await harness.emit("session_start", ctx);
+    await harness.tools[0].execute("tool-1", {});
+    await harness.emit("agent_settled", ctx);
+
+    assert.deepEqual(harness.userMessages, []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -38,5 +38,6 @@ Effective parsed config shape:
 interface StructuredOutputConfig {
   schemaFile?: string;
   terminate: boolean;
+  missingOutputReminders: number;
 }
 ```

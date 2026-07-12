@@ -1,5 +1,8 @@
 import { readFile } from "node:fs/promises";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { registerConfigCommand } from "../_shared/config.ts";
 import {
@@ -51,6 +54,7 @@ async function loadSchemaFile(
 function createStructuredOutputTool(
   schema: JsonSchema,
   config: StructuredOutputConfig,
+  onCapture: () => void,
 ) {
   const wrapped = schema.type !== "object";
   const parameters = wrapped
@@ -69,6 +73,7 @@ function createStructuredOutputTool(
       "Emit a final structured answer as a terminating tool result",
     parameters,
     async execute(_toolCallId: string, params: unknown) {
+      onCapture();
       const value = wrapped ? (params as { value: unknown }).value : params;
       return {
         content: [
@@ -91,28 +96,99 @@ export default function (pi: ExtensionAPI) {
   });
 
   let registeredKey: string | undefined;
+  let activeConfig: StructuredOutputConfig | undefined;
+  let captured = false;
+  let remindersSent = 0;
+  let reminderTurnStarting = false;
+  let terminalProviderError = false;
 
   async function ensureRegistered(cwd: string): Promise<void> {
     const warnings: string[] = [];
     const config = await loadStructuredOutputConfig(cwd, warnings);
-    if (!config.schemaFile) return;
+    if (!config.schemaFile) {
+      activeConfig = undefined;
+      return;
+    }
 
     const key = `${config.schemaFile}\n${config.terminate}`;
-    if (registeredKey === key) return;
+    if (registeredKey === key) {
+      activeConfig = config;
+      return;
+    }
 
     const schema = await loadSchemaFile(config.schemaFile, warnings);
-    if (!schema) return;
+    if (!schema) {
+      activeConfig = undefined;
+      return;
+    }
 
-    pi.registerTool(createStructuredOutputTool(schema, config) as any);
+    pi.registerTool(
+      createStructuredOutputTool(schema, config, () => {
+        captured = true;
+      }) as any,
+    );
     registeredKey = key;
+    activeConfig = config;
+  }
+
+  function resetAttempt(): void {
+    captured = false;
+    remindersSent = 0;
+    terminalProviderError = false;
   }
 
   pi.on("session_start", async (_event, ctx) => {
+    reminderTurnStarting = false;
+    resetAttempt();
     await ensureRegistered(ctx.cwd);
   });
 
   pi.on("before_agent_start", async (_event, ctx) => {
     await ensureRegistered(ctx.cwd);
+    if (reminderTurnStarting) {
+      reminderTurnStarting = false;
+    } else {
+      resetAttempt();
+    }
     return undefined;
   });
+
+  pi.on("agent_end", async (event: { messages?: unknown }) => {
+    if (!Array.isArray(event.messages)) return;
+    for (let index = event.messages.length - 1; index >= 0; index -= 1) {
+      const message = event.messages[index];
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        (message as { role?: unknown }).role === "assistant"
+      ) {
+        terminalProviderError =
+          (message as { stopReason?: unknown }).stopReason === "error";
+        break;
+      }
+    }
+  });
+
+  (pi as any).on(
+    "agent_settled",
+    async (_event: unknown, ctx: ExtensionContext) => {
+      if (
+        !activeConfig ||
+        captured ||
+        terminalProviderError ||
+        remindersSent >= activeConfig.missingOutputReminders ||
+        !ctx.isIdle()
+      ) {
+        return;
+      }
+      if (await ctx.hasPendingMessages()) return;
+
+      remindersSent += 1;
+      reminderTurnStarting = true;
+      pi.sendUserMessage(
+        `Your response did not call ${STRUCTURED_OUTPUT_TOOL_NAME}. Call it now with your final answer. Do not repeat the work or respond only in prose.`,
+        { deliverAs: "followUp" },
+      );
+    },
+  );
 }

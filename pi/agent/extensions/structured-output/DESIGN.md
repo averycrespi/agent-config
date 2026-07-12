@@ -14,6 +14,8 @@ The extension is no-op by default. On `session_start` and `before_agent_start`, 
 
 A `registeredKey` prevents re-registering the same schema path and terminate setting repeatedly in one process. If config changes to a different active key, the extension registers the new tool definition under the same stable name.
 
+The extension tracks capture and reminder state for the current user-initiated run. When `agent_settled` fires without a captured value, terminal provider error, pending continuation, or exhausted reminder budget, it sends a focused follow-up through `pi.sendUserMessage()`. The resulting `before_agent_start` is marked as a reminder turn so it does not reset the budget. A later external turn resets capture and reminder state. This keeps repair in the same process and context while guaranteeing bounded termination.
+
 ## Tool contract
 
 The public contract is fixed:
@@ -26,7 +28,7 @@ Keep the name and details shape stable. Other extensions consume JSON-mode `tool
 
 ## Boundaries
 
-The extension does not know why structured output is needed. It does not inject task-specific guidance, choose schemas, or manage temporary schema files. Callers such as `subagents` append their own system-prompt instructions and pass schema files through environment overrides.
+The extension does not know why structured output is needed. It does not inject task-specific guidance, choose schemas, or manage temporary schema files. Its generic missing-call reminder only asks the agent to invoke the configured tool without repeating the work. Callers such as `subagents` append their own task-specific system-prompt instructions and pass schema files through environment overrides.
 
 The extension validates only that the schema file root is a JSON object before registering the tool. Pi/tool-provider schema validation owns parameter validation for the tool call; callers may add their own parent-side validation before consuming `details.value`. Keep the provider-facing envelope internal: consumers must not need to know whether a schema root was wrapped.
 

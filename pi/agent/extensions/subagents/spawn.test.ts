@@ -899,6 +899,62 @@ test("spawnSubagent: provider errors fail prose runs after agent_end", async () 
   }
 });
 
+test("spawnSubagent: resets the agent_end grace timer when a continuation starts", async () => {
+  const prev = process.env.PI_SUBAGENT_DEPTH;
+  process.env.PI_SUBAGENT_DEPTH = "0";
+
+  const graceTimers: Array<{ cleared: boolean }> = [];
+  const timerStub = mock.method(_timers, "setTimeout", ((
+    _fn: (...args: any[]) => void,
+    ms?: number,
+  ) => {
+    const handle = { cleared: false };
+    if (ms === POST_AGENT_END_GRACE_MS) graceTimers.push(handle);
+    return handle as unknown as NodeJS.Timeout;
+  }) as typeof setTimeout);
+  const clearStub = mock.method(_timers, "clearTimeout", ((handle: any) => {
+    handle.cleared = true;
+  }) as typeof clearTimeout);
+  let firstTimerClearedBeforeClose = false;
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+    child.kill = () => true;
+
+    setImmediate(() => {
+      child.stdout.emit("data", `${JSON.stringify({ type: "agent_end" })}\n`);
+      child.stdout.emit("data", `${JSON.stringify({ type: "agent_start" })}\n`);
+      firstTimerClearedBeforeClose = graceTimers[0]?.cleared === true;
+      child.stdout.emit("data", `${JSON.stringify({ type: "agent_end" })}\n`);
+      child.emit("close", 0, null);
+    });
+
+    return child;
+  });
+
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(firstTimerClearedBeforeClose, true);
+    assert.equal(graceTimers.length, 2);
+  } finally {
+    spawnStub.mock.restore();
+    timerStub.mock.restore();
+    clearStub.mock.restore();
+    if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = prev;
+  }
+});
+
 test("spawnSubagent: resolves after agent_end if process hangs", async () => {
   const prev = process.env.PI_SUBAGENT_DEPTH;
   process.env.PI_SUBAGENT_DEPTH = "0";

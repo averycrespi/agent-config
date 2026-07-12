@@ -81,7 +81,7 @@ Temporary schema files are created under the system temp directory with owner-on
 
 Recursion is controlled with `PI_SUBAGENT_DEPTH`. Each child gets the parent environment plus agent env and an incremented depth. The public tool path does not pass `maxDepth`, so it defaults to 1: a subagent cannot spawn another subagent. `MAX_SUBAGENT_DEPTH` is only an absolute ceiling for direct programmatic callers that deliberately allow deeper nesting.
 
-Abort handling sends SIGTERM and then SIGKILL after a short grace period. If `agent_end` is observed before the process exits, a post-agent-end grace timer allows Pi to flush output before starting the same termination sequence. The spawner resolves only after `close`, so forced cleanup cannot orphan a child or release caller concurrency while the process is still alive; a forced post-`agent_end` close preserves the already-observed logical outcome unless cancellation or a provider error occurred.
+Abort handling sends SIGTERM and then SIGKILL after a short grace period. If `agent_end` is observed before the process exits, a post-agent-end grace timer allows Pi to flush output before starting the same termination sequence. A subsequent `agent_start` clears that timer and resets the lifecycle guard so extension-triggered same-session continuations, including structured-output reminders, can finish before a new grace timer is armed. The spawner resolves only after `close`, so forced cleanup cannot orphan a child or release caller concurrency while the process is still alive; a forced post-`agent_end` close preserves the already-observed logical outcome unless cancellation or a provider error occurred.
 
 ## Activity tracking
 
