@@ -38,6 +38,38 @@ function preview(value: unknown, max = 240): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+function budgetError(): Error & { code: "workflow_budget_exceeded" } {
+  const error = new Error("workflow token budget exceeded") as Error & {
+    code: "workflow_budget_exceeded";
+  };
+  error.code = "workflow_budget_exceeded";
+  return error;
+}
+
+function isBudgetAbort(signal: AbortSignal | undefined): boolean {
+  return (
+    signal?.aborted === true &&
+    typeof signal.reason === "object" &&
+    signal.reason !== null &&
+    (signal.reason as { code?: unknown }).code === "workflow_budget_exceeded"
+  );
+}
+
+function composeSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  const abortFrom = (signal: AbortSignal) => {
+    if (!controller.signal.aborted) controller.abort(signal.reason);
+  };
+  for (const signal of signals) {
+    if (signal.aborted) {
+      abortFrom(signal);
+      break;
+    }
+    signal.addEventListener("abort", () => abortFrom(signal), { once: true });
+  }
+  return controller.signal;
+}
+
 function abortError(): Error {
   const error = new Error("workflow aborted");
   error.name = "AbortError";
@@ -135,6 +167,8 @@ function isRetryableAgentFailure(response: WorkflowAgentResponse): boolean {
     "workflow_aborted",
     "workflow_timeout",
     "agent_timeout",
+    "workflow_budget_exceeded",
+    "workflow_run_cap_exceeded",
     "provider_schema_rejected",
   ]).has(response.errorCode ?? "subagent_failed");
 }
@@ -161,11 +195,12 @@ async function spawnAttemptWithTimeout(
   }
 
   const controller = new AbortController();
-  const abort = () => controller.abort(abortError());
+  const abort = () => controller.abort(request.signal?.reason ?? abortError());
   if (request.signal?.aborted) {
+    const budgetAborted = isBudgetAbort(request.signal);
     return failedResponse(
-      "workflow_aborted",
-      "workflow aborted",
+      budgetAborted ? "workflow_budget_exceeded" : "workflow_aborted",
+      budgetAborted ? "workflow token budget exceeded" : "workflow aborted",
       request,
       phase,
     );
@@ -217,7 +252,7 @@ async function spawnWithRetries(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       lastResponse = await spawnAttemptWithTimeout(
-        request,
+        { ...request, attempt },
         phase,
         spawnAgent,
         timeoutMs,
@@ -273,6 +308,8 @@ export async function runWorkflow(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const agentTimeoutMs = options.agentTimeoutMs;
   const workflowAbort = new AbortController();
+  const budgetAbort = new AbortController();
+  const agentSignal = composeSignals(workflowAbort.signal, budgetAbort.signal);
 
   const snapshot = (): WorkflowSnapshot => ({
     meta: parsed.meta,
@@ -295,6 +332,23 @@ export async function runWorkflow(
     args: options.args,
     cwd: options.cwd,
     maxConcurrency: normalizeMaxConcurrency(options.maxConcurrency),
+    budget: options.ledger?.snapshot() ?? {
+      total: null,
+      used: 0,
+      launched: 0,
+      maxAgents: null,
+    },
+  });
+
+  const unsubscribeLedger = options.ledger?.subscribe((budget) => {
+    try {
+      worker.postMessage({ type: "budget-update", budget });
+    } catch {
+      // The worker may already have completed while an agent is finalizing.
+    }
+    if (options.ledger?.isTokenExceeded() && !budgetAbort.signal.aborted) {
+      budgetAbort.abort(budgetError());
+    }
   });
 
   const timeout = setTimeout(() => {
@@ -338,6 +392,7 @@ export async function runWorkflow(
             agent?: unknown;
             intent?: unknown;
             output?: unknown;
+            model?: unknown;
             retries?: unknown;
             timeoutMs?: unknown;
           };
@@ -346,7 +401,7 @@ export async function runWorkflow(
           const agentRequest: WorkflowAgentRequest = {
             id: requestId,
             prompt: String(request.prompt ?? ""),
-            signal: workflowAbort.signal,
+            signal: agentSignal,
             ...(typeof request.agent === "string"
               ? { agent: request.agent }
               : {}),
@@ -355,6 +410,9 @@ export async function runWorkflow(
               : {}),
             ...(isStructuredOutputSpec(request.output)
               ? { output: request.output }
+              : {}),
+            ...(typeof request.model === "string"
+              ? { model: request.model }
               : {}),
             retries: clampRetries(request.retries),
             ...(typeof request.timeoutMs === "number" ||
@@ -403,6 +461,7 @@ export async function runWorkflow(
   } finally {
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abort);
+    unsubscribeLedger?.();
     if (!workflowAbort.signal.aborted) workflowAbort.abort();
     void worker.terminate();
   }
@@ -476,6 +535,40 @@ export function createWorkflowAgentSpawner(
       };
     }
 
+    let selectedModel = agent.model ?? options.model;
+    if (request.model !== undefined) {
+      const requestedTier = request.model.trim();
+      if (requestedTier !== "small" && requestedTier !== "big") {
+        const message = `model alias ${JSON.stringify(requestedTier)} is not allowed in workflows`;
+        return failedResponse(
+          "agent_policy_rejected",
+          message,
+          request,
+          undefined,
+        );
+      }
+      const tierModel = options.modelTiers?.[requestedTier]?.trim();
+      if (!tierModel) {
+        const message = `model alias ${JSON.stringify(requestedTier)} is not configured`;
+        return failedResponse(
+          "agent_policy_rejected",
+          message,
+          request,
+          undefined,
+        );
+      }
+      selectedModel = tierModel;
+    }
+
+    const denial = options.ledger?.reserve(request.id);
+    if (denial) {
+      const message =
+        denial === "workflow_budget_exceeded"
+          ? "workflow token budget exceeded"
+          : "workflow agent run cap exceeded";
+      return failedResponse(denial, message, request, undefined);
+    }
+
     const state: WorkflowAgentState = {
       id: request.id,
       agent: requestedType,
@@ -518,7 +611,7 @@ export function createWorkflowAgentSpawner(
       output: request.output,
       toolAllowlist: agent.tools,
       extensionAllowlist: agent.extensions,
-      model: agent.model ?? options.model,
+      model: selectedModel,
       thinking: agent.thinking ?? options.thinking,
       systemPrompt: agent.systemPrompt,
       inheritSession: "none",
@@ -527,11 +620,23 @@ export function createWorkflowAgentSpawner(
       logId: `${options.logId}:agent-${request.id}`,
       cwd: options.cwd,
       signal: request.signal ?? options.signal,
-      onEvent: (event) => tracker.handleEvent(event),
+      onEvent: (event) => {
+        tracker.handleEvent(event);
+        options.ledger?.recordTokens(
+          request.id,
+          request.attempt ?? 1,
+          tracker.state.totalTokens,
+        );
+      },
     });
 
     state.finishedAt = Date.now();
     tracker.finish(outcome);
+    options.ledger?.recordTokens(
+      request.id,
+      request.attempt ?? 1,
+      tracker.state.totalTokens,
+    );
     if (outcome.ok) {
       state.status = "done";
       state.resultPreview = preview(
@@ -554,7 +659,9 @@ export function createWorkflowAgentSpawner(
     state.logFile = outcome.logFile;
     refreshActivity();
     const code: WorkflowErrorCode = outcome.aborted
-      ? "subagent_aborted"
+      ? isBudgetAbort(request.signal)
+        ? "workflow_budget_exceeded"
+        : "subagent_aborted"
       : (outcome.errorCode ?? outcome.structured?.code ?? "subagent_failed");
     return {
       ok: false,

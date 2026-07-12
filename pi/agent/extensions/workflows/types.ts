@@ -112,6 +112,23 @@ export interface WorkflowRunResult {
   durationMs: number;
 }
 
+export interface WorkflowBudgetSnapshot {
+  total: number | null;
+  used: number;
+  launched: number;
+  maxAgents: number | null;
+}
+
+export interface WorkflowRunLedger {
+  reserve(requestId: number): WorkflowErrorCode | undefined;
+  recordTokens(requestId: number, attempt: number, total: number): void;
+  snapshot(): Readonly<WorkflowBudgetSnapshot>;
+  subscribe(
+    listener: (snapshot: Readonly<WorkflowBudgetSnapshot>) => void,
+  ): () => void;
+  isTokenExceeded(): boolean;
+}
+
 export interface WorkflowRuntimeOptions {
   cwd: string;
   args?: unknown;
@@ -121,6 +138,7 @@ export interface WorkflowRuntimeOptions {
   timeoutMs?: number;
   agentTimeoutMs?: number;
   maxConcurrency?: number;
+  ledger?: WorkflowRunLedger;
 }
 
 export interface WorkflowAgentRequest {
@@ -132,6 +150,7 @@ export interface WorkflowAgentRequest {
   retries?: number;
   timeoutMs?: number;
   model?: string;
+  attempt?: number;
   signal?: AbortSignal;
 }
 
@@ -156,4 +175,5 @@ export interface WorkflowAgentPolicyOptions {
   modelTiers?: Partial<Record<WorkflowModelTier, string>>;
   thinking?: string;
   onAgentUpdate?: (state: WorkflowAgentState) => void;
+  ledger?: WorkflowRunLedger;
 }

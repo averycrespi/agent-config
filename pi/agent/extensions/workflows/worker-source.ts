@@ -30,8 +30,24 @@ class WorkflowAgentError extends Error {
   }
 }
 
+class WorkflowReportError extends Error {
+  constructor(reasons) {
+    const suffix = reasons.length ? ": " + reasons.join("; ") : "";
+    super("workflow report rejected" + suffix);
+    this.code = "workflow_report_rejected";
+    this.details = { reasons };
+  }
+}
+
+let budgetSnapshot = Object.freeze({ ...workerData.budget });
+
 parentPort.on("message", (message) => {
-  if (!message || message.type !== "agent-response") return;
+  if (!message) return;
+  if (message.type === "budget-update") {
+    budgetSnapshot = Object.freeze({ ...message.budget });
+    return;
+  }
+  if (message.type !== "agent-response") return;
   const entry = pending.get(message.requestId);
   if (!entry) return;
   pending.delete(message.requestId);
@@ -42,6 +58,13 @@ parentPort.on("message", (message) => {
 
 const args = workerData.args;
 const cwd = workerData.cwd;
+const budget = Object.freeze({
+  get total() { return budgetSnapshot.total; },
+  spent: Object.freeze(() => budgetSnapshot.used),
+  remaining: Object.freeze(() => budgetSnapshot.total === null ? Infinity : Math.max(0, budgetSnapshot.total - budgetSnapshot.used)),
+  get launched() { return budgetSnapshot.launched; },
+  get maxAgents() { return budgetSnapshot.maxAgents; },
+});
 
 function serialize(value) {
   if (typeof value === "string") return value;
@@ -68,15 +91,65 @@ function phase(name) {
 async function agent(prompt, options = {}) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("agent prompt must be a non-empty string");
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("agent options must be an object");
-  const allowed = new Set(["agent", "intent", "output", "retries", "timeoutMs"]);
+  const allowed = new Set(["agent", "intent", "output", "model", "retries", "timeoutMs"]);
   for (const key of Object.keys(options)) {
     if (!allowed.has(key)) throw new Error(` +
     "`agent option ${key} is not allowed`" +
     `);
   }
+  if (options.model !== undefined && typeof options.model !== "string") throw new Error("agent model must be a string alias");
   const requestId = nextRequestId++;
-  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output, retries: options.retries, timeoutMs: options.timeoutMs });
+  post({ type: "agent", requestId, prompt, agent: options.agent, intent: options.intent, output: options.output, model: options.model, retries: options.retries, timeoutMs: options.timeoutMs });
   return await new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
+}
+
+const verifierOutput = {
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["confirmed", "reasons"],
+    properties: {
+      confirmed: { type: "boolean" },
+      reasons: { type: "array", items: { type: "string" } },
+    },
+  },
+};
+
+async function verify(claim, options = {}) {
+  if (typeof claim !== "string" || !claim.trim()) throw new Error("verify claim must be a non-empty string");
+  if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("verify options must be an object");
+  const allowed = new Set(["agent", "intent", "context", "model", "retries", "timeoutMs"]);
+  for (const key of Object.keys(options)) {
+    if (!allowed.has(key)) throw new Error(` +
+    "`verify option ${key} is not allowed`" +
+    `);
+  }
+  const context = options.context === undefined ? "" : "\\n\\nContext:\\n" + serialize(options.context);
+  const verdict = await agent(
+    "Adversarially verify the following claim using available evidence. Confirm it only when the evidence supports every material part. Return concise reasons for the verdict.\\n\\nClaim:\\n" + claim.trim() + context,
+    {
+      agent: options.agent ?? "reviewer",
+      intent: options.intent ?? "Verify claim",
+      output: verifierOutput,
+      model: options.model,
+      retries: options.retries,
+      timeoutMs: options.timeoutMs,
+    },
+  );
+  return { ok: verdict.confirmed, reasons: verdict.reasons };
+}
+
+async function report(value, options) {
+  if (options == null || typeof options !== "object" || Array.isArray(options) || typeof options.gate !== "function") {
+    throw new Error("report options must contain a callable gate");
+  }
+  if (Object.keys(options).some((key) => key !== "gate")) throw new Error("report only accepts the gate option");
+  const verdict = await options.gate(value);
+  if (verdict === true || (verdict !== null && typeof verdict === "object" && !Array.isArray(verdict) && verdict.ok === true)) return value;
+  const reasons = verdict !== null && typeof verdict === "object" && !Array.isArray(verdict) && Array.isArray(verdict.reasons)
+    ? verdict.reasons.filter((reason) => typeof reason === "string")
+    : [];
+  throw new WorkflowReportError(reasons);
 }
 
 function concurrencyLimit(value) {

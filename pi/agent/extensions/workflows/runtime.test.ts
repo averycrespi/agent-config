@@ -8,6 +8,30 @@ import {
 } from "./runtime.ts";
 import type { AgentDefinition } from "../subagents/api.ts";
 import { DEFAULT_TIMEOUT_MS } from "./types.ts";
+import { createWorkflowRunLedger } from "./ledger.ts";
+
+const readOnlyAgents: AgentDefinition[] = [
+  {
+    name: "explorer",
+    description: "Explore",
+    tools: ["read"],
+    extensions: [],
+    systemPrompt: "Explore only",
+    disableSkills: true,
+    disablePromptTemplates: true,
+  },
+];
+
+function successfulOutcome(stdout = "ok") {
+  return {
+    ok: true as const,
+    aborted: false,
+    stdout,
+    stderr: "",
+    exitCode: 0,
+    signal: null,
+  };
+}
 
 function script(body: string) {
   return parseWorkflowScript(
@@ -127,6 +151,120 @@ test("runtime resolves agent calls with structured output values when requested"
   });
 });
 
+test("verify defaults to reviewer and resolves structured verdicts", async () => {
+  const requests: any[] = [];
+  const result = await runWorkflow(
+    script(`export async function run() {
+      const confirmed = await verify("The tests pass", { context: { suite: "unit" } });
+      const refuted = await verify("The sky is green", {
+        agent: "analyst", intent: "check color", model: "small", retries: 2, timeoutMs: 1234
+      });
+      return { confirmed, refuted };
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (request) => {
+        requests.push(request);
+        return {
+          ok: true,
+          text: null,
+          hasStructured: true,
+          value:
+            requests.length === 1
+              ? { confirmed: true, reasons: ["unit evidence"] }
+              : { confirmed: false, reasons: ["contradicted"] },
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(result.result, {
+    confirmed: { ok: true, reasons: ["unit evidence"] },
+    refuted: { ok: false, reasons: ["contradicted"] },
+  });
+  assert.equal(requests[0].agent, "reviewer");
+  assert.equal(requests[0].intent, "Verify claim");
+  assert.match(requests[0].prompt, /The tests pass/);
+  assert.match(requests[0].prompt, /{"suite":"unit"}/);
+  assert.deepEqual(requests[0].output.schema.required, [
+    "confirmed",
+    "reasons",
+  ]);
+  assert.equal(requests[0].output.schema.additionalProperties, false);
+  assert.equal(requests[1].agent, "analyst");
+  assert.equal(requests[1].intent, "check color");
+  assert.equal(requests[1].model, "small");
+  assert.equal(requests[1].retries, 2);
+  assert.equal(requests[1].timeoutMs, 1234);
+});
+
+test("verify failures compose as ordinary agent failures", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([() => verify("claim")]);
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async () => ({
+        ok: false,
+        text: null,
+        error: "structured verdict missing",
+        errorCode: "structured_output_not_called",
+      }),
+    },
+  );
+  assert.deepEqual(result.result, [
+    {
+      ok: false,
+      error: {
+        code: "structured_output_not_called",
+        message: "structured verdict missing",
+        details: {
+          code: "structured_output_not_called",
+          message: "structured verdict missing",
+          agentId: 1,
+          intent: "Verify claim",
+          logFile: undefined,
+        },
+      },
+    },
+  ]);
+});
+
+test("report awaits gates, returns original values, and normalizes rejections", async () => {
+  const result = await runWorkflow(
+    script(`export async function run() {
+      if (false) await verify("parser marker");
+      const first = { answer: 42 };
+      const accepted = await report(first, { gate: async (value) => value.answer === 42 });
+      const acceptedObject = await report("ok", { gate: async () => ({ ok: true }) });
+      const rejected = await parallelSettled([
+        () => report("bad", { gate: async () => ({ ok: false, reasons: ["wrong", 7, "unsafe"] }) }),
+        () => report("boom", { gate: async () => { throw new Error("gate exploded"); } }),
+      ]);
+      return { same: accepted === first, acceptedObject, rejected };
+    }`),
+    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+  );
+
+  assert.equal((result.result as any).same, true);
+  assert.equal((result.result as any).acceptedObject, "ok");
+  assert.deepEqual((result.result as any).rejected, [
+    {
+      ok: false,
+      error: {
+        code: "workflow_report_rejected",
+        message: "workflow report rejected: wrong; unsafe",
+        details: { reasons: ["wrong", "unsafe"] },
+      },
+    },
+    {
+      ok: false,
+      error: { code: "workflow_script_error", message: "gate exploded" },
+    },
+  ]);
+});
+
 test("workflow agent spawner returns structured values from spawn outcomes", async () => {
   const agents: AgentDefinition[] = [
     {
@@ -185,6 +323,66 @@ test("workflow agent spawner returns structured values from spawn outcomes", asy
         },
       },
     });
+  } finally {
+    stub.mock.restore();
+  }
+});
+
+test("workflow agent spawner resolves only configured fixed model aliases", async () => {
+  const calls: any[] = [];
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    calls.push(invocation);
+    return {
+      ok: true,
+      aborted: false,
+      stdout: "ok",
+      stderr: "",
+      exitCode: 0,
+      signal: null,
+    };
+  });
+  const agents: AgentDefinition[] = [
+    {
+      name: "explorer",
+      description: "Explore",
+      tools: ["read"],
+      extensions: [],
+      model: "definition/model",
+      systemPrompt: "Explore only",
+      disableSkills: true,
+      disablePromptTemplates: true,
+    },
+  ];
+
+  try {
+    const spawn = createWorkflowAgentSpawner({
+      cwd: "/repo",
+      logId: "wf",
+      agents,
+      model: "parent/model",
+      modelTiers: { small: "tier/small" },
+    });
+    assert.equal(
+      (await spawn({ id: 1, prompt: "small", model: "small" })).ok,
+      true,
+    );
+    assert.equal((await spawn({ id: 2, prompt: "default" })).ok, true);
+    const unknown = await spawn({ id: 3, prompt: "unknown", model: "medium" });
+    const unconfigured = await spawn({
+      id: 4,
+      prompt: "big",
+      model: "big",
+    });
+
+    assert.deepEqual(
+      calls.map((call) => call.model),
+      ["tier/small", "definition/model"],
+    );
+    assert.equal(unknown.errorCode, "agent_policy_rejected");
+    assert.match(unknown.error ?? "", /medium/);
+    assert.equal(unconfigured.errorCode, "agent_policy_rejected");
+    assert.match(unconfigured.error ?? "", /not configured/);
+    assert.equal(calls.length, 2);
   } finally {
     stub.mock.restore();
   }
@@ -348,6 +546,277 @@ test("runtime previews cyclic workflow results safely", async () => {
 
   assert.equal((result.result as any).name, "cycle");
   assert.match(updates.at(-1)?.resultPreview ?? "", /\[Circular\]/);
+});
+
+test("run cap rejects later calls without aborting admitted work", async () => {
+  const ledger = createWorkflowRunLedger({ maxAgents: 2 });
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return successfulOutcome(invocation.prompt);
+  });
+  try {
+    const spawnAgent = createWorkflowAgentSpawner({
+      cwd: "/tmp",
+      logId: "cap",
+      agents: readOnlyAgents,
+      ledger,
+    });
+    const result = await runWorkflow(
+      script(`export async function run() {
+        return await parallelSettled([
+          () => agent("first"), () => agent("second"), () => agent("third")
+        ]);
+      }`),
+      { cwd: "/tmp", ledger, spawnAgent },
+    );
+
+    assert.deepEqual(result.result, [
+      { ok: true, value: "first" },
+      { ok: true, value: "second" },
+      {
+        ok: false,
+        error: {
+          code: "workflow_run_cap_exceeded",
+          message: "workflow agent run cap exceeded",
+          details: {
+            code: "workflow_run_cap_exceeded",
+            message: "workflow agent run cap exceeded",
+            agentId: 3,
+            intent: undefined,
+            logFile: undefined,
+          },
+        },
+      },
+    ]);
+    assert.equal(stub.mock.callCount(), 2);
+    assert.equal(ledger.snapshot().launched, 2);
+  } finally {
+    stub.mock.restore();
+  }
+});
+
+test("retries reuse a logical reservation and accumulate every attempt", async () => {
+  const ledger = createWorkflowRunLedger({ maxTokens: 100, maxAgents: 1 });
+  let attempt = 0;
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    attempt += 1;
+    invocation.onEvent({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: { totalTokens: attempt === 1 ? 5 : 7 },
+      },
+    });
+    if (attempt === 1) {
+      return {
+        ...successfulOutcome(""),
+        ok: false,
+        errorCode: "provider_error",
+      };
+    }
+    return successfulOutcome("done");
+  });
+  try {
+    const spawnAgent = createWorkflowAgentSpawner({
+      cwd: "/tmp",
+      logId: "retry-budget",
+      agents: readOnlyAgents,
+      ledger,
+    });
+    const result = await runWorkflow(
+      script(
+        `export async function run() { return await agent("retry", { retries: 1 }); }`,
+      ),
+      { cwd: "/tmp", ledger, spawnAgent },
+    );
+    assert.equal(result.result, "done");
+    assert.equal(stub.mock.callCount(), 2);
+    assert.deepEqual(ledger.snapshot(), {
+      total: 100,
+      used: 12,
+      launched: 1,
+      maxAgents: 1,
+    });
+  } finally {
+    stub.mock.restore();
+  }
+});
+
+test("token exhaustion prevents a retry after a retryable provider failure", async () => {
+  const ledger = createWorkflowRunLedger({ maxTokens: 5 });
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    invocation.onEvent({
+      type: "message_end",
+      message: { role: "assistant", usage: { totalTokens: 5 } },
+    });
+    return {
+      ...successfulOutcome(""),
+      ok: false,
+      errorCode: "provider_error",
+    };
+  });
+  try {
+    const spawnAgent = createWorkflowAgentSpawner({
+      cwd: "/tmp",
+      logId: "retry-stop",
+      agents: readOnlyAgents,
+      ledger,
+    });
+    const result = await runWorkflow(
+      script(`export async function run() {
+        return await parallelSettled([() => agent("retry", { retries: 2 })]);
+      }`),
+      { cwd: "/tmp", ledger, spawnAgent },
+    );
+    assert.equal(
+      (result.result as any[])[0].error.code,
+      "workflow_budget_exceeded",
+    );
+    assert.equal(stub.mock.callCount(), 1);
+  } finally {
+    stub.mock.restore();
+  }
+});
+
+test("streamed token exhaustion aborts active agents but leaves worker fan-in alive", async () => {
+  const ledger = createWorkflowRunLedger({ maxTokens: 10 });
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    if (invocation.prompt === "fast") return successfulOutcome("fast");
+    if (invocation.prompt === "cross") {
+      await new Promise((resolve) => setImmediate(resolve));
+      invocation.onEvent({
+        type: "message_end",
+        message: { role: "assistant", usage: { totalTokens: 10 } },
+      });
+    } else if (!invocation.signal.aborted) {
+      await new Promise<void>((resolve) =>
+        invocation.signal.addEventListener("abort", () => resolve(), {
+          once: true,
+        }),
+      );
+    }
+    return {
+      ...successfulOutcome(""),
+      ok: false,
+      aborted: true,
+      signal: "SIGTERM",
+    };
+  });
+  try {
+    const spawnAgent = createWorkflowAgentSpawner({
+      cwd: "/tmp",
+      logId: "token-budget",
+      agents: readOnlyAgents,
+      ledger,
+    });
+    const result = await runWorkflow(
+      script(`export async function run() {
+        return await parallelSettled([
+          () => agent("fast"), () => agent("cross"), () => agent("blocked")
+        ]);
+      }`),
+      { cwd: "/tmp", ledger, spawnAgent },
+    );
+    const branches = result.result as any[];
+    assert.deepEqual(branches[0], { ok: true, value: "fast" });
+    assert.equal(branches[1].error.code, "workflow_budget_exceeded");
+    assert.equal(branches[2].error.code, "workflow_budget_exceeded");
+    assert.equal(ledger.snapshot().used, 10);
+    assert.equal(result.settledBranchFailureCount, 2);
+  } finally {
+    stub.mock.restore();
+  }
+});
+
+test("token enforcement remains active after the logical call cap denies work", async () => {
+  const ledger = createWorkflowRunLedger({ maxTokens: 5, maxAgents: 2 });
+  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
+    if (invocation.prompt === "cross") {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      invocation.onEvent({
+        type: "message_end",
+        message: { role: "assistant", usage: { totalTokens: 5 } },
+      });
+    } else if (!invocation.signal.aborted) {
+      await new Promise<void>((resolve) =>
+        invocation.signal.addEventListener("abort", () => resolve(), {
+          once: true,
+        }),
+      );
+    }
+    return {
+      ...successfulOutcome(""),
+      ok: false,
+      aborted: true,
+      signal: "SIGTERM",
+    };
+  });
+  try {
+    const spawnAgent = createWorkflowAgentSpawner({
+      cwd: "/tmp",
+      logId: "independent-budgets",
+      agents: readOnlyAgents,
+      ledger,
+    });
+    const result = await runWorkflow(
+      script(`export async function run() {
+        return await parallelSettled([
+          () => agent("cross"), () => agent("blocked"), () => agent("denied")
+        ]);
+      }`),
+      { cwd: "/tmp", ledger, spawnAgent },
+    );
+    const codes = (result.result as any[]).map((branch) => branch.error.code);
+    assert.deepEqual(codes, [
+      "workflow_budget_exceeded",
+      "workflow_budget_exceeded",
+      "workflow_run_cap_exceeded",
+    ]);
+    assert.equal(ledger.isTokenExceeded(), true);
+  } finally {
+    stub.mock.restore();
+  }
+});
+
+test("budget is an immutable advisory worker facade", async () => {
+  const ledger = createWorkflowRunLedger();
+  const result = await runWorkflow(
+    script(`export async function run() {
+      await agent("one");
+      const before = {
+        total: budget.total,
+        spent: budget.spent(),
+        remaining: budget.remaining(),
+        launched: budget.launched,
+        maxAgents: budget.maxAgents,
+      };
+      let assignmentRejected = false;
+      let redefineRejected = false;
+      try { budget.spent = () => 999; } catch { assignmentRejected = true; }
+      try { Object.defineProperty(budget, "total", { value: 999 }); } catch { redefineRejected = true; }
+      return { before, assignmentRejected, redefineRejected, frozen: Object.isFrozen(budget) };
+    }`),
+    {
+      cwd: "/tmp",
+      ledger,
+      spawnAgent: async (request) => {
+        ledger.reserve(request.id);
+        return { ok: true, text: "ok" };
+      },
+    },
+  );
+  assert.deepEqual(result.result, {
+    before: {
+      total: null,
+      spent: 0,
+      remaining: Infinity,
+      launched: 1,
+      maxAgents: null,
+    },
+    assignmentRejected: true,
+    redefineRejected: true,
+    frozen: true,
+  });
 });
 
 test("runtime default workflow timeout is one hour", () => {

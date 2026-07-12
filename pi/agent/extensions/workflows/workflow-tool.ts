@@ -4,6 +4,7 @@ import { spillIfNeeded } from "../_shared/spillover.ts";
 import { loadWorkflowConfig, type WorkflowConfig } from "./config.ts";
 import { loadAgents, type AgentDefinition } from "../subagents/api.ts";
 import { parseWorkflowScript } from "./parser.ts";
+import { createWorkflowRunLedger } from "./ledger.ts";
 import { createWorkflowAgentSpawner, runWorkflow } from "./runtime.ts";
 import { safeStringify } from "./safe-stringify.ts";
 import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
@@ -106,6 +107,10 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       const warnings: string[] = [];
       const config = await loadConfig(ctx.cwd, warnings);
 
+      const ledger = createWorkflowRunLedger({
+        maxTokens: config.maxTokensPerRun,
+        maxAgents: config.maxAgentsPerRun,
+      });
       const agentStates = new Map<number, WorkflowAgentState>();
       let latestSnapshot: WorkflowSnapshot | undefined;
       const emit = (snapshot: WorkflowSnapshot) => {
@@ -125,7 +130,12 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
         logId: toolCallId,
         agents: agents as AgentDefinition[],
         model: modelSelectorFromCtx(ctx),
+        modelTiers: {
+          small: config.modelTierSmall,
+          big: config.modelTierBig,
+        },
         thinking: thinkingLevelFromPi(pi),
+        ledger,
         onAgentUpdate: (state) => {
           agentStates.set(state.id, { ...state });
           if (latestSnapshot) emit(latestSnapshot);
@@ -142,6 +152,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           timeoutMs: config.workflowTimeoutMs,
           agentTimeoutMs: config.agentTimeoutMs,
           maxConcurrency: config.maxConcurrency,
+          ledger,
         });
         const finalText = formatFinal(result);
         const spilled = await spillIfNeeded(text(finalText), toolCallId);
