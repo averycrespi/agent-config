@@ -24,29 +24,32 @@ import type {
 } from "./types.ts";
 import { renderWorkflowCall, renderWorkflowResult } from "./display.ts";
 
-const workflowParamsSchema = Type.Object({
-  action: stringEnum(["run", "list", "validate"] as const, {
-    description: "Action to perform.",
-  }),
-  script: Type.Optional(
-    Type.String({
-      description:
-        "Inline JavaScript workflow source. Accepted by run and validate instead of name.",
+const workflowParamsSchema = Type.Object(
+  {
+    action: stringEnum(["run", "list", "validate"] as const, {
+      description: "Action to perform.",
     }),
-  ),
-  name: Type.Optional(
-    Type.String({
-      description:
-        "Saved workflow name. Accepted by run and validate instead of script.",
-    }),
-  ),
-  args: Type.Optional(
-    Type.Any({
-      description:
-        "Optional verbatim JSON value exposed to a run script as args.",
-    }),
-  ),
-});
+    script: Type.Optional(
+      Type.String({
+        description:
+          "Inline JavaScript workflow source. Accepted by run and validate instead of name.",
+      }),
+    ),
+    name: Type.Optional(
+      Type.String({
+        description:
+          "Saved workflow name. Accepted by run and validate instead of script.",
+      }),
+    ),
+    args: Type.Optional(
+      Type.Any({
+        description:
+          "Optional verbatim JSON value exposed to a run script as args.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
 
 type WorkflowParams = Static<typeof workflowParamsSchema>;
 

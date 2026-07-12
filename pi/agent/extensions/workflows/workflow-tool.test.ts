@@ -224,6 +224,7 @@ test("workflow schema requires a Google-compatible compound action", () => {
   const harness = makePi();
   registerWorkflowTool(harness.pi as any);
   assert.deepEqual(harness.tool.parameters.required, ["action"]);
+  assert.equal(harness.tool.parameters.additionalProperties, false);
   assert.deepEqual(harness.tool.parameters.properties.action.enum, [
     "run",
     "list",
