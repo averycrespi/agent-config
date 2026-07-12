@@ -1,4 +1,5 @@
 import { Text } from "@earendil-works/pi-tui";
+import { stripVTControlCharacters } from "node:util";
 import {
   clearPartialTimer,
   formatDuration,
@@ -8,6 +9,14 @@ import {
 } from "../_shared/render.ts";
 import { agentProgressLine } from "../subagents/render.ts";
 import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
+
+function safeDisplay(value: unknown): string {
+  return stripVTControlCharacters(String(value ?? ""))
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export function formatWorkflowResult(details: unknown, text: string): string {
   const info = details as
@@ -60,7 +69,7 @@ function workflowHeader(
   const elapsed = formatDuration(
     (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt,
   );
-  const name = snapshot.meta?.name ?? "workflow";
+  const name = safeDisplay(snapshot.meta?.name ?? "workflow");
   const { running, done, failed } = countAgents(snapshot);
   const agentFailures = snapshot.agentFailureCount ?? failed;
   const hasCounts = snapshot.agents.length > 0 || agentFailures > 0;
@@ -80,7 +89,7 @@ function workflowHeader(
   if (options.final) {
     return `${theme.bold("Workflow")}: ${name} ✓ · ${elapsed}${counts}`;
   }
-  const phase = snapshot.phase ? ` · ${snapshot.phase}` : "";
+  const phase = snapshot.phase ? ` · ${safeDisplay(snapshot.phase)}` : "";
   return `${theme.bold("Workflow")}: ${name}${phase}${counts} · ${elapsed}`;
 }
 
@@ -183,21 +192,24 @@ export function renderWorkflowResult(
         }
       | undefined;
     const lines = [
-      `saved workflows · ${inventory?.storeDir ?? "unknown store"}`,
-      ...(inventory?.entries ?? []).map((entry) =>
-        entry.valid
-          ? `✓ ${entry.name ?? entry.filename}${entry.description ? ` — ${entry.description}` : ""}`
-          : `✗ ${entry.name ?? entry.filename} — ${entry.diagnostic ?? "invalid"}`,
-      ),
-      ...(inventory?.truncated ? [`… ${inventory.truncated}`] : []),
+      `saved workflows · ${safeDisplay(inventory?.storeDir ?? "unknown store")}`,
+      ...(inventory?.entries ?? []).map((entry) => {
+        const name = safeDisplay(entry.name ?? entry.filename);
+        return entry.valid
+          ? `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`
+          : `✗ ${name} — ${safeDisplay(entry.diagnostic ?? "invalid")}`;
+      }),
+      ...(inventory?.truncated
+        ? [`… ${safeDisplay(inventory.truncated)}`]
+        : []),
     ];
     return getTruncatedText(context.lastComponent, lines);
   }
 
   if (result.details?.action === "validate") {
-    const name = result.details.meta?.name ?? "workflow";
+    const name = safeDisplay(result.details.meta?.name ?? "workflow");
     const source = result.details.sourceFile
-      ? ` · ${result.details.sourceFile}`
+      ? ` · ${safeDisplay(result.details.sourceFile)}`
       : " · inline";
     return getTruncatedText(context.lastComponent, [
       `${theme.fg("success", "✓")} validated ${name}${source}`,

@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { parseWorkflowScript } from "./parser.ts";
 import type { ParsedWorkflow } from "./types.ts";
 
@@ -33,9 +34,9 @@ export interface SavedWorkflow {
 }
 
 function cleanLine(value: string, maxChars: number): string {
-  const clean = value
-    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+  const clean = stripVTControlCharacters(value)
     .replace(/[\r\n\t]+/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
     .replace(/\s+/g, " ")
     .trim();
   return clean.length <= maxChars ? clean : `${clean.slice(0, maxChars - 1)}…`;
@@ -112,13 +113,27 @@ async function readCandidate(
           diagnostic: `Saved workflow exceeds the 256 KiB file limit.`,
           bytes: info.size,
         };
-      const buffer = await handle.readFile();
-      if (buffer.length > MAX_WORKFLOW_FILE_BYTES)
+      const buffer = Buffer.allocUnsafe(MAX_WORKFLOW_FILE_BYTES + 1);
+      let bytesRead = 0;
+      while (bytesRead < buffer.length) {
+        const read = await handle.read(
+          buffer,
+          bytesRead,
+          buffer.length - bytesRead,
+          null,
+        );
+        if (read.bytesRead === 0) break;
+        bytesRead += read.bytesRead;
+      }
+      if (bytesRead > MAX_WORKFLOW_FILE_BYTES)
         return {
           diagnostic: `Saved workflow exceeds the 256 KiB file limit.`,
-          bytes: buffer.length,
+          bytes: bytesRead,
         };
-      return { source: buffer.toString("utf8"), bytes: buffer.length };
+      return {
+        source: buffer.subarray(0, bytesRead).toString("utf8"),
+        bytes: bytesRead,
+      };
     } finally {
       await handle.close();
     }

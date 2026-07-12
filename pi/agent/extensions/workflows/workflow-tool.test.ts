@@ -140,6 +140,23 @@ test("workflow tool returns validation errors as tool text", async () => {
   assert.equal(result.details.validationError, true);
 });
 
+test("workflow tool preserves artifact visibility when hostile metadata forces spillover", async () => {
+  const harness = makePi();
+  registerWorkflowTool(harness.pi as any);
+  const name = "n".repeat(26_000);
+  const script = `export const meta = { name: ${JSON.stringify(name)}, description: "large name" };\nexport async function run() { if (false) await agent("not run"); return "ok"; }`;
+  const result = await harness.tool.execute(
+    "wf-hostile-name",
+    { action: "run", script },
+    undefined,
+    undefined,
+    { cwd: "/tmp" },
+  );
+  assert.equal(result.details.spilled, true);
+  assert.match(result.content[0].text, /Run script:/);
+  assert.ok(result.content[0].text.includes(result.details.scriptFile));
+});
+
 test("workflow tool spills large final output", async () => {
   const harness = makePi();
   registerWorkflowTool(harness.pi as any);
@@ -469,7 +486,8 @@ test("list and validate rendering is compact, width-aware, and source-free", () 
             {
               filename: "safe.js",
               name: "safe",
-              description: "one line",
+              description:
+                "one\nline\t\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007",
               valid: true,
               sourcePath: "/tmp/workflows/safe.js",
             },
@@ -482,7 +500,10 @@ test("list and validate rendering is compact, width-aware, and source-free", () 
     { state: {}, invalidate() {} },
   );
   assert.ok(list.render(30).every((line: string) => visibleWidth(line) <= 30));
-  assert.doesNotMatch(list.render(120).join("\n"), /raw inventory/);
+  assert.doesNotMatch(
+    list.render(120).join("\n"),
+    /raw inventory|\u001b|\u0007|\nline/,
+  );
 
   const validate = renderWorkflowResult(
     {

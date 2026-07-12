@@ -10,8 +10,9 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import test from "node:test";
+import test, { mock } from "node:test";
 import {
+  _artifactNonce,
   cleanupOldWorkflowScripts,
   persistWorkflowScript,
   WORKFLOW_SCRIPT_RETENTION_MS,
@@ -48,6 +49,19 @@ test("persists exact source in owner-only directory and exclusive file", async (
   assert.equal((await lstat(first)).mode & 0o777, 0o600);
   assert.equal(first.startsWith(`${dir}/`), true);
   assert.doesNotMatch(first.slice(dir.length + 1), /\.\.|\//);
+});
+
+test("exclusive creation retries nonce collisions without overwriting", async (t) => {
+  const dir = await fixture(t);
+  const nonces = ["same", "same", "different"];
+  mock.method(_artifactNonce, "fn", () => nonces.shift() ?? "fallback");
+  t.after(() => mock.restoreAll());
+  const first = await persistWorkflowScript("first", "id", "name", dir);
+  const second = await persistWorkflowScript("second", "id", "name", dir);
+  assert.match(first, /same\.js$/);
+  assert.match(second, /different\.js$/);
+  assert.equal(await readFile(first, "utf8"), "first");
+  assert.equal(await readFile(second, "utf8"), "second");
 });
 
 test("rejects a symlinked artifact directory", async (t) => {

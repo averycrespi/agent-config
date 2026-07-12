@@ -4,41 +4,57 @@ The `workflows` extension provides a foreground `workflow` tool for deterministi
 
 This is a Phase 1 implementation for research, review, audit, and exploration—not parallel implementation or workspace mutation.
 
-## Tool
+## Tool and saved definitions
 
 ### `workflow`
 
-| Field    | Required | Description                                                                              |
-| -------- | -------- | ---------------------------------------------------------------------------------------- |
-| `script` | Yes      | Raw JavaScript source starting with literal `export const meta = { name, description }`. |
-| `args`   | No       | Any JSON value exposed to the script as `args`.                                          |
+`action` is always required. Pi's schema rejects missing, unknown, or incorrectly typed actions before execution. The accepted action-specific fields are:
 
-The script must contain a syntactic direct `agent()` or `verify()` call. The tool runs in the foreground, streams compact phase/subagent progress, and reports agent failures separately from handled `parallel()` and `parallelSettled()` branch failures. Large final output uses the shared spillover helper.
+| Action     | Fields                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `list`     | No other fields. Returns the current saved-definition inventory.                         |
+| `validate` | Exactly one of `script` or `name`; parses and validates without executing.               |
+| `run`      | Exactly one of `script` or `name`, plus optional verbatim JSON `args` exposed to script. |
+
+Inline and named runs use the same parser, sandbox, subagent policy, model aliases, concurrency, budgets, cancellation, and foreground lifecycle. Every script must start with literal `export const meta = { name, description }` and contain a syntactic direct `agent()` or `verify()` call.
 
 ```js
-export const meta = {
-  name: "repo-audit",
-  description: "Audit and verify repository concerns",
-};
+workflow({
+  action: "run",
+  args: { topics: ["tests", "docs", "security"] },
+  script: `export const meta = {
+    name: "repo-audit",
+    description: "Audit and verify repository concerns",
+  };
 
-export async function run() {
-  phase("inspect");
-  const findings = await parallel(
-    ["tests", "docs", "security"].map(
-      (topic) => () =>
-        agent(`Audit the repository for ${topic} issues.`, {
-          agent: "explorer",
-          intent: topic,
-          model: "small",
-        }),
-    ),
-  );
-  return await report(findings, {
-    gate: (value) =>
-      verify(`These findings are evidence-backed: ${JSON.stringify(value)}`),
-  });
-}
+  export async function run() {
+    phase("inspect");
+    const findings = await parallel(
+      args.topics.map((topic) => () => agent(
+        \`Audit the repository for \${topic} issues.\`,
+        { agent: "explorer", intent: topic, model: "small" },
+      )),
+    );
+    return report(findings, {
+      gate: (value) => verify(
+        \`These findings are evidence-backed: \${JSON.stringify(value)}\`,
+      ),
+    });
+  }`,
+});
 ```
+
+Saved definitions are ordinary `*.js` files in the one effective `userWorkflowsDir`. The filename stem and literal `meta.name` must be identical lowercase kebab-case values matching `^[a-z0-9][a-z0-9-]{0,63}$`; `meta.description` is the only other discovery metadata. The file body is the exact workflow source—there is no envelope, frontmatter, argument schema, or execution-policy metadata.
+
+```js
+workflow({ action: "list" });
+workflow({ action: "validate", name: "repo-audit" });
+workflow({ action: "run", name: "repo-audit", args: { scope: "tests" } });
+```
+
+Definitions are loaded on every list, validation, or named run, so file additions, edits, and removals are visible without restarting Pi. `/workflows-list` displays the same current inventory for users. Create or edit definitions with ordinary filesystem tools at the absolute paths shown by `/workflows-config` and listing output. Missing directories are treated as empty.
+
+Inventory ignores non-JavaScript files and directories. Unsafe names, unreadable or oversized files, symlinked entries, filename/metadata mismatches, and parser failures appear as invalid with diagnostics and cannot run. Processing is capped at 256 KiB per file, 200 candidate entries, 2 MiB aggregate parsed source, and 32 KiB of tool text; descriptions and diagnostics are single-line and capped. Listing marks truncation explicitly. Direct resolution of a validated name does not depend on the truncated inventory subset.
 
 ## Script globals
 
@@ -116,6 +132,7 @@ Configure `extension:workflows` in Pi settings. Environment variables override s
 | `maxAgentsPerRun`   | `100`                       | `WORKFLOWS_MAX_AGENTS_PER_RUN`  | Non-negative logical-agent limit; `0` disables it.                                 |
 | `modelTierSmall`    | `openai-codex/gpt-5.6-luna` | `WORKFLOWS_MODEL_TIER_SMALL`    | Trimmed full Pi model selector for the fixed `small` alias; empty is unconfigured. |
 | `modelTierBig`      | `openai-codex/gpt-5.6-sol`  | `WORKFLOWS_MODEL_TIER_BIG`      | Trimmed full Pi model selector for the fixed `big` alias; empty is unconfigured.   |
+| `userWorkflowsDir`  | `<agentDir>/workflows`      | `WORKFLOWS_USER_WORKFLOWS_DIR`  | Non-empty directory; relative values resolve against the current call's cwd.       |
 
 ```json
 {
@@ -126,24 +143,32 @@ Configure `extension:workflows` in Pi settings. Environment variables override s
     "maxTokensPerRun": 0,
     "maxAgentsPerRun": 100,
     "modelTierSmall": "openai-codex/gpt-5.6-luna",
-    "modelTierBig": "openai-codex/gpt-5.6-sol"
+    "modelTierBig": "openai-codex/gpt-5.6-sol",
+    "userWorkflowsDir": "/Users/example/.pi/agent/workflows"
   }
 }
 ```
 
 The default aliases use the `openai-codex` provider and require it to be authenticated. Override either selector when using another available Pi provider.
 
+This repository stows entries inside the parent `<agentDir>`, but intentionally does not ship a `pi/agent/workflows/` entry. Consequently, the default directory is currently user-local rather than repository-managed. An override is optional when a different private location is more convenient; it is not required for privacy.
+
 ## Logging and retained output
 
-The extension does not keep a workflow run database, scripts, budget journals, or model responses. Progress and ledger state live only for the active foreground call. A script may retain at most 100 `log()` entries of 2,000 characters each and 100 phase entries of 200 characters each; exceeding either entry cap fails the script, and the host independently enforces the same storage bounds. Subagent failures may produce retained logs through `subagents`. Shared spillover files under the system temp directory may contain raw model/tool output, are owner-readable, and are cleaned best-effort after the retention window.
+Saved definitions persist until the user edits or removes them. After successful resolution and parsing, every `run` copies the exact original effective source into the dedicated owner-controlled system temporary `pi-workflow-scripts` directory before the sandbox starts. Directories are mode `0700`, artifacts are created exclusively at mode `0600`, existing files are never overwritten, and unsafe metadata/tool-call values cannot escape the directory. Persistence failure stops execution. Tool text and details report the immutable run-script path; named runs also report the saved source path.
+
+Workflow script artifacts contain source only—never results, responses, ledger snapshots, checkpoints, journals, or metadata sidecars—and are removed best-effort after seven days. Shared spillover files are separate, may contain raw model/tool output, and retain their own cleanup behavior. Progress and ledger state live only for the active foreground call. A script may retain at most 100 `log()` entries of 2,000 characters each and 100 phase entries of 200 characters each. Subagent failures may produce retained logs through `subagents`; this extension has no additional retained diagnostic log.
 
 ## Limitations
 
-- No background manager or `/workflows` navigator.
-- No journaled resume, run IDs, saved workflows, response cache, or persistence.
+- No project workflow stores, implicit `<cwd>/.pi/workflows`, directory walking, precedence/shadowing between stores, or bundled definitions.
+- No workflow-specific save, read, update, delete, import, export, or rename actions; use ordinary filesystem tools.
+- No per-workflow slash commands, prompt templates, arbitrary `scriptPath`, or execution outside the configured store.
+- No workflow-to-workflow composition, nested workflow RPC, recursion policy, background manager, or navigator.
+- No journaled resume, run IDs, checkpoints, response caches, retained results, run database, or durable run state.
 - No writable workflow mode, parallel implementation, session inheritance, or git worktree coordination.
-- No arbitrary script-selected model IDs or user-defined alias maps.
-- No general quality-helper framework beyond the narrow `verify()` and `report()` primitives.
+- No additional workflow metadata such as argument schemas, phases, model/tool policy, defaults, or `whenToUse`.
+- No arbitrary script-selected model IDs, user-defined alias maps, or general quality-helper framework beyond `verify()` and `report()`.
 
 ## Troubleshooting
 
@@ -151,6 +176,9 @@ The extension does not keep a workflow run database, scripts, budget journals, o
 - `workflow must call agent() or verify()`: add a direct syntactic call; `report()` alone is not spawning work.
 - `agent type ... is not allowed`: use a read-mostly built-in agent listed above.
 - `model alias ... is not configured`: configure the corresponding fixed tier or omit `model`.
+- `Unknown saved workflow`: call `workflow({ action: "list" })` or `/workflows-list`, then check the configured directory and strict filename.
+- `Saved workflow ... is invalid`: fix the listed name, size, symlink, identity, read, or parser diagnostic before running.
+- Artifact persistence errors: check that the system temporary scripts directory is an owner-controlled real directory.
 - `workflow sandbox exited`: check for an unsupported Node runtime, script error, infinite loop, timeout, or cancellation.
 - Retryable provider failures may use `retries: 1`; policy, cap, budget, timeout, abort, and permanent provider schema failures are not retried.
 
@@ -158,4 +186,4 @@ The extension does not keep a workflow run database, scripts, budget journals, o
 
 - [Claude Code dynamic workflows](https://claude.com/blog/introducing-dynamic-workflows-in-claude-code) — model-authored JavaScript orchestration for fan-out subagent work.
 - [Michaelliv/pi-dynamic-workflows](https://github.com/michaelliv/pi-dynamic-workflows) — influenced the raw-script, deterministic-global, foreground-progress shape.
-- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — demonstrates broader background, navigation, journaling, saved-workflow, retry, and worktree ideas that remain out of scope here.
+- [@quintinshaw/pi-dynamic-workflows](https://pi.dev/packages/@quintinshaw/pi-dynamic-workflows) — demonstrates broader background, navigation, journaling, retry, and worktree ideas; this extension adopts only user-scoped saved definitions.

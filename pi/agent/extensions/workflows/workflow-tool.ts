@@ -75,9 +75,9 @@ function formatFinal(
 ): string {
   const body = safeStringify(result.result);
   return [
-    `Workflow ${result.meta.name} completed in ${(result.durationMs / 1000).toFixed(1)}s.`,
     `Run script: ${scriptFile}`,
     ...(sourceFile ? [`Saved source: ${sourceFile}`] : []),
+    `Workflow ${result.meta.name} completed in ${(result.durationMs / 1000).toFixed(1)}s.`,
     `Agent failures: ${result.agentFailureCount}`,
     `Branch failures: ${result.loggedBranchFailureCount} logged, ${result.settledBranchFailureCount} settled`,
     "",

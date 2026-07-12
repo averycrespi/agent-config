@@ -4,16 +4,28 @@ The `workflows` extension owns deterministic foreground orchestration above the 
 
 ## Architecture
 
-- `index.ts` registers the extension and `/workflows-config`.
-- `config.ts` loads all seven timeout, concurrency, budget, and fixed-tier settings through shared precedence helpers.
-- `workflow-tool.ts` defines canonical tool guidance, creates one ledger per execution, wires host policy/runtime options, streams progress, and applies final spillover.
-- `parser.ts` performs AST guardrail validation and extracts literal metadata.
+- `index.ts` registers the extension, `/workflows-config`, and live `/workflows-list` discovery.
+- `config.ts` loads timeout, concurrency, budget, fixed-tier, and single-store settings through shared precedence helpers.
+- `store.ts` resolves the configured user root on demand, inventories bounded definitions fail-soft, and resolves requested names fail-closed.
+- `script-artifacts.ts` exclusively persists exact per-run source under a dedicated owner-controlled temporary directory and owns seven-day `.js` cleanup.
+- `workflow-tool.ts` dispatches compound `list`, `validate`, and `run` actions. Only `run` creates a ledger/spawner, persists an artifact, streams progress, and applies final spillover.
+- `parser.ts` performs the one canonical AST guardrail validation and extracts literal metadata for inline and saved sources.
 - `ledger.ts` synchronously reserves logical calls and accounts cumulative observed tokens by request and retry attempt.
 - `runtime.ts` owns the sandbox process and RPC boundary, retries, cancellation causes, policy enforcement, model resolution, schema validation, and activity tracking.
 - `sandbox-source.ts` exposes deterministic script globals, clone-safe errors, combinators, and the advisory budget mirror.
 - `display.ts`, `safe-stringify.ts`, and `types.ts` own rendering, safe previews, and shared contracts.
 
 Imports from subagents must remain limited to `../subagents/api.ts`. The ledger is internal and has no persisted or cross-run state.
+
+## Store and action lifecycle
+
+`userWorkflowsDir` is the only store. Its default is `<agentDir>/workflows`; settings and `WORKFLOWS_USER_WORKFLOWS_DIR` use normal global → project → environment precedence, and relative values resolve against the current call cwd. No repository store, directory walking, or startup cache exists. The explicitly configured root may itself resolve through a Stow-managed symlink. After resolving that root, entry paths must remain contained within its real target.
+
+Saved identity is strict: a regular `<name>.js` file and literal `meta.name` must match `^[a-z0-9][a-z0-9-]{0,63}$`. Entries are opened without following symlinks, checked as regular files, bounded to 256 KiB, and passed to `parseWorkflowScript()`. Inventory is deterministic and fail-soft, capped at 200 candidates and 2 MiB aggregate parsed source; invalid entries retain capped single-line diagnostics. Formatted tool text is capped at 32 KiB with explicit truncation. Direct requested-name resolution computes and validates `<name>.js` independently of inventory truncation.
+
+`list` loads config and current inventory only. `validate(script)` invokes only the parser; `validate(name)` additionally performs safe store resolution and identity checks. Neither path loads agents, creates a ledger, writes an artifact, or starts a child. `run` resolves and parses one inline or named source, then persists `ParsedWorkflow.script` before loading agents or constructing runtime state. Named and inline sources converge at that point and cannot drift in parser, sandbox, policy, budget, cancellation, rendering, or failure behavior.
+
+The artifact directory must be a real owner-controlled mode-`0700` directory. Files use independently sanitized names plus an opaque nonce and exclusive mode-`0600` creation, so metadata and tool-call IDs cannot affect containment or overwrite an existing artifact. Failure is fatal before execution. Cleanup considers only this helper's old regular `.js` files and leaves symlinks, unrelated spillover, and other content alone. Run results and runtime errors expose `scriptFile`; named runs separately expose `sourceFile`. No result or run-state sidecar is written.
 
 ## Runtime and security boundary
 
@@ -85,13 +97,15 @@ Abort cause is preserved through composed workflow/budget/per-attempt signals. A
 
 ## Rendering, logging, and output
 
-`workflow-tool.ts` merges runtime snapshots with subagent activity updates. Shared width-aware renderers keep one compact row per subagent. Script logs are capped at 100 entries × 2,000 characters and phases at 100 entries × 200 characters in both the sandbox and host, preventing unbounded IPC/state/TUI amplification. Final output uses shared safe stringification and spillover.
+`workflow-tool.ts` merges runtime snapshots with subagent activity updates. Shared width-aware renderers keep one compact row per subagent and compact source-free rows for list/validate actions. Script logs are capped at 100 entries × 2,000 characters and phases at 100 entries × 200 characters in both the sandbox and host, preventing unbounded IPC/state/TUI amplification. Final output uses shared safe stringification and spillover.
 
-No run database, budget journal, script store, or response cache is introduced. Subagent logs and spillover may contain raw tool/model output, as documented in the user README.
+Saved definitions and exact run-input artifacts are persistent inputs, not durable runs. No run database, result store, budget journal, response cache, checkpoint, ledger snapshot, or model-response persistence is introduced. Script artifacts use seven-day best-effort retention. Subagent logs and separate spillover may contain raw tool/model output, as documented in the user README.
 
 ## Non-goals
 
-- Background execution, a workflow navigator, retained runs, journaling/resume, run IDs, saved scripts, or response caching.
+- Project stores, implicit repository lookup, bundled definitions, precedence/shadowing, workflow-specific mutation actions, or arbitrary file paths.
+- Workflow composition, nesting, recursion, per-workflow commands/templates, background execution, or a workflow navigator.
+- Retained runs/results, journaling/resume, run IDs, checkpoints, response caching, or additional metadata schemas/policies.
 - Writable workflow agents, parallel implementation, session inheritance, git worktree isolation, or writable coordination.
 - Arbitrary script model selectors, user-defined alias maps, changes to agent Markdown model declarations, or changes to direct `spawn_agents` behavior.
 - Cost budgets, estimates, reservations, per-phase/per-agent quotas, or generalized quota infrastructure.
@@ -99,7 +113,10 @@ No run database, budget journal, script store, or response cache is introduced. 
 
 ## Change guidance
 
-- Keep privileged enforcement and raw selector resolution host-side.
+- Keep store enumeration, file reads, identity checks, artifact writes, privileged enforcement, and raw selector resolution host-side.
+- Keep `parseWorkflowScript()` as the mandatory shared validation seam; never add a trusted-store bypass.
+- Preserve fail-soft bounded inventory, direct fail-closed resolution, symlink rejection, real-root containment, and fail-closed artifact persistence.
+- Keep artifact cleanup scoped to old regular `.js` files in its dedicated directory; do not fold it into spillover cleanup.
 - Preserve synchronous reservation/accounting and independent call/token conditions.
 - Feed accounting from every streamed child event, not activity-render callbacks.
 - Add real-sandbox tests before broadening globals or RPC options, including constructor-based capability probes.

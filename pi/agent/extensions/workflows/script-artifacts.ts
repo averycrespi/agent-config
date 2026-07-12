@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 
 export const WORKFLOW_SCRIPTS_DIR = join(tmpdir(), "pi-workflow-scripts");
 export const WORKFLOW_SCRIPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const _artifactNonce = {
+  fn: () => randomBytes(8).toString("hex"),
+};
 
 function safePart(value: string): string {
   const normalized = value
@@ -67,7 +70,7 @@ export async function persistWorkflowScript(
   await cleanupOldWorkflowScripts(dir);
   const prefix = `${safePart(workflowName)}-${safePart(toolCallId)}`;
   for (let attempt = 0; attempt < 101; attempt += 1) {
-    const nonce = randomBytes(8).toString("hex");
+    const nonce = _artifactNonce.fn();
     const path = join(dir, `${prefix}-${nonce}.js`);
     try {
       await writeFile(path, source, { flag: "wx", mode: 0o600 });

@@ -99,6 +99,21 @@ test("inventory reports unsafe, mismatched, parser-failed, oversized, and symlin
   );
 });
 
+test("saved identity follows canonical parser behavior for duplicate metadata properties", async (t) => {
+  const dir = await fixture(t);
+  await writeFile(
+    join(dir, "second.js"),
+    `export const meta = { name: "first", name: "second", description: "first", description: "second" };\nexport async function run() { return agent("read"); }`,
+  );
+  const inventory = await inventoryWorkflows(dir);
+  assert.equal(inventory.entries[0]?.valid, true);
+  assert.equal(inventory.entries[0]?.description, "second");
+  assert.equal(
+    (await resolveSavedWorkflow(dir, "second")).parsed.meta.description,
+    "second",
+  );
+});
+
 test("configured root may be a symlink but entries may not be", async (t) => {
   const parent = await fixture(t);
   const target = join(parent, "target");

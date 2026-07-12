@@ -22,22 +22,22 @@ Running `make stow-pi` creates symlinks from `pi/agent/` into `~/.pi/agent/`. Ed
 
 TypeScript modules that customize the Pi agent. Type-check with `make typecheck`.
 
-| Extension           | Purpose                                                                                             |
-| ------------------- | --------------------------------------------------------------------------------------------------- |
-| `ask-user`          | `ask_user` tool for multiple-choice questions                                                       |
-| `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                             |
-| `context-usage`     | `/context-usage` token-blame report for current context-window usage                                |
-| `extra-context`     | User-configured additional context files injected into main and subagent system prompts             |
-| `goal`              | Session-scoped, fork-safe goal steering with commands, tools, widget, and compaction context        |
-| `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                   |
-| `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state |
-| `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                    |
-| `startup-header`    | Minimal colored startup header with Pi version, repo, branch, and recent commits                    |
-| `structured-output` | Schema-backed final output tool, no-op unless configured                                            |
-| `subagents`         | Dynamic subagent loading and dispatch                                                               |
-| `todo`              | Session-persisted TODO tool with a sticky widget                                                    |
-| `web-access`        | Web search, fetch, GitHub, and PDF tools                                                            |
-| `workflows`         | Foreground read-mostly workflows with bounded budgets, verification gates, and fixed model routing  |
+| Extension           | Purpose                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `ask-user`          | `ask_user` tool for multiple-choice questions                                                           |
+| `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                 |
+| `context-usage`     | `/context-usage` token-blame report for current context-window usage                                    |
+| `extra-context`     | User-configured additional context files injected into main and subagent system prompts                 |
+| `goal`              | Session-scoped, fork-safe goal steering with commands, tools, widget, and compaction context            |
+| `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                       |
+| `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
+| `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
+| `startup-header`    | Minimal colored startup header with Pi version, repo, branch, and recent commits                        |
+| `structured-output` | Schema-backed final output tool, no-op unless configured                                                |
+| `subagents`         | Dynamic subagent loading and dispatch                                                                   |
+| `todo`              | Session-persisted TODO tool with a sticky widget                                                        |
+| `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                |
+| `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows |
 
 Underscore-prefixed directories are libraries imported by sibling extensions, not extensions themselves — pi's extension loader skips them because they have no `index.ts`.
 
