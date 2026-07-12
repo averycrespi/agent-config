@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, opendir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -42,28 +42,29 @@ export async function cleanupOldWorkflowScripts(
 ): Promise<void> {
   let entries;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    entries = await opendir(dir);
   } catch {
     return;
   }
-  await Promise.all(
-    entries
-      .filter(
-        (entry) =>
-          entry.name.startsWith(WORKFLOW_SCRIPT_FILE_PREFIX) &&
-          entry.name.endsWith(".js") &&
-          !entry.isSymbolicLink(),
+  try {
+    for await (const entry of entries) {
+      if (
+        !entry.name.startsWith(WORKFLOW_SCRIPT_FILE_PREFIX) ||
+        !entry.name.endsWith(".js") ||
+        entry.isSymbolicLink()
       )
-      .map(async (entry) => {
-        const path = join(dir, entry.name);
-        try {
-          const info = await lstat(path);
-          if (info.isFile() && now - info.mtimeMs > maxAgeMs) await rm(path);
-        } catch {
-          // Best-effort retention cleanup must not block a new artifact.
-        }
-      }),
-  );
+        continue;
+      const path = join(dir, entry.name);
+      try {
+        const info = await lstat(path);
+        if (info.isFile() && now - info.mtimeMs > maxAgeMs) await rm(path);
+      } catch {
+        // Best-effort retention cleanup must not block a new artifact.
+      }
+    }
+  } catch {
+    // Best-effort retention cleanup must not block a new artifact.
+  }
 }
 
 export async function persistWorkflowScript(

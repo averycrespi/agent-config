@@ -200,19 +200,25 @@ test("direct resolution validates names before access and rejects invalid defini
 
 test("inventory entry cap truncates while direct resolution remains available", async (t) => {
   const dir = await fixture(t);
-  for (let index = 0; index <= MAX_INVENTORY_ENTRIES; index += 1) {
+  for (let index = MAX_INVENTORY_ENTRIES; index >= 0; index -= 1) {
     const name = `wf-${String(index).padStart(3, "0")}`;
     await writeFile(join(dir, `${name}.js`), script(name));
   }
 
   const inventory = await inventoryWorkflows(dir);
   assert.equal(inventory.entries.length, MAX_INVENTORY_ENTRIES);
+  assert.equal(inventory.entries[0]?.name, "wf-000");
+  assert.equal(inventory.entries.at(-1)?.name, "wf-199");
   assert.match(inventory.truncated ?? "", /entry limit/);
   const resolved = await resolveSavedWorkflow(
     dir,
     `wf-${MAX_INVENTORY_ENTRIES}`,
   );
   assert.equal(resolved.parsed.meta.name, `wf-${MAX_INVENTORY_ENTRIES}`);
+  await assert.rejects(
+    () => resolveSavedWorkflow(dir, "missing"),
+    /Available valid workflows:.*inventory truncated/is,
+  );
 });
 
 test("inventory marks aggregate truncation and formatter bounds hostile metadata", async (t) => {
@@ -236,6 +242,12 @@ test("inventory marks aggregate truncation and formatter bounds hostile metadata
     ),
   );
   assert.ok(formatted.details.entries.length > 0);
+  assert.equal(
+    inventory.entries.some((entry) => entry.name === "large-9"),
+    false,
+  );
+  const resolved = await resolveSavedWorkflow(dir, "large-9");
+  assert.equal(resolved.parsed.meta.name, "large-9");
 
   const hostilePath =
     "/tmp/\u001b]8;;https://example.com\u0007store\u001b]8;;\u0007";

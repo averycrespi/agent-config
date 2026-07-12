@@ -31,15 +31,6 @@ export interface ParsedWorkflow {
   literalMeta: WorkflowMeta;
 }
 
-export type WorkflowAction = "run" | "list" | "validate";
-
-export interface WorkflowParams {
-  action: WorkflowAction;
-  script?: string;
-  name?: string;
-  args?: unknown;
-}
-
 export type WorkflowErrorCode =
   | "agent_policy_rejected"
   | "agent_spawn_exception"

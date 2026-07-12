@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import registerWorkflowsExtension from "./index.ts";
-import { registerWorkflowTool } from "./workflow-tool.ts";
+import { registerWorkflowTool as registerWorkflowToolProduction } from "./workflow-tool.ts";
 import { DEFAULT_WORKFLOW_CONFIG } from "./config.ts";
 import { formatConfigForDisplay } from "../_shared/config.ts";
 import {
@@ -13,6 +13,30 @@ import {
   renderWorkflowCall,
   renderWorkflowResult,
 } from "./display.ts";
+import { persistWorkflowScript } from "./script-artifacts.ts";
+
+const TEST_ARTIFACT_DIR = join(
+  tmpdir(),
+  `workflow-tool-artifacts-${process.pid}-${Date.now()}`,
+);
+after(() => rm(TEST_ARTIFACT_DIR, { recursive: true, force: true }));
+
+function registerWorkflowTool(
+  pi: Parameters<typeof registerWorkflowToolProduction>[0],
+  loadConfig?: Parameters<typeof registerWorkflowToolProduction>[1],
+  overrides: Parameters<typeof registerWorkflowToolProduction>[2] = {},
+): void {
+  registerWorkflowToolProduction(pi, loadConfig, {
+    persistScript: (source, toolCallId, workflowName) =>
+      persistWorkflowScript(
+        source,
+        toolCallId,
+        workflowName,
+        TEST_ARTIFACT_DIR,
+      ),
+    ...overrides,
+  });
+}
 
 function makePi() {
   let registered: any;
@@ -258,6 +282,22 @@ test("workflow execute-time validation collects action field errors", async () =
   assert.match(list.content[0].text, /script is not accepted/);
   assert.match(list.content[0].text, /name is not accepted/);
   assert.match(list.content[0].text, /args is not accepted/);
+
+  for (const [label, params] of [
+    ["run-empty", { action: "run" }],
+    ["run-both", { action: "run", script: "x", name: "y" }],
+    ["validate-empty", { action: "validate" }],
+  ] as const) {
+    const invalid = await harness.tool.execute(
+      label,
+      params,
+      undefined,
+      undefined,
+      { cwd: "/tmp", ui: { notify() {} } },
+    );
+    assert.match(invalid.content[0].text, /exactly one of script or name/);
+    assert.equal(invalid.details.inputError, true);
+  }
 });
 
 test("list and inline validation do not load agents or write artifacts", async () => {
@@ -308,7 +348,20 @@ test("named validation and run report source and immutable script paths", async 
   await writeFile(sourceFile, source);
   const config = { ...DEFAULT_WORKFLOW_CONFIG, userWorkflowsDir: dir };
   const harness = makePi();
-  registerWorkflowTool(harness.pi as any, async () => config);
+  let agentLoads = 0;
+  let artifactWrites = 0;
+  registerWorkflowTool(harness.pi as any, async () => config, {
+    loadAgents: () => {
+      agentLoads += 1;
+      return [];
+    },
+    persistScript: async (script, toolCallId) => {
+      artifactWrites += 1;
+      const path = join(dir, `${toolCallId}.js`);
+      await writeFile(path, script);
+      return path;
+    },
+  });
   const context = { cwd: dir, ui: { notify() {} } };
 
   const validated = await harness.tool.execute(
@@ -320,6 +373,8 @@ test("named validation and run report source and immutable script paths", async 
   );
   assert.equal(validated.details.sourceFile, sourceFile);
   assert.equal(validated.details.meta.name, "saved");
+  assert.equal(agentLoads, 0);
+  assert.equal(artifactWrites, 0);
 
   const result = await harness.tool.execute(
     "run-saved",
@@ -337,6 +392,8 @@ test("named validation and run report source and immutable script paths", async 
     ),
   );
   assert.match(result.content[0].text, /Saved source:/);
+  assert.equal(agentLoads, 1);
+  assert.equal(artifactWrites, 1);
 });
 
 test("unknown and parser-invalid workflows never persist or spawn", async () => {

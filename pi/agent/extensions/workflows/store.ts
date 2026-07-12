@@ -1,5 +1,5 @@
-import { constants } from "node:fs";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { constants, type Dirent } from "node:fs";
+import { lstat, open, opendir, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { parseWorkflowScript } from "./parser.ts";
@@ -217,24 +217,41 @@ function validateSource(
   }
 }
 
+function retainSortedCandidate(dirents: Dirent[], candidate: Dirent): void {
+  let low = 0;
+  let high = dirents.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (dirents[middle]!.name.localeCompare(candidate.name) < 0)
+      low = middle + 1;
+    else high = middle;
+  }
+  if (low >= MAX_INVENTORY_ENTRIES) return;
+  dirents.splice(low, 0, candidate);
+  if (dirents.length > MAX_INVENTORY_ENTRIES) dirents.pop();
+}
+
 export async function inventoryWorkflows(
   configuredDir: string,
 ): Promise<WorkflowInventory> {
   const root = await resolveRoot(configuredDir);
   if (!root.resolved) return { storeDir: root.configured, entries: [] };
 
-  const dirents = (await readdir(root.resolved, { withFileTypes: true }))
-    .filter((entry) => entry.name.endsWith(".js") && !entry.isDirectory())
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const dirents: Dirent[] = [];
+  let candidateCount = 0;
+  let truncated: string | undefined;
+  const dir = await opendir(root.resolved);
+  for await (const dirent of dir) {
+    if (!dirent.name.endsWith(".js") || dirent.isDirectory()) continue;
+    candidateCount += 1;
+    retainSortedCandidate(dirents, dirent);
+  }
+  if (candidateCount > MAX_INVENTORY_ENTRIES)
+    truncated = `Inventory truncated at the ${MAX_INVENTORY_ENTRIES}-entry limit.`;
+
   const entries: WorkflowInventoryEntry[] = [];
   let aggregateBytes = 0;
-  let truncated: string | undefined;
-
   for (const dirent of dirents) {
-    if (entries.length >= MAX_INVENTORY_ENTRIES) {
-      truncated = `Inventory truncated at the ${MAX_INVENTORY_ENTRIES}-entry limit.`;
-      break;
-    }
     const sourcePath = join(root.resolved, dirent.name);
     const read = await readCandidate(root.resolved, dirent.name);
     if (
@@ -293,7 +310,7 @@ export async function resolveSavedWorkflow(
           .map((entry) => entry.name)
           .join(", ") || "(none)";
       throw new Error(
-        `Unknown saved workflow ${JSON.stringify(name)}. Available valid workflows: ${available}.`,
+        `Unknown saved workflow ${JSON.stringify(name)}. Available valid workflows: ${available}.${inventory.truncated ? ` ${inventory.truncated}` : ""}`,
       );
     }
     throw new Error(
