@@ -24,8 +24,8 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   maxConcurrency: DEFAULT_MAX_CONCURRENCY,
   maxTokensPerRun: 0,
   maxAgentsPerRun: 100,
-  modelTierSmall: "",
-  modelTierBig: "",
+  modelTierSmall: "openai-codex/gpt-5.6-luna",
+  modelTierBig: "openai-codex/gpt-5.6-sol",
 };
 
 type PlainObject = Record<string, unknown>;

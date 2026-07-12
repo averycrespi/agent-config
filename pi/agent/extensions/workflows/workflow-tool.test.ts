@@ -84,7 +84,8 @@ test("workflows config display includes all seven effective fields", () => {
   ]) {
     assert.match(display, new RegExp(`"${field}"`));
   }
-  assert.match(display, /"modelTierSmall": ""/);
+  assert.match(display, /"modelTierSmall": "openai-codex\/gpt-5\.6-luna"/);
+  assert.match(display, /"modelTierBig": "openai-codex\/gpt-5\.6-sol"/);
 });
 
 test("workflow tool surfaces config warnings during execution", async () => {

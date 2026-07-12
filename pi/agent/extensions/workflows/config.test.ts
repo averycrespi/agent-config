@@ -14,8 +14,14 @@ test("workflow config exposes all defaults", () => {
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxConcurrency, 4);
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxTokensPerRun, 0);
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxAgentsPerRun, 100);
-  assert.equal(DEFAULT_WORKFLOW_CONFIG.modelTierSmall, "");
-  assert.equal(DEFAULT_WORKFLOW_CONFIG.modelTierBig, "");
+  assert.equal(
+    DEFAULT_WORKFLOW_CONFIG.modelTierSmall,
+    "openai-codex/gpt-5.6-luna",
+  );
+  assert.equal(
+    DEFAULT_WORKFLOW_CONFIG.modelTierBig,
+    "openai-codex/gpt-5.6-sol",
+  );
 });
 
 test("workflow config accepts settings and environment overrides", () => {

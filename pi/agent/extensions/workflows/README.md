@@ -105,15 +105,15 @@ Execution runs in a separate killable Node worker. It receives only deterministi
 
 Configure `extension:workflows` in Pi settings. Environment variables override settings only when valid. Invalid settings fall back to defaults with a warning; invalid environment values warn and leave valid lower-precedence settings intact. Use `/workflows-config` to display all effective parsed fields. Model selectors are displayed as non-sensitive configuration.
 
-| Field               | Default   | Environment override            | Description                                                                        |
-| ------------------- | --------- | ------------------------------- | ---------------------------------------------------------------------------------- |
-| `workflowTimeoutMs` | `3600000` | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Positive integer whole-workflow timeout in milliseconds.                           |
-| `agentTimeoutMs`    | `600000`  | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Positive integer default per-agent timeout in milliseconds.                        |
-| `maxConcurrency`    | `4`       | `WORKFLOWS_MAX_CONCURRENCY`     | Positive integer scheduler limit; values above 16 are clamped with a warning.      |
-| `maxTokensPerRun`   | `0`       | `WORKFLOWS_MAX_TOKENS_PER_RUN`  | Non-negative observed-token limit; `0` disables it.                                |
-| `maxAgentsPerRun`   | `100`     | `WORKFLOWS_MAX_AGENTS_PER_RUN`  | Non-negative logical-agent limit; `0` disables it.                                 |
-| `modelTierSmall`    | `""`      | `WORKFLOWS_MODEL_TIER_SMALL`    | Trimmed full Pi model selector for the fixed `small` alias; empty is unconfigured. |
-| `modelTierBig`      | `""`      | `WORKFLOWS_MODEL_TIER_BIG`      | Trimmed full Pi model selector for the fixed `big` alias; empty is unconfigured.   |
+| Field               | Default                     | Environment override            | Description                                                                        |
+| ------------------- | --------------------------- | ------------------------------- | ---------------------------------------------------------------------------------- |
+| `workflowTimeoutMs` | `3600000`                   | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Positive integer whole-workflow timeout in milliseconds.                           |
+| `agentTimeoutMs`    | `600000`                    | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Positive integer default per-agent timeout in milliseconds.                        |
+| `maxConcurrency`    | `4`                         | `WORKFLOWS_MAX_CONCURRENCY`     | Positive integer scheduler limit; values above 16 are clamped with a warning.      |
+| `maxTokensPerRun`   | `0`                         | `WORKFLOWS_MAX_TOKENS_PER_RUN`  | Non-negative observed-token limit; `0` disables it.                                |
+| `maxAgentsPerRun`   | `100`                       | `WORKFLOWS_MAX_AGENTS_PER_RUN`  | Non-negative logical-agent limit; `0` disables it.                                 |
+| `modelTierSmall`    | `openai-codex/gpt-5.6-luna` | `WORKFLOWS_MODEL_TIER_SMALL`    | Trimmed full Pi model selector for the fixed `small` alias; empty is unconfigured. |
+| `modelTierBig`      | `openai-codex/gpt-5.6-sol`  | `WORKFLOWS_MODEL_TIER_BIG`      | Trimmed full Pi model selector for the fixed `big` alias; empty is unconfigured.   |
 
 ```json
 {
@@ -123,11 +123,13 @@ Configure `extension:workflows` in Pi settings. Environment variables override s
     "maxConcurrency": 4,
     "maxTokensPerRun": 0,
     "maxAgentsPerRun": 100,
-    "modelTierSmall": "openai/example-small",
-    "modelTierBig": "anthropic/example-big"
+    "modelTierSmall": "openai-codex/gpt-5.6-luna",
+    "modelTierBig": "openai-codex/gpt-5.6-sol"
   }
 }
 ```
+
+The default aliases use the `openai-codex` provider and require it to be authenticated. Override either selector when using another available Pi provider.
 
 ## Logging and retained output
 
