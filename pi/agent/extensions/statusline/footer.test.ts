@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterLine, renderFooterLines } from "./footer.ts";
 import type { UsageStats } from "./utils.ts";
 
@@ -326,7 +327,7 @@ test("renderFooterLines right-aligns status segments after the repository segmen
   ]);
 });
 
-test("renderFooterLines moves status segments to a second line instead of truncating the repository segment", () => {
+test("renderFooterLines moves overflowing segments to subsequent lines without truncating", () => {
   const lines = renderFooterLines(
     {
       cwd: "/Users/example/Workspace/a-very-long-worktree-name-for-statusline",
@@ -345,7 +346,32 @@ test("renderFooterLines moves status segments to a second line instead of trunca
   );
 
   assert.deepEqual(lines.map(stripAnsi), [
-    "~/Workspace/a-very-long-worktree-name-for-statusline [feature/a-very-long-branch-name]",
+    "~/Workspace/a-very-long-worktree-name-for-statusline",
+    "[feature/a-very-long-branch-name]",
     "Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium",
   ]);
+});
+
+test("renderFooterLines wraps a repository segment that exceeds the terminal width", () => {
+  const width = 116;
+  const lines = renderFooterLines(
+    {
+      cwd: "/Users/example/.local/share/wt/worktrees/setl/setl-avery-DS-3107-migrate-optional-env-vars",
+      homeDir: "/Users/example",
+      gitSummary: { ref: "avery/DS-3107-migrate-optional-env-vars" },
+      usage: renderUsage({
+        primary: { usedPercent: 28, resetAfterSeconds: 6 * 24 * 3600 },
+      }),
+      contextUsage: { percent: 0, contextWindow: 372_000 },
+      modelId: "gpt-5.6-sol",
+      thinking: "high",
+    },
+    width,
+    theme,
+  );
+
+  assert.ok(
+    lines.every((line) => visibleWidth(line) <= width),
+    `footer lines must fit ${width} columns: ${lines.map(visibleWidth).join(", ")}`,
+  );
 });

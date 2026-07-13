@@ -33,7 +33,7 @@ The footer has two logical sides:
 - left: cwd with optional compact git summary;
 - right: provider quota, context usage, model ID, thinking level.
 
-When everything fits, the left segment stays left and status segments are right-aligned. If it does not fit, the full repository segment moves to its own line and the status segment renders below. This deliberately avoids truncating long worktree or branch names in the primary repository context.
+When everything fits, the left segment stays left and status segments are right-aligned. If it does not fit, the full repository segment moves to its own line and the status segment renders below. A repository segment wider than the terminal wraps across additional physical rows with ANSI styling preserved. This avoids truncating long worktree or branch names while maintaining the TUI invariant that every rendered line fits the supplied width.
 
 Within the status segment, priority is left-to-right: provider quota, context usage, model, thinking. Narrow terminals keep the highest-priority segments that fit. Labels, reset durations, context capacity, and model ID use muted text; percentages above thresholds use warning/error; and thinking levels use their corresponding theme tokens. In the repository segment, the ref uses accent, clean state uses success, conflicts use error, worktree changes use warning, and tracking/stash metadata uses muted text.
 

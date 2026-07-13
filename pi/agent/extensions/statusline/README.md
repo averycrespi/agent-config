@@ -25,7 +25,7 @@ Git summary symbols follow the compact style popularized by bash-git-prompt. The
 | `…n`   | `n` untracked files                          |
 | `⚑n`   | `n` stash entries                            |
 
-The repository segment stays on the left and the remaining status segments are right-aligned when they fit on one line. If the full repository segment plus the status segments do not fit, the repository segment moves to its own line and is not truncated:
+The repository segment stays on the left and the remaining status segments are right-aligned when they fit on one line. If the full repository segment plus the status segments do not fit, the repository segment moves to its own line and is not truncated. If the repository segment itself exceeds the terminal width, it wraps across additional rows while preserving the full path and git summary:
 
 ```text
 ~/Workspace/a-very-long-worktree-name [feature/a-very-long-branch-name ↓2↑3 ●1 ✚2 …1]

@@ -1,4 +1,8 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 import type { GitSummary } from "./git.ts";
 import { formatDuration, type UsageStats } from "./utils.ts";
 
@@ -205,7 +209,8 @@ export function renderFooterLines(
     width,
     separator,
   );
-  if (!right) return [left];
+  const leftLines = wrapTextWithAnsi(left, width);
+  if (!right) return leftLines;
 
   const leftWidth = visibleWidth(left);
   const rightWidth = visibleWidth(right);
@@ -213,7 +218,7 @@ export function renderFooterLines(
     return [`${left}${" ".repeat(width - leftWidth - rightWidth)}${right}`];
   }
 
-  return [left, right];
+  return [...leftLines, right];
 }
 
 export function renderFooterLine(
