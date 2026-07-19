@@ -70,7 +70,7 @@ There is no unbounded verify/fix loop. `report()` either passes once or terminat
 
 ## Rendering and recovery
 
-Rows use intent as identity and carry capability/tier/thinking plus status, timing, tool/token counts, typed failures, and paths. Collapsed output stays compact; expanded output shows running agents, bounded settled history, logs, inventory, source paths, and diagnostics. Dynamic data is control-normalized, bounded, and width-aware. Prompts, raw scripts, secrets, and compressed content are not rendered.
+Rows use intent as identity and carry capability/tier/thinking plus status, timing, tool/token counts, typed failures, and paths. Expanded agent rows preserve chronological start order regardless of status, with the newest at the bottom; settled-history limits hide rows without reordering the visible ones. Collapsed output stays compact; expanded output also shows logs, inventory, source paths, and diagnostics. Dynamic data is control-normalized, bounded, and width-aware. Prompts, raw scripts, secrets, and compressed content are not rendered.
 
 Exact source copies are retained for seven days. Abnormal runs may persist one versioned owner-only gzip recovery envelope containing identity/policy, timings, attempts, usage, structured successes, typed failures, and child-log paths. It excludes prompts, args, successful prose, raw activity/output/tool traces, environment, credentials, and source. Recovery shares the subagent diagnostic quota; persistence is secondary and never replaces the run cause.
 

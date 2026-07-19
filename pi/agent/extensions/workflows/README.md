@@ -108,7 +108,7 @@ The host treats sandbox RPC as untrusted. It validates required execution fields
 
 ## Rendering
 
-Collapsed rows show action/name or compact run state without source or prompts. Expanded runs show intent-first subagent rows with capability/tier/thinking, status, duration, tool/token counts, typed errors, logs, and diagnostic paths. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
+Collapsed rows show action/name or compact run state without source or prompts. Expanded runs place subagent rows directly below the title in chronological start order, with the newest at the bottom. Rows are intent-first and show capability/tier/thinking, status, duration, tool/token counts, typed errors, logs, and diagnostic paths. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
 
 ## Configuration
 

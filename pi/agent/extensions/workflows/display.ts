@@ -81,8 +81,8 @@ function workflowHeader(
   const hasCounts = snapshot.agents.length > 0 || agentFailures > 0;
   let counts = hasCounts
     ? options.final
-      ? ` · ${done} done · ${agentFailures} agent${agentFailures === 1 ? "" : "s"} failed`
-      : ` · ${done} done · ${running} running · ${agentFailures} agent${agentFailures === 1 ? "" : "s"} failed`
+      ? ` · ${done} done · ${agentFailures} failed`
+      : ` · ${done} done · ${running} running · ${agentFailures} failed`
     : "";
   const logged = snapshot.loggedBranchFailureCount ?? 0;
   const settled = snapshot.settledBranchFailureCount ?? 0;
@@ -245,8 +245,12 @@ export function renderSnapshot(
   } = {},
 ): string[] {
   const lines: string[] = [workflowHeader(snapshot, theme, options)];
-  const running = snapshot.agents.filter((agent) => agent.status === "running");
-  const settled = snapshot.agents.filter((agent) => agent.status !== "running");
+  const chronologicalAgents = [...snapshot.agents].sort(
+    (a, b) => a.startedAt - b.startedAt || a.id - b.id,
+  );
+  const settled = chronologicalAgents.filter(
+    (agent) => agent.status !== "running",
+  );
   const maxVisibleSettledAgents =
     options.maxVisibleSettledAgents ?? DEFAULT_MAX_VISIBLE_SETTLED_AGENTS;
   const visibleSettled =
@@ -257,9 +261,11 @@ export function renderSnapshot(
     0,
     Math.max(0, settled.length - visibleSettled.length),
   );
-  const visibleAgents = [...running, ...visibleSettled];
+  const visibleSettledSet = new Set(visibleSettled);
+  const visibleAgents = chronologicalAgents.filter(
+    (agent) => agent.status === "running" || visibleSettledSet.has(agent),
+  );
   if (snapshot.agents.length > 0) {
-    lines.push("");
     if (hiddenSettled.length > 0) {
       const done = hiddenSettled.filter(
         (agent) => agent.status === "done",

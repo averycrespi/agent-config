@@ -297,6 +297,92 @@ test("snapshot rendering is intent-first and metadata-rich", () => {
   );
 });
 
+test("snapshot keeps agents in start order directly beneath the title", () => {
+  const snapshot: any = {
+    meta: { name: "ordered", description: "test" },
+    phases: ["work"],
+    phase: "work",
+    logs: [],
+    agents: [
+      {
+        id: 3,
+        intent: "Newest running",
+        capabilities: [],
+        modelTier: "small",
+        thinking: "low",
+        status: "running",
+        startedAt: 3000,
+      },
+      {
+        id: 1,
+        intent: "Oldest done",
+        capabilities: [],
+        modelTier: "small",
+        thinking: "low",
+        status: "done",
+        startedAt: 1000,
+        finishedAt: 1500,
+      },
+      {
+        id: 2,
+        intent: "Middle failed",
+        capabilities: [],
+        modelTier: "small",
+        thinking: "low",
+        status: "error",
+        errorMessage: "failed",
+        startedAt: 2000,
+        finishedAt: 2500,
+      },
+    ],
+    agentFailureCount: 1,
+    loggedBranchFailureCount: 0,
+    settledBranchFailureCount: 0,
+    startedAt: 1000,
+    finishedAt: 4000,
+  };
+
+  const lines = renderSnapshot(snapshot, theme);
+  assert.match(lines[0], /^Workflow: ordered/);
+  assert.deepEqual(
+    lines
+      .filter((line) => /(Oldest done|Middle failed|Newest running)/.test(line))
+      .map(
+        (line) => line.match(/Oldest done|Middle failed|Newest running/)?.[0],
+      ),
+    ["Oldest done", "Middle failed", "Newest running"],
+  );
+  assert.match(lines[1], /Oldest done/);
+});
+
+test("workflow widget title uses a concise failed count", () => {
+  const snapshot: any = {
+    meta: { name: "counts", description: "test" },
+    phases: [],
+    logs: [],
+    agents: [
+      {
+        id: 1,
+        intent: "Running",
+        capabilities: [],
+        modelTier: "small",
+        thinking: "low",
+        status: "running",
+        startedAt: 1000,
+      },
+    ],
+    agentFailureCount: 0,
+    loggedBranchFailureCount: 0,
+    settledBranchFailureCount: 0,
+    startedAt: 1000,
+    finishedAt: 2000,
+  };
+
+  const [title] = renderSnapshot(snapshot, theme);
+  assert.match(title, /0 done · 1 running · 0 failed/);
+  assert.doesNotMatch(title, /agents? failed/);
+});
+
 test("workflow renderers truncate controls and narrow widths", () => {
   const context: any = {
     state: {},
