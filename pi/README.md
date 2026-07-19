@@ -55,7 +55,7 @@ JavaScript orchestration definitions under `agent/workflows/` are installed into
 | --------------- | --------------------------------------------------------------------------------- |
 | `deep-research` | Research a question across public web sources and return a verified cited report. |
 
-Run it through the `workflow` tool with `action: "run"`, `name: "deep-research"`, and the research question as `args`. See [the workflows README](agent/extensions/workflows/README.md#shipped-saved-workflows) for its evidence policy, limits, output contract, and public-web safety boundary.
+Run it through the `workflow` tool with `action: "run"`, `name: "deep-research"`, and the research question as `args`. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for its evidence policy, limits, output contract, and public-web safety boundary.
 
 ## Prompt Templates
 
