@@ -4,7 +4,7 @@ export const MAX_WORKFLOW_PHASE_ENTRIES = 100;
 export const MAX_WORKFLOW_PHASE_CHARS = 200;
 
 export function buildSandboxSource(executableScript: string): string {
-  const workflowModule = `${executableScript}\nexport const __workflowResult = typeof run === "function" ? await run() : undefined;`;
+  const workflowModule = `${executableScript}\nif (typeof run !== "function") { const error = new Error("workflow run() must return a result"); error.code = "workflow_missing_result"; throw error; }\nexport const __workflowResult = await run();\nif (__workflowResult === undefined) { const error = new Error("workflow run() must return a result; return null for an explicit empty result"); error.code = "workflow_missing_result"; throw error; }`;
   const workflowModuleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(workflowModule)}`;
   return `
 import nodeProcess from "node:process";

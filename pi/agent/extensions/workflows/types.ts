@@ -49,6 +49,7 @@ export type WorkflowErrorCode =
   | "workflow_budget_exceeded"
   | "workflow_run_cap_exceeded"
   | "workflow_report_rejected"
+  | "workflow_missing_result"
   | "workflow_script_error";
 
 export interface WorkflowFailureDetails {
@@ -58,6 +59,42 @@ export interface WorkflowFailureDetails {
   agentId?: number;
   intent?: string;
   logFile?: string;
+  effectiveTimeoutMs?: number;
+  diagnosticWarnings?: string[];
+  details?: unknown;
+}
+
+export interface WorkflowRecoveryRecord {
+  requestId: number;
+  agent: string;
+  intent: string;
+  phase?: string;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+  effectiveTimeoutMs?: number;
+  attempts: number;
+  structuredValue?: unknown;
+  failure?: WorkflowFailureDetails;
+  logFile?: string;
+}
+
+export interface WorkflowFailureCounts {
+  completed: number;
+  failed: number;
+  timedOut: number;
+  canceled: number;
+  outstanding: number;
+}
+
+export interface WorkflowRunDiagnostic {
+  cause: WorkflowFailureDetails;
+  counts: WorkflowFailureCounts;
+  snapshot: WorkflowSnapshot;
+  recoveryRecords: WorkflowRecoveryRecord[];
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
 }
 
 export interface WorkflowLogEntry {
@@ -74,7 +111,11 @@ export interface WorkflowAgentState {
   status: "running" | "done" | "error" | "aborted";
   resultPreview?: string;
   errorMessage?: string;
+  errorCode?: WorkflowErrorCode;
+  errorDetails?: WorkflowFailureDetails;
+  effectiveTimeoutMs?: number;
   logFile?: string;
+  diagnosticWarnings?: string[];
   activity?: SubagentRunState;
   startedAt: number;
   finishedAt?: number;
@@ -145,6 +186,7 @@ export interface WorkflowAgentRequest {
   output?: StructuredOutputSpec;
   retries?: number;
   timeoutMs?: number;
+  effectiveTimeoutMs?: number;
   model?: string;
   attempt?: number;
   signal?: AbortSignal;

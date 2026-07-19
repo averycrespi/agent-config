@@ -1,5 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "@sinclair/typebox";
+import {
+  persistRetainedJson,
+  type RetainedArtifactResult,
+} from "../_shared/retained-artifacts.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import { loadWorkflowConfig, type WorkflowConfig } from "./config.ts";
@@ -9,7 +13,11 @@ import {
 } from "../subagents/api.ts";
 import { parseWorkflowScript } from "./parser.ts";
 import { createWorkflowRunLedger } from "./ledger.ts";
-import { createWorkflowAgentSpawner, runWorkflow } from "./runtime.ts";
+import {
+  createWorkflowAgentSpawner,
+  runWorkflow,
+  WorkflowRuntimeError,
+} from "./runtime.ts";
 import { safeStringify } from "./safe-stringify.ts";
 import { persistWorkflowScript } from "./script-artifacts.ts";
 import {
@@ -20,6 +28,7 @@ import {
 import type {
   ParsedWorkflow,
   WorkflowAgentState,
+  WorkflowRunDiagnostic,
   WorkflowSnapshot,
 } from "./types.ts";
 import { renderWorkflowCall, renderWorkflowResult } from "./display.ts";
@@ -93,6 +102,65 @@ function formatError(error: unknown): string {
   return `Error: ${String(error)}`;
 }
 
+function formatAbnormalWorkflow(
+  diagnostic: WorkflowRunDiagnostic,
+  recoveryPath?: string,
+  warning?: string,
+): string[] {
+  const { cause, counts } = diagnostic;
+  return [
+    `Error [${cause.code}]: ${cause.message}`,
+    `Agents: ${counts.completed} completed, ${counts.failed} failed, ${counts.timedOut} timed out, ${counts.canceled} canceled, ${counts.outstanding} outstanding`,
+    ...(recoveryPath ? [`Recovery artifact: ${recoveryPath}`] : []),
+    ...(warning ? [`Warning: ${warning}`] : []),
+  ];
+}
+
+function recoveryEnvelope(
+  meta: ParsedWorkflow["meta"],
+  diagnostic: WorkflowRunDiagnostic,
+  states: WorkflowAgentState[],
+): Record<string, unknown> {
+  const statesById = new Map(states.map((state) => [state.id, state]));
+  const calls = diagnostic.recoveryRecords.map((record) => {
+    const state = statesById.get(record.requestId);
+    return {
+      ...record,
+      agent: state?.agent ?? record.agent,
+      intent: state?.intent ?? record.intent,
+      effectiveTimeoutMs:
+        state?.effectiveTimeoutMs ?? record.effectiveTimeoutMs,
+      usage: state?.activity
+        ? {
+            totalTokens: state.activity.totalTokens,
+            toolUseCount: state.activity.toolUseCount,
+          }
+        : { totalTokens: 0, toolUseCount: 0 },
+    };
+  });
+  return {
+    schemaVersion: 1,
+    workflow: {
+      name: meta.name,
+      description: meta.description,
+      finalPhase: diagnostic.snapshot.phase,
+      startedAt: diagnostic.startedAt,
+      finishedAt: diagnostic.finishedAt,
+      durationMs: diagnostic.durationMs,
+    },
+    primaryFailure: diagnostic.cause,
+    counts: diagnostic.counts,
+    usage: {
+      totalTokens: states.reduce(
+        (sum, state) => sum + (state.activity?.totalTokens ?? 0),
+        0,
+      ),
+      settledCalls: calls.length,
+    },
+    calls,
+  };
+}
+
 function validateCombination(params: WorkflowParams): string[] {
   const errors: string[] = [];
   const hasScript = params.script !== undefined;
@@ -119,6 +187,10 @@ type LoadWorkflowConfig = (
 type WorkflowToolDependencies = {
   loadAgents: typeof loadAgentDefinitions;
   persistScript: typeof persistWorkflowScript;
+  persistRecovery: (
+    toolCallId: string,
+    value: unknown,
+  ) => Promise<RetainedArtifactResult>;
   inventory: typeof inventoryWorkflows;
   resolveSaved: typeof resolveSavedWorkflow;
 };
@@ -131,6 +203,8 @@ export function registerWorkflowTool(
   const dependencies: WorkflowToolDependencies = {
     loadAgents: loadAgentDefinitions,
     persistScript: persistWorkflowScript,
+    persistRecovery: (toolCallId, value) =>
+      persistRetainedJson("workflow-recovery", toolCallId, value),
     inventory: inventoryWorkflows,
     resolveSaved: resolveSavedWorkflow,
     ...overrides,
@@ -355,20 +429,54 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           },
         };
       } catch (error) {
+        const runtimeError =
+          error instanceof WorkflowRuntimeError ? error : undefined;
+        const diagnostic = runtimeError?.diagnostic;
+        const finalStates = [...agentStates.values()];
+        let recoveryFile: string | undefined;
+        let persistenceWarning: string | undefined;
+        if (diagnostic && diagnostic.recoveryRecords.length > 0) {
+          try {
+            const persisted = await dependencies.persistRecovery(
+              toolCallId,
+              recoveryEnvelope(parsed.meta, diagnostic, finalStates),
+            );
+            if (persisted.retained) recoveryFile = persisted.path;
+            else persistenceWarning = persisted.warning;
+          } catch (persistenceError) {
+            persistenceWarning =
+              `Diagnostic recovery persistence failed: ${persistenceError instanceof Error ? persistenceError.message : String(persistenceError)}`.slice(
+                0,
+                500,
+              );
+          }
+        }
+        const lines = diagnostic
+          ? formatAbnormalWorkflow(diagnostic, recoveryFile, persistenceWarning)
+          : [formatError(error)];
+        lines.push(
+          `Run script: ${scriptFile}`,
+          ...(sourceFile ? [`Saved source: ${sourceFile}`] : []),
+        );
         return {
-          content: text(
-            [
-              formatError(error),
-              `Run script: ${scriptFile}`,
-              ...(sourceFile ? [`Saved source: ${sourceFile}`] : []),
-            ].join("\n"),
-          ),
+          content: text(lines.join("\n")),
           details: {
             action: "run",
             scriptFile,
             ...(sourceFile ? { sourceFile } : {}),
-            aborted: signal?.aborted ?? false,
-            snapshot: latestSnapshot,
+            aborted:
+              runtimeError?.code === "workflow_aborted" ||
+              (signal?.aborted ?? false),
+            ...(runtimeError
+              ? {
+                  errorCode: runtimeError.code,
+                  errorMessage: runtimeError.message,
+                  counts: runtimeError.diagnostic.counts,
+                }
+              : {}),
+            ...(recoveryFile ? { recoveryFile } : {}),
+            ...(persistenceWarning ? { persistenceWarning } : {}),
+            snapshot: latestSnapshot ?? diagnostic?.snapshot,
           },
         };
       }

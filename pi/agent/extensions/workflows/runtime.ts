@@ -19,6 +19,8 @@ import {
   type WorkflowRunResult,
   type WorkflowErrorCode,
   type WorkflowFailureDetails,
+  type WorkflowRecoveryRecord,
+  type WorkflowRunDiagnostic,
   type WorkflowRuntimeOptions,
   type WorkflowSnapshot,
 } from "./types.ts";
@@ -34,6 +36,25 @@ import {
 
 export const _spawnSubagent = { fn: spawnSubagent };
 export const _spawnSandbox = { fn: nodeSpawn };
+
+export class WorkflowRuntimeError extends Error {
+  readonly code: WorkflowErrorCode;
+  readonly details?: unknown;
+  readonly diagnostic: WorkflowRunDiagnostic;
+
+  constructor(
+    code: WorkflowErrorCode,
+    message: string,
+    diagnostic: WorkflowRunDiagnostic,
+    details?: unknown,
+  ) {
+    super(message);
+    this.name = "WorkflowRuntimeError";
+    this.code = code;
+    this.details = details;
+    this.diagnostic = diagnostic;
+  }
+}
 
 const READ_ONLY_WORKFLOW_TOOLS = new Set([
   "read",
@@ -156,6 +177,14 @@ function timeoutError(timeoutMs: number): Error {
   return error;
 }
 
+function missingResultError(): Error & { code: "workflow_missing_result" } {
+  const error = new Error(
+    "workflow run() must return a result; return null for an explicit empty result",
+  ) as Error & { code: "workflow_missing_result" };
+  error.code = "workflow_missing_result";
+  return error;
+}
+
 function agentTimeoutMessage(timeoutMs: number): string {
   return `agent timed out after ${timeoutMs}ms`;
 }
@@ -194,6 +223,9 @@ function failureDetails(
     agentId: request.id,
     ...(request.intent ? { intent: request.intent } : {}),
     ...(logFile ? { logFile } : {}),
+    ...(request.effectiveTimeoutMs !== undefined
+      ? { effectiveTimeoutMs: request.effectiveTimeoutMs }
+      : {}),
   };
 }
 
@@ -229,6 +261,22 @@ function withFailureContext(
       agentId: response.errorDetails?.agentId ?? request.id,
       intent: response.errorDetails?.intent ?? request.intent,
       logFile: response.errorDetails?.logFile ?? response.outcome?.logFile,
+      ...((response.errorDetails?.effectiveTimeoutMs ??
+        request.effectiveTimeoutMs) !== undefined
+        ? {
+            effectiveTimeoutMs:
+              response.errorDetails?.effectiveTimeoutMs ??
+              request.effectiveTimeoutMs,
+          }
+        : {}),
+      ...((response.errorDetails?.diagnosticWarnings ??
+        response.outcome?.diagnosticWarnings) !== undefined
+        ? {
+            diagnosticWarnings:
+              response.errorDetails?.diagnosticWarnings ??
+              response.outcome?.diagnosticWarnings,
+          }
+        : {}),
     },
   };
 }
@@ -348,12 +396,14 @@ async function spawnWithRetries(
   defaultAgentTimeoutMs: number | undefined,
 ): Promise<WorkflowAgentResponse> {
   const maxAttempts = 1 + (request.retries ?? 0);
-  const timeoutMs = resolveAgentTimeoutMs(request, defaultAgentTimeoutMs);
+  const timeoutMs =
+    request.effectiveTimeoutMs ??
+    resolveAgentTimeoutMs(request, defaultAgentTimeoutMs);
   let lastResponse: WorkflowAgentResponse | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       lastResponse = await spawnAttemptWithTimeout(
-        { ...request, attempt },
+        { ...request, attempt, effectiveTimeoutMs: timeoutMs },
         phase,
         spawnAgent,
         timeoutMs,
@@ -377,6 +427,106 @@ async function spawnWithRetries(
     lastResponse ??
     failedResponse("subagent_failed", "agent failed", request, phase)
   );
+}
+
+function normalizedCause(
+  error: unknown,
+  terminationReason: "timeout" | "aborted" | "sandbox_error" | undefined,
+  timeoutMs: number,
+): WorkflowFailureDetails {
+  const record =
+    error && typeof error === "object"
+      ? (error as { code?: unknown; details?: unknown; name?: unknown })
+      : undefined;
+  const candidate = typeof record?.code === "string" ? record.code : undefined;
+  const known = new Set<WorkflowErrorCode>([
+    "agent_policy_rejected",
+    "agent_spawn_exception",
+    "subagent_failed",
+    "subagent_aborted",
+    "provider_error",
+    "provider_schema_rejected",
+    "structured_output_not_called",
+    "structured_output_incomplete",
+    "structured_output_tool_error",
+    "structured_output_malformed",
+    "structured_output_invalid",
+    "workflow_aborted",
+    "workflow_timeout",
+    "agent_timeout",
+    "workflow_budget_exceeded",
+    "workflow_run_cap_exceeded",
+    "workflow_report_rejected",
+    "workflow_missing_result",
+    "workflow_script_error",
+  ]);
+  const code =
+    candidate && known.has(candidate as WorkflowErrorCode)
+      ? (candidate as WorkflowErrorCode)
+      : terminationReason === "timeout" || record?.name === "TimeoutError"
+        ? "workflow_timeout"
+        : terminationReason === "aborted" || record?.name === "AbortError"
+          ? "workflow_aborted"
+          : "workflow_script_error";
+  const message =
+    error instanceof Error
+      ? error.message
+      : code === "workflow_timeout"
+        ? `workflow timed out after ${timeoutMs}ms`
+        : code === "workflow_aborted"
+          ? "workflow aborted"
+          : String(error);
+  return {
+    code,
+    message: message.slice(0, 2_000),
+    ...(record?.details !== undefined ? { details: record.details } : {}),
+  };
+}
+
+function recoveryRecord(
+  request: WorkflowAgentRequest,
+  phase: string | undefined,
+  startedAt: number,
+  response: WorkflowAgentResponse,
+): WorkflowRecoveryRecord | undefined {
+  const finishedAt = Date.now();
+  const base = {
+    requestId: request.id,
+    agent: request.agent?.trim() || DEFAULT_AGENT_TYPE,
+    intent:
+      request.intent?.trim() || request.agent?.trim() || DEFAULT_AGENT_TYPE,
+    ...(phase ? { phase } : {}),
+    startedAt,
+    finishedAt,
+    durationMs: Math.max(0, finishedAt - startedAt),
+    ...(request.effectiveTimeoutMs !== undefined
+      ? { effectiveTimeoutMs: request.effectiveTimeoutMs }
+      : {}),
+    attempts: response.attempts ?? 1,
+    ...(response.outcome?.logFile || response.errorDetails?.logFile
+      ? { logFile: response.outcome?.logFile ?? response.errorDetails?.logFile }
+      : {}),
+  };
+  if (response.ok) {
+    return response.hasStructured
+      ? { ...base, structuredValue: response.value }
+      : undefined;
+  }
+  const code = response.errorCode ?? "subagent_failed";
+  return {
+    ...base,
+    failure: {
+      code,
+      message: (response.error ?? "agent failed").slice(0, 2_000),
+      ...response.errorDetails,
+      ...(request.effectiveTimeoutMs !== undefined
+        ? { effectiveTimeoutMs: request.effectiveTimeoutMs }
+        : {}),
+      ...(response.outcome?.diagnosticWarnings !== undefined
+        ? { diagnosticWarnings: response.outcome.diagnosticWarnings }
+        : {}),
+    },
+  };
 }
 
 function emit(
@@ -405,7 +555,12 @@ export async function runWorkflow(
   let currentPhase: string | undefined;
   let result: unknown;
   let finished = false;
+  let acceptingAgents = true;
+  let terminalError: unknown;
   let terminationReason: "timeout" | "aborted" | "sandbox_error" | undefined;
+  const inFlight = new Set<Promise<void>>();
+  const settledResponses = new Map<number, WorkflowAgentResponse>();
+  const recoveryRecords = new Map<number, WorkflowRecoveryRecord>();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const agentTimeoutMs = options.agentTimeoutMs;
   const workflowAbort = new AbortController();
@@ -456,12 +611,14 @@ export async function runWorkflow(
   });
 
   const timeout = setTimeout(() => {
+    acceptingAgents = false;
     terminationReason = "timeout";
     workflowAbort.abort(timeoutError(timeoutMs));
     void worker.terminate();
   }, timeoutMs);
 
   const abort = () => {
+    acceptingAgents = false;
     terminationReason = "aborted";
     workflowAbort.abort(abortError());
     void worker.terminate();
@@ -499,6 +656,7 @@ export async function runWorkflow(
             emit(snapshot(), options.onUpdate);
           }
         } else if (event.type === "agent") {
+          if (!acceptingAgents) return;
           const request = event as {
             requestId?: unknown;
             prompt?: unknown;
@@ -530,6 +688,12 @@ export async function runWorkflow(
               ? { timeoutMs: Number(request.timeoutMs) }
               : {}),
           };
+          const phaseAtAdmission = currentPhase;
+          agentRequest.effectiveTimeoutMs = resolveAgentTimeoutMs(
+            agentRequest,
+            agentTimeoutMs,
+          );
+          const admittedAt = Date.now();
           const outputError = validateStructuredOutput(request.output);
           if (outputError) {
             const validationRequest = {
@@ -539,16 +703,25 @@ export async function runWorkflow(
                 agentRequest.agent?.trim() ||
                 DEFAULT_AGENT_TYPE,
             };
+            const response = failedResponse(
+              "agent_policy_rejected",
+              outputError,
+              validationRequest,
+              phaseAtAdmission,
+            );
             agentFailureCount += 1;
+            settledResponses.set(requestId, response);
+            const record = recoveryRecord(
+              validationRequest,
+              phaseAtAdmission,
+              admittedAt,
+              response,
+            );
+            if (record) recoveryRecords.set(requestId, record);
             worker.postMessage({
               type: "agent-response",
               requestId,
-              response: failedResponse(
-                "agent_policy_rejected",
-                outputError,
-                validationRequest,
-                currentPhase,
-              ),
+              response,
             });
             emit(snapshot(), options.onUpdate);
             return;
@@ -556,13 +729,32 @@ export async function runWorkflow(
           if (isStructuredOutputSpec(request.output)) {
             agentRequest.output = request.output;
           }
-          void spawnWithRetries(
-            agentRequest,
-            currentPhase,
-            options.spawnAgent,
-            agentTimeoutMs,
-          ).then((response) => {
+          const admitted = (async () => {
+            let response: WorkflowAgentResponse;
+            try {
+              response = await spawnWithRetries(
+                agentRequest,
+                phaseAtAdmission,
+                options.spawnAgent,
+                agentTimeoutMs,
+              );
+            } catch (error) {
+              response = failedResponse(
+                "agent_spawn_exception",
+                errorMessage(error),
+                agentRequest,
+                phaseAtAdmission,
+              );
+            }
             if (!response.ok) agentFailureCount += 1;
+            settledResponses.set(requestId, response);
+            const record = recoveryRecord(
+              agentRequest,
+              phaseAtAdmission,
+              admittedAt,
+              response,
+            );
+            if (record) recoveryRecords.set(requestId, record);
             try {
               worker.postMessage({
                 type: "agent-response",
@@ -570,16 +762,26 @@ export async function runWorkflow(
                 response,
               });
             } catch {
-              return;
+              // Settlement is retained even if the sandbox has terminated.
             }
             emit(snapshot(), options.onUpdate);
-          });
+          })();
+          inFlight.add(admitted);
+          void admitted.finally(() => inFlight.delete(admitted));
           emit(snapshot(), options.onUpdate);
         } else if (event.type === "result") {
+          acceptingAgents = false;
+          if (event.result === undefined) {
+            workflowAbort.abort(missingResultError());
+            reject(missingResultError());
+            return;
+          }
           result = event.result;
           finished = true;
+          workflowAbort.abort(abortError());
           resolve();
         } else if (event.type === "script-error") {
+          acceptingAgents = false;
           const serialized = event.error as {
             code?: unknown;
             message?: unknown;
@@ -594,31 +796,84 @@ export async function runWorkflow(
             error.code = serialized.code;
           if (serialized?.details !== undefined)
             error.details = serialized.details;
+          workflowAbort.abort(error);
           reject(error);
         }
       });
       worker.on("error", (error) => {
+        acceptingAgents = false;
         terminationReason = terminationReason ?? "sandbox_error";
         workflowAbort.abort(error);
         reject(error);
       });
       worker.on("exit", (code) => {
         if (finished) return;
+        acceptingAgents = false;
         if (terminationReason === "timeout") reject(timeoutError(timeoutMs));
         else if (terminationReason === "aborted" || options.signal?.aborted)
           reject(abortError());
         else reject(new Error(`workflow sandbox exited with code ${code}`));
       });
     });
+  } catch (error) {
+    terminalError = error;
   } finally {
+    acceptingAgents = false;
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abort);
     unsubscribeLedger?.();
     if (!workflowAbort.signal.aborted) workflowAbort.abort();
-    void worker.terminate();
+    await worker.terminate().catch(() => undefined);
+    await Promise.allSettled([...inFlight]);
   }
 
-  const durationMs = Date.now() - startedAt;
+  const finishedAt = Date.now();
+  const durationMs = finishedAt - startedAt;
+  if (terminalError !== undefined) {
+    const cause = normalizedCause(terminalError, terminationReason, timeoutMs);
+    const responses = [...settledResponses.values()];
+    const timedOut = responses.filter(
+      (response) => response.errorCode === "agent_timeout",
+    ).length;
+    const canceled = responses.filter((response) =>
+      new Set<WorkflowErrorCode>([
+        "subagent_aborted",
+        "workflow_aborted",
+        "workflow_budget_exceeded",
+      ]).has(response.errorCode ?? "subagent_failed"),
+    ).length;
+    const completed = responses.filter((response) => response.ok).length;
+    const failed = responses.length - completed - timedOut - canceled;
+    const finalSnapshot: WorkflowSnapshot = {
+      ...snapshot(),
+      finishedAt,
+    };
+    const diagnostic: WorkflowRunDiagnostic = {
+      cause,
+      counts: {
+        completed,
+        failed,
+        timedOut,
+        canceled,
+        outstanding: 0,
+      },
+      snapshot: finalSnapshot,
+      recoveryRecords: [...recoveryRecords.values()].sort(
+        (a, b) => a.requestId - b.requestId,
+      ),
+      startedAt,
+      finishedAt,
+      durationMs,
+    };
+    emit(finalSnapshot, options.onUpdate);
+    throw new WorkflowRuntimeError(
+      cause.code,
+      cause.message,
+      diagnostic,
+      cause.details,
+    );
+  }
+
   emit(snapshot(), options.onUpdate);
   return {
     ok: true,
@@ -745,6 +1000,7 @@ export function createWorkflowAgentSpawner(
       intent: request.intent?.trim() || requestedType,
       prompt: request.prompt,
       status: "running",
+      effectiveTimeoutMs: request.effectiveTimeoutMs,
       startedAt: Date.now(),
     };
 
@@ -812,6 +1068,7 @@ export function createWorkflowAgentSpawner(
     );
     if (outcome.ok) {
       state.status = "done";
+      state.diagnosticWarnings = outcome.diagnosticWarnings;
       state.resultPreview = preview(
         outcome.structured?.ok ? outcome.structured.value : outcome.stdout,
       );
@@ -830,24 +1087,29 @@ export function createWorkflowAgentSpawner(
     state.status = outcome.aborted ? "aborted" : "error";
     state.errorMessage = formatSpawnFailure(outcome);
     state.logFile = outcome.logFile;
-    refreshActivity();
+    state.diagnosticWarnings = outcome.diagnosticWarnings;
     const code: WorkflowErrorCode = outcome.aborted
       ? isBudgetAbort(request.signal)
         ? "workflow_budget_exceeded"
         : "subagent_aborted"
       : (outcome.errorCode ?? outcome.structured?.code ?? "subagent_failed");
+    state.errorCode = code;
+    refreshActivity();
     return {
       ok: false,
       text: null,
       error: state.errorMessage,
       errorCode: code,
-      errorDetails: failureDetails(
-        code,
-        state.errorMessage,
-        request,
-        undefined,
-        outcome.logFile,
-      ),
+      errorDetails: {
+        ...failureDetails(
+          code,
+          state.errorMessage,
+          request,
+          undefined,
+          outcome.logFile,
+        ),
+        diagnosticWarnings: outcome.diagnosticWarnings,
+      },
       outcome,
     };
   };

@@ -164,6 +164,94 @@ test("workflow tool returns validation errors as tool text", async () => {
   assert.equal(result.details.validationError, true);
 });
 
+test("workflow tool persists path-only abnormal recovery without masking the cause", async () => {
+  const harness = makePi();
+  let envelope: any;
+  registerWorkflowTool(harness.pi as any, undefined, {
+    persistRecovery: async (_id, value) => {
+      envelope = value;
+      return { retained: true, path: "/tmp/recovery.json.gz" };
+    },
+  });
+  const result = await harness.tool.execute(
+    "wf-recovery",
+    {
+      action: "run",
+      args: { secretArg: "ARG_SECRET" },
+      script: `export const meta = { name: "recovery", description: "recovery" };
+export async function run() {
+  await parallelSettled([() => agent("PROMPT_SECRET", { agent: "writer" })]);
+  throw new Error("top-level boom");
+}`,
+    },
+    undefined,
+    undefined,
+    { cwd: "/tmp" },
+  );
+
+  assert.equal(result.details.errorCode, "workflow_script_error");
+  assert.equal(result.details.recoveryFile, "/tmp/recovery.json.gz");
+  assert.match(result.content[0].text, /top-level boom/);
+  assert.match(result.content[0].text, /1 failed/);
+  assert.match(
+    result.content[0].text,
+    /Recovery artifact: \/tmp\/recovery\.json\.gz/,
+  );
+  assert.equal(envelope.schemaVersion, 1);
+  assert.equal(envelope.calls.length, 1);
+  assert.equal(envelope.calls[0].failure.code, "agent_policy_rejected");
+  assert.doesNotMatch(JSON.stringify(envelope), /PROMPT_SECRET|ARG_SECRET/);
+  assert.equal("calls" in result.details, false);
+});
+
+test("workflow tool skips empty recovery and preserves persistence failures as warnings", async () => {
+  const harness = makePi();
+  let persistCalls = 0;
+  registerWorkflowTool(harness.pi as any, undefined, {
+    persistRecovery: async () => {
+      persistCalls += 1;
+      throw new Error("disk unavailable");
+    },
+  });
+
+  const missing = await harness.tool.execute(
+    "wf-missing",
+    {
+      action: "run",
+      script: `export const meta = { name: "missing", description: "missing" };
+export async function run() { if (false) await agent("unused"); }`,
+    },
+    undefined,
+    undefined,
+    { cwd: "/tmp" },
+  );
+  assert.equal(missing.details.errorCode, "workflow_missing_result");
+  assert.equal(persistCalls, 0);
+  assert.ok(missing.details.scriptFile);
+  assert.ok(missing.details.snapshot);
+
+  const failed = await harness.tool.execute(
+    "wf-persist-warning",
+    {
+      action: "run",
+      script: `export const meta = { name: "warning", description: "warning" };
+export async function run() {
+  await parallelSettled([() => agent("blocked", { agent: "writer" })]);
+  throw new Error("primary failure");
+}`,
+    },
+    undefined,
+    undefined,
+    { cwd: "/tmp" },
+  );
+  assert.equal(persistCalls, 1);
+  assert.equal(failed.details.errorCode, "workflow_script_error");
+  assert.match(failed.content[0].text, /primary failure/);
+  assert.match(failed.content[0].text, /disk unavailable/);
+  assert.match(failed.details.persistenceWarning, /disk unavailable/);
+  assert.equal(failed.details.recoveryFile, undefined);
+});
+
 test("workflow tool preserves artifact visibility when hostile metadata forces spillover", async () => {
   const harness = makePi();
   registerWorkflowTool(harness.pi as any);
@@ -458,7 +546,7 @@ test("runtime failures retain script and saved source paths", async (t) => {
     undefined,
     { cwd: dir, ui: { notify() {} } },
   );
-  assert.match(result.content[0].text, /Error: boom/);
+  assert.match(result.content[0].text, /Error \[workflow_script_error\]: boom/);
   assert.match(result.content[0].text, /Run script:/);
   assert.match(result.content[0].text, /Saved source:/);
   assert.equal(result.details.sourceFile, sourceFile);
@@ -958,8 +1046,7 @@ test("renderWorkflowResult preserves snapshot context on run errors", () => {
     { state: {}, invalidate() {} },
   );
   assert.deepEqual(collapsed.render(120), [
-    "✗ audit · 0 done · 1 failed · 1s",
-    "Error: verifier failed",
+    "✗ audit · workflow_script_error · 1s — Error: verifier failed",
   ]);
 
   const expanded = renderWorkflowResult(
@@ -970,4 +1057,80 @@ test("renderWorkflowResult preserves snapshot context on run errors", () => {
   );
   assert.match(expanded.render(120)[0], /^Workflow: audit ✗ · 1s/);
   assert.equal(expanded.render(120).at(-1), "Error: verifier failed");
+});
+
+test("workflow error rendering shows bounded cause counts and path-only diagnostics", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (_color: string, text: string) => text,
+  };
+  const result = {
+    content: [
+      {
+        type: "text",
+        text: "Error [workflow_timeout]: hostile\nmessage\u001b]8;;x\u0007",
+      },
+    ],
+    details: {
+      action: "run",
+      errorCode: "workflow_timeout",
+      counts: {
+        completed: 2,
+        failed: 1,
+        timedOut: 1,
+        canceled: 1,
+        outstanding: 0,
+      },
+      recoveryFile: "/tmp/recovery.json.gz\u001b]8;;x\u0007",
+      snapshot: {
+        meta: { name: "audit", description: "Audit" },
+        phases: ["verify"],
+        logs: [],
+        agents: [
+          {
+            id: 1,
+            agent: "reviewer",
+            intent: "verify",
+            prompt: "PROMPT MUST NOT RENDER",
+            status: "error",
+            errorCode: "agent_timeout",
+            errorMessage: "agent timed out",
+            effectiveTimeoutMs: 25,
+            logFile: "/tmp/child.log.gz",
+            startedAt: 1,
+            finishedAt: 26,
+          },
+        ],
+        agentFailureCount: 1,
+        loggedBranchFailureCount: 0,
+        settledBranchFailureCount: 0,
+        startedAt: 1,
+        finishedAt: 1001,
+      },
+    },
+  };
+  const collapsed = renderWorkflowResult(
+    result,
+    { isPartial: false, expanded: false },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  const collapsedLines = collapsed.render(70);
+  assert.equal(collapsedLines.length, 1);
+  assert.match(collapsedLines[0], /workflow_timeout/);
+  assert.ok(visibleWidth(collapsedLines[0]) <= 70);
+  assert.doesNotMatch(collapsedLines[0], /\u001b\]8|\u0007/);
+
+  const expanded = renderWorkflowResult(
+    result,
+    { isPartial: false, expanded: true },
+    theme,
+    { state: {}, invalidate() {} },
+  );
+  const expandedText = expanded.render(160).join("\n");
+  assert.match(expandedText, /timeout 25ms/);
+  assert.match(expandedText, /failure agent_timeout/);
+  assert.match(expandedText, /\/tmp\/child\.log\.gz/);
+  assert.match(expandedText, /Recovery: \/tmp\/recovery\.json\.gz/);
+  assert.doesNotMatch(expandedText, /PROMPT MUST NOT RENDER|\u001b\]8|\u0007/);
 });

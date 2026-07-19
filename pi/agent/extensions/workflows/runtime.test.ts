@@ -71,6 +71,36 @@ test("runtime exposes args, phase, log, parallel ordering, and pipeline", async 
   assert.deepEqual(updates[0].agents, []);
 });
 
+test("runtime rejects absent and undefined run results but accepts null", async () => {
+  for (const body of [
+    'export const unused = () => agent("unused");',
+    'export async function run() { if (false) await agent("unused"); }',
+  ] as const) {
+    await assert.rejects(
+      runWorkflow(script(body), {
+        cwd: "/tmp",
+        spawnAgent: async () => ({ ok: true, text: "unused" }),
+      }),
+      (error: any) => {
+        assert.equal(error.code, "workflow_missing_result");
+        assert.match(error.message, /must return a result/i);
+        return true;
+      },
+    );
+  }
+
+  const result = await runWorkflow(
+    script(
+      'export async function run() { if (false) await agent("unused"); return null; }',
+    ),
+    {
+      cwd: "/tmp",
+      spawnAgent: async () => ({ ok: true, text: "unused" }),
+    },
+  );
+  assert.equal(result.result, null);
+});
+
 test("runtime bounds workflow log volume and message size", async () => {
   const long = await runWorkflow(
     script(`export async function run() {
@@ -111,6 +141,7 @@ test("runtime bounds workflow log volume and message size", async () => {
     script(`export async function run() {
       if (false) await agent("unused");
       phase("x".repeat(300));
+      return null;
     }`),
     { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
   );
@@ -319,6 +350,23 @@ test("report awaits gates, returns original values, and normalizes rejections", 
       error: { code: "workflow_script_error", message: "gate exploded" },
     },
   ]);
+});
+
+test("unhandled report rejection remains a distinct top-level cause", async () => {
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() {
+        if (false) await agent("unused");
+        return await report("bad", { gate: () => ({ ok: false, reasons: ["unsafe"] }) });
+      }`),
+      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
+    ),
+    (error: any) => {
+      assert.equal(error.code, "workflow_report_rejected");
+      assert.deepEqual(error.details, { reasons: ["unsafe"] });
+      return true;
+    },
+  );
 });
 
 test("workflow rejects unsupported structured schemas before spawning", async () => {
@@ -1150,11 +1198,125 @@ test("agent timeout fails only that agent branch", async () => {
           code: "agent_timeout",
           message: "agent timed out after 50ms",
           agentId: 1,
+          effectiveTimeoutMs: 50,
         },
       },
     },
     { ok: true, value: "fast ok" },
   ]);
+});
+
+test("abnormal termination drains admitted calls and recovers only structured values and typed failures", async () => {
+  let cleanupAcknowledged = false;
+  await assert.rejects(
+    runWorkflow(
+      script(`export async function run() {
+        await parallelSettled([
+          () => agent("structured", { output: { schema: { type: "object" } }, timeoutMs: 25 }),
+          () => agent("prose"),
+          () => agent("failed"),
+        ]);
+        throw new Error("top-level boom");
+      }`),
+      {
+        cwd: "/tmp",
+        agentTimeoutMs: 500,
+        spawnAgent: async (request) => {
+          if (request.prompt === "structured") {
+            return {
+              ok: true,
+              text: "free prose excluded",
+              hasStructured: true,
+              value: { files: ["a.ts"] },
+              attempts: 2,
+            };
+          }
+          if (request.prompt === "prose") {
+            return { ok: true, text: "successful prose excluded" };
+          }
+          cleanupAcknowledged = true;
+          return {
+            ok: false,
+            text: null,
+            error: "provider failed",
+            errorCode: "provider_error",
+            errorDetails: {
+              code: "provider_error",
+              message: "provider failed",
+              logFile: "/tmp/child.log.gz",
+            },
+          };
+        },
+      },
+    ),
+    (error: any) => {
+      assert.equal(error.code, "workflow_script_error");
+      assert.equal(cleanupAcknowledged, true);
+      assert.deepEqual(error.diagnostic.counts, {
+        completed: 2,
+        failed: 1,
+        timedOut: 0,
+        canceled: 0,
+        outstanding: 0,
+      });
+      assert.equal(error.diagnostic.recoveryRecords.length, 2);
+      const [structured, failed] = error.diagnostic.recoveryRecords;
+      assert.deepEqual(structured.structuredValue, { files: ["a.ts"] });
+      assert.equal(structured.effectiveTimeoutMs, 25);
+      assert.equal(structured.attempts, 1);
+      assert.equal(failed.failure.code, "provider_error");
+      assert.equal(failed.logFile, "/tmp/child.log.gz");
+      assert.doesNotMatch(JSON.stringify(error.diagnostic), /successful prose/);
+      assert.doesNotMatch(JSON.stringify(error.diagnostic), /free prose/);
+      assert.doesNotMatch(JSON.stringify(error.diagnostic), /structured\"/);
+      return true;
+    },
+  );
+});
+
+test("normal result waits for an unawaited admitted child to terminate", async () => {
+  let acknowledged = false;
+  const result = await runWorkflow(
+    script(`export async function run() {
+      void agent("detached");
+      return "done";
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (request) =>
+        await new Promise((resolve) => {
+          request.signal?.addEventListener(
+            "abort",
+            () => {
+              acknowledged = true;
+              resolve({ ok: false, text: null, error: "terminated" });
+            },
+            { once: true },
+          );
+        }),
+    },
+  );
+  assert.equal(result.result, "done");
+  assert.equal(acknowledged, true);
+});
+
+test("workflow agent states expose the host-resolved short timeout", async (t) => {
+  const states: any[] = [];
+  mock.method(_spawnSubagent, "fn", async () => successfulOutcome("ok"));
+  t.after(() => mock.restoreAll());
+  const spawner = createWorkflowAgentSpawner({
+    cwd: "/tmp",
+    logId: "timeout-state",
+    agents: readOnlyAgents,
+    onAgentUpdate: (state) => states.push(state),
+  });
+  await spawner({
+    id: 1,
+    prompt: "p",
+    intent: "short",
+    effectiveTimeoutMs: 7,
+  });
+  assert.equal(states.at(-1).effectiveTimeoutMs, 7);
 });
 
 test("workflow timeout aborts in-flight agent requests", async () => {
@@ -1179,7 +1341,12 @@ test("workflow timeout aborts in-flight agent requests", async () => {
           }),
       },
     ),
-    /timed out/,
+    (error: any) => {
+      assert.equal(error.code, "workflow_timeout");
+      assert.match(error.message, /timed out/);
+      assert.equal(error.diagnostic.counts.outstanding, 0);
+      return true;
+    },
   );
 
   assert.equal(signalAborted, true);
@@ -1198,7 +1365,11 @@ test("aborts runaway sandbox promptly", async () => {
     },
   );
   controller.abort();
-  await assert.rejects(promise, /aborted|exited/);
+  await assert.rejects(promise, (error: any) => {
+    assert.equal(error.code, "workflow_aborted");
+    assert.match(error.message, /aborted|exited/);
+    return true;
+  });
 });
 
 test("agent spawner uses safe spawn defaults and rejects writable agents", async () => {

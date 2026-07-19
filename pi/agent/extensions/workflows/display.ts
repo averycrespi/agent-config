@@ -130,6 +130,35 @@ function compactSnapshotLine(
   );
 }
 
+function compactErrorLine(
+  snapshot: WorkflowSnapshot,
+  details: any,
+  message: string,
+  theme: any,
+): string {
+  const elapsed = formatDuration(
+    Math.max(0, (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt),
+  );
+  const name = safeDisplay(snapshot.meta?.name ?? "workflow");
+  const code = safeDisplay(details?.errorCode ?? "workflow_script_error");
+  const counts = details?.counts as
+    | {
+        completed?: number;
+        failed?: number;
+        timedOut?: number;
+        canceled?: number;
+        outstanding?: number;
+      }
+    | undefined;
+  const summary = counts
+    ? ` · ${counts.completed ?? 0} done · ${counts.failed ?? 0} failed · ${counts.timedOut ?? 0} timed out · ${(counts.canceled ?? 0) + (counts.outstanding ?? 0)} canceled/outstanding`
+    : "";
+  return theme.fg(
+    "error",
+    `✗ ${name} · ${code}${summary} · ${elapsed} — ${safeDisplay(message).slice(0, 100)}`,
+  );
+}
+
 function safeAgentActivity(
   activity: NonNullable<WorkflowAgentState["activity"]>,
 ): NonNullable<WorkflowAgentState["activity"]> {
@@ -170,6 +199,26 @@ function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
   return `${label} · ${theme.fg("error", safeDisplay(agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed"))}`;
 }
 
+function agentLines(agent: WorkflowAgentState, theme: any): string[] {
+  const primary = agent.activity
+    ? agentProgressLine(safeAgentActivity(agent.activity), theme)
+    : fallbackAgentLine(agent, theme);
+  const metadata: string[] = [];
+  if (agent.effectiveTimeoutMs !== undefined) {
+    metadata.push(`timeout ${agent.effectiveTimeoutMs}ms`);
+  }
+  if (agent.errorCode) metadata.push(`failure ${safeDisplay(agent.errorCode)}`);
+  if (agent.logFile) metadata.push(`log ${safeDisplay(agent.logFile)}`);
+  if (agent.diagnosticWarnings?.length) {
+    metadata.push(
+      `warning ${safeDisplay(agent.diagnosticWarnings.join("; "))}`,
+    );
+  }
+  return metadata.length > 0
+    ? [primary, theme.fg("dim", `  ${metadata.join(" · ")}`)]
+    : [primary];
+}
+
 function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
   const logs = snapshot.logs.slice(-3);
   if (logs.length === 0) return [];
@@ -191,11 +240,7 @@ export function renderSnapshot(
   if (snapshot.agents.length > 0) {
     lines.push(
       "",
-      ...snapshot.agents.map((agent) =>
-        agent.activity
-          ? agentProgressLine(safeAgentActivity(agent.activity), theme)
-          : fallbackAgentLine(agent, theme),
-      ),
+      ...snapshot.agents.flatMap((agent) => agentLines(agent, theme)),
     );
   }
   const logs = workflowLogLines(snapshot, theme);
@@ -232,7 +277,7 @@ export function renderWorkflowResult(
   const text = getResultText(result);
   if (
     context.isError ||
-    text.startsWith("Error:") ||
+    text.startsWith("Error") ||
     text.startsWith("Invalid workflow input:")
   ) {
     const message = theme.fg(
@@ -241,13 +286,23 @@ export function renderWorkflowResult(
     );
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
     if (snapshot) {
+      const recoveryFile = result.details?.recoveryFile
+        ? safeDisplay(result.details.recoveryFile)
+        : undefined;
+      const persistenceWarning = result.details?.persistenceWarning
+        ? safeDisplay(result.details.persistenceWarning)
+        : undefined;
       const lines = expanded
         ? [
             ...renderSnapshot(snapshot, theme, { final: true, error: true }),
             "",
             message,
+            ...(recoveryFile ? [`Recovery: ${recoveryFile}`] : []),
+            ...(persistenceWarning
+              ? [theme.fg("warning", `Warning: ${persistenceWarning}`)]
+              : []),
           ]
-        : [compactSnapshotLine(snapshot, theme, true, true), message];
+        : [compactErrorLine(snapshot, result.details, message, theme)];
       return getTruncatedText(context.lastComponent, lines);
     }
     const input = context.args as
