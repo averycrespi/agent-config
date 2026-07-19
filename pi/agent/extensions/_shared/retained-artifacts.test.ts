@@ -260,7 +260,7 @@ test("dead old staging and lock files are reclaimed without touching active stag
   assert.ok(await lstat(liveStage));
 });
 
-test("abandoned dead-owner reclaim markers do not block future finalizers", async (t) => {
+test("ambiguous abandoned reclaim markers fail closed without publication", async (t) => {
   const dir = await fixture(t);
   await mkdir(dir, { mode: 0o700 });
   const lock = join(dir, ".retention.lock");
@@ -282,9 +282,14 @@ test("abandoned dead-owner reclaim markers do not block future finalizers", asyn
     { ok: true },
     { dir },
   );
-  assert.equal(result.retained, true);
-  await assert.rejects(() => lstat(lock), /ENOENT/);
-  await assert.rejects(() => lstat(marker), /ENOENT/);
+  assert.equal(result.retained, false);
+  assert.match(result.warning ?? "", /lock is busy/i);
+  assert.ok(await lstat(lock));
+  assert.ok(await lstat(marker));
+  assert.deepEqual(
+    (await readdir(dir)).filter((name) => name.endsWith(".gz")),
+    [],
+  );
 });
 
 test("live lock contention discards the new artifact without publishing", async (t) => {
