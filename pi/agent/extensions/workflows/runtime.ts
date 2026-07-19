@@ -1054,6 +1054,7 @@ export function createWorkflowAgentSpawner(
       prompt: request.prompt,
       status: "running",
       effectiveTimeoutMs: request.effectiveTimeoutMs,
+      explicitTimeoutMs: resolveAgentTimeoutMs(request, undefined),
       startedAt: Date.now(),
     };
 

@@ -1305,7 +1305,7 @@ test("normal result waits for an unawaited admitted child to terminate", async (
   assert.equal(acknowledged, true);
 });
 
-test("workflow agent states expose the host-resolved short timeout", async (t) => {
+test("workflow agent states distinguish explicit and fallback timeouts", async (t) => {
   const states: any[] = [];
   mock.method(_spawnSubagent, "fn", async () => successfulOutcome("ok"));
   t.after(() => mock.restoreAll());
@@ -1317,11 +1317,22 @@ test("workflow agent states expose the host-resolved short timeout", async (t) =
   });
   await spawner({
     id: 1,
-    prompt: "p",
-    intent: "short",
+    prompt: "fallback",
+    intent: "fallback",
+    effectiveTimeoutMs: 600_000,
+  });
+  await spawner({
+    id: 2,
+    prompt: "explicit",
+    intent: "explicit",
+    timeoutMs: 7,
     effectiveTimeoutMs: 7,
   });
-  assert.equal(states.at(-1).effectiveTimeoutMs, 7);
+  const finalStates = states.filter((state) => state.status === "done");
+  assert.equal(finalStates[0].effectiveTimeoutMs, 600_000);
+  assert.equal(finalStates[0].explicitTimeoutMs, undefined);
+  assert.equal(finalStates[1].effectiveTimeoutMs, 7);
+  assert.equal(finalStates[1].explicitTimeoutMs, 7);
 });
 
 test("workflow timeout aborts in-flight agent requests", async () => {

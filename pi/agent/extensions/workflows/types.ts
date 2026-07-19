@@ -15,6 +15,7 @@ export const READ_MOSTLY_AGENT_TYPES = new Set([
 ]);
 export const DEFAULT_MAX_CONCURRENCY = 4;
 export const MAX_CONCURRENCY = 16;
+export const DEFAULT_MAX_VISIBLE_SETTLED_AGENTS = 5;
 export const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 
 export type WorkflowModelTier = "small" | "big";
@@ -114,6 +115,7 @@ export interface WorkflowAgentState {
   errorCode?: WorkflowErrorCode;
   errorDetails?: WorkflowFailureDetails;
   effectiveTimeoutMs?: number;
+  explicitTimeoutMs?: number;
   logFile?: string;
   diagnosticWarnings?: string[];
   activity?: SubagentRunState;

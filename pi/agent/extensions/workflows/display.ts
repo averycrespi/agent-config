@@ -7,7 +7,11 @@ import {
   startPartialTimer,
 } from "../_shared/render.ts";
 import { agentProgressLine } from "../subagents/render.ts";
-import type { WorkflowAgentState, WorkflowSnapshot } from "./types.ts";
+import {
+  DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+  type WorkflowAgentState,
+  type WorkflowSnapshot,
+} from "./types.ts";
 
 const MAX_DISPLAY_CHARS = 2_000;
 
@@ -200,13 +204,13 @@ function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
 }
 
 function agentLines(agent: WorkflowAgentState, theme: any): string[] {
-  const primary = agent.activity
+  let primary = agent.activity
     ? agentProgressLine(safeAgentActivity(agent.activity), theme)
     : fallbackAgentLine(agent, theme);
-  const metadata: string[] = [];
-  if (agent.effectiveTimeoutMs !== undefined) {
-    metadata.push(`timeout ${agent.effectiveTimeoutMs}ms`);
+  if (agent.explicitTimeoutMs !== undefined) {
+    primary += ` · ${theme.fg("dim", `timeout ${agent.explicitTimeoutMs}ms`)}`;
   }
+  const metadata: string[] = [];
   if (agent.errorCode) metadata.push(`failure ${safeDisplay(agent.errorCode)}`);
   if (agent.logFile) metadata.push(`log ${safeDisplay(agent.logFile)}`);
   if (agent.diagnosticWarnings?.length) {
@@ -234,14 +238,41 @@ function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
 export function renderSnapshot(
   snapshot: WorkflowSnapshot,
   theme: any,
-  options: { final?: boolean; error?: boolean } = {},
+  options: {
+    final?: boolean;
+    error?: boolean;
+    maxVisibleSettledAgents?: number;
+  } = {},
 ): string[] {
   const lines: string[] = [workflowHeader(snapshot, theme, options)];
+  const running = snapshot.agents.filter((agent) => agent.status === "running");
+  const settled = snapshot.agents.filter((agent) => agent.status !== "running");
+  const maxVisibleSettledAgents =
+    options.maxVisibleSettledAgents ?? DEFAULT_MAX_VISIBLE_SETTLED_AGENTS;
+  const visibleSettled =
+    maxVisibleSettledAgents === 0
+      ? []
+      : settled.slice(-maxVisibleSettledAgents);
+  const hiddenSettled = settled.slice(
+    0,
+    Math.max(0, settled.length - visibleSettled.length),
+  );
+  const visibleAgents = [...running, ...visibleSettled];
   if (snapshot.agents.length > 0) {
-    lines.push(
-      "",
-      ...snapshot.agents.flatMap((agent) => agentLines(agent, theme)),
-    );
+    lines.push("");
+    if (hiddenSettled.length > 0) {
+      const done = hiddenSettled.filter(
+        (agent) => agent.status === "done",
+      ).length;
+      const failed = hiddenSettled.length - done;
+      const hiddenSummary = [
+        `↑ ${hiddenSettled.length} earlier agent${hiddenSettled.length === 1 ? "" : "s"} hidden`,
+        ...(done > 0 ? [`${done} done`] : []),
+        ...(failed > 0 ? [`${failed} failed`] : []),
+      ].join(" · ");
+      lines.push(theme.fg("dim", hiddenSummary));
+    }
+    lines.push(...visibleAgents.flatMap((agent) => agentLines(agent, theme)));
   }
   const logs = workflowLogLines(snapshot, theme);
   if (logs.length > 0) lines.push("", ...logs);
@@ -268,7 +299,12 @@ export function renderWorkflowResult(
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
     const lines = snapshot
       ? expanded
-        ? renderSnapshot(snapshot, theme)
+        ? [
+            "",
+            ...renderSnapshot(snapshot, theme, {
+              maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+            }),
+          ]
         : [compactSnapshotLine(snapshot, theme, false)]
       : [theme.fg("warning", "workflow running...")];
     return getTruncatedText(context.lastComponent, lines);
@@ -294,7 +330,12 @@ export function renderWorkflowResult(
         : undefined;
       const lines = expanded
         ? [
-            ...renderSnapshot(snapshot, theme, { final: true, error: true }),
+            "",
+            ...renderSnapshot(snapshot, theme, {
+              final: true,
+              error: true,
+              maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+            }),
             "",
             message,
             ...(recoveryFile ? [`Recovery: ${recoveryFile}`] : []),
@@ -370,7 +411,13 @@ export function renderWorkflowResult(
     return getTruncatedText(
       context.lastComponent,
       expanded
-        ? renderSnapshot(snapshot, theme, { final: true })
+        ? [
+            "",
+            ...renderSnapshot(snapshot, theme, {
+              final: true,
+              maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+            }),
+          ]
         : [compactSnapshotLine(snapshot, theme, true)],
     );
   }

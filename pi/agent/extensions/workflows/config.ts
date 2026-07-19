@@ -5,7 +5,11 @@ import {
   readExtensionSettings,
   readPiSettingsFiles,
 } from "../_shared/config.ts";
-import { DEFAULT_MAX_CONCURRENCY, MAX_CONCURRENCY } from "./types.ts";
+import {
+  DEFAULT_MAX_CONCURRENCY,
+  DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+  MAX_CONCURRENCY,
+} from "./types.ts";
 
 export const WORKFLOWS_EXTENSION_NAME = "workflows";
 
@@ -15,6 +19,7 @@ export type WorkflowConfig = {
   maxConcurrency: number;
   maxTokensPerRun: number;
   maxAgentsPerRun: number;
+  maxVisibleSettledAgents: number;
   modelTierSmall: string;
   modelTierBig: string;
   userWorkflowsDir: string;
@@ -26,6 +31,7 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   maxConcurrency: DEFAULT_MAX_CONCURRENCY,
   maxTokensPerRun: 0,
   maxAgentsPerRun: 100,
+  maxVisibleSettledAgents: DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
   modelTierSmall: "openai-codex/gpt-5.6-luna",
   modelTierBig: "openai-codex/gpt-5.6-sol",
   userWorkflowsDir: join(getAgentDir(), "workflows"),
@@ -83,7 +89,7 @@ function parseConcurrency(value: unknown, warnings: string[]): number {
 
 function parseLimit(
   value: unknown,
-  field: "maxTokensPerRun" | "maxAgentsPerRun",
+  field: "maxTokensPerRun" | "maxAgentsPerRun" | "maxVisibleSettledAgents",
   warnings: string[],
 ): number {
   const parsed = parseNonNegativeInteger(value);
@@ -151,6 +157,7 @@ export function readEnvSettings(
   const limitFields = [
     ["WORKFLOWS_MAX_TOKENS_PER_RUN", "maxTokensPerRun"],
     ["WORKFLOWS_MAX_AGENTS_PER_RUN", "maxAgentsPerRun"],
+    ["WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS", "maxVisibleSettledAgents"],
   ] as const;
   for (const [environment, field] of limitFields) {
     const raw = env[environment];
@@ -202,6 +209,11 @@ export function normalizeWorkflowConfig(
     maxAgentsPerRun: parseLimit(
       value.maxAgentsPerRun,
       "maxAgentsPerRun",
+      warnings,
+    ),
+    maxVisibleSettledAgents: parseLimit(
+      value.maxVisibleSettledAgents,
+      "maxVisibleSettledAgents",
       warnings,
     ),
     modelTierSmall: parseModelTier(

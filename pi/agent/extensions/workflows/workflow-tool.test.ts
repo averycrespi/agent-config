@@ -99,7 +99,7 @@ test("extension relies on tool prompt guidelines without duplicate prompt inject
   }
 });
 
-test("workflows config display includes all eight effective fields", () => {
+test("workflows config display includes all nine effective fields", () => {
   const display = formatConfigForDisplay(
     "workflows",
     DEFAULT_WORKFLOW_CONFIG as unknown as Record<string, unknown>,
@@ -110,6 +110,7 @@ test("workflows config display includes all eight effective fields", () => {
     "maxConcurrency",
     "maxTokensPerRun",
     "maxAgentsPerRun",
+    "maxVisibleSettledAgents",
     "modelTierSmall",
     "modelTierBig",
     "userWorkflowsDir",
@@ -443,7 +444,11 @@ test("named validation and run report source and immutable script paths", async 
   const source = `export const meta = { name: "saved", description: "saved" };\nexport async function run() { if (false) await agent("unused"); return args; }`;
   const sourceFile = join(dir, "saved.js");
   await writeFile(sourceFile, source);
-  const config = { ...DEFAULT_WORKFLOW_CONFIG, userWorkflowsDir: dir };
+  const config = {
+    ...DEFAULT_WORKFLOW_CONFIG,
+    maxVisibleSettledAgents: 2,
+    userWorkflowsDir: dir,
+  };
   const harness = makePi();
   let agentLoads = 0;
   let artifactWrites = 0;
@@ -481,6 +486,7 @@ test("named validation and run report source and immutable script paths", async 
     context,
   );
   assert.equal(result.details.sourceFile, sourceFile);
+  assert.equal(result.details.maxVisibleSettledAgents, 2);
   assert.match(result.details.scriptFile, /\.js$/);
   assert.match(
     result.content[0].text,
@@ -767,10 +773,69 @@ test("renderSnapshot shows compact workflow agent rows and logs", () => {
   assert.match(lines[0], /Workflow: audit · fanout/);
   assert.match(lines[0], /1 done · 1 running/);
   assert.equal(lines[1], "");
-  assert.match(lines[2], /^✓ explorer: a · 1 tool use/);
-  assert.match(lines[3], /^● reviewer: b · initializing/);
+  assert.match(lines[2], /^● reviewer: b · initializing/);
+  assert.match(lines[3], /^✓ explorer: a · 1 tool use/);
   assert.equal(lines[4], "");
   assert.match(lines[6], /hello/);
+});
+
+test("renderSnapshot bounds settled agents while keeping running agents visible", () => {
+  const theme = {
+    bold: (text: string) => text,
+    fg: (color: string, text: string) =>
+      color === "dim" ? `<dim>${text}</dim>` : text,
+  };
+  const agent = (
+    id: number,
+    status: "running" | "done" | "error" | "aborted",
+    explicitTimeoutMs?: number,
+  ) => ({
+    id,
+    agent: "explorer",
+    intent: `agent-${id}`,
+    prompt: `agent-${id}`,
+    status,
+    effectiveTimeoutMs: 600_000,
+    ...(explicitTimeoutMs === undefined ? {} : { explicitTimeoutMs }),
+    startedAt: id,
+    ...(status === "running" ? {} : { finishedAt: id + 100 }),
+  });
+  const lines = renderSnapshot(
+    {
+      meta: { name: "audit", description: "Audit" },
+      phases: [],
+      logs: [],
+      agents: [
+        agent(1, "done"),
+        agent(2, "error"),
+        agent(3, "running"),
+        agent(4, "done"),
+        agent(5, "aborted"),
+        agent(6, "running"),
+        agent(7, "done", 25),
+      ],
+      agentFailureCount: 2,
+      loggedBranchFailureCount: 0,
+      settledBranchFailureCount: 0,
+      startedAt: Date.now(),
+    },
+    theme,
+    { maxVisibleSettledAgents: 2 },
+  );
+
+  assert.equal(
+    lines[2],
+    "<dim>↑ 3 earlier agents hidden · 2 done · 1 failed</dim>",
+  );
+  assert.match(lines[3], /^● explorer: agent-3/);
+  assert.match(lines[4], /^● explorer: agent-6/);
+  assert.match(lines[5], /^! explorer: agent-5/);
+  assert.match(lines[6], /^✓ explorer: agent-7.*timeout 25ms/);
+  assert.equal(lines.length, 7);
+  assert.ok(!lines.some((line) => line.includes("agent-1")));
+  assert.ok(!lines.some((line) => line.includes("agent-2")));
+  assert.ok(!lines.some((line) => line.includes("agent-4")));
+  assert.ok(!lines.some((line) => line.includes("timeout 600000ms")));
 });
 
 test("renderSnapshot keeps multiline activity within one physical row", () => {
@@ -909,8 +974,9 @@ test("renderWorkflowResult keeps run summaries compact until expanded", () => {
     { state: {}, invalidate() {} },
   );
   const lines = expanded.render(120);
-  assert.match(lines[0], /^Workflow: audit ✓ · 1s · 1 done · 0 agents failed$/);
-  assert.match(lines[2], /^✓ explorer: a · 1 tool use · 1s$/);
+  assert.equal(lines[0], "");
+  assert.match(lines[1], /^Workflow: audit ✓ · 1s · 1 done · 0 agents failed$/);
+  assert.match(lines[3], /^✓ explorer: a · 1 tool use · 1s$/);
   assert.ok(!lines.some((line) => line.startsWith("✓ workflow")));
   assert.ok(!lines.some((line) => line.includes("Workflow audit completed")));
 });
@@ -995,7 +1061,9 @@ test("partial workflow results are compact, expandable, and control-safe", () =>
     theme,
     expandedContext,
   );
-  const expandedText = expanded.render(160).join("\n");
+  const expandedLines = expanded.render(160);
+  assert.equal(expandedLines[0], "");
+  const expandedText = expandedLines.join("\n");
   assert.match(expandedText, /recentlink/);
   assert.match(expandedText, /Logs.*hello worldlink/s);
   assert.doesNotMatch(expandedText, /\u001b|\u0007/);
@@ -1064,7 +1132,8 @@ test("renderWorkflowResult preserves snapshot context on run errors", () => {
     theme,
     { state: {}, invalidate() {} },
   );
-  assert.match(expanded.render(120)[0], /^Workflow: audit ✗ · 1s/);
+  assert.equal(expanded.render(120)[0], "");
+  assert.match(expanded.render(120)[1], /^Workflow: audit ✗ · 1s/);
   assert.equal(expanded.render(120).at(-1), "Error: verifier failed");
 });
 
@@ -1105,6 +1174,7 @@ test("workflow error rendering shows bounded cause counts and path-only diagnost
             errorCode: "agent_timeout",
             errorMessage: "agent timed out",
             effectiveTimeoutMs: 25,
+            explicitTimeoutMs: 25,
             logFile: "/tmp/child.log.gz",
             startedAt: 1,
             finishedAt: 26,
@@ -1136,7 +1206,9 @@ test("workflow error rendering shows bounded cause counts and path-only diagnost
     theme,
     { state: {}, invalidate() {} },
   );
-  const expandedText = expanded.render(160).join("\n");
+  const expandedLines = expanded.render(160);
+  assert.equal(expandedLines[0], "");
+  const expandedText = expandedLines.join("\n");
   assert.match(expandedText, /timeout 25ms/);
   assert.match(expandedText, /failure agent_timeout/);
   assert.match(expandedText, /\/tmp\/child\.log\.gz/);

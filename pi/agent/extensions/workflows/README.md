@@ -94,7 +94,7 @@ Inventory ignores non-JavaScript files and directories. Unsafe names, unreadable
 
 The scheduler defaults to four concurrent thunks, is configurable up to a host ceiling of 16, and clamps each `parallel(..., { concurrency })` request to the effective limit. Every workflow must export `run()` and return a value. A missing `run()` or a function that resolves `undefined` fails non-retryably with `workflow_missing_result`; return `null` for an explicit empty result. Other final results must be structured-cloneable. Return budget values by calling `spent()` and `remaining()` rather than spreading the facade, whose methods are functions.
 
-An explicit positive `timeoutMs` below the configured default is valid. The host resolves the effective timeout once for each logical call, uses it across retries, and exposes it in expanded terminal diagnostics; the default is a fallback, not a minimum.
+An explicit positive `timeoutMs` below the configured default is valid. The host resolves the effective timeout once for each logical call and uses it across retries; the default is a fallback, not a minimum. Expanded agent rows show valid per-call overrides inline, while routine rows omit the repeated configured default. Effective timeouts remain available in abnormal-run recovery diagnostics.
 
 ## Structured output and verification
 
@@ -133,7 +133,7 @@ A normally returning workflow is still reported as completed when it deliberatel
 
 ## TUI rendering
 
-Tool rows use compact action-oriented summaries by default. Running and completed workflows show the workflow name, agent counts, failures, phase when active, and elapsed time without exposing inline script source. Failed collapsed rows show one concise authoritative cause/count summary. Expand the tool row to inspect per-agent activity, effective timeout and typed failure metadata, recent workflow logs, saved inventory entries, validation source paths, and retained diagnostic paths.
+Tool rows use compact action-oriented summaries by default. Running and completed workflows show the workflow name, agent counts, failures, phase when active, and elapsed time without exposing inline script source. Failed collapsed rows show one concise authoritative cause/count summary. Expanded runs separate the call from the workflow header with a blank line, then show every running agent followed by the most recent `maxVisibleSettledAgents` settled agents in their original order. When older settled agents are omitted, a dim `↑ N earlier agents hidden` line with done/failed counts appears before the visible rows. Expand the tool row to inspect per-agent activity, explicit timeout overrides, typed failure metadata, recent workflow logs, saved inventory entries, validation source paths, and retained diagnostic paths.
 
 Errors retain context instead of replacing the row with a bare exception: run failures keep the latest workflow and agent summary, while earlier failures identify the attempted action and saved workflow name when available. Dynamic workflow, agent, activity, warning, and path text is control-normalized, bounded, and width-aware. Compressed contents are never previewed or decompressed automatically.
 
@@ -153,16 +153,17 @@ The extension fails closed when the active Node runtime does not support `--perm
 
 Configure `extension:workflows` in Pi settings. Environment variables override settings only when valid. Invalid settings fall back to defaults with a warning; invalid environment values warn and leave valid lower-precedence settings intact. Use `/workflows-config` to display all effective parsed fields. Model selectors are displayed as non-sensitive configuration.
 
-| Field               | Default                     | Environment override            | Description                                                                        |
-| ------------------- | --------------------------- | ------------------------------- | ---------------------------------------------------------------------------------- |
-| `workflowTimeoutMs` | `3600000`                   | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Positive integer whole-workflow timeout in milliseconds.                           |
-| `agentTimeoutMs`    | `600000`                    | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Positive integer default per-agent timeout in milliseconds.                        |
-| `maxConcurrency`    | `4`                         | `WORKFLOWS_MAX_CONCURRENCY`     | Positive integer scheduler limit; values above 16 are clamped with a warning.      |
-| `maxTokensPerRun`   | `0`                         | `WORKFLOWS_MAX_TOKENS_PER_RUN`  | Non-negative observed-token limit; `0` disables it.                                |
-| `maxAgentsPerRun`   | `100`                       | `WORKFLOWS_MAX_AGENTS_PER_RUN`  | Non-negative logical-agent limit; `0` disables it.                                 |
-| `modelTierSmall`    | `openai-codex/gpt-5.6-luna` | `WORKFLOWS_MODEL_TIER_SMALL`    | Trimmed full Pi model selector for the fixed `small` alias; empty is unconfigured. |
-| `modelTierBig`      | `openai-codex/gpt-5.6-sol`  | `WORKFLOWS_MODEL_TIER_BIG`      | Trimmed full Pi model selector for the fixed `big` alias; empty is unconfigured.   |
-| `userWorkflowsDir`  | `<agentDir>/workflows`      | `WORKFLOWS_USER_WORKFLOWS_DIR`  | Non-empty directory; relative values resolve against the current call's cwd.       |
+| Field                     | Default                     | Environment override                   | Description                                                                        |
+| ------------------------- | --------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------- |
+| `workflowTimeoutMs`       | `3600000`                   | `WORKFLOWS_WORKFLOW_TIMEOUT_MS`        | Positive integer whole-workflow timeout in milliseconds.                           |
+| `agentTimeoutMs`          | `600000`                    | `WORKFLOWS_AGENT_TIMEOUT_MS`           | Positive integer default per-agent timeout in milliseconds.                        |
+| `maxConcurrency`          | `4`                         | `WORKFLOWS_MAX_CONCURRENCY`            | Positive integer scheduler limit; values above 16 are clamped with a warning.      |
+| `maxTokensPerRun`         | `0`                         | `WORKFLOWS_MAX_TOKENS_PER_RUN`         | Non-negative observed-token limit; `0` disables it.                                |
+| `maxAgentsPerRun`         | `100`                       | `WORKFLOWS_MAX_AGENTS_PER_RUN`         | Non-negative logical-agent limit; `0` disables it.                                 |
+| `maxVisibleSettledAgents` | `5`                         | `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` | Settled agent rows retained in expanded runs; `0` shows only running agents.       |
+| `modelTierSmall`          | `openai-codex/gpt-5.6-luna` | `WORKFLOWS_MODEL_TIER_SMALL`           | Trimmed full Pi model selector for the fixed `small` alias; empty is unconfigured. |
+| `modelTierBig`            | `openai-codex/gpt-5.6-sol`  | `WORKFLOWS_MODEL_TIER_BIG`             | Trimmed full Pi model selector for the fixed `big` alias; empty is unconfigured.   |
+| `userWorkflowsDir`        | `<agentDir>/workflows`      | `WORKFLOWS_USER_WORKFLOWS_DIR`         | Non-empty directory; relative values resolve against the current call's cwd.       |
 
 ```json
 {
@@ -172,6 +173,7 @@ Configure `extension:workflows` in Pi settings. Environment variables override s
     "maxConcurrency": 4,
     "maxTokensPerRun": 0,
     "maxAgentsPerRun": 100,
+    "maxVisibleSettledAgents": 5,
     "modelTierSmall": "openai-codex/gpt-5.6-luna",
     "modelTierBig": "openai-codex/gpt-5.6-sol",
     "userWorkflowsDir": "/Users/example/.pi/agent/workflows"
