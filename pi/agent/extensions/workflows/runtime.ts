@@ -461,13 +461,17 @@ function normalizedCause(
     "workflow_script_error",
   ]);
   const code =
-    candidate && known.has(candidate as WorkflowErrorCode)
-      ? (candidate as WorkflowErrorCode)
-      : terminationReason === "timeout" || record?.name === "TimeoutError"
-        ? "workflow_timeout"
-        : terminationReason === "aborted" || record?.name === "AbortError"
-          ? "workflow_aborted"
-          : "workflow_script_error";
+    terminationReason === "timeout"
+      ? "workflow_timeout"
+      : terminationReason === "aborted"
+        ? "workflow_aborted"
+        : candidate && known.has(candidate as WorkflowErrorCode)
+          ? (candidate as WorkflowErrorCode)
+          : record?.name === "TimeoutError"
+            ? "workflow_timeout"
+            : record?.name === "AbortError"
+              ? "workflow_aborted"
+              : "workflow_script_error";
   const message =
     error instanceof Error
       ? error.message
@@ -481,6 +485,34 @@ function normalizedCause(
     message: message.slice(0, 2_000),
     ...(record?.details !== undefined ? { details: record.details } : {}),
   };
+}
+
+function recoveryFailureMessage(
+  response: WorkflowAgentResponse,
+  effectiveTimeoutMs: number | undefined,
+): string {
+  const code = response.errorCode ?? "subagent_failed";
+  if (code === "agent_timeout" && effectiveTimeoutMs !== undefined) {
+    return agentTimeoutMessage(effectiveTimeoutMs);
+  }
+  const messages: Partial<Record<WorkflowErrorCode, string>> = {
+    agent_policy_rejected: "agent request rejected by host policy",
+    agent_spawn_exception: "agent spawn failed",
+    subagent_failed: "subagent failed",
+    subagent_aborted: "subagent aborted",
+    provider_error: "subagent provider failed",
+    provider_schema_rejected: "subagent provider rejected the output schema",
+    structured_output_not_called: "structured output was not produced",
+    structured_output_incomplete: "structured output did not finish",
+    structured_output_tool_error: "structured output tool failed",
+    structured_output_malformed: "structured output was malformed",
+    structured_output_invalid: "structured output failed validation",
+    workflow_aborted: "workflow canceled the agent",
+    workflow_timeout: "workflow timed out",
+    workflow_budget_exceeded: "workflow token budget exceeded",
+    workflow_run_cap_exceeded: "workflow agent run cap exceeded",
+  };
+  return messages[code] ?? "agent failed";
 }
 
 function recoveryRecord(
@@ -517,13 +549,34 @@ function recoveryRecord(
     ...base,
     failure: {
       code,
-      message: (response.error ?? "agent failed").slice(0, 2_000),
-      ...response.errorDetails,
+      message: recoveryFailureMessage(response, request.effectiveTimeoutMs),
+      ...(phase ? { phase } : {}),
+      agentId: request.id,
+      ...(request.intent ? { intent: request.intent } : {}),
+      ...(response.outcome?.logFile || response.errorDetails?.logFile
+        ? {
+            logFile:
+              response.outcome?.logFile ?? response.errorDetails?.logFile,
+          }
+        : {}),
       ...(request.effectiveTimeoutMs !== undefined
         ? { effectiveTimeoutMs: request.effectiveTimeoutMs }
         : {}),
       ...(response.outcome?.diagnosticWarnings !== undefined
         ? { diagnosticWarnings: response.outcome.diagnosticWarnings }
+        : {}),
+      ...(response.outcome?.structured && !response.outcome.structured.ok
+        ? {
+            details: {
+              structured: {
+                code: response.outcome.structured.code,
+                diagnostics: response.outcome.structured.diagnostics,
+                errors: response.outcome.structured.errors
+                  ?.slice(0, 20)
+                  .map((error) => error.slice(0, 500)),
+              },
+            },
+          }
         : {}),
     },
   };
@@ -612,14 +665,14 @@ export async function runWorkflow(
 
   const timeout = setTimeout(() => {
     acceptingAgents = false;
-    terminationReason = "timeout";
+    terminationReason ??= "timeout";
     workflowAbort.abort(timeoutError(timeoutMs));
     void worker.terminate();
   }, timeoutMs);
 
   const abort = () => {
     acceptingAgents = false;
-    terminationReason = "aborted";
+    terminationReason ??= "aborted";
     workflowAbort.abort(abortError());
     void worker.terminate();
   };

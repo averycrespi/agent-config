@@ -116,6 +116,35 @@ function formatAbnormalWorkflow(
   ];
 }
 
+function recoveryPrimaryFailure(diagnostic: WorkflowRunDiagnostic): {
+  code: string;
+  message: string;
+} {
+  const code = diagnostic.cause.code;
+  const messages: Partial<Record<typeof code, string>> = {
+    agent_policy_rejected: "agent request rejected by host policy",
+    agent_spawn_exception: "agent spawn failed",
+    subagent_failed: "subagent failed",
+    subagent_aborted: "subagent aborted",
+    provider_error: "subagent provider failed",
+    provider_schema_rejected: "subagent provider rejected the output schema",
+    structured_output_not_called: "structured output was not produced",
+    structured_output_incomplete: "structured output did not finish",
+    structured_output_tool_error: "structured output tool failed",
+    structured_output_malformed: "structured output was malformed",
+    structured_output_invalid: "structured output failed validation",
+    workflow_aborted: "workflow aborted",
+    workflow_timeout: "workflow timed out",
+    agent_timeout: "workflow agent timed out",
+    workflow_budget_exceeded: "workflow token budget exceeded",
+    workflow_run_cap_exceeded: "workflow agent run cap exceeded",
+    workflow_report_rejected: "workflow report rejected",
+    workflow_missing_result: "workflow run() did not return a result",
+    workflow_script_error: "workflow script failed",
+  };
+  return { code, message: messages[code] ?? "workflow failed" };
+}
+
 function recoveryEnvelope(
   meta: ParsedWorkflow["meta"],
   diagnostic: WorkflowRunDiagnostic,
@@ -148,7 +177,7 @@ function recoveryEnvelope(
       finishedAt: diagnostic.finishedAt,
       durationMs: diagnostic.durationMs,
     },
-    primaryFailure: diagnostic.cause,
+    primaryFailure: recoveryPrimaryFailure(diagnostic),
     counts: diagnostic.counts,
     usage: {
       totalTokens: states.reduce(

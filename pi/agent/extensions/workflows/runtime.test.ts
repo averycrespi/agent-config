@@ -1238,11 +1238,11 @@ test("abnormal termination drains admitted calls and recovers only structured va
           return {
             ok: false,
             text: null,
-            error: "provider failed",
+            error: "RAW_PROVIDER_OUTPUT_SECRET",
             errorCode: "provider_error",
             errorDetails: {
               code: "provider_error",
-              message: "provider failed",
+              message: "RAW_PROVIDER_OUTPUT_SECRET",
               logFile: "/tmp/child.log.gz",
             },
           };
@@ -1265,7 +1265,12 @@ test("abnormal termination drains admitted calls and recovers only structured va
       assert.equal(structured.effectiveTimeoutMs, 25);
       assert.equal(structured.attempts, 1);
       assert.equal(failed.failure.code, "provider_error");
+      assert.equal(failed.failure.message, "subagent provider failed");
       assert.equal(failed.logFile, "/tmp/child.log.gz");
+      assert.doesNotMatch(
+        JSON.stringify(error.diagnostic),
+        /RAW_PROVIDER_OUTPUT_SECRET/,
+      );
       assert.doesNotMatch(JSON.stringify(error.diagnostic), /successful prose/);
       assert.doesNotMatch(JSON.stringify(error.diagnostic), /free prose/);
       assert.doesNotMatch(JSON.stringify(error.diagnostic), /structured\"/);
@@ -1350,6 +1355,35 @@ test("workflow timeout aborts in-flight agent requests", async () => {
   );
 
   assert.equal(signalAborted, true);
+});
+
+test("parent cancellation remains authoritative if its cleanup crosses the workflow timeout", async () => {
+  const controller = new AbortController();
+  const promise = runWorkflow(
+    script(`export async function run() { return await agent("slow"); }`),
+    {
+      cwd: "/tmp",
+      signal: controller.signal,
+      timeoutMs: 5,
+      spawnAgent: async (request) =>
+        await new Promise((resolve) => {
+          request.signal?.addEventListener(
+            "abort",
+            () =>
+              setTimeout(
+                () => resolve({ ok: false, text: null, error: "terminated" }),
+                20,
+              ),
+            { once: true },
+          );
+        }),
+    },
+  );
+  controller.abort();
+  await assert.rejects(promise, (error: any) => {
+    assert.equal(error.code, "workflow_aborted");
+    return true;
+  });
 });
 
 test("aborts runaway sandbox promptly", async () => {

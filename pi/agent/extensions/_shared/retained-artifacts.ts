@@ -388,7 +388,6 @@ class ArtifactWriter implements RetainedArtifactWriter {
     output.on("error", (error) => this.recordStreamError(error));
     this.pipelinePromise = pipeline(this.gzip, output).catch((error) => {
       this.recordStreamError(error as Error);
-      throw error;
     });
   }
 

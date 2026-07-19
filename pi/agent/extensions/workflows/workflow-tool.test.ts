@@ -181,7 +181,9 @@ test("workflow tool persists path-only abnormal recovery without masking the cau
       script: `export const meta = { name: "recovery", description: "recovery" };
 export async function run() {
   await parallelSettled([() => agent("PROMPT_SECRET", { agent: "writer" })]);
-  throw new Error("top-level boom");
+  const error = new Error("top-level boom");
+  error.details = { secret: args.secretArg };
+  throw error;
 }`,
     },
     undefined,
@@ -200,7 +202,14 @@ export async function run() {
   assert.equal(envelope.schemaVersion, 1);
   assert.equal(envelope.calls.length, 1);
   assert.equal(envelope.calls[0].failure.code, "agent_policy_rejected");
-  assert.doesNotMatch(JSON.stringify(envelope), /PROMPT_SECRET|ARG_SECRET/);
+  assert.deepEqual(envelope.primaryFailure, {
+    code: "workflow_script_error",
+    message: "workflow script failed",
+  });
+  assert.doesNotMatch(
+    JSON.stringify(envelope),
+    /PROMPT_SECRET|ARG_SECRET|top-level boom/,
+  );
   assert.equal("calls" in result.details, false);
 });
 
