@@ -3,7 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createManagedLogger } from "../_shared/logging.ts";
+import {
+  createRetainedArtifact,
+  type RetainedArtifactWriter,
+} from "../_shared/retained-artifacts.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import {
   MAX_SUBAGENT_DEPTH,
@@ -23,6 +26,10 @@ const STRUCTURED_OUTPUT_EXTENSION_PATH = join(
 // Exported so tests can stub it without launching a real process.
 export const _spawn = {
   fn: _nodeSpawn,
+};
+
+export const _retainedArtifactFactory = {
+  fn: createRetainedArtifact,
 };
 
 export const _timers = {
@@ -87,6 +94,7 @@ export interface SpawnOutcome {
   errorMessage?: string;
   errorCode?: "provider_error" | "provider_schema_rejected";
   logFile?: string;
+  diagnosticWarnings?: string[];
   structured?: StructuredOutputResult;
 }
 
@@ -493,10 +501,42 @@ async function runSpawn(
   extraEnv?: Record<string, string>,
   output?: StructuredOutputSpec,
 ): Promise<SpawnOutcome> {
-  const log = createManagedLogger({ extensionName: "subagents", id: logId });
-  log.write(
-    `$ pi ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}\n\n`,
-  );
+  if (signal?.aborted) {
+    return {
+      ok: false,
+      aborted: true,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      signal: null,
+      errorMessage: "aborted before spawn",
+    };
+  }
+
+  let log: RetainedArtifactWriter;
+  try {
+    log = await _retainedArtifactFactory.fn({
+      kind: "subagent-log",
+      id: logId,
+    });
+    const header = `$ pi ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}\n\n`;
+    if (!log.write(header)) {
+      await new Promise<void>((resolve, reject) => {
+        log.onDrain(resolve);
+        log.onError(reject);
+      });
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      aborted: false,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      signal: null,
+      errorMessage: `secure subagent logging unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 
   return await new Promise<SpawnOutcome>((resolve) => {
     let finished = false;
@@ -515,10 +555,39 @@ async function runSpawn(
     let sawAgentEnd = false;
     let terminalError: ProviderFailure | undefined;
     let child: ReturnType<typeof _nodeSpawn> | undefined;
+    let launched = false;
     let killTimer: NodeJS.Timeout | undefined;
     let postAgentEndTimer: NodeJS.Timeout | undefined;
     let terminating = false;
     let forcedAfterAgentEnd = false;
+    let loggingHealthy = true;
+    let loggingWarning: string | undefined;
+    let waitingForDrain = false;
+
+    const resumeOutput = () => {
+      child?.stdout?.resume?.();
+      child?.stderr?.resume?.();
+      waitingForDrain = false;
+    };
+
+    const writeLog = (chunk: string | Buffer) => {
+      if (!loggingHealthy) return;
+      if (log.write(chunk) || waitingForDrain) return;
+      waitingForDrain = true;
+      child?.stdout?.pause?.();
+      child?.stderr?.pause?.();
+      log.onDrain(resumeOutput);
+    };
+
+    log.onError((error) => {
+      loggingHealthy = false;
+      loggingWarning =
+        `Complete retained child log unavailable: ${error.message}`.slice(
+          0,
+          500,
+        );
+      resumeOutput();
+    });
 
     const finish = (outcome: SpawnOutcome) => {
       if (finished) return;
@@ -526,14 +595,25 @@ async function runSpawn(
       signal?.removeEventListener("abort", onAbort);
       if (killTimer) _timers.clearTimeout(killTimer);
       if (postAgentEndTimer) _timers.clearTimeout(postAgentEndTimer);
-      void log.close().then(() => {
-        if (outcome.ok) {
-          log.delete();
-        } else {
-          outcome.logFile = log.path;
+      void (async () => {
+        try {
+          if (outcome.ok || !loggingHealthy || !launched) {
+            await log.discard();
+          } else {
+            const retained = await log.finalize();
+            if (retained.retained) outcome.logFile = retained.path;
+            else if (retained.warning) loggingWarning = retained.warning;
+          }
+        } catch (error) {
+          loggingWarning =
+            `Complete retained child log unavailable: ${error instanceof Error ? error.message : String(error)}`.slice(
+              0,
+              500,
+            );
         }
+        if (loggingWarning) outcome.diagnosticWarnings = [loggingWarning];
         resolve(outcome);
-      });
+      })();
     };
 
     const startKillSequence = () => {
@@ -568,27 +648,29 @@ async function runSpawn(
       onEvent?.(event);
     };
 
-    if (signal?.aborted) {
-      return finish({
+    try {
+      child = _spawn.fn(PI_BINARY, args, {
+        cwd,
+        env: {
+          ...process.env,
+          ...extraEnv,
+          PI_SUBAGENT_DEPTH: String(getCurrentDepth() + 1),
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      launched = true;
+    } catch (error) {
+      finish({
         ok: false,
-        aborted: true,
-        stdout: "",
-        stderr: "",
+        aborted,
+        stdout: finalText,
+        stderr: stderrBuffer,
         exitCode: null,
         signal: null,
-        errorMessage: "aborted before spawn",
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
+      return;
     }
-
-    child = _spawn.fn(PI_BINARY, args, {
-      cwd,
-      env: {
-        ...process.env,
-        ...extraEnv,
-        PI_SUBAGENT_DEPTH: String(getCurrentDepth() + 1),
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
 
     child?.on("error", (error: NodeJS.ErrnoException) => {
       finish({
@@ -604,7 +686,7 @@ async function runSpawn(
 
     child?.stdout?.setEncoding("utf8");
     child?.stdout?.on("data", (chunk: string) => {
-      log.write(chunk);
+      writeLog(chunk);
       stdoutBuffer += chunk;
       let newlineIndex = stdoutBuffer.indexOf("\n");
       while (newlineIndex !== -1) {
@@ -626,7 +708,7 @@ async function runSpawn(
     child?.stderr?.setEncoding("utf8");
     let stderrLineBuffer = "";
     child?.stderr?.on("data", (chunk: string) => {
-      log.write(`[stderr] ${chunk}`);
+      writeLog(`[stderr] ${chunk}`);
       stderrBuffer += chunk;
       stderrLineBuffer += chunk;
       let newlineIndex = stderrLineBuffer.indexOf("\n");
@@ -835,14 +917,21 @@ export async function spawnSubagent(
 }
 
 export function formatSpawnFailure(outcome: SpawnOutcome): string {
+  const warningSuffix = outcome.diagnosticWarnings?.length
+    ? `\nWarning: ${outcome.diagnosticWarnings.join("; ")}`
+    : "";
   const logSuffix = outcome.logFile ? `\nLog: ${outcome.logFile}` : "";
 
-  if (outcome.aborted) return `Error: subagent aborted${logSuffix}`;
+  if (outcome.aborted)
+    return `Error: subagent aborted${logSuffix}${warningSuffix}`;
 
   const lines = [`Error: ${outcome.errorMessage ?? "subagent failed"}`];
   if (outcome.exitCode != null) lines.push(`Exit code: ${outcome.exitCode}`);
   if (outcome.stderr.trim()) lines.push("stderr:", outcome.stderr.trimEnd());
   if (outcome.stdout.trim()) lines.push("stdout:", outcome.stdout.trimEnd());
   if (outcome.logFile) lines.push(`Log: ${outcome.logFile}`);
+  if (outcome.diagnosticWarnings?.length) {
+    lines.push(`Warning: ${outcome.diagnosticWarnings.join("; ")}`);
+  }
   return lines.join("\n");
 }

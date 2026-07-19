@@ -246,7 +246,10 @@ function resolveReviewer(
 }
 
 function failureMessage(outcome: SpawnOutcome): string {
-  return (outcome.errorMessage || outcome.stderr || "Reviewer subagent failed.")
+  const warning = outcome.diagnosticWarnings?.length
+    ? ` Warning: ${outcome.diagnosticWarnings.join("; ")}`
+    : "";
+  return `${outcome.errorMessage || outcome.stderr || "Reviewer subagent failed."}${warning}`
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 500);
@@ -349,14 +352,20 @@ export async function runGoalReview(
     return {
       kind: "failure",
       code: "timeout",
-      message: "Completion review timed out.",
+      message: failureMessage({
+        ...outcome,
+        errorMessage: "Completion review timed out.",
+      }),
       ...(outcome.logFile ? { logFile: outcome.logFile } : {}),
     };
   if (abortSource === "parent")
     return {
       kind: "failure",
       code: "cancelled",
-      message: "Completion review was cancelled.",
+      message: failureMessage({
+        ...outcome,
+        errorMessage: "Completion review was cancelled.",
+      }),
       ...(outcome.logFile ? { logFile: outcome.logFile } : {}),
     };
   if (!outcome.ok || !outcome.structured?.ok)

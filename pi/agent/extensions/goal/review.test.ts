@@ -247,6 +247,34 @@ test("runGoalReview fails closed for missing reviewer and invalid output", async
   if (result.kind === "failure") assert.equal(result.code, "invalid_output");
 });
 
+test("runGoalReview preserves shared spawner diagnostic warnings", async (t) => {
+  mock.method(_reviewDeps, "loadAgents", () => [reviewer]);
+  mock.method(_reviewDeps, "spawnSubagent", async () => ({
+    ok: false,
+    aborted: false,
+    stdout: "",
+    stderr: "",
+    exitCode: 1,
+    signal: null,
+    errorMessage: "reviewer failed",
+    diagnosticWarnings: ["Diagnostics exceeded retention quota"],
+  }));
+  t.after(() => mock.restoreAll());
+
+  const result = await runGoalReview({
+    goalId: "g",
+    objective: "o",
+    evidence: "e",
+    cwd: "/r",
+    timeoutSeconds: 1,
+  });
+  assert.equal(result.kind, "failure");
+  if (result.kind === "failure") {
+    assert.match(result.message, /reviewer failed/);
+    assert.match(result.message, /retention quota/);
+  }
+});
+
 test("runGoalReview clears its timer and parent listener after settlement", async (t) => {
   mock.method(_reviewDeps, "loadAgents", () => [reviewer]);
   mock.method(_reviewDeps, "spawnSubagent", async () => ({

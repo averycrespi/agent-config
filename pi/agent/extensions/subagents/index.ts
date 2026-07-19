@@ -238,19 +238,25 @@ async function runSpawn(
   });
 
   tracker.finish(result);
+  const diagnosticWarning = result.diagnosticWarnings?.length
+    ? `\n\nWarning: ${result.diagnosticWarnings.join("; ")}`
+    : "";
 
   if (!result.ok) {
     return {
       content: text(formatSpawnFailure(result)),
       details: {
         ok: false,
-        structuredError: result.errorMessage ?? formatSpawnFailure(result),
+        structuredError: result.diagnosticWarnings?.length
+          ? formatSpawnFailure(result)
+          : (result.errorMessage ?? formatSpawnFailure(result)),
         aborted: result.aborted,
         exitCode: result.exitCode,
         signal: result.signal,
         stderr: result.stderr,
         stdout: result.stdout,
         logFile: result.logFile,
+        diagnosticWarnings: result.diagnosticWarnings,
         activity: tracker.state,
       },
     };
@@ -259,22 +265,24 @@ async function runSpawn(
   if (spec.output_schema !== undefined && result.structured?.ok) {
     return {
       content: text(
-        `\`\`\`json\n${JSON.stringify(result.structured.value, null, 2)}\n\`\`\``,
+        `\`\`\`json\n${JSON.stringify(result.structured.value, null, 2)}\n\`\`\`${diagnosticWarning}`,
       ),
       details: {
         ok: true,
         exitCode: result.exitCode,
         structuredValue: result.structured.value,
+        diagnosticWarnings: result.diagnosticWarnings,
         activity: tracker.state,
       },
     };
   }
 
   return {
-    content: text(result.stdout),
+    content: text(`${result.stdout}${diagnosticWarning}`),
     details: {
       ok: true,
       exitCode: result.exitCode,
+      diagnosticWarnings: result.diagnosticWarnings,
       activity: tracker.state,
     },
   };

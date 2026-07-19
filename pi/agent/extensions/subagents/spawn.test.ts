@@ -1,7 +1,16 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { gunzip as gunzipCallback } from "node:zlib";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+} from "node:fs/promises";
+import { promisify } from "node:util";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -9,12 +18,15 @@ import {
   buildArgs,
   formatSpawnFailure,
   spawnSubagent,
+  _retainedArtifactFactory,
   _spawn,
   _timers,
   type SpawnOutcome,
 } from "./spawn.ts";
-import { _loggingFs } from "../_shared/logging.ts";
+import { _retainedArtifacts } from "../_shared/retained-artifacts.ts";
 import { THRESHOLD_CHARS } from "../_shared/spillover.ts";
+
+const gunzip = promisify(gunzipCallback);
 
 function baseOutcome(overrides: Partial<SpawnOutcome> = {}): SpawnOutcome {
   return {
@@ -626,11 +638,11 @@ test("spawnSubagent env: omitting options.env passes process.env through unchang
   }
 });
 
-test("spawnSubagent: retained failure logs include raw output", async () => {
+test("spawnSubagent: retained failure logs are complete gzip files", async () => {
   const prev = process.env.PI_SUBAGENT_DEPTH;
   process.env.PI_SUBAGENT_DEPTH = "0";
   const root = await mkdtemp(join(tmpdir(), "subagent-log-test-"));
-  const tmpStub = mock.method(_loggingFs, "tmpdir", () => root);
+  const rootStub = mock.method(_retainedArtifacts, "root", () => root);
 
   const spawnStub = mock.method(_spawn, "fn", () => {
     const child = new EventEmitter() as any;
@@ -638,9 +650,15 @@ test("spawnSubagent: retained failure logs include raw output", async () => {
     child.stderr = new EventEmitter();
     child.stdout.setEncoding = () => {};
     child.stderr.setEncoding = () => {};
+    child.stdout.pause = () => child.stdout;
+    child.stdout.resume = () => child.stdout;
+    child.stderr.pause = () => child.stderr;
+    child.stderr.resume = () => child.stderr;
 
     setImmediate(() => {
+      child.stdout.emit("data", '{"type":"log","value":"first"}\n');
       child.stderr.emit("data", "token=super-secret\n");
+      child.stdout.emit("data", '{"type":"log","value":"last"}\n');
       child.emit("close", 1, null);
     });
 
@@ -657,17 +675,186 @@ test("spawnSubagent: retained failure logs include raw output", async () => {
     });
 
     assert.equal(result.ok, false);
-    assert.match(result.logFile ?? "", /secret-run\.log$/);
+    assert.match(result.logFile ?? "", /\.log\.gz$/);
     assert.equal(
-      await readFile(result.logFile!, "utf8"),
-      "$ pi --mode json -p --no-session --no-tools --no-extensions p\n\n[stderr] token=super-secret\n",
+      (await gunzip(await readFile(result.logFile!))).toString("utf8"),
+      '$ pi --mode json -p --no-session --no-tools --no-extensions p\n\n{"type":"log","value":"first"}\n[stderr] token=super-secret\n{"type":"log","value":"last"}\n',
     );
   } finally {
     spawnStub.mock.restore();
-    tmpStub.mock.restore();
+    rootStub.mock.restore();
+    await rm(root, { recursive: true, force: true });
     if (prev === undefined) delete process.env.PI_SUBAGENT_DEPTH;
     else process.env.PI_SUBAGENT_DEPTH = prev;
   }
+});
+
+test("spawnSubagent: successful child leaves no retained diagnostic", async () => {
+  const root = await mkdtemp(join(tmpdir(), "subagent-log-success-"));
+  const rootStub = mock.method(_retainedArtifacts, "root", () => root);
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+    child.stdout.pause = () => child.stdout;
+    child.stdout.resume = () => child.stdout;
+    child.stderr.pause = () => child.stderr;
+    child.stderr.resume = () => child.stderr;
+    setImmediate(() => child.emit("close", 0, null));
+    return child;
+  });
+  try {
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: [],
+      cwd: "/tmp",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.logFile, undefined);
+    assert.deepEqual(
+      (await readdir(root)).filter((name) => name.endsWith(".gz")),
+      [],
+    );
+  } finally {
+    spawnStub.mock.restore();
+    rootStub.mock.restore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("spawnSubagent: unsafe logging root prevents child launch", async (t) => {
+  const parent = await mkdtemp(join(tmpdir(), "subagent-log-unsafe-"));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const target = join(parent, "target");
+  const link = join(parent, "link");
+  await mkdir(target);
+  await symlink(target, link);
+  const rootStub = mock.method(_retainedArtifacts, "root", () => link);
+  let launched = false;
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    launched = true;
+    throw new Error("must not launch");
+  });
+  t.after(() => {
+    spawnStub.mock.restore();
+    rootStub.mock.restore();
+  });
+
+  const result = await spawnSubagent({
+    prompt: "p",
+    toolAllowlist: [],
+    extensionAllowlist: [],
+    cwd: "/tmp",
+  });
+  assert.equal(launched, false);
+  assert.equal(result.ok, false);
+  assert.match(result.errorMessage ?? "", /owner-controlled directory/);
+  assert.equal(result.logFile, undefined);
+});
+
+test("spawnSubagent: logging backpressure pauses and resumes both child streams", async (t) => {
+  let drain: (() => void) | undefined;
+  let writes = 0;
+  const writer = {
+    write: () => ++writes !== 2,
+    onDrain: (listener: () => void) => {
+      drain = listener;
+    },
+    onError: () => {},
+    finalize: async () => ({ retained: false as const }),
+    discard: async () => {},
+  };
+  const artifactStub = mock.method(
+    _retainedArtifactFactory,
+    "fn",
+    async () => writer,
+  );
+  const calls: string[] = [];
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+    child.stdout.pause = () => calls.push("stdout-pause");
+    child.stderr.pause = () => calls.push("stderr-pause");
+    child.stdout.resume = () => calls.push("stdout-resume");
+    child.stderr.resume = () => calls.push("stderr-resume");
+    setImmediate(() => {
+      child.stdout.emit("data", "chunk\n");
+      drain?.();
+      child.emit("close", 0, null);
+    });
+    return child;
+  });
+  t.after(() => {
+    artifactStub.mock.restore();
+    spawnStub.mock.restore();
+  });
+
+  const result = await spawnSubagent({
+    prompt: "p",
+    toolAllowlist: [],
+    extensionAllowlist: [],
+    cwd: "/tmp",
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, [
+    "stdout-pause",
+    "stderr-pause",
+    "stdout-resume",
+    "stderr-resume",
+  ]);
+});
+
+test("spawnSubagent: retention failure preserves primary failure and warns", async (t) => {
+  const writer = {
+    write: () => true,
+    onDrain: () => {},
+    onError: () => {},
+    finalize: async () => ({
+      retained: false as const,
+      warning: "Diagnostics exceeded retention quota",
+    }),
+    discard: async () => {},
+  };
+  const artifactStub = mock.method(
+    _retainedArtifactFactory,
+    "fn",
+    async () => writer,
+  );
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+    child.stdout.pause = () => child.stdout;
+    child.stdout.resume = () => child.stdout;
+    child.stderr.pause = () => child.stderr;
+    child.stderr.resume = () => child.stderr;
+    setImmediate(() => child.emit("close", 7, null));
+    return child;
+  });
+  t.after(() => {
+    artifactStub.mock.restore();
+    spawnStub.mock.restore();
+  });
+
+  const result = await spawnSubagent({
+    prompt: "p",
+    toolAllowlist: [],
+    extensionAllowlist: [],
+    cwd: "/tmp",
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.exitCode, 7);
+  assert.equal(result.logFile, undefined);
+  assert.match(result.diagnosticWarnings?.[0] ?? "", /quota/i);
+  assert.match(formatSpawnFailure(result), /quota/i);
 });
 
 test("spawnSubagent: spills oversized final stdout", async () => {

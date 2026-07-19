@@ -61,6 +61,7 @@ interface FinalizedFile {
 }
 
 export const _retainedArtifacts = {
+  root: () => RETAINED_ARTIFACTS_DIR,
   nonce: () => randomBytes(10).toString("hex"),
   processAlive: (pid: number): boolean => {
     try {
@@ -296,6 +297,7 @@ async function enforceAndPublish(
 class ArtifactWriter implements RetainedArtifactWriter {
   private readonly gzip: Gzip;
   private readonly pipelinePromise: Promise<void>;
+  private readonly errorListeners = new Set<(error: Error) => void>();
   private streamError: Error | undefined;
   private settled = false;
 
@@ -307,16 +309,19 @@ class ArtifactWriter implements RetainedArtifactWriter {
     output: ReturnType<Awaited<ReturnType<typeof open>>["createWriteStream"]>,
   ) {
     this.gzip = createGzip();
-    this.gzip.on("error", (error) => {
-      this.streamError ??= error;
-    });
-    output.on("error", (error) => {
-      this.streamError ??= error;
-    });
+    this.gzip.on("error", (error) => this.recordStreamError(error));
+    output.on("error", (error) => this.recordStreamError(error));
     this.pipelinePromise = pipeline(this.gzip, output).catch((error) => {
-      this.streamError ??= error as Error;
+      this.recordStreamError(error as Error);
       throw error;
     });
+  }
+
+  private recordStreamError(error: Error): void {
+    if (this.streamError) return;
+    this.streamError = error;
+    for (const listener of this.errorListeners) listener(error);
+    this.errorListeners.clear();
   }
 
   write(chunk: string | Buffer): boolean {
@@ -329,8 +334,11 @@ class ArtifactWriter implements RetainedArtifactWriter {
   }
 
   onError(listener: (error: Error) => void): void {
-    const notify = (error: Error) => listener(error);
-    this.gzip.once("error", notify);
+    if (this.streamError) {
+      queueMicrotask(() => listener(this.streamError!));
+      return;
+    }
+    this.errorListeners.add(listener);
   }
 
   async finalize(): Promise<RetainedArtifactResult> {
@@ -363,7 +371,8 @@ class ArtifactWriter implements RetainedArtifactWriter {
   async discard(): Promise<void> {
     if (!this.settled) {
       this.settled = true;
-      this.gzip.destroy();
+      if (this.streamError) this.gzip.destroy();
+      else this.gzip.end();
     }
     await this.pipelinePromise.catch(() => undefined);
     await rm(this.stagingPath, { force: true });
@@ -373,7 +382,7 @@ class ArtifactWriter implements RetainedArtifactWriter {
 export async function createRetainedArtifact(
   options: RetainedArtifactOptions,
 ): Promise<RetainedArtifactWriter> {
-  const dir = options.dir ?? RETAINED_ARTIFACTS_DIR;
+  const dir = options.dir ?? _retainedArtifacts.root();
   await ensureOwnerDirectory(dir);
   for (let attempt = 0; attempt < MAX_COLLISION_ATTEMPTS; attempt += 1) {
     const stagingPath = join(
