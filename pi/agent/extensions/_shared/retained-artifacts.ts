@@ -203,7 +203,9 @@ async function listFinalized(dir: string): Promise<FinalizedFile[]> {
 async function cleanupStaleStaging(dir: string, now: number): Promise<void> {
   const entries = await opendir(dir);
   for await (const entry of entries) {
-    const match = /^\.stage-(\d+)-[a-f0-9]+\.tmp$/.exec(entry.name);
+    const match = /^\.(?:stage|lock-owner)-(\d+)-[a-f0-9]+\.tmp$/.exec(
+      entry.name,
+    );
     if (!match || entry.isSymbolicLink()) continue;
     const path = join(dir, entry.name);
     try {
@@ -355,30 +357,30 @@ async function acquireLock(dir: string): Promise<() => Promise<void>> {
       continue;
     }
     const token = _retainedArtifacts.nonce();
+    const ownerPath = join(dir, `.lock-owner-${process.pid}-${token}.tmp`);
+    let handle;
     try {
-      const handle = await open(
-        lockPath,
+      handle = await open(
+        ownerPath,
         constants.O_WRONLY |
           constants.O_CREAT |
           constants.O_EXCL |
           (constants.O_NOFOLLOW ?? 0),
         0o600,
       );
-      try {
-        await handle.writeFile(JSON.stringify({ pid: process.pid, token }));
-      } catch (error) {
-        await handle.close().catch(() => undefined);
-        await unlink(lockPath).catch(() => undefined);
-        throw error;
-      }
+      await handle.writeFile(JSON.stringify({ pid: process.pid, token }));
       await handle.close();
-      if (await lockExists(reclaimPath)) {
-        await releaseOwnedLock(lockPath, token);
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        continue;
-      }
-      return () => releaseOwnedLock(lockPath, token);
     } catch (error) {
+      await handle?.close().catch(() => undefined);
+      await unlink(ownerPath).catch(() => undefined);
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw error;
+    }
+
+    try {
+      await link(ownerPath, lockPath);
+    } catch (error) {
+      await unlink(ownerPath).catch(() => undefined);
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       try {
         if (await reclaimDeadLock(lockPath, reclaimPath)) continue;
@@ -386,7 +388,15 @@ async function acquireLock(dir: string): Promise<() => Promise<void>> {
         throw new Error("retention lock ownership is ambiguous");
       }
       await new Promise<void>((resolve) => setImmediate(resolve));
+      continue;
     }
+    await unlink(ownerPath);
+    if (await lockExists(reclaimPath)) {
+      await releaseOwnedLock(lockPath, token);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      continue;
+    }
+    return () => releaseOwnedLock(lockPath, token);
   }
   throw new Error("retention lock is busy");
 }
