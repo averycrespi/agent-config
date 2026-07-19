@@ -1,20 +1,14 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
-export const BUILTIN_TOOLS = [
-  "read",
-  "bash",
-  "edit",
-  "write",
-  "ls",
-  "find",
-  "grep",
+export const CAPABILITIES = [
+  "read-filesystem",
+  "exec-shell",
+  "read-broker",
+  "read-web",
 ] as const;
 
-export const MAX_SUBAGENT_DEPTH = 5;
-export const DEFAULT_MAX_CONCURRENCY = 4;
-export const MAX_CONCURRENCY_CEILING = 16;
-export const MAX_AGENTS_PER_CALL = 16;
+export const MODEL_TIERS = ["small", "medium", "large"] as const;
 export const THINKING_LEVELS = [
   "off",
   "minimal",
@@ -22,31 +16,37 @@ export const THINKING_LEVELS = [
   "medium",
   "high",
   "xhigh",
+  "max",
 ] as const;
 
-export type BuiltinTool = (typeof BUILTIN_TOOLS)[number];
+export const MAX_SUBAGENT_DEPTH = 5;
+export const DEFAULT_MAX_CONCURRENCY = 4;
+export const MAX_CONCURRENCY_CEILING = 16;
+export const MAX_AGENTS_PER_CALL = 16;
+
+export type Capability = (typeof CAPABILITIES)[number];
+export type ModelTier = (typeof MODEL_TIERS)[number];
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+export type EffectiveTool =
+  | "read"
+  | "bash"
+  | "ls"
+  | "find"
+  | "grep"
+  | "mcp_search"
+  | "mcp_describe"
+  | "mcp_call"
+  | "web_search"
+  | "web_fetch";
 export type InheritSession = "none" | "fork";
 export type SubagentPhase = string;
 
-export interface AgentDefinition {
-  name: string;
-  description: string;
-  tools: BuiltinTool[];
-  extensions: string[];
-  model?: string;
-  thinking?: string;
-  env?: Record<string, string>;
-  systemPrompt: string;
-  disableSkills: boolean;
-  disablePromptTemplates: boolean;
-}
-
 export interface SpawnAgentItem {
-  agent: string;
   intent: string;
   prompt: string;
-  thinking?: ThinkingLevel;
+  capabilities: Capability[];
+  model_tier: ModelTier;
+  thinking: ThinkingLevel;
   files?: string[];
   output_schema?: Record<string, unknown>;
 }
@@ -62,7 +62,9 @@ export interface SubagentEvent {
 
 export interface SubagentRunState {
   intent: string;
-  agentType?: string;
+  capabilities?: Capability[];
+  modelTier?: ModelTier;
+  thinking?: ThinkingLevel;
   phase: SubagentPhase;
   activeTool?: string;
   currentCommand?: string;
@@ -79,36 +81,48 @@ export interface SubagentRunState {
   lastUpdateAt: number;
 }
 
-export function buildSpawnAgentsParams(agentDescription: string) {
-  return Type.Object({
-    agents: Type.Array(
-      Type.Object({
-        agent: Type.String({ description: agentDescription }),
-        intent: Type.String({
-          minLength: 1,
-          description: "Short label for this agent",
-        }),
-        prompt: Type.String({ description: "Task for this agent" }),
-        thinking: Type.Optional(
-          StringEnum(THINKING_LEVELS, {
-            description:
-              "Thinking level override for this item; otherwise uses the agent definition or parent level",
-          }),
+export function buildSpawnAgentsParams(policyDescription: string) {
+  return Type.Object(
+    {
+      agents: Type.Array(
+        Type.Object(
+          {
+            intent: Type.String({
+              minLength: 1,
+              description: "Short label for this subagent run",
+            }),
+            prompt: Type.String({
+              minLength: 1,
+              description: "Self-contained task for this subagent",
+            }),
+            capabilities: Type.Array(StringEnum(CAPABILITIES), {
+              description:
+                "Explicit built-in capabilities. An empty array launches a no-tools child.",
+            }),
+            model_tier: StringEnum(MODEL_TIERS, {
+              description: policyDescription,
+            }),
+            thinking: StringEnum(THINKING_LEVELS, {
+              description: "Explicit configured thinking level for this item",
+            }),
+            files: Type.Optional(
+              Type.Array(Type.String(), {
+                description:
+                  "Readable regular files attached with native @file handling. Contents are sent to the selected model/provider and may appear in retained logs or spillover output.",
+              }),
+            ),
+            output_schema: Type.Optional(
+              Type.Record(Type.String(), Type.Unknown(), {
+                description:
+                  "Supported JSON Schema subset for a validated machine-readable result",
+              }),
+            ),
+          },
+          { additionalProperties: false },
         ),
-        files: Type.Optional(
-          Type.Array(Type.String(), {
-            description:
-              "Readable regular files attached with native @file handling. Contents are sent to the selected model/provider and may appear in retained logs or spillover output.",
-          }),
-        ),
-        output_schema: Type.Optional(
-          Type.Record(Type.String(), Type.Unknown(), {
-            description:
-              "Supported JSON Schema subset for a validated machine-readable result",
-          }),
-        ),
-      }),
-      { minItems: 1, description: "Agents to run in parallel" },
-    ),
-  });
+        { minItems: 1, description: "Subagents to run in parallel" },
+      ),
+    },
+    { additionalProperties: false },
+  );
 }

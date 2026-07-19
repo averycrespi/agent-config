@@ -1,6 +1,6 @@
 # Test Quality
 
-Review whether changed behavior has effective, maintainable regression coverage. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review whether changed behavior has effective, maintainable regression coverage. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

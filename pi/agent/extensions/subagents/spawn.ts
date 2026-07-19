@@ -10,7 +10,7 @@ import {
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import {
   MAX_SUBAGENT_DEPTH,
-  type BuiltinTool,
+  type EffectiveTool,
   type InheritSession,
 } from "./types.ts";
 import { STRUCTURED_OUTPUT_TOOL_NAME } from "../structured-output/api.ts";
@@ -65,7 +65,7 @@ export interface StructuredOutputResult {
 
 export interface SpawnInvocation {
   prompt: string;
-  toolAllowlist: BuiltinTool[];
+  toolAllowlist: EffectiveTool[];
   extensionAllowlist: string[];
   files?: string[];
   model?: string;
@@ -74,8 +74,6 @@ export interface SpawnInvocation {
   inheritSession?: InheritSession;
   maxDepth?: number;
   parentSessionFile?: string;
-  disableSkills?: boolean;
-  disablePromptTemplates?: boolean;
   output?: StructuredOutputSpec;
   logId?: string;
   cwd: string;
@@ -123,8 +121,6 @@ export function buildArgs(params: {
   systemPrompt?: string;
   inheritSession: InheritSession;
   parentSessionFile?: string;
-  disableSkills?: boolean;
-  disablePromptTemplates?: boolean;
 }): string[] {
   const args: string[] = ["--mode", "json", "-p"];
 
@@ -146,8 +142,7 @@ export function buildArgs(params: {
     args.push("--no-tools");
   }
 
-  if (params.disableSkills) args.push("--no-skills");
-  if (params.disablePromptTemplates) args.push("--no-prompt-templates");
+  args.push("--no-skills", "--no-prompt-templates");
   if (params.systemPrompt?.trim()) {
     args.push("--append-system-prompt", params.systemPrompt.trim());
   }
@@ -823,12 +818,17 @@ export async function spawnSubagent(
   }
 
   const effectiveSession = options.inheritSession ?? "none";
-  const extensions = await resolveExtensionAllowlist(
-    options.extensionAllowlist,
-    options.cwd,
-  );
+  const extensions: string[] = [];
+  const missingExtensions: string[] = [];
+  for (const requested of options.extensionAllowlist) {
+    const resolved = await resolveExtensionAllowlist([requested], options.cwd);
+    if (resolved.length === 0) missingExtensions.push(requested);
+    for (const extension of resolved) {
+      if (!extensions.includes(extension)) extensions.push(extension);
+    }
+  }
 
-  if (options.extensionAllowlist.length > 0 && extensions.length === 0) {
+  if (missingExtensions.length > 0) {
     return {
       ok: false,
       aborted: false,
@@ -836,7 +836,7 @@ export async function spawnSubagent(
       stderr: "",
       exitCode: null,
       signal: null,
-      errorMessage: `no matching extensions found for: ${options.extensionAllowlist.join(", ")}`,
+      errorMessage: `no matching extensions found for: ${missingExtensions.join(", ")}`,
     };
   }
 
@@ -876,8 +876,6 @@ export async function spawnSubagent(
       ),
       inheritSession: effectiveSession,
       parentSessionFile: options.parentSessionFile,
-      disableSkills: options.disableSkills,
-      disablePromptTemplates: options.disablePromptTemplates,
     });
   } catch (error: any) {
     if (structuredSchema) {

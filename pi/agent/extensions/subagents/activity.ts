@@ -82,10 +82,8 @@ function stringifyArgs(args: unknown): string {
   }
 }
 
-function describeToolCall(toolName: string, args: unknown): string {
-  const detail = stringifyArgs(args);
-  if (!detail) return toolName;
-  return `${toolName}: ${truncate(detail, 120)}`;
+function describeToolCall(toolName: string, _args: unknown): string {
+  return toolName;
 }
 
 function textFromMessage(message: unknown): string {

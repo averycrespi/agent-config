@@ -2,15 +2,16 @@ import { spawn as nodeSpawn, type Serializable } from "node:child_process";
 import {
   createSubagentActivityTracker,
   formatSpawnFailure,
-  spawnSubagent,
+  runSubagent,
   validateOutputSchema,
+  type Capability,
+  type ModelTier,
+  type ThinkingLevel,
 } from "../subagents/api.ts";
 import {
-  DEFAULT_AGENT_TYPE,
   DEFAULT_MAX_CONCURRENCY,
   DEFAULT_TIMEOUT_MS,
   MAX_CONCURRENCY,
-  READ_MOSTLY_AGENT_TYPES,
   type WorkflowAgentPolicyOptions,
   type WorkflowAgentRequest,
   type WorkflowAgentResponse,
@@ -34,7 +35,7 @@ import {
   MAX_WORKFLOW_PHASE_ENTRIES,
 } from "./sandbox-source.ts";
 
-export const _spawnSubagent = { fn: spawnSubagent };
+export const _runSubagent = { fn: runSubagent };
 export const _spawnSandbox = { fn: nodeSpawn };
 
 export class WorkflowRuntimeError extends Error {
@@ -55,18 +56,6 @@ export class WorkflowRuntimeError extends Error {
     this.diagnostic = diagnostic;
   }
 }
-
-const READ_ONLY_WORKFLOW_TOOLS = new Set([
-  "read",
-  "ls",
-  "find",
-  "grep",
-  "mcp_search",
-  "mcp_describe",
-  "mcp_call",
-  "web_search",
-  "web_fetch",
-]);
 
 interface SandboxProcess {
   on(event: "message", listener: (message: unknown) => void): SandboxProcess;
@@ -524,9 +513,10 @@ function recoveryRecord(
   const finishedAt = Date.now();
   const base = {
     requestId: request.id,
-    agent: request.agent?.trim() || DEFAULT_AGENT_TYPE,
-    intent:
-      request.intent?.trim() || request.agent?.trim() || DEFAULT_AGENT_TYPE,
+    intent: request.intent.trim(),
+    capabilities: [...request.capabilities],
+    modelTier: request.modelTier,
+    thinking: request.thinking,
     ...(phase ? { phase } : {}),
     startedAt,
     finishedAt,
@@ -713,10 +703,11 @@ export async function runWorkflow(
           const request = event as {
             requestId?: unknown;
             prompt?: unknown;
-            agent?: unknown;
             intent?: unknown;
+            capabilities?: unknown;
+            modelTier?: unknown;
+            thinking?: unknown;
             output?: unknown;
-            model?: unknown;
             retries?: unknown;
             timeoutMs?: unknown;
           };
@@ -725,16 +716,19 @@ export async function runWorkflow(
           const agentRequest: WorkflowAgentRequest = {
             id: requestId,
             prompt: String(request.prompt ?? ""),
+            intent: typeof request.intent === "string" ? request.intent : "",
+            capabilities: Array.isArray(request.capabilities)
+              ? (request.capabilities as Capability[])
+              : (["__missing__"] as unknown as Capability[]),
+            modelTier:
+              typeof request.modelTier === "string"
+                ? (request.modelTier as ModelTier)
+                : ("" as ModelTier),
+            thinking:
+              typeof request.thinking === "string"
+                ? (request.thinking as ThinkingLevel)
+                : ("" as ThinkingLevel),
             signal: agentSignal,
-            ...(typeof request.agent === "string"
-              ? { agent: request.agent }
-              : {}),
-            ...(typeof request.intent === "string"
-              ? { intent: request.intent }
-              : {}),
-            ...(typeof request.model === "string"
-              ? { model: request.model }
-              : {}),
             retries: clampRetries(request.retries),
             ...(typeof request.timeoutMs === "number" ||
             typeof request.timeoutMs === "string"
@@ -749,13 +743,7 @@ export async function runWorkflow(
           const admittedAt = Date.now();
           const outputError = validateStructuredOutput(request.output);
           if (outputError) {
-            const validationRequest = {
-              ...agentRequest,
-              intent:
-                agentRequest.intent?.trim() ||
-                agentRequest.agent?.trim() ||
-                DEFAULT_AGENT_TYPE,
-            };
+            const validationRequest = agentRequest;
             const response = failedResponse(
               "agent_policy_rejected",
               outputError,
@@ -969,7 +957,6 @@ function isStructuredOutputSpec(value: unknown): value is {
 export function createWorkflowAgentSpawner(
   options: WorkflowAgentPolicyOptions,
 ): (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse> {
-  const agentMap = new Map(options.agents.map((agent) => [agent.name, agent]));
   return async (request) => {
     const outputError = validateStructuredOutput(request.output);
     if (outputError) {
@@ -980,64 +967,6 @@ export function createWorkflowAgentSpawner(
         undefined,
       );
     }
-    const requestedType = request.agent?.trim() || DEFAULT_AGENT_TYPE;
-    if (!READ_MOSTLY_AGENT_TYPES.has(requestedType)) {
-      const message = `agent type ${JSON.stringify(requestedType)} is not allowed in workflows`;
-      return {
-        ok: false,
-        text: null,
-        error: message,
-        errorCode: "agent_policy_rejected",
-        errorDetails: failureDetails(
-          "agent_policy_rejected",
-          message,
-          request,
-          undefined,
-        ),
-      };
-    }
-    const agent = agentMap.get(requestedType);
-    if (!agent) {
-      const message = `unknown agent type ${JSON.stringify(requestedType)}`;
-      return {
-        ok: false,
-        text: null,
-        error: message,
-        errorCode: "agent_policy_rejected",
-        errorDetails: failureDetails(
-          "agent_policy_rejected",
-          message,
-          request,
-          undefined,
-        ),
-      };
-    }
-
-    let selectedModel = agent.model ?? options.model;
-    if (request.model !== undefined) {
-      const requestedTier = request.model.trim();
-      if (requestedTier !== "small" && requestedTier !== "big") {
-        const message = `model alias ${JSON.stringify(requestedTier)} is not allowed in workflows`;
-        return failedResponse(
-          "agent_policy_rejected",
-          message,
-          request,
-          undefined,
-        );
-      }
-      const tierModel = options.modelTiers?.[requestedTier]?.trim();
-      if (!tierModel) {
-        const message = `model alias ${JSON.stringify(requestedTier)} is not configured`;
-        return failedResponse(
-          "agent_policy_rejected",
-          message,
-          request,
-          undefined,
-        );
-      }
-      selectedModel = tierModel;
-    }
-
     const denial = options.ledger?.reserve(request.id);
     if (denial) {
       const message =
@@ -1049,9 +978,10 @@ export function createWorkflowAgentSpawner(
 
     const state: WorkflowAgentState = {
       id: request.id,
-      agent: requestedType,
-      intent: request.intent?.trim() || requestedType,
-      prompt: request.prompt,
+      intent: request.intent.trim(),
+      capabilities: [...request.capabilities],
+      modelTier: request.modelTier,
+      thinking: request.thinking,
       status: "running",
       effectiveTimeoutMs: request.effectiveTimeoutMs,
       explicitTimeoutMs: resolveAgentTimeoutMs(request, undefined),
@@ -1060,15 +990,16 @@ export function createWorkflowAgentSpawner(
 
     const tracker = createSubagentActivityTracker({
       toolCallId: `${options.logId}:agent-${request.id}`,
-      roleLabel:
-        agent.name.charAt(0).toUpperCase() + agent.name.slice(1) + " agent",
+      roleLabel: "Workflow subagent",
       intent: state.intent,
       showActivity: false,
       hasUI: false,
       onUpdate: () => {
         state.activity = {
           ...tracker.state,
-          agentType: requestedType,
+          capabilities: [...request.capabilities],
+          modelTier: request.modelTier,
+          thinking: request.thinking,
           resolved: state.status !== "running",
         };
         options.onAgentUpdate?.({ ...state });
@@ -1078,7 +1009,9 @@ export function createWorkflowAgentSpawner(
     function refreshActivity(): void {
       state.activity = {
         ...tracker.state,
-        agentType: requestedType,
+        capabilities: [...request.capabilities],
+        modelTier: request.modelTier,
+        thinking: request.thinking,
         resolved: state.status !== "running",
       };
       options.onAgentUpdate?.({ ...state });
@@ -1086,23 +1019,17 @@ export function createWorkflowAgentSpawner(
 
     refreshActivity();
 
-    const outcome = await _spawnSubagent.fn({
+    const outcome = await _runSubagent.fn({
+      intent: request.intent,
       prompt: request.prompt,
+      capabilities: request.capabilities,
+      modelTier: request.modelTier,
+      thinking: request.thinking,
       output: request.output,
-      toolAllowlist: agent.tools.filter((tool) =>
-        READ_ONLY_WORKFLOW_TOOLS.has(tool),
-      ),
-      extensionAllowlist: agent.extensions,
-      model: selectedModel,
-      thinking: agent.thinking ?? options.thinking,
-      env: agent.env,
-      systemPrompt: agent.systemPrompt,
-      inheritSession: "none",
-      disableSkills: agent.disableSkills,
-      disablePromptTemplates: agent.disablePromptTemplates,
       logId: `${options.logId}:agent-${request.id}`,
       cwd: options.cwd,
       signal: request.signal ?? options.signal,
+      modelRegistry: options.modelRegistry,
       onEvent: (event) => {
         tracker.handleEvent(event);
         options.ledger?.recordTokens(
@@ -1146,7 +1073,9 @@ export function createWorkflowAgentSpawner(
       ? isBudgetAbort(request.signal)
         ? "workflow_budget_exceeded"
         : "subagent_aborted"
-      : (outcome.errorCode ?? outcome.structured?.code ?? "subagent_failed");
+      : outcome.errorMessage?.startsWith("subagent policy validation failed:")
+        ? "agent_policy_rejected"
+        : (outcome.errorCode ?? outcome.structured?.code ?? "subagent_failed");
     state.errorCode = code;
     refreshActivity();
     return {

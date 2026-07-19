@@ -1,24 +1,17 @@
 import type {
-  AgentDefinition,
+  Capability,
+  LiveModelRegistry,
+  ModelTier,
   SpawnOutcome,
   StructuredOutputSpec,
   SubagentRunState,
+  ThinkingLevel,
 } from "../subagents/api.ts";
 
-export const DEFAULT_AGENT_TYPE = "explorer";
-export const READ_MOSTLY_AGENT_TYPES = new Set([
-  "explorer",
-  "scout",
-  "researcher",
-  "reviewer",
-  "analyst",
-]);
 export const DEFAULT_MAX_CONCURRENCY = 4;
 export const MAX_CONCURRENCY = 16;
 export const DEFAULT_MAX_VISIBLE_SETTLED_AGENTS = 5;
 export const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
-
-export type WorkflowModelTier = "small" | "big";
 
 export interface WorkflowMeta {
   name: string;
@@ -67,8 +60,10 @@ export interface WorkflowFailureDetails {
 
 export interface WorkflowRecoveryRecord {
   requestId: number;
-  agent: string;
   intent: string;
+  capabilities: Capability[];
+  modelTier: ModelTier;
+  thinking: ThinkingLevel;
   phase?: string;
   startedAt: number;
   finishedAt: number;
@@ -106,9 +101,10 @@ export interface WorkflowLogEntry {
 
 export interface WorkflowAgentState {
   id: number;
-  agent: string;
   intent: string;
-  prompt: string;
+  capabilities: Capability[];
+  modelTier: ModelTier;
+  thinking: ThinkingLevel;
   status: "running" | "done" | "error" | "aborted";
   resultPreview?: string;
   errorMessage?: string;
@@ -183,13 +179,14 @@ export interface WorkflowRuntimeOptions {
 export interface WorkflowAgentRequest {
   id: number;
   prompt: string;
-  agent?: string;
-  intent?: string;
+  intent: string;
+  capabilities: Capability[];
+  modelTier: ModelTier;
+  thinking: ThinkingLevel;
   output?: StructuredOutputSpec;
   retries?: number;
   timeoutMs?: number;
   effectiveTimeoutMs?: number;
-  model?: string;
   attempt?: number;
   signal?: AbortSignal;
 }
@@ -210,10 +207,7 @@ export interface WorkflowAgentPolicyOptions {
   cwd: string;
   signal?: AbortSignal;
   logId: string;
-  agents: AgentDefinition[];
-  model?: string;
-  modelTiers?: Partial<Record<WorkflowModelTier, string>>;
-  thinking?: string;
+  modelRegistry: LiveModelRegistry;
   onAgentUpdate?: (state: WorkflowAgentState) => void;
   ledger?: WorkflowRunLedger;
 }

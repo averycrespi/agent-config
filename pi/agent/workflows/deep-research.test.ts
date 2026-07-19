@@ -443,8 +443,9 @@ test("deep-research returns an audited report after bounded public-web research 
     2,
   );
   for (const request of searchRequests) {
-    assert.equal(request.agent, "scout");
-    assert.equal(request.model, "small");
+    assert.deepEqual(request.capabilities, ["read-web"]);
+    assert.equal(request.modelTier, "small");
+    assert.equal(request.thinking, "medium");
     assert.equal(request.retries, 1);
     assert.match(request.prompt, /public HTTPS/i);
     assert.match(request.prompt, /do not access local files/i);
@@ -459,8 +460,9 @@ test("deep-research returns an audited report after bounded public-web research 
     2,
   );
   for (const request of extractRequests) {
-    assert.equal(request.agent, "researcher");
-    assert.equal(request.model, "big");
+    assert.deepEqual(request.capabilities, ["read-web"]);
+    assert.equal(request.modelTier, "large");
+    assert.equal(request.thinking, "high");
     assert.equal(request.retries, 1);
     assert.match(request.prompt, /public HTTPS/i);
   }
@@ -475,6 +477,11 @@ test("deep-research returns an audited report after bounded public-web research 
     ].includes(request.intent),
   );
   for (const request of restrictedRequests) {
+    assert.deepEqual(request.capabilities, []);
+    assert.equal(request.modelTier, "large");
+    assert.equal(request.thinking, "high");
+    assert.equal("agent" in request, false);
+    assert.equal("model" in request, false);
     assert.match(request.prompt, /do not access local files/i);
     assert.match(request.prompt, /supplied research|public[- ]web/i);
   }
@@ -484,8 +491,9 @@ test("deep-research returns an audited report after bounded public-web research 
   );
   assert.equal(verifierRequests.length, 3);
   for (const request of verifierRequests) {
-    assert.equal(request.agent, "researcher");
-    assert.equal(request.model, "big");
+    assert.deepEqual(request.capabilities, ["read-web"]);
+    assert.equal(request.modelTier, "large");
+    assert.equal(request.thinking, "high");
     assert.equal(request.retries, 0);
     assert.match(request.prompt, /one direct authoritative or primary source/i);
     assert.match(request.prompt, /independent publishers/i);

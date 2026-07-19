@@ -20,8 +20,6 @@ export type WorkflowConfig = {
   maxTokensPerRun: number;
   maxAgentsPerRun: number;
   maxVisibleSettledAgents: number;
-  modelTierSmall: string;
-  modelTierBig: string;
   userWorkflowsDir: string;
 };
 
@@ -32,8 +30,6 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   maxTokensPerRun: 0,
   maxAgentsPerRun: 100,
   maxVisibleSettledAgents: DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
-  modelTierSmall: "openai-codex/gpt-5.6-luna",
-  modelTierBig: "openai-codex/gpt-5.6-sol",
   userWorkflowsDir: join(getAgentDir(), "workflows"),
 };
 
@@ -94,17 +90,6 @@ function parseLimit(
 ): number {
   const parsed = parseNonNegativeInteger(value);
   if (parsed !== undefined) return parsed;
-  if (value !== undefined)
-    warnings.push(`Ignoring invalid ${field}; using default.`);
-  return DEFAULT_WORKFLOW_CONFIG[field];
-}
-
-function parseModelTier(
-  value: unknown,
-  field: "modelTierSmall" | "modelTierBig",
-  warnings: string[],
-): string {
-  if (typeof value === "string") return value.trim();
   if (value !== undefined)
     warnings.push(`Ignoring invalid ${field}; using default.`);
   return DEFAULT_WORKFLOW_CONFIG[field];
@@ -173,13 +158,15 @@ export function readEnvSettings(
     else warnings.push("Ignoring invalid WORKFLOWS_USER_WORKFLOWS_DIR.");
   }
 
-  const modelFields = [
-    ["WORKFLOWS_MODEL_TIER_SMALL", "modelTierSmall"],
-    ["WORKFLOWS_MODEL_TIER_BIG", "modelTierBig"],
-  ] as const;
-  for (const [environment, field] of modelFields) {
-    const raw = env[environment];
-    if (raw !== undefined) settings[field] = raw.trim();
+  for (const environment of [
+    "WORKFLOWS_MODEL_TIER_SMALL",
+    "WORKFLOWS_MODEL_TIER_BIG",
+  ]) {
+    if (env[environment] !== undefined) {
+      warnings.push(
+        `${environment} was removed; configure model tiers under extension:subagents.`,
+      );
+    }
   }
   return settings;
 }
@@ -189,6 +176,13 @@ export function normalizeWorkflowConfig(
   warnings: string[] = [],
   cwd: string = process.cwd(),
 ): WorkflowConfig {
+  for (const field of ["modelTierSmall", "modelTierBig"]) {
+    if (value[field] !== undefined) {
+      warnings.push(
+        `${field} was removed; configure model tiers under extension:subagents.`,
+      );
+    }
+  }
   return {
     workflowTimeoutMs: parsePositiveField(
       value.workflowTimeoutMs,
@@ -216,12 +210,6 @@ export function normalizeWorkflowConfig(
       "maxVisibleSettledAgents",
       warnings,
     ),
-    modelTierSmall: parseModelTier(
-      value.modelTierSmall,
-      "modelTierSmall",
-      warnings,
-    ),
-    modelTierBig: parseModelTier(value.modelTierBig, "modelTierBig", warnings),
     userWorkflowsDir: parseWorkflowsDir(value.userWorkflowsDir, cwd, warnings),
   };
 }

@@ -1,125 +1,93 @@
 # subagents Design
 
-`subagents` lets the main agent delegate isolated work to fresh child Pi processes. It is optimized for read-mostly exploration, research, and review: subagents are context firewalls and parallel readers, not a replacement for main-thread implementation judgment.
+`subagents` provides one centrally enforced child-execution contract: caller-owned prompt and intent, fixed composable capabilities, configured model tier, and explicit thinking. It is a context firewall for bounded delegation, not a role/preset system or writable worker framework.
 
 ## Architecture
 
-- `index.ts` registers `spawn_agents`, injects delegation guidance into the system prompt, loads agent definitions, validates requests, schedules direct runs, combines results, and applies output spillover.
-- `config.ts` parses the global/env-only direct concurrency setting and registers `/subagents-config`.
-- `pool.ts` owns the extension-internal resizable FIFO concurrency gate.
-- `schema.ts` recursively validates the public tool's deliberately narrow JSON Schema subset.
-- `loader.ts` discovers markdown agent definitions and parses their frontmatter into `AgentDefinition` objects.
-- `spawn.ts` builds child Pi CLI arguments, resolves extensions, enforces recursion depth, spawns `pi --mode json`, streams JSONL events, extracts the final assistant message, handles aborts, and manages logs/spillover.
-- `activity.ts` tracks live per-agent progress from child JSONL events and clears UI activity when complete.
-- `render.ts` renders compact call/result/activity summaries.
-- `utils.ts` resolves extension short names to concrete paths.
-- `api.ts` is the stable programmatic export surface documented by `API.md`.
-- `types.ts` owns shared schemas, constants, and interfaces.
+- `types.ts` owns the four capability names, three model tiers, runtime-compatible thinking strings, model-facing schema, and intent-first activity state.
+- `config.ts` owns global/env-only concurrency, tier selectors, capability ceiling, thinking ceiling, and `/subagents-config`.
+- `capabilities.ts` is the fixed dependency-complete grant catalog and deterministic union resolver.
+- `run.ts` is the policy boundary. It validates sanitized requests against config and Pi's live model registry, then translates them to an internal process invocation.
+- `spawn.ts` is internal process machinery: CLI construction, extension resolution, recursion, environment inheritance, JSONL parsing, structured output, cancellation, spillover, and retained diagnostics.
+- `index.ts` registers `spawn_agents`, performs complete atomic batch preflight, schedules direct calls, and combines results.
+- `pool.ts`, `schema.ts`, `activity.ts`, `render.ts`, and `utils.ts` own concurrency, schema validation, progress, terminal-safe rendering, and extension short-name resolution.
+- `api.ts` is the curated cross-extension surface documented in `API.md`.
 
-## Agent definition model
+No Markdown agent loader or named-agent runtime exists.
 
-Agent types are data, not hardcoded TypeScript. `loadAgents()` reads `agents/*.md` under `PI_CODING_AGENT_DIR` or `~/.pi/agent`, parses simple YAML-like frontmatter, and uses the Markdown body as the child system prompt.
+## Policy resolution
 
-Supported definition fields include name, description, tools, extensions, model, thinking level, skill/template disabling, and environment variables. Definitions with unreadable files or empty bodies are skipped. This lenient loading keeps Pi usable when one custom agent file is broken, but it also means tests and README examples should cover expected formats.
+A sanitized request contains intent, prompt, capabilities, model tier, thinking, optional files/output, cwd, cancellation/logging callbacks, and a trusted live model registry. It cannot specify raw tools, extensions, exact models, environment, system prompts, skills/templates, context-file behavior, session inheritance, or recursion.
 
-The tool schema description is built from loaded agent descriptions at extension startup. Agent definitions are not reloaded during a session.
+Resolution is fail-closed:
 
-## System prompt guidance
+1. Load global/env-only `extension:subagents` configuration.
+2. Validate non-empty intent/prompt and explicit capability/tier/thinking fields.
+3. Reject unknown or globally disallowed capabilities and thinking.
+4. Map the tier to one configured `provider/model` selector.
+5. Resolve that selector through the supplied live Pi model registry.
+6. Call Pi's runtime `getSupportedThinkingLevels()` for the selected model and reject unsupported thinking without clamping.
+7. Expand capabilities in fixed catalog order, deduplicating tools/extensions.
+8. Build the internal spawn invocation.
 
-`index.ts` owns the active delegation guidance injected through `before_agent_start`. Keep that guidance behavior-oriented: it should tell the parent agent when to delegate, when not to delegate, how to batch independent branches, and that subagents start without conversation context. The guidance may reference dynamically loaded agent names and descriptions, but it should not duplicate each agent's full system prompt.
+The local compatibility union includes `max` even though the repository's development dependency types predate it. Runtime validation remains authoritative, so the installed Pi runtime may allow `max` when both configuration and the selected model support it.
 
-README owns the user-facing version of the same policy. Keep `AGENTS.md` at the principle level so agent names, tool availability, and delegation heuristics do not drift across global instructions.
+## Capability invariants
 
-## Spawn lifecycle
+The only capability names are `read-filesystem`, `exec-shell`, `read-broker`, and `read-web`. Their grants are fixed in `capabilities.ts`. `read-broker` forces read-only/reject environment values after inherited process environment. Web and broker include only `read` as a spill-file dependency. Empty capabilities produce no tools or extensions.
 
-Each `spawn_agents` call validates requested specs before launching. Batches over the fixed 16-item ceiling return immediately without doing per-item filesystem or schema work. In-range preflight collects blank intents, unknown agents, invalid thinking overrides, invalid file attachments, and unsupported schemas into one recoverable error and launches no children. File checks resolve relative paths from `ctx.cwd`, follow symlinks, and require readable regular files; workspace containment, attachment count, size, and content type are deliberately not policy boundaries. The normal filesystem check/use race is accepted because Pi remains authoritative when consuming native `@file` arguments.
+Structured output is orthogonal policy composition. When requested, `spawn.ts` adds only the generic structured-output extension/tool and completion instructions. Callers cannot request it as a raw capability.
 
-Valid specs retain index-aligned `Promise.all` fan-in, but each launch first acquires one extension-owned FIFO gate. The gate defaults to four active direct children, is configured from global settings or `SUBAGENTS_MAX_CONCURRENCY`, and is hard-clamped to 16. Project settings are intentionally ignored because overlapping calls from different cwd values share the same gate. Configuration is reloaded before each direct execution. Reloads carry an invocation-order generation so an older asynchronous read that finishes late cannot overwrite a newer call's limit.
+## Public/internal boundary
 
-For each agent:
+`api.ts` exports `runSubagent()` and sanitized types, outcomes, structured-output contracts, schema validation, and activity tracking. It does not export `spawnSubagent`, `SpawnInvocation`, loaders, raw tools, extension resolution, or process controls. Direct spawning, workflows, and goal review all route through `runSubagent()`.
 
-1. Wait in the queued activity state and acquire direct-child capacity.
-2. Resolve the already-prevalidated agent definition.
-3. Create an activity tracker.
-4. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, native file arguments, optional structured schema, system prompt, env, cwd, parent session file, and abort signal. The common spawner must securely create its gzip staging destination before launching the child.
-5. Feed child JSONL events into the tracker while `spawn.ts` writes callback-ordered stdout/stderr to gzip and pauses both streams together on backpressure.
-6. Format success or failure into that agent's result section.
-7. Finalize activity, clear UI hooks, and release capacity exactly once.
+Keep `spawn.ts` import-local to this directory; colocated engine tests may import it directly. Never add a convenience export that lets another extension bypass capability, tier, thinking, or live-model validation.
 
-Queue admission is abort-aware. Cancellation removes queued waiters without consuming capacity, marks them terminally aborted, emits their updated activity, and never launches them. Running children continue through `spawnSubagent()`'s existing signal path, while completed results remain unchanged. Gate errors reject normally rather than being recast as cancellation. Result order follows input order regardless of admission or completion order.
+## Direct batch lifecycle
 
-Combined output is a Markdown document with one `## <agent> · <intent>` section per input. Large combined output goes through shared spillover.
+`spawn_agents` preflights every item before gate acquisition. Errors are collected across required fields, policy, live model resolution/compatibility, attachments, and schemas. Any error launches zero children.
 
-## Child process contract
+Valid items retain input order while independently acquiring the shared abort-aware FIFO gate. Each launch creates an activity tracker, calls the sanitized API, settles structured/prose output, records diagnostics, releases capacity exactly once, and participates in ordered fan-in. Combined output is intent-first and may spill through the shared helper.
 
-`spawnSubagent()` launches the `pi` binary with:
+Config reloads carry an invocation generation so an older asynchronous read cannot overwrite a newer direct concurrency limit. Project settings are excluded because overlapping calls from different cwd values share one host policy.
 
-- `--mode json`;
-- `-p` prompt mode;
-- `--no-session` by default, or `--fork <parentSessionFile>` only for direct API callers that request session inheritance;
-- explicit `--tools` or `--no-tools`;
-- `--no-extensions` followed by resolved `-e <extension-path>` values;
-- optional model, thinking, appended system prompt, and skill/template disabling flags.
+## Child process invariants
 
-The tool interface uses `inheritSession: "none"` so every subagent starts with a fresh context. Session inheritance is reserved for the programmatic API and must have an explicit parent session file.
+Every process launch:
 
-Child stdout is Pi JSONL. `spawn.ts` ignores session events for activity, forwards other events to callbacks, extracts final text from `message_end` or the last assistant message in `agent_end`, and captures structured output from the generic `structured_output` tool when requested. An unrecovered final assistant message with `stopReason: "error"` makes the outcome fail with its provider error even when the Pi subprocess exits zero or remains alive briefly after `agent_end`; a later successful assistant message clears an earlier transient error. Provider tool-schema rejections use `provider_schema_rejected`, while other provider failures use `provider_error`, allowing workflow retries to skip permanent schema failures without suppressing retries for transient provider errors. stderr is recorded and surfaced as activity events.
+- uses JSON prompt mode and a fresh no-session child;
+- always passes `--no-skills` and `--no-prompt-templates`;
+- never passes `--no-context-files`, preserving normal `AGENTS.md`/`CLAUDE.md` discovery;
+- starts with `--no-extensions` and enables only capability-resolved paths plus structured output when requested;
+- preserves existing short-name extension resolution and project-extension behavior;
+- inherits `process.env`, applies capability environment values, then sets `PI_SUBAGENT_DEPTH` authoritatively;
+- creates secure retained-log staging before launch;
+- settles only after process cleanup.
+
+`extra-context` is absent because no capability grants it. Environment inheritance is deliberate; `exec-shell` is not a security sandbox and can mutate.
 
 ## Structured output
 
-Structured output remains default-off, but the public tool can opt in per item through `output_schema`. `schema.ts` protects the engine boundary by recursively rejecting unsupported types, keywords, misplaced structural constraints, malformed definitions, non-scalar enum/const values, and non-JSON data before any child launches. The accepted subset intentionally excludes type arrays, references, composition and conditionals, bounds, and tuple items. The programmatic `SpawnInvocation.output` API remains unchanged and is not restricted by this public preflight layer.
+`schema.ts` validates the public supported subset before direct launch. `spawn.ts` writes an owner-only temporary schema, adds the structured tool and reminder contract, captures `details.value`, performs parent-side validation, and removes temporary files. Missing, incomplete, malformed, tool-error, schema-invalid, provider, process, and cancellation states remain distinct failures. Same-session reminders and provider-compatible root envelopes remain owned by `structured-output`.
 
-When `SpawnInvocation.output` is set, `spawn.ts` writes a temporary schema file, loads the generic `structured-output` extension in the child Pi invocation, appends system-prompt instructions requiring `structured_output` as the final action, and passes the schema file through `PI_STRUCTURED_OUTPUT_SCHEMA_FILE`. The child extension presents non-object roots through an internal provider-compatible object envelope and removes that envelope from `details.value`, so the parent still validates the original array, scalar, `null`, object, or untyped value.
+## Activity and rendering
 
-The parent captures the tool's `tool_execution_end` event from JSON mode and stores `result.details.value`. A successful child process is converted to a failed `SpawnOutcome` if the output tool was not called, returned an error, omitted `details.value`, or failed parent-side validation. `index.ts` trusts that engine outcome rather than revalidating values: internal item results carry explicit `details.ok`, structured successes render as fenced JSON, and aggregate failure counts use `details.ok` instead of exit-code heuristics.
+Intent is the primary identity. State carries capabilities, tier, thinking, status, timings, tool/token counts, safe activity identity, terminal errors, and retained-log paths. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths are expanded diagnostics.
 
-If any direct item requested a schema, fan-in adds an input-aligned `details.structured` discriminated envelope. Unrequested items use `{ requested: false }`; successes include `{ requested: true, ok: true, value }`, preserving JSON `null`; contract, process, and cancellation failures include `{ requested: true, ok: false, error }`. Prose-only batches omit the field and preserve their visible section bodies. This keeps structured output as a hard phase boundary for direct and workflow fan-in while preserving child `stdout` as diagnostic fallback text.
+## Recursion, cancellation, and diagnostics
 
-Temporary schema files are created under the system temp directory with owner-only permissions and removed after the child process exits. Retained failure logs may still include raw structured values because logs contain child JSON events.
+`PI_SUBAGENT_DEPTH` provides recursion control. Direct and curated API calls default to one child level. Queued cancellation removes waiters without consuming capacity; running cancellation terminates the child and waits for close.
 
-## Recursion and cancellation
+`spawn.ts` writes complete combined stdout/stderr to gzip staging with backpressure. Success discards staging. Failure/abort may publish a finalized owner-only log in the shared seven-day/1 GiB retained-artifact pool. Diagnostic failures never replace the primary child outcome and never expose incomplete paths. Spillover is separate and may also contain sensitive raw output.
 
-Recursion is controlled with `PI_SUBAGENT_DEPTH`. Each child gets the parent environment plus agent env and an incremented depth. The public tool path does not pass `maxDepth`, so it defaults to 1: a subagent cannot spawn another subagent. `MAX_SUBAGENT_DEPTH` is only an absolute ceiling for direct programmatic callers that deliberately allow deeper nesting.
+## Non-goals
 
-Abort handling sends SIGTERM and then SIGKILL after a short grace period. If `agent_end` is observed before the process exits, a post-agent-end grace timer allows Pi to flush output before starting the same termination sequence. A subsequent `agent_start` clears that timer and resets the lifecycle guard so extension-triggered same-session continuations, including structured-output reminders, can finish before a new grace timer is armed. The spawner resolves only after `close`, so forced cleanup cannot orphan a child or release caller concurrency while the process is still alive; a forced post-`agent_end` close preserves the already-observed logical outcome unless cancellation or a provider error occurred.
-
-## Activity tracking
-
-Activity tracking is derived from child events, not from polling child state. The tracker records phase, active/current command, recent tool/stderr events, tool-use count, token totals, last output, error message, and log file. Recent events and output snippets are aggressively truncated for UI stability.
-
-The tracker emits updates for tool progress and on a periodic tick while running. `finish()` must always be called so UI status/widget entries are removed for success, error, and abort paths.
-
-## Extension resolution
-
-Agent definitions name extensions by short name. `resolveExtensionAllowlist()` searches:
-
-1. `<cwd>/.pi/extensions`;
-2. `<agentDir>/extensions`;
-3. extension roots listed in `<agentDir>/settings.json`.
-
-It accepts directory-based extensions and single-file extension modules with known JavaScript/TypeScript extensions. If an agent requested extensions but none resolve, spawning fails before launching Pi.
-
-## Logs and spillover
-
-`spawn.ts` is the single logging lifecycle for every launched child, including direct tools, workflows, goal review, and external `api.ts` callers. It creates `_shared/retained-artifacts.ts` gzip staging before spawn, writes the command header and combined stdout/stderr in callback order, and honors writable backpressure by pausing and resuming both child streams. Success closes and discards staging. Failure or abort closes gzip fully, enters the shared cross-process retention transaction, and exposes `SpawnOutcome.logFile` only when no-overwrite `.log.gz` publication survives age cleanup and quota enforcement.
-
-The retained-diagnostics root and files are owner-controlled (`0700`/`0600`). Finalized logs share the helper's fixed 1 GiB compressed-byte quota and seven-day lazy retention with abnormal workflow recovery artifacts. Active staging is excluded; finalized capacity reservation, eviction, and publication are serialized across processes. Unsafe prelaunch storage fails closed. Stream, gzip, storage, lock, and quota failures after launch discard incomplete staging, preserve the child outcome, and add bounded `diagnosticWarnings`; no incomplete path is published. The spawner must resume paused child streams on diagnostic failure so logging cannot deadlock termination.
-
-Both individual `stdout`/`stderr` fields and combined tool output can separately spill through the shared spillover helper. Spillover and compressed logs may contain raw tool/model output and are sensitive; compression is not sanitization. Renderers expose paths only and never decompress contents.
-
-## Boundaries and non-goals
-
-- Workflows reuse the child-process engine and activity tracker through `api.ts`, but retain their worker-side scheduler and policy; the direct gate does not control workflow concurrency.
-- No per-agent concurrency policy; the gate is shared across direct calls.
-- No raw model override in the public tool; agent definitions retain model ownership.
-- No extension-side file inlining or workspace-only attachment policy; Pi owns native attachment formatting and context limits.
-- No subagent session inheritance through the `spawn_agents` tool.
-- No automatic merging of subagent decisions into workspace changes.
-- No parallel write coordination; built-in agents are read-mostly by tool boundary and read-only by prompt convention.
-- No dynamic agent reload mid-session.
-- No persistent run database or dashboard.
-- No unbounded recursive delegation.
+- Named agents, roles, presets, reusable prompts, dynamic capability definitions, or project-local capability packs.
+- Write/edit capabilities, writable subagents, worktree coordination, or merge orchestration.
+- Environment sanitization, credential isolation, or changing extension short-name resolution.
+- Per-extension ceilings, hidden defaults, parent model/thinking inheritance, or silent thinking clamps.
 
 ## Change guidance
 
-Preserve subagents as isolated, bounded child processes. Use subagents for read-mostly exploration, retrieval, review, and verification unless a custom agent explicitly broadens tools. When built-in agents include `bash`, keep their prompts read-only and explicitly forbid filesystem mutations because `bash` is not mechanically read-only. When changing spawn arguments, update `API.md` if the programmatic surface changes. Add tests for loader parsing, CLI argument construction, depth/abort behavior, activity updates, and render output when relevant.
+Preserve the curated API and fail-closed resolver. Any new capability must have a dependency-complete fixed grant, deterministic tests, user documentation, and explicit security analysis. Test policy before process machinery: exact grants, configuration precedence, live model resolution, runtime thinking support, atomic direct preflight, child CLI invariants, structured output, cancellation, diagnostics, and hostile/narrow rendering. Do not broaden authority through caller-controlled raw fields.

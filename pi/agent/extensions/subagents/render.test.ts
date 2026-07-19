@@ -1,5 +1,6 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import {
   agentProgressLine,
   formatTokens,
@@ -8,262 +9,176 @@ import {
   statsLine,
 } from "./render.ts";
 
-// ─── formatTokens ────────────────────────────────────────────────────────────
-
-test("formatTokens: below 1k renders as bare integer", () => {
-  assert.equal(formatTokens(0), "0");
-  assert.equal(formatTokens(999), "999");
+const theme = {
+  bold: (text: string) => text,
+  fg: (_color: string, text: string) => text,
+};
+const state = (overrides: Record<string, unknown> = {}) => ({
+  intent: "docs",
+  capabilities: ["read-filesystem"],
+  modelTier: "medium",
+  thinking: "high",
+  phase: "done",
+  recentEvents: [],
+  toolUseCount: 2,
+  totalTokens: 4100,
+  resolved: true,
+  startedAt: 1000,
+  lastUpdateAt: 13000,
+  ...overrides,
 });
 
-test("formatTokens: >= 1k renders as Nk with one decimal", () => {
-  assert.equal(formatTokens(1_000), "1.0k");
-  assert.equal(formatTokens(20_300), "20.3k");
-});
+for (const [value, expected] of [
+  [0, "0"],
+  [999, "999"],
+  [1_000, "1.0k"],
+  [20_300, "20.3k"],
+  [1_000_000, "1.0M"],
+  [2_450_000, "2.5M"],
+] as const) {
+  test(`formatTokens formats ${value}`, () =>
+    assert.equal(formatTokens(value), expected));
+}
 
-test("formatTokens: >= 1M renders as NM with one decimal", () => {
-  assert.equal(formatTokens(1_000_000), "1.0M");
-  assert.equal(formatTokens(2_450_000), "2.5M");
-});
-
-// ─── statsLine ───────────────────────────────────────────────────────────────
-
-test("statsLine: duration always included", () => {
-  assert.equal(statsLine(0, 0, 3_000), "3s");
-});
-
-test("statsLine: singular tool use", () => {
-  assert.equal(statsLine(1, 0, 5_000), "1 tool use · 5s");
-});
-
-test("statsLine: plural tool uses", () => {
-  assert.equal(statsLine(4, 0, 14_000), "4 tool uses · 14s");
-});
-
-test("statsLine: tokens only when > 0", () => {
+test("statsLine includes only nonzero counters and duration", () => {
+  assert.equal(statsLine(0, 0, 3000), "3s");
+  assert.equal(statsLine(1, 0, 5000), "1 tool use · 5s");
   assert.equal(
     statsLine(5, 20_300, 20_000),
     "5 tool uses · 20.3k tokens · 20s",
   );
 });
 
-test("statsLine: omits zero tools and zero tokens", () => {
-  assert.equal(statsLine(0, 0, 63_000), "1m 03s");
-});
-
-// ─── agentProgressLine ──────────────────────────────────────────────────────
-
-const theme = {
-  bold: (text: string) => text,
-  fg: (_color: string, text: string) => text,
-};
-
-test("agentProgressLine: done row includes status, label, stats", () => {
+test("done progress row is intent-first and includes execution policy", () => {
   assert.equal(
-    agentProgressLine(
-      {
-        intent: "docs",
-        agentType: "explorer",
-        phase: "done",
-        recentEvents: [],
-        toolUseCount: 2,
-        totalTokens: 4100,
-        resolved: true,
-        startedAt: 1000,
-        lastUpdateAt: 13000,
-      },
-      theme,
-    ),
-    "✓ explorer: docs · 2 tool uses · 4.1k tokens · 12s",
+    agentProgressLine(state() as any, theme),
+    "✓ docs · read-filesystem · medium/high · 2 tool uses · 4.1k tokens · 12s",
   );
 });
 
-test("agentProgressLine: running row includes latest activity", () => {
+test("running progress row includes safe tool identity without arguments", () => {
   const line = agentProgressLine(
-    {
+    state({
       intent: "tests",
-      agentType: "reviewer",
-      phase: "read",
-      recentEvents: [{ kind: "tool", text: "read: package.json" }],
+      capabilities: ["read-web"],
+      modelTier: "small",
+      thinking: "medium",
+      phase: "web_fetch",
+      resolved: false,
+      recentEvents: [{ kind: "tool", text: "web_fetch" }],
       toolUseCount: 1,
       totalTokens: 0,
       startedAt: Date.now() - 8000,
       lastUpdateAt: Date.now(),
-    },
+    }) as any,
     theme,
   );
   assert.match(
     line,
-    /^● reviewer: tests · 1 tool use · \d+s · read: package\.json$/,
+    /^● tests · read-web · small\/medium · 1 tool use · \d+s · web_fetch$/,
   );
 });
 
-test("agentProgressLine: failure row includes first error and log", () => {
+test("failure row keeps status and error but hides retained log until expanded", () => {
+  const line = agentProgressLine(
+    state({
+      intent: "security",
+      capabilities: [],
+      phase: "error",
+      toolUseCount: 0,
+      totalTokens: 0,
+      errorMessage: "Error: subagent failed\nstack",
+      logFile: "/tmp/log.txt",
+      startedAt: 1000,
+      lastUpdateAt: 2000,
+    }) as any,
+    theme,
+  );
   assert.equal(
-    agentProgressLine(
-      {
-        intent: "security",
-        agentType: "reviewer",
-        phase: "error",
-        recentEvents: [],
-        toolUseCount: 0,
-        totalTokens: 0,
-        resolved: true,
-        errorMessage: "Error: subagent failed\nstack",
-        logFile: "/tmp/log.txt",
-        startedAt: 1000,
-        lastUpdateAt: 2000,
-      },
-      theme,
-    ),
-    "✗ reviewer: security · 1s · Error: subagent failed · Log: /tmp/log.txt",
+    line,
+    "✗ security · none · medium/high · 1s · Error: subagent failed",
   );
+  assert.doesNotMatch(line, /Log:/);
 });
 
-// ─── renderAgentsResult ─────────────────────────────────────────────────────
-
-test("renderAgentsResult: partial output uses header and compact rows", () => {
-  const context: {
-    lastComponent?: { text?: string; setText(text: string): void };
-    state: Record<string, unknown>;
-    invalidate: () => void;
-  } = {
-    state: {},
-    invalidate: () => {},
-    lastComponent: {
-      text: "",
-      setText(text: string) {
-        this.text = text;
-      },
-    },
+function context() {
+  return {
+    state: {} as Record<string, unknown>,
+    invalidate() {},
+    lastComponent: undefined as any,
   };
+}
+
+test("result renderer is width-aware for partial, final, and expanded states", () => {
+  const ctx = context();
   try {
-    renderAgentsResult(
+    const partial = renderAgentsResult(
       {
         content: [],
         details: {
           total: 2,
           agents: [
-            {
-              intent: "docs",
-              agentType: "explorer",
-              phase: "done",
-              recentEvents: [],
-              toolUseCount: 2,
-              totalTokens: 4100,
-              resolved: true,
-              startedAt: 1000,
-              lastUpdateAt: 13000,
-            },
-            {
-              intent: "tests",
-              agentType: "reviewer",
-              phase: "read",
-              recentEvents: [{ kind: "tool", text: "read: package.json" }],
-              toolUseCount: 1,
-              totalTokens: 0,
-              startedAt: Date.now() - 8000,
-              lastUpdateAt: Date.now(),
-            },
+            state(),
+            state({ intent: "tests", phase: "read", resolved: false }),
           ],
         },
       },
       { isPartial: true },
       theme,
-      context,
+      ctx,
     );
-    assert.match(
-      context.lastComponent?.text ?? "",
-      /^Spawn agents · 1 done · 1 running · 0 failed · [^\n]+\n\n✓ explorer: docs · 2 tool uses · 4\.1k tokens · 12s\n● reviewer: tests · 1 tool use · \d+s · read: package\.json$/,
+    const partialLines = partial.render(200);
+    assert.match(partialLines.join("\n"), /^Spawn agents · 1 done · 1 running/);
+    assert.ok(
+      partialLines.some((line: string) =>
+        line.includes("✓ docs · read-filesystem · medium/high"),
+      ),
     );
+    ctx.lastComponent = partial;
+    const final = renderAgentsResult(
+      {
+        content: [],
+        details: {
+          total: 1,
+          failed: 0,
+          agents: [state({ logFile: "/tmp/log.txt" })],
+        },
+      },
+      { isPartial: false, expanded: true },
+      theme,
+      ctx,
+    );
+    assert.ok(
+      final.render(200).some((line: string) => line === "Log: /tmp/log.txt"),
+    );
+    assert.ok(
+      final.render(25).every((line: string) => visibleWidth(line) <= 25),
+    );
+    assert.equal(ctx.state.renderTimer, undefined);
   } finally {
-    clearInterval(context.state.renderTimer as ReturnType<typeof setInterval>);
+    clearInterval(ctx.state.renderTimer as ReturnType<typeof setInterval>);
   }
 });
 
-test("renderAgentsResult: final output has header and no leading blank line", () => {
-  const context: {
-    lastComponent?: { text?: string; setText(text: string): void };
-    state: Record<string, unknown>;
-    invalidate: () => void;
-  } = {
-    state: {},
-    invalidate: () => {},
-    lastComponent: {
-      text: "",
-      setText(text: string) {
-        this.text = text;
-      },
-    },
-  };
-  renderAgentsResult(
-    {
-      content: [],
-      details: {
-        total: 1,
-        failed: 0,
-        agents: [
-          {
-            intent: "docs",
-            agentType: "explorer",
-            phase: "done",
-            recentEvents: [],
-            toolUseCount: 2,
-            totalTokens: 4100,
-            resolved: true,
-            startedAt: 1000,
-            lastUpdateAt: 13000,
-          },
-        ],
-      },
-    },
-    { isPartial: false },
+test("renderer strips hostile controls and collapses line breaks", () => {
+  const line = agentProgressLine(
+    state({
+      intent: "bad\x1b]8;;https://evil.example\x07link\x1b]8;;\x07\nnext",
+      phase: "error",
+      errorMessage: "Error: nope\x1b[2J\nsecret",
+    }) as any,
     theme,
-    context,
   );
-  assert.equal(
-    context.lastComponent?.text,
-    "Spawn agents · 1 done · 0 running · 0 failed · 12s\n\n✓ explorer: docs · 2 tool uses · 4.1k tokens · 12s",
-  );
+  assert.doesNotMatch(line, /\x1b|\n/);
+  assert.match(line, /badlink next/);
+  assert.match(line, /Error: nope/);
+  assert.doesNotMatch(line, /secret/);
 });
 
-// ─── getActivity ─────────────────────────────────────────────────────────────
-
-test("getActivity: null / primitives return undefined", () => {
-  assert.equal(getActivity(null), undefined);
-  assert.equal(getActivity(undefined), undefined);
-  assert.equal(getActivity("string"), undefined);
-  assert.equal(getActivity(42), undefined);
-});
-
-test("getActivity: returns details.activity when present", () => {
-  const activity = {
-    intent: "i",
-    phase: "done",
-    recentEvents: [],
-    toolUseCount: 0,
-    totalTokens: 0,
-    startedAt: 1,
-    lastUpdateAt: 2,
-  };
+test("getActivity accepts nested or direct activity shapes", () => {
+  const activity = state();
   assert.equal(getActivity({ activity }), activity);
-});
-
-test("getActivity: returns record itself when shape matches SubagentRunState", () => {
-  const record = {
-    intent: "x",
-    phase: "thinking",
-    recentEvents: [],
-    toolUseCount: 0,
-    totalTokens: 0,
-    startedAt: 100,
-    lastUpdateAt: 200,
-  };
-  assert.equal(getActivity(record), record);
-});
-
-test("getActivity: returns undefined for record missing required fields", () => {
-  assert.equal(
-    getActivity({ intent: "x", phase: "done" }), // missing timestamps
-    undefined,
-  );
+  assert.equal(getActivity(activity), activity);
+  assert.equal(getActivity({ intent: "x", phase: "done" }), undefined);
+  assert.equal(getActivity(null), undefined);
 });

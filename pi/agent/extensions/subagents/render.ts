@@ -1,20 +1,22 @@
-/**
- * TUI rendering for the subagents extension.
- *
- * Pure formatters (`formatTokens`, `statsLine`, `agentProgressLine`,
- * `getActivity`) are unit-tested in `render.test.ts`. The render
- * functions themselves return pi-tui `Text` components and are exercised
- * indirectly via the extension's tool registrations in `index.ts`.
- */
-
-import { Text } from "@earendil-works/pi-tui";
 import {
   clearPartialTimer,
   firstLine,
   formatDuration,
+  getTruncatedText,
   startPartialTimer,
 } from "../_shared/render.ts";
 import type { SubagentRunState } from "./types.ts";
+
+const CONTROL_SEQUENCES =
+  /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)?|.)|[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f-\u009f]/g;
+
+function safe(value: string | undefined, max = 240): string {
+  const compact = (value ?? "")
+    .replace(CONTROL_SEQUENCES, "")
+    .replace(/\s*[\r\n]+\s*/g, " ")
+    .trim();
+  return compact.length <= max ? compact : `${compact.slice(0, max - 1)}…`;
+}
 
 export function formatTokens(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
@@ -49,9 +51,7 @@ export function statsLine(
   if (toolUseCount > 0) {
     parts.push(`${toolUseCount} tool ${toolUseCount === 1 ? "use" : "uses"}`);
   }
-  if (totalTokens > 0) {
-    parts.push(`${formatTokens(totalTokens)} tokens`);
-  }
+  if (totalTokens > 0) parts.push(`${formatTokens(totalTokens)} tokens`);
   parts.push(formatDuration(durationMs));
   return parts.join(" · ");
 }
@@ -64,27 +64,16 @@ function statusGlyph(agent: SubagentRunState): string {
   return "●";
 }
 
-function compactTypeLabel(agent: SubagentRunState): string {
-  return agent.agentType ?? "agent";
-}
-
-function compactActivityText(text: string): string {
-  return text.replace(/\s*[\r\n]+\s*/g, " ");
-}
-
 function compactRecentActivity(agent: SubagentRunState): string | undefined {
   const lastEvent = agent.recentEvents?.[agent.recentEvents.length - 1];
-  if (lastEvent?.text) {
-    const text = compactActivityText(lastEvent.text);
-    return lastEvent.kind === "stderr" ? `stderr: ${text}` : text;
-  }
-  if (agent.currentCommand) return compactActivityText(agent.currentCommand);
-  if (agent.lastCommand) return compactActivityText(agent.lastCommand);
+  if (lastEvent?.kind === "stderr") return "stderr output";
+  if (lastEvent?.kind === "tool") return safe(lastEvent.text, 80);
+  if (agent.activeTool) return safe(agent.activeTool, 80);
   if (
     agent.phase &&
     !["starting", "done", "error", "aborted"].includes(agent.phase)
   ) {
-    return agent.phase;
+    return safe(agent.phase, 80);
   }
   return undefined;
 }
@@ -95,6 +84,11 @@ function isFailed(agent: SubagentRunState): boolean {
 
 function isDone(agent: SubagentRunState): boolean {
   return agent.resolved === true || agent.phase === "done" || isFailed(agent);
+}
+
+function policyLabel(agent: SubagentRunState): string {
+  const capabilities = agent.capabilities?.join(",") || "none";
+  return `${capabilities} · ${agent.modelTier ?? "?"}/${agent.thinking ?? "?"}`;
 }
 
 function agentsHeader(
@@ -109,15 +103,19 @@ function agentsHeader(
     failed ??
     agents.filter((agent) => isFailed(agent) || agent.errorMessage).length;
   const running = Math.max(0, (total ?? agents.length) - done);
-  const start = agents.reduce<number | undefined>((min, agent) => {
-    return min === undefined ? agent.startedAt : Math.min(min, agent.startedAt);
-  }, undefined);
+  const start = agents.reduce<number | undefined>(
+    (min, agent) =>
+      min === undefined ? agent.startedAt : Math.min(min, agent.startedAt),
+    undefined,
+  );
   const end = final
-    ? agents.reduce<number | undefined>((max, agent) => {
-        return max === undefined
-          ? agent.lastUpdateAt
-          : Math.max(max, agent.lastUpdateAt);
-      }, undefined)
+    ? agents.reduce<number | undefined>(
+        (max, agent) =>
+          max === undefined
+            ? agent.lastUpdateAt
+            : Math.max(max, agent.lastUpdateAt),
+        undefined,
+      )
     : Date.now();
   const elapsed =
     start === undefined || end === undefined
@@ -137,21 +135,23 @@ export function agentProgressLine(agent: SubagentRunState, theme: any): string {
     0,
     (agent.lastUpdateAt ?? Date.now()) - agent.startedAt,
   );
-  const label = `${statusGlyph(agent)} ${compactTypeLabel(agent)}: ${agent.intent}`;
+  const label = `${statusGlyph(agent)} ${safe(agent.intent, 160)}`;
+  const policy = theme.fg("muted", policyLabel(agent));
 
   if (isFailed(agent)) {
-    const msg = agent.errorMessage
-      ? firstLine(agent.errorMessage)
-      : agent.phase === "aborted"
-        ? "Error: subagent aborted"
-        : "Error: subagent failed";
-    const log = agent.logFile ? ` · Log: ${agent.logFile}` : "";
-    const stats = formatDuration(elapsedMs);
-    return `${label} · ${theme.fg("muted", stats)} · ${theme.fg("error", `${msg}${log}`)}`;
+    const msg = safe(
+      agent.errorMessage
+        ? firstLine(agent.errorMessage)
+        : agent.phase === "aborted"
+          ? "Error: subagent aborted"
+          : "Error: subagent failed",
+      180,
+    );
+    return `${label} · ${policy} · ${theme.fg("muted", formatDuration(elapsedMs))} · ${theme.fg("error", msg)}`;
   }
 
   if (agent.resolved === true || agent.phase === "done") {
-    return `${label} · ${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
+    return `${label} · ${policy} · ${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
   }
 
   const activity = compactRecentActivity(agent) ?? "initializing";
@@ -160,56 +160,52 @@ export function agentProgressLine(agent: SubagentRunState, theme: any): string {
     agent.totalTokens,
     Date.now() - agent.startedAt,
   );
-  return `${label} · ${theme.fg("muted", stats)} · ${theme.fg("muted", activity)}`;
+  return `${label} · ${policy} · ${theme.fg("muted", stats)} · ${theme.fg("muted", activity)}`;
 }
 
-// The call line would just repeat the intents already shown in renderAgentsResult's
-// per-agent blocks, so suppress it. Pi still gets a (blank) call component so the
-// usual component lifecycle is preserved.
 export function renderAgentsCall(
   _args: { agents?: unknown[] },
   _theme: any,
   context: any,
 ) {
-  const t = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-  t.setText("");
-  return t;
+  return getTruncatedText(context.lastComponent, []);
 }
 
 export function renderAgentsResult(
   result: { content: { type: string; text?: string }[]; details?: unknown },
-  options: { isPartial: boolean },
+  options: { isPartial: boolean; expanded?: boolean },
   theme: any,
   context: any,
 ) {
-  const t = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-  const d = (result.details ?? {}) as {
+  const details = (result.details ?? {}) as {
     agents?: SubagentRunState[];
     total?: number;
     failed?: number;
   };
+  const agents = details.agents ?? [];
 
-  if (options.isPartial) {
-    startPartialTimer(context);
-    const agents = d.agents ?? [];
-    const lines = [
-      agentsHeader(agents, d.total, d.failed, theme, false),
-      "",
-      ...agents.map((agent) => agentProgressLine(agent, theme)),
-    ];
-    t.setText(lines.join("\n"));
-    return t;
-  }
-
-  clearPartialTimer(context);
-
-  const agents = d.agents ?? [];
+  if (options.isPartial) startPartialTimer(context);
+  else clearPartialTimer(context);
 
   const lines = [
-    agentsHeader(agents, d.total, d.failed, theme, true),
+    agentsHeader(
+      agents,
+      details.total,
+      details.failed,
+      theme,
+      !options.isPartial,
+    ),
     "",
     ...agents.map((agent) => agentProgressLine(agent, theme)),
   ];
-  t.setText(lines.join("\n"));
-  return t;
+  if (options.expanded) {
+    for (const agent of agents) {
+      if (agent.logFile)
+        lines.push(theme.fg("muted", `Log: ${safe(agent.logFile, 240)}`));
+      if (agent.errorMessage && !isFailed(agent)) {
+        lines.push(theme.fg("error", safe(agent.errorMessage, 240)));
+      }
+    }
+  }
+  return getTruncatedText(context.lastComponent, lines);
 }

@@ -1,6 +1,6 @@
 # Correctness
 
-Review the supplied target for logic errors, broken behavior, and unmet requirements. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review the supplied target for logic errors, broken behavior, and unmet requirements. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

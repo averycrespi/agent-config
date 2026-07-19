@@ -21,14 +21,8 @@ test("workflow config exposes all defaults", () => {
     DEFAULT_WORKFLOW_CONFIG.userWorkflowsDir,
     join(getAgentDir(), "workflows"),
   );
-  assert.equal(
-    DEFAULT_WORKFLOW_CONFIG.modelTierSmall,
-    "openai-codex/gpt-5.6-luna",
-  );
-  assert.equal(
-    DEFAULT_WORKFLOW_CONFIG.modelTierBig,
-    "openai-codex/gpt-5.6-sol",
-  );
+  assert.equal("modelTierSmall" in DEFAULT_WORKFLOW_CONFIG, false);
+  assert.equal("modelTierBig" in DEFAULT_WORKFLOW_CONFIG, false);
 });
 
 test("workflow config accepts settings and environment overrides", () => {
@@ -40,8 +34,6 @@ test("workflow config accepts settings and environment overrides", () => {
       maxTokensPerRun: "0",
       maxAgentsPerRun: 12,
       maxVisibleSettledAgents: 3,
-      modelTierSmall: " openai/small ",
-      modelTierBig: "anthropic/big",
       userWorkflowsDir: " saved-workflows ",
     }),
     {
@@ -51,8 +43,6 @@ test("workflow config accepts settings and environment overrides", () => {
       maxTokensPerRun: 0,
       maxAgentsPerRun: 12,
       maxVisibleSettledAgents: 3,
-      modelTierSmall: "openai/small",
-      modelTierBig: "anthropic/big",
       userWorkflowsDir: resolve("saved-workflows"),
     },
   );
@@ -65,8 +55,6 @@ test("workflow config accepts settings and environment overrides", () => {
       WORKFLOWS_MAX_TOKENS_PER_RUN: "10000",
       WORKFLOWS_MAX_AGENTS_PER_RUN: "0",
       WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS: "0",
-      WORKFLOWS_MODEL_TIER_SMALL: " openai/small ",
-      WORKFLOWS_MODEL_TIER_BIG: " ",
       WORKFLOWS_USER_WORKFLOWS_DIR: " /private/workflows ",
     } as NodeJS.ProcessEnv),
     {
@@ -76,8 +64,6 @@ test("workflow config accepts settings and environment overrides", () => {
       maxTokensPerRun: 10_000,
       maxAgentsPerRun: 0,
       maxVisibleSettledAgents: 0,
-      modelTierSmall: "openai/small",
-      modelTierBig: "",
       userWorkflowsDir: "/private/workflows",
     },
   );
@@ -94,7 +80,6 @@ test("workflow config rejects invalid settings with warnings", () => {
         maxTokensPerRun: -1,
         maxAgentsPerRun: 1.5,
         maxVisibleSettledAgents: -1,
-        modelTierSmall: 42,
         userWorkflowsDir: "   ",
       },
       warnings,
@@ -108,9 +93,37 @@ test("workflow config rejects invalid settings with warnings", () => {
     "Ignoring invalid maxTokensPerRun; using default.",
     "Ignoring invalid maxAgentsPerRun; using default.",
     "Ignoring invalid maxVisibleSettledAgents; using default.",
-    "Ignoring invalid modelTierSmall; using default.",
     "Ignoring invalid userWorkflowsDir; using default.",
   ]);
+});
+
+test("removed workflow model tiers are ignored and diagnosed", () => {
+  const warnings: string[] = [];
+  const normalized = normalizeWorkflowConfig(
+    { modelTierSmall: "stale/small", modelTierBig: "stale/big" },
+    warnings,
+  );
+  assert.equal("modelTierSmall" in normalized, false);
+  assert.equal("modelTierBig" in normalized, false);
+  assert.match(warnings.join("\n"), /modelTierSmall was removed/);
+  assert.match(warnings.join("\n"), /modelTierBig was removed/);
+
+  const envWarnings: string[] = [];
+  assert.deepEqual(
+    readEnvSettings(
+      {
+        WORKFLOWS_MODEL_TIER_SMALL: "stale/small",
+        WORKFLOWS_MODEL_TIER_BIG: "stale/big",
+      },
+      envWarnings,
+    ),
+    {},
+  );
+  assert.match(
+    envWarnings.join("\n"),
+    /WORKFLOWS_MODEL_TIER_SMALL was removed/,
+  );
+  assert.match(envWarnings.join("\n"), /WORKFLOWS_MODEL_TIER_BIG was removed/);
 });
 
 test("workflow config resolves relative workflow directories against the call cwd", () => {

@@ -1,12 +1,11 @@
-export { loadAgents } from "./loader.ts";
-export { spawnSubagent, formatSpawnFailure } from "./spawn.ts";
+export { formatSpawnFailure, runSubagent } from "./run.ts";
+export type { LiveModelRegistry, RunSubagentRequest } from "./run.ts";
 export type {
-  SpawnInvocation,
   SpawnOutcome,
   StructuredOutputResult,
   StructuredOutputSpec,
 } from "./spawn.ts";
-export type { AgentDefinition, BuiltinTool } from "./types.ts";
+export type { Capability, ModelTier, ThinkingLevel } from "./types.ts";
 
 export { createSubagentActivityTracker } from "./activity.ts";
 export { validateOutputSchema } from "./schema.ts";

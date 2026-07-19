@@ -1,6 +1,6 @@
 # Code Quality
 
-Review the supplied changes for design and craftsmanship problems that create concrete maintenance risk. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review the supplied changes for design and craftsmanship problems that create concrete maintenance risk. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

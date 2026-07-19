@@ -18,7 +18,7 @@ Additional user-configured context files:
 </extra_context>
 ```
 
-The files are read by the extension, not by the agent through the `read` tool, so subagents can receive the same context when their agent definition loads the `extra-context` extension.
+The files are read by the extension, not by the agent through the `read` tool. The subagents extension does not load `extra-context` into children; child Pi processes continue to load normal `AGENTS.md`/`CLAUDE.md` context files.
 
 ## Commands
 
@@ -62,9 +62,7 @@ export EXTRA_CONTEXT_FILES="$HOME/.pi/agent/extra-context/AGENTS.private.md"
 
 ## Subagents
 
-The `subagents` extension launches child Pi processes with `--no-extensions` and only re-enables extensions listed in each agent definition. To provide extra context to a subagent, include `extra-context` in that agent file's `extensions:` frontmatter.
-
-The built-in agent definitions in this repo load `extra-context` by default.
+`extra-context` applies to sessions that load this extension directly. It is not a built-in subagent capability and is not loaded solely for child execution. Put required project guidance in normal Pi context files or include necessary task context in the self-contained subagent prompt.
 
 ## Security and privacy
 

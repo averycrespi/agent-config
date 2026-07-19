@@ -13,7 +13,7 @@ This is my personal agent operating system for software work. It combines:
 - **A Pi-native workflow layer** for planning, executing, independently reviewing, and completing engineering tasks
 - **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, prechecked scheduled tasks, brokered external tools, web access, and TUI polish
 - **Reusable skills and saved workflows** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, deep public-web research, memory workflows, and agent-harness engineering
-- **Subagent definitions** for isolated exploration, scouting, research, review, and analysis
+- **Centrally governed subagents** with explicit composable capabilities, model tiers, and thinking
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
 
 The goal is not just to store settings. The goal is to make the agent more stateful, safer, more inspectable, and better at real development workflows.
@@ -29,14 +29,14 @@ The Pi setup is built around a durable development loop:
 - **Clarify scope** with `clarify` when requirements, edge cases, acceptance criteria, or design intent are fuzzy
 - **Plan the work** with `plan`, then stress-test substantial plans with `challenge-plan` before execution
 - **Execute deliberately** with session-scoped goals via `goal`, optional fail-closed independent completion review, and in-session task tracking via `todo`
-- **Delegate read-only research** to focused subagents for exploration, scouting, deeper research, review, and analysis
+- **Delegate isolated research** with self-contained prompts and explicit filesystem, web, broker, or shell capabilities
 - **Review independently** with `review` for diffs, branches, plans, documents, and other coherent units of work
 
 Supporting rails keep the loop safer and more inspectable:
 
 - **Route authenticated external access** through `mcp-broker` instead of exposing credentials directly to the agent
 - **Use direct web access** through `web-access` for public search and page fetching
-- **Orchestrate multi-agent work** with inline or reusable named `workflow` definitions—including a repository-managed `deep-research` workflow—that support discovery and validation, then fan out read-mostly subagents under host-enforced concurrency and run budgets, structured verification/report gates, and fixed model-tier routing
+- **Orchestrate multi-agent work** with inline or reusable named `workflow` definitions—including a repository-managed `deep-research` workflow—that fan out explicitly routed subagents under host-enforced concurrency, central tier policy, run budgets, and structured verification/report gates
 
 This turns Pi from a chat interface with tools into a more structured development harness.
 
@@ -57,15 +57,9 @@ See the [Pi README](pi/README.md#extensions) for the full extension table.
 
 The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, reviewing, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
 
-Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamically by the `subagents` extension. They provide isolated read-only workers for:
+The [`subagents`](pi/agent/extensions/subagents/) extension runs isolated child contexts from self-contained prompts. Each call explicitly selects from four fixed capabilities—filesystem reads, shell execution, read-only broker access, and public web access—plus a centrally configured small/medium/large model tier and allowed thinking level. There are no named roles or Markdown agent presets; intent is the visible identity and authority is composed per request.
 
-- focused repository exploration
-- lightweight scouting
-- deeper multi-source research
-- holistic review of diffs, plans, and branches
-- signal analysis for logs, traces, metrics, and large outputs
-
-The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions, including bounded host-enforced concurrency and run budgets, structured verification/report gates, fixed host-resolved model tiers, and compact progress. The repository also ships [`deep-research`](pi/agent/workflows/deep-research.js), a bounded public-web workflow that cross-checks source-backed claims before returning one cited Markdown report.
+The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions. Workflow calls carry the same explicit capability/tier/thinking contract and use host-enforced concurrency, run budgets, structured verification/report gates, and compact progress. The repository also ships [`deep-research`](pi/agent/workflows/deep-research.js), a bounded public-web workflow that cross-checks source-backed claims before returning one cited Markdown report.
 
 ### Extension Development
 

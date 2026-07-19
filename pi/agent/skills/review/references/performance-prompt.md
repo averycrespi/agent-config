@@ -1,6 +1,6 @@
 # Performance
 
-Review the supplied changes for evidenced efficiency and resource-management regressions. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review the supplied changes for evidenced efficiency and resource-management regressions. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

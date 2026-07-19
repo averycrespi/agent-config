@@ -1,6 +1,6 @@
 # Security
 
-Review the supplied target for exploitable vulnerabilities, unsafe trust boundaries, and security regressions. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review the supplied target for exploitable vulnerabilities, unsafe trust boundaries, and security regressions. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

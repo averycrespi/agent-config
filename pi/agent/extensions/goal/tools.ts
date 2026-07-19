@@ -147,6 +147,7 @@ export function registerGoalTools(
         cwd: ctx?.cwd ?? process.cwd(),
         timeoutSeconds: options.reviewTimeoutSeconds ?? 600,
         signal,
+        modelRegistry: ctx.modelRegistry,
       };
       let result: GoalReviewResult;
       try {

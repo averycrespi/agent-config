@@ -8,11 +8,10 @@ This directory manages [Pi](https://pi.dev/) coding agent configuration files.
 pi/agent/
 ├── AGENTS.md       # Agent instructions (task approach, git rules, style)
 ├── settings.json   # Provider, model, and thinking settings
-├── agents/         # Subagent definitions (explorer, scout, researcher, reviewer, analyst)
-├── extensions/     # TypeScript extensions
+├── extensions/     # TypeScript extensions, including centrally governed subagents
+├── workflows/      # Reusable foreground orchestration scripts
 ├── prompts/        # Custom prompt templates
-├── skills/         # Custom skills
-└── workflows/      # Reusable foreground orchestration scripts
+└── skills/         # Custom skills
 ```
 
 ## How It Works
@@ -28,14 +27,14 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `ask-user`          | `ask_user` tool for multiple-choice questions                                                           |
 | `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                 |
 | `context-usage`     | `/context-usage` token-blame report for current context-window usage                                    |
-| `extra-context`     | User-configured additional context files injected into main and subagent system prompts                 |
+| `extra-context`     | User-configured additional context files injected into sessions that load the extension                 |
 | `goal`              | Fork-safe goals, bounded auto-run, and optional fail-closed independent completion review               |
 | `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                       |
 | `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
 | `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
 | `startup-header`    | Minimal colored startup header with Pi version, repo, branch, and recent commits                        |
 | `structured-output` | Schema-backed final output tool, no-op unless configured                                                |
-| `subagents`         | Dynamic subagent loading and dispatch                                                                   |
+| `subagents`         | Explicit capability/tier/thinking policy and isolated child dispatch                                    |
 | `todo`              | Session-persisted TODO tool with a sticky widget                                                        |
 | `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                |
 | `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows |
@@ -50,7 +49,7 @@ See [AGENTS.md](../AGENTS.md) for repo-specific authoring guidance.
 
 ## Saved Workflows
 
-JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, read-mostly subagent policy, fixed model aliases, concurrency, budgets, and validation as inline workflows. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
+JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, centrally resolved subagent capabilities/model tiers/thinking, concurrency, budgets, and validation as inline workflows. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
 
 | Workflow        | Purpose                                                                           |
 | --------------- | --------------------------------------------------------------------------------- |

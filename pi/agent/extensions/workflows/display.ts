@@ -171,7 +171,6 @@ function safeAgentActivity(
   return {
     ...activity,
     intent: safeDisplay(activity.intent),
-    agentType: safeOptional(activity.agentType),
     phase: safeDisplay(activity.phase) as typeof activity.phase,
     activeTool: safeOptional(activity.activeTool),
     currentCommand: safeOptional(activity.currentCommand),
@@ -196,7 +195,8 @@ function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
         : agent.status === "aborted"
           ? "!"
           : "✗";
-  const label = `${glyph} ${safeDisplay(agent.agent)}: ${safeDisplay(agent.intent)}`;
+  const policy = `${agent.capabilities.join(",") || "none"} · ${agent.modelTier}/${agent.thinking}`;
+  const label = `${glyph} ${safeDisplay(agent.intent)} · ${safeDisplay(policy)}`;
   if (agent.status === "running")
     return `${label} · ${theme.fg("muted", "initializing")}`;
   if (agent.status === "done") return `${label} · ${theme.fg("muted", "done")}`;

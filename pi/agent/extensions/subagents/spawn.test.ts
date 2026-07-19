@@ -217,28 +217,17 @@ test("buildArgs: model and thinking flags only present when provided", () => {
   assert.ok(!noFlags.includes("--thinking"));
 });
 
-test("buildArgs: --no-skills and --no-prompt-templates gated on booleans", () => {
-  const on = buildArgs({
-    prompt: "p",
-    tools: [],
-    extensions: [],
-    files: [],
-    inheritSession: "none",
-    disableSkills: true,
-    disablePromptTemplates: true,
-  });
-  assert.ok(on.includes("--no-skills"));
-  assert.ok(on.includes("--no-prompt-templates"));
-
-  const off = buildArgs({
+test("buildArgs always disables skills/templates but preserves context files", () => {
+  const args = buildArgs({
     prompt: "p",
     tools: [],
     extensions: [],
     files: [],
     inheritSession: "none",
   });
-  assert.ok(!off.includes("--no-skills"));
-  assert.ok(!off.includes("--no-prompt-templates"));
+  assert.ok(args.includes("--no-skills"));
+  assert.ok(args.includes("--no-prompt-templates"));
+  assert.ok(!args.includes("--no-context-files"));
 });
 
 test("buildArgs: systemPrompt only appended when trimmed non-empty", () => {
@@ -307,6 +296,33 @@ test("spawnSubagent: unresolved extensionAllowlist returns error without spawnin
     else process.env.PI_SUBAGENT_DEPTH = prev;
     if (prevDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prevDir;
+  }
+});
+
+test("spawnSubagent fails when any requested extension dependency is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "subagent-partial-ext-"));
+  let spawned = false;
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    spawned = true;
+    throw new Error("must not spawn");
+  });
+  try {
+    await mkdir(join(root, ".pi", "extensions", "web-access"), {
+      recursive: true,
+    });
+    const result = await spawnSubagent({
+      prompt: "p",
+      toolAllowlist: [],
+      extensionAllowlist: ["web-access", "definitely-missing-extension"],
+      cwd: root,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(spawned, false);
+    assert.match(result.errorMessage ?? "", /definitely-missing-extension/);
+    assert.doesNotMatch(result.errorMessage ?? "", /web-access/);
+  } finally {
+    spawnStub.mock.restore();
+    await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -731,7 +747,7 @@ test("spawnSubagent: retained failure logs are complete gzip files", async () =>
     assert.match(result.logFile ?? "", /\.log\.gz$/);
     assert.equal(
       (await gunzip(await readFile(result.logFile!))).toString("utf8"),
-      '$ pi --mode json -p --no-session --no-tools --no-extensions p\n\n{"type":"log","value":"first"}\n[stderr] token=super-secret\n{"type":"log","value":"last"}\n',
+      '$ pi --mode json -p --no-session --no-tools --no-skills --no-prompt-templates --no-extensions p\n\n{"type":"log","value":"first"}\n[stderr] token=super-secret\n{"type":"log","value":"last"}\n',
     );
   } finally {
     spawnStub.mock.restore();

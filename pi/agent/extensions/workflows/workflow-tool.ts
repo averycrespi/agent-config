@@ -7,10 +7,6 @@ import {
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import { loadWorkflowConfig, type WorkflowConfig } from "./config.ts";
-import {
-  loadAgents as loadAgentDefinitions,
-  type AgentDefinition,
-} from "../subagents/api.ts";
 import { parseWorkflowScript } from "./parser.ts";
 import { createWorkflowRunLedger } from "./ledger.ts";
 import {
@@ -63,22 +59,6 @@ const workflowParamsSchema = Type.Object(
 type WorkflowParams = Static<typeof workflowParamsSchema>;
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
-
-function modelSelectorFromCtx(ctx: {
-  model?: { provider?: string; id?: string };
-}) {
-  if (!ctx.model?.provider || !ctx.model.id) return undefined;
-  return `${ctx.model.provider}/${ctx.model.id}`;
-}
-
-function thinkingLevelFromPi(pi: ExtensionAPI): string | undefined {
-  try {
-    const level = pi.getThinkingLevel();
-    return level && level !== "off" ? level : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function formatFinal(
   result: Awaited<ReturnType<typeof runWorkflow>>,
@@ -155,7 +135,6 @@ function recoveryEnvelope(
     const state = statesById.get(record.requestId);
     return {
       ...record,
-      agent: state?.agent ?? record.agent,
       intent: state?.intent ?? record.intent,
       effectiveTimeoutMs:
         state?.effectiveTimeoutMs ?? record.effectiveTimeoutMs,
@@ -214,7 +193,6 @@ type LoadWorkflowConfig = (
 ) => Promise<WorkflowConfig>;
 
 type WorkflowToolDependencies = {
-  loadAgents: typeof loadAgentDefinitions;
   persistScript: typeof persistWorkflowScript;
   persistRecovery: (
     toolCallId: string,
@@ -230,7 +208,6 @@ export function registerWorkflowTool(
   overrides: Partial<WorkflowToolDependencies> = {},
 ): void {
   const dependencies: WorkflowToolDependencies = {
-    loadAgents: loadAgentDefinitions,
     persistScript: persistWorkflowScript,
     persistRecovery: (toolCallId, value) =>
       persistRetainedJson("workflow-recovery", toolCallId, value),
@@ -246,22 +223,22 @@ export function registerWorkflowTool(
 
 Use action \"list\" for current reusable definitions, action \"validate\" with exactly one of script/name without execution, or action \"run\" with exactly one of script/name and optional args.
 Scripts must start with literal metadata: export const meta = { name: \"...\", description: \"...\" }.
-Use the globals agent(prompt, { agent?, intent?, output?, model?, retries?, timeoutMs? }), verify(claim, { agent?, intent?, context?, model?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
-Concurrency is bounded by configuration. Model may only be the configured \"small\" or \"big\" alias. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
+Use the globals agent(prompt, { intent, capabilities, modelTier, thinking, output?, retries?, timeoutMs? }), verify(claim, { intent, capabilities, modelTier, thinking, context?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
+Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
       "List, validate, or run a deterministic foreground JavaScript workflow.",
     promptGuidelines: [
       "Call workflow with action list when a reusable saved workflow may apply.",
       "Use workflow for deterministic fan-out/fan-in research, review, or audit work where several isolated subagents can run under one script.",
-      "Do not use workflow for parallel workspace mutation; Phase 1 permits only read-mostly agent types.",
+      "Do not use workflow for parallel workspace mutation; use only explicitly justified read-mostly capabilities.",
       "Write scripts with `export const meta = { name, description }` as the first statement and `export async function run() { ... }` for the main body.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
       "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
       "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
-      "Use `verify(claim, { agent?, intent?, context?, model?, retries?, timeoutMs? })`; it resolves { ok, reasons }. Gate a report with `report(value, { gate: () => verdict })`, where the callable gate returns true or an object with `ok: true` to pass.",
+      "Use `verify(claim, { intent, capabilities, modelTier, thinking, context?, retries?, timeoutMs? })`; it resolves { ok, reasons }. Gate a report with `report(value, { gate: () => verdict })`, where the callable gate returns true or an object with `ok: true` to pass.",
       "Treat `budget` as an advisory snapshot only. `workflow_run_cap_exceeded` denies later calls, while `workflow_budget_exceeded` aborts active agents and prevents retries or new spawns.",
-      'Set `model: "small"` or `model: "big"` only when that fixed alias is configured; arbitrary model selectors are rejected host-side.',
+      "Every agent and verify call must set a self-contained intent, explicit capabilities (including []), modelTier, and thinking.",
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
       "Use `timeoutMs` on an agent call when one slow branch should fail without exhausting the whole workflow timeout.",
     ],
@@ -378,7 +355,6 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
         };
       }
 
-      const agents = dependencies.loadAgents();
       const ledger = createWorkflowRunLedger({
         maxTokens: currentConfig.maxTokensPerRun,
         maxAgents: currentConfig.maxAgentsPerRun,
@@ -406,13 +382,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
         cwd: ctx.cwd,
         signal,
         logId: toolCallId,
-        agents: agents as AgentDefinition[],
-        model: modelSelectorFromCtx(ctx),
-        modelTiers: {
-          small: currentConfig.modelTierSmall,
-          big: currentConfig.modelTierBig,
-        },
-        thinking: thinkingLevelFromPi(pi),
+        modelRegistry: ctx.modelRegistry,
         ledger,
         onAgentUpdate: (state) => {
           agentStates.set(state.id, { ...state });

@@ -1,6 +1,6 @@
 # Codebase Fit
 
-Review whether the supplied changes fit established repository conventions and architecture. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review whether the supplied changes fit established repository conventions and architecture. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

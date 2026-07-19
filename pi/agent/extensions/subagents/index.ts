@@ -1,51 +1,59 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
-import {
-  buildSpawnAgentsParams,
-  DEFAULT_MAX_CONCURRENCY,
-  MAX_AGENTS_PER_CALL,
-  THINKING_LEVELS,
-  type AgentDefinition,
-  type SpawnAgentItem,
-  type SpawnAgentsParams,
-  type SubagentRunState,
-} from "./types.ts";
 import {
   createSubagentActivityTracker,
   type SubagentActivityTracker,
 } from "./activity.ts";
-import { spillIfNeeded } from "../_shared/spillover.ts";
-import { formatSpawnFailure, spawnSubagent } from "./spawn.ts";
-
-export const _spawnSubagent = { fn: spawnSubagent };
-import { loadAgents } from "./loader.ts";
-import { getActivity, renderAgentsCall, renderAgentsResult } from "./render.ts";
 import {
   loadSubagentsConfig,
   registerSubagentsConfigCommand,
+  type SubagentsConfig,
 } from "./config.ts";
 import { createConcurrencyGate, type ConcurrencyGate } from "./pool.ts";
+import { getActivity, renderAgentsCall, renderAgentsResult } from "./render.ts";
+import {
+  formatSpawnFailure,
+  resolveSubagentRequest,
+  runSubagent,
+  validatePreparedExtensions,
+  type LiveModelRegistry,
+  type RunSubagentRequest,
+} from "./run.ts";
 import { validateOutputSchema } from "./schema.ts";
+import { spillIfNeeded } from "../_shared/spillover.ts";
+import {
+  buildSpawnAgentsParams,
+  CAPABILITIES,
+  DEFAULT_MAX_CONCURRENCY,
+  MAX_AGENTS_PER_CALL,
+  MODEL_TIERS,
+  THINKING_LEVELS,
+  type SpawnAgentItem,
+  type SpawnAgentsParams,
+  type SubagentRunState,
+} from "./types.ts";
+
+export const _runSubagent = { fn: runSubagent };
 
 const text = (value: string) => [{ type: "text" as const, text: value }];
 
-function modelSelectorFromCtx(ctx: {
-  model?: { provider?: string; id?: string };
-}) {
-  if (!ctx.model?.provider || !ctx.model.id) return undefined;
-  return `${ctx.model.provider}/${ctx.model.id}`;
-}
+type OnUpdate = (event: {
+  content: { type: "text"; text: string }[];
+  details: Record<string, unknown>;
+}) => void;
 
-function thinkingLevelFromPi(pi: ExtensionAPI): string | undefined {
-  try {
-    const level = pi.getThinkingLevel();
-    return level && level !== "off" ? level : undefined;
-  } catch {
-    return undefined;
-  }
-}
+type SpawnCtx = {
+  cwd: string;
+  signal?: AbortSignal;
+  modelRegistry: LiveModelRegistry;
+  hasUI: boolean;
+  ui: {
+    setStatus(id: string, value: string | undefined): void;
+    setWidget(id: string, value: string[] | undefined): void;
+  };
+};
 
 export function normalizeIntent(intent: string): string {
   const trimmed = intent.trim();
@@ -53,19 +61,11 @@ export function normalizeIntent(intent: string): string {
   return trimmed;
 }
 
-export function buildAgentDescription(agents: AgentDefinition[]): string {
-  if (agents.length === 0) {
-    return "Agent type. No agents are currently loaded — check that agent markdown files exist in ~/.pi/agent/agents/.";
-  }
-  const list = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
-  return `Agent type. Choose based on the task:\n\n${list}`;
+export function buildPolicyDescription(config: SubagentsConfig): string {
+  return `Required configured model tier. small=${config.modelTierSmall}; medium=${config.modelTierMedium}; large=${config.modelTierLarge}.`;
 }
 
-export function buildDelegationGuidance(agents: AgentDefinition[]): string {
-  const agentList =
-    agents.length > 0
-      ? agents.map((a) => `${a.name}: ${a.description}`).join("; ")
-      : "none loaded";
+export function buildDelegationGuidance(config: SubagentsConfig): string {
   return `\n\n## Subagent delegation
 Use spawn_agents proactively for read-mostly work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion.
 
@@ -82,88 +82,86 @@ Do not delegate when:
 - the subagent would need unstated conversation context or user-owned decisions
 - the work is tightly sequential or delegation would mostly duplicate effort
 
-Pass independent agents in one spawn_agents call; at most 16 agents are accepted, and a bounded queue controls execution rather than launching every item simultaneously. A single-agent call is correct for one isolated task. Per-item thinking, files, and output_schema are optional. The model remains controlled by agent definitions. Use structured schemas only when machine-readable fan-in is needed. Brief each agent like a colleague who just arrived: include the goal, paths/artifacts, criteria, constraints, and expected output. Available agent types: ${agentList}.`;
+Pass independent agents in one spawn_agents call; at most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities, model_tier, and thinking. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Allowed thinking levels: ${config.allowedThinkingLevels.join(", ") || "none"}. Configured tiers: small=${config.modelTierSmall}; medium=${config.modelTierMedium}; large=${config.modelTierLarge}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema for validated machine-readable results.`;
+}
+
+function toRunRequest(
+  spec: SpawnAgentItem,
+  ctx: SpawnCtx,
+  logId: string,
+  onEvent?: (event: unknown) => void,
+): RunSubagentRequest {
+  return {
+    intent: spec.intent,
+    prompt: spec.prompt,
+    capabilities: spec.capabilities,
+    modelTier: spec.model_tier,
+    thinking: spec.thinking,
+    files: spec.files,
+    output:
+      spec.output_schema !== undefined
+        ? { schema: spec.output_schema }
+        : undefined,
+    cwd: ctx.cwd,
+    signal: ctx.signal,
+    logId,
+    onEvent,
+    modelRegistry: ctx.modelRegistry,
+  };
 }
 
 export async function validateSpawnAgentSpecs(
   specs: SpawnAgentItem[],
-  agentMap: Map<string, AgentDefinition>,
-  cwd: string,
+  config: SubagentsConfig,
+  ctx: Pick<SpawnCtx, "cwd" | "modelRegistry">,
 ): Promise<string[]> {
   const errors: string[] = [];
   if (specs.length > MAX_AGENTS_PER_CALL) {
-    return [
+    errors.push(
       `agents must contain at most ${MAX_AGENTS_PER_CALL} agents (received ${specs.length})`,
-    ];
+    );
   }
-  for (let i = 0; i < specs.length; i++) {
-    const spec = specs[i];
-    if (!spec.intent.trim()) {
-      errors.push(`agents[${i}].intent is required`);
-    }
-    if (!agentMap.has(spec.agent)) {
-      errors.push(
-        `agents[${i}].agent "${spec.agent}" is not a known agent type`,
+
+  for (let i = 0; i < specs.length; i += 1) {
+    const spec = specs[i] as SpawnAgentItem;
+    const prefix = `agents[${i}]`;
+    const preflight = resolveSubagentRequest(
+      toRunRequest(spec, ctx as SpawnCtx, `preflight:${i}`),
+      config,
+    );
+    if (preflight.prepared) {
+      preflight.errors.push(
+        ...(await validatePreparedExtensions(preflight.prepared, ctx.cwd)),
       );
     }
-    if (
-      spec.thinking !== undefined &&
-      !(THINKING_LEVELS as readonly string[]).includes(spec.thinking)
-    ) {
-      errors.push(
-        `agents[${i}].thinking must be one of: ${THINKING_LEVELS.join(", ")}`,
-      );
-    }
+    errors.push(...preflight.errors.map((error) => `${prefix}.${error}`));
+
     for (let j = 0; j < (spec.files?.length ?? 0); j += 1) {
       const file = spec.files![j]!;
-      if (!file.trim()) {
-        errors.push(`agents[${i}].files[${j}] must be non-empty`);
+      if (typeof file !== "string" || !file.trim()) {
+        errors.push(`${prefix}.files[${j}] must be non-empty`);
         continue;
       }
-      const absolutePath = resolve(cwd, file);
+      const absolutePath = resolve(ctx.cwd, file);
       try {
         const metadata = await stat(absolutePath);
         if (!metadata.isFile()) {
-          errors.push(`agents[${i}].files[${j}] must name a regular file`);
+          errors.push(`${prefix}.files[${j}] must name a regular file`);
           continue;
         }
         await access(absolutePath, constants.R_OK);
       } catch {
-        errors.push(
-          `agents[${i}].files[${j}] must name a readable regular file`,
-        );
+        errors.push(`${prefix}.files[${j}] must name a readable regular file`);
       }
     }
     if (spec.output_schema !== undefined) {
       errors.push(
-        ...validateOutputSchema(
-          spec.output_schema,
-          `agents[${i}].output_schema`,
-        ),
+        ...validateOutputSchema(spec.output_schema, `${prefix}.output_schema`),
       );
     }
   }
   return errors;
 }
-
-// ─── execution ────────────────────────────────────────────────────────────────
-
-type SpawnCtx = {
-  cwd: string;
-  signal?: AbortSignal;
-  model?: { provider?: string; id?: string };
-  sessionManager: { getSessionFile(): string | undefined };
-  hasUI: boolean;
-  ui: {
-    setStatus(widgetId: string, text: string | undefined): void;
-    setWidget(widgetId: string, widget: string[] | undefined): void;
-  };
-};
-
-type OnUpdate = (event: {
-  content: { type: "text"; text: string }[];
-  details: Record<string, unknown>;
-}) => void;
 
 export async function spillSubagentOutput(
   content: { type: "text"; text: string }[],
@@ -187,8 +185,6 @@ export async function spillSubagentOutput(
 }
 
 async function runSpawn(
-  pi: ExtensionAPI,
-  agent: AgentDefinition,
   spec: SpawnAgentItem,
   ctx: SpawnCtx,
   toolCallId: string,
@@ -200,8 +196,7 @@ async function runSpawn(
   const intent = normalizeIntent(spec.intent);
   const tracker: SubagentActivityTracker = createSubagentActivityTracker({
     toolCallId,
-    roleLabel:
-      agent.name.charAt(0).toUpperCase() + agent.name.slice(1) + " agent",
+    roleLabel: "Subagent",
     intent,
     showActivity: true,
     hasUI: ctx.hasUI,
@@ -214,29 +209,15 @@ async function runSpawn(
     onUpdate,
   });
 
-  const result = await _spawnSubagent.fn({
-    prompt: spec.prompt,
-    toolAllowlist: agent.tools,
-    extensionAllowlist: agent.extensions,
-    files: spec.files,
-    model: agent.model ?? modelSelectorFromCtx(ctx),
-    thinking: spec.thinking ?? agent.thinking ?? thinkingLevelFromPi(pi),
-    systemPrompt: agent.systemPrompt,
-    inheritSession: "none",
-    parentSessionFile: ctx.sessionManager.getSessionFile(),
-    disableSkills: agent.disableSkills,
-    disablePromptTemplates: agent.disablePromptTemplates,
-    output:
-      spec.output_schema !== undefined
-        ? { schema: spec.output_schema }
-        : undefined,
-    logId: toolCallId,
-    cwd: ctx.cwd,
-    env: agent.env,
-    signal: ctx.signal,
-    onEvent: (event) => tracker.handleEvent(event),
+  Object.assign(tracker.state, {
+    capabilities: [...spec.capabilities],
+    modelTier: spec.model_tier,
+    thinking: spec.thinking,
   });
 
+  const result = await _runSubagent.fn(
+    toRunRequest(spec, ctx, toolCallId, (event) => tracker.handleEvent(event)),
+  );
   tracker.finish(result);
   const diagnosticWarning = result.diagnosticWarnings?.length
     ? `\n\nWarning: ${result.diagnosticWarnings.join("; ")}`
@@ -271,6 +252,7 @@ async function runSpawn(
         ok: true,
         exitCode: result.exitCode,
         structuredValue: result.structured.value,
+        logFile: result.logFile,
         diagnosticWarnings: result.diagnosticWarnings,
         activity: tracker.state,
       },
@@ -282,6 +264,7 @@ async function runSpawn(
     details: {
       ok: true,
       exitCode: result.exitCode,
+      logFile: result.logFile,
       diagnosticWarnings: result.diagnosticWarnings,
       activity: tracker.state,
     },
@@ -289,9 +272,8 @@ async function runSpawn(
 }
 
 export async function runParallelSpawn(
-  pi: ExtensionAPI,
   specs: SpawnAgentItem[],
-  agentMap: Map<string, AgentDefinition>,
+  config: SubagentsConfig,
   ctx: SpawnCtx,
   toolCallId: string,
   onUpdate: OnUpdate | undefined,
@@ -300,11 +282,7 @@ export async function runParallelSpawn(
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
 }> {
-  const validationErrors = await validateSpawnAgentSpecs(
-    specs,
-    agentMap,
-    ctx.cwd,
-  );
+  const validationErrors = await validateSpawnAgentSpecs(specs, config, ctx);
   if (validationErrors.length > 0) {
     return {
       content: text(
@@ -314,9 +292,11 @@ export async function runParallelSpawn(
     };
   }
 
-  const states: SubagentRunState[] = specs.map((s) => ({
-    intent: s.intent,
-    agentType: s.agent,
+  const states: SubagentRunState[] = specs.map((spec) => ({
+    intent: spec.intent.trim(),
+    capabilities: [...spec.capabilities],
+    modelTier: spec.model_tier,
+    thinking: spec.thinking,
     phase: "queued",
     recentEvents: [],
     toolUseCount: 0,
@@ -327,11 +307,10 @@ export async function runParallelSpawn(
 
   function emitCombined(): void {
     onUpdate?.({
-      content: [{ type: "text", text: `Running ${specs.length} agents...` }],
+      content: [{ type: "text", text: `Running ${specs.length} subagents...` }],
       details: { agents: [...states], total: specs.length },
     });
   }
-
   emitCombined();
 
   function cancelledBeforeLaunch(i: number) {
@@ -359,48 +338,23 @@ export async function runParallelSpawn(
     specs.map(async (spec, i) => {
       const release = await gate.acquire(ctx.signal);
       if (!release) return cancelledBeforeLaunch(i);
-
       try {
         if (ctx.signal?.aborted) return cancelledBeforeLaunch(i);
-        const agent = agentMap.get(spec.agent);
-        if (!agent) {
-          states[i].resolved = true;
-          emitCombined();
-          return {
-            content: text(`Error: unknown agent type "${spec.agent}"`),
-            details: {
-              ok: false,
-              exitCode: 1,
-              aborted: false,
-              structuredError: `Unknown agent type: ${spec.agent}`,
-            },
-          };
-        }
         const result = await runSpawn(
-          pi,
-          agent,
           spec,
           ctx,
           `${toolCallId}:${i}`,
           (event) => {
             const activity = getActivity(event.details);
-            if (activity) {
-              activity.agentType = spec.agent;
-              states[i] = activity;
-            }
+            if (activity) states[i] = activity;
             emitCombined();
           },
         );
         const finalActivity = getActivity(result.details);
-        if (finalActivity) {
-          finalActivity.agentType = spec.agent;
-          states[i] = finalActivity;
-        }
+        if (finalActivity) states[i] = finalActivity;
         states[i].resolved = true;
         const errorText = result.content[0]?.text;
-        if (errorText?.startsWith("Error:")) {
-          states[i].errorMessage = errorText;
-        }
+        if (errorText?.startsWith("Error:")) states[i].errorMessage = errorText;
         if (typeof result.details.logFile === "string") {
           states[i].logFile = result.details.logFile;
         }
@@ -413,12 +367,10 @@ export async function runParallelSpawn(
   );
 
   const failed = results.filter((result) => result.details.ok === false).length;
-
   const structured = specs.some((spec) => spec.output_schema !== undefined)
     ? results.map((result, index) => {
-        if (specs[index]!.output_schema === undefined) {
+        if (specs[index]!.output_schema === undefined)
           return { requested: false } as const;
-        }
         if (result.details.ok === true && "structuredValue" in result.details) {
           return {
             requested: true,
@@ -434,12 +386,11 @@ export async function runParallelSpawn(
       })
     : undefined;
 
-  const parts = results.map((r, i) => {
-    const header = `## ${specs[i].agent} · ${specs[i].intent}`;
-    const body = r.content[0]?.text ?? "";
-    return `${header}\n\n${body}`;
+  const parts = results.map((result, i) => {
+    const spec = specs[i]!;
+    const policy = `${spec.capabilities.join(", ") || "no capabilities"} · ${spec.model_tier}/${spec.thinking}`;
+    return `## ${spec.intent.trim()}\n\n_${policy}_\n\n${result.content[0]?.text ?? ""}`;
   });
-
   const spilled = await spillSubagentOutput(
     text(parts.join("\n\n---\n\n")),
     toolCallId,
@@ -458,39 +409,33 @@ export async function runParallelSpawn(
   };
 }
 
-// ─── extension entry point ────────────────────────────────────────────────────
-
 type LoadSubagentsConfig = (
   cwd: string,
   warnings?: string[],
-) => Promise<{ maxConcurrency: number }>;
+) => Promise<SubagentsConfig>;
 
 export function createSubagentsConfigReloader(
   gate: Pick<ConcurrencyGate, "setLimit">,
   loadConfig: LoadSubagentsConfig = loadSubagentsConfig,
 ) {
   let latestGeneration = 0;
-  return async (cwd: string, warnings: string[]): Promise<void> => {
+  return async (cwd: string, warnings: string[]): Promise<SubagentsConfig> => {
     const generation = ++latestGeneration;
     const config = await loadConfig(cwd, warnings);
-    if (generation === latestGeneration) {
-      gate.setLimit(config.maxConcurrency);
-    }
+    if (generation === latestGeneration) gate.setLimit(config.maxConcurrency);
+    return config;
   };
 }
 
 export default function (pi: ExtensionAPI) {
-  const agents = loadAgents();
-  const agentMap = new Map(agents.map((a) => [a.name, a]));
-  const agentDescription = buildAgentDescription(agents);
   const directGate = createConcurrencyGate(DEFAULT_MAX_CONCURRENCY);
   const reloadConfig = createSubagentsConfigReloader(directGate);
-
   registerSubagentsConfigCommand(pi);
 
-  pi.on("before_agent_start", async (event: { systemPrompt: string }) => {
+  pi.on("before_agent_start", async (event, ctx) => {
+    const config = await loadSubagentsConfig(ctx.cwd);
     return {
-      systemPrompt: event.systemPrompt + buildDelegationGuidance(agents),
+      systemPrompt: event.systemPrompt + buildDelegationGuidance(config),
     };
   });
 
@@ -498,8 +443,10 @@ export default function (pi: ExtensionAPI) {
     name: "spawn_agents",
     label: "Spawn Agents",
     description:
-      "Launch multiple subagents in parallel. Each runs independently in its own context window. Results are returned as a combined document once all complete. Use when tasks are independent and can run concurrently.",
-    parameters: buildSpawnAgentsParams(agentDescription),
+      "Launch multiple independent subagents with explicit capabilities, model tier, and thinking. Results are combined after all settle.",
+    parameters: buildSpawnAgentsParams(
+      `Required model tier: ${MODEL_TIERS.join(", ")}.`,
+    ),
     async execute(
       toolCallId,
       params: SpawnAgentsParams,
@@ -508,19 +455,17 @@ export default function (pi: ExtensionAPI) {
       ctx,
     ) {
       const warnings: string[] = [];
-      await reloadConfig(ctx.cwd, warnings);
+      const config = await reloadConfig(ctx.cwd, warnings);
       if (ctx.hasUI) {
         for (const warning of warnings) ctx.ui.notify(warning, "warning");
       }
-      return await runParallelSpawn(
-        pi,
+      return runParallelSpawn(
         params.agents,
-        agentMap,
+        config,
         {
           cwd: ctx.cwd,
           signal,
-          model: ctx.model as any,
-          sessionManager: ctx.sessionManager,
+          modelRegistry: ctx.modelRegistry,
           hasUI: ctx.hasUI,
           ui: ctx.ui,
         },
@@ -537,3 +482,5 @@ export default function (pi: ExtensionAPI) {
     },
   });
 }
+
+export { MODEL_TIERS, THINKING_LEVELS };

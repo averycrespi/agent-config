@@ -1,6 +1,6 @@
 # Simplicity
 
-Review whether the supplied change or proposal is more complex than its requirements and repository constraints justify. Follow the reviewer agent's common scope, evidence, confidence, severity, and output contract.
+Review whether the supplied change or proposal is more complex than its requirements and repository constraints justify. Apply the shared scope, evidence, confidence, severity, and output contract supplied before this rubric.
 
 Focus on:
 

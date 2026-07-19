@@ -61,7 +61,7 @@ test("tool_execution_start records activeTool, command, and phase", () => {
   });
   assert.equal(tracker.state.activeTool, "bash");
   assert.equal(tracker.state.phase, "bash");
-  assert.equal(tracker.state.currentCommand, "bash: ls -la");
+  assert.equal(tracker.state.currentCommand, "bash");
   assert.equal(tracker.state.recentEvents.length, 1);
   assert.equal(tracker.state.recentEvents[0].kind, "tool");
   tracker.finish({
@@ -88,9 +88,9 @@ test("tool_execution_end increments count and clears activeTool", () => {
   });
   assert.equal(tracker.state.toolUseCount, 1);
   assert.equal(tracker.state.activeTool, undefined);
-  assert.equal(tracker.state.lastToolInfo, "read: file.ts");
+  assert.equal(tracker.state.lastToolInfo, "read");
   assert.equal(tracker.state.currentCommand, undefined);
-  assert.equal(tracker.state.lastCommand, "read: file.ts");
+  assert.equal(tracker.state.lastCommand, "read");
   tracker.finish({
     ok: true,
     aborted: false,
@@ -230,7 +230,7 @@ test("recentEvents is capped at 3 (ring buffer)", () => {
     });
   }
   assert.equal(tracker.state.recentEvents.length, 3);
-  assert.match(tracker.state.recentEvents[2].text, /file-4\.ts/);
+  assert.equal(tracker.state.recentEvents[2].text, "read");
   tracker.finish({
     ok: true,
     aborted: false,
@@ -349,17 +349,17 @@ test("message_update with thinking_delta sets phase='thinking'", () => {
   });
 });
 
-test("tool args with long commands are middle-truncated in recentEvents", () => {
+test("tool arguments are never retained in recentEvents", () => {
   const { tracker } = makeTracker();
-  const longCmd = "a".repeat(200);
+  const longCmd = "secret=" + "a".repeat(200);
   tracker.handleEvent({
     type: "tool_execution_start",
     toolName: "bash",
     args: { command: longCmd },
   });
   const text = tracker.state.recentEvents[0].text;
-  assert.ok(text.length < 200);
-  assert.match(text, /…/);
+  assert.equal(text, "bash");
+  assert.doesNotMatch(text, /secret|a{10}/);
   tracker.finish({
     ok: true,
     aborted: false,

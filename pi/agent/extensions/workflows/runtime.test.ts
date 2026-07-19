@@ -1,27 +1,35 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
+import { createWorkflowRunLedger } from "./ledger.ts";
 import { parseWorkflowScript } from "./parser.ts";
 import {
+  _runSubagent,
   createWorkflowAgentSpawner,
-  _spawnSubagent,
   runWorkflow,
 } from "./runtime.ts";
-import type { AgentDefinition } from "../subagents/api.ts";
-import { DEFAULT_TIMEOUT_MS } from "./types.ts";
-import { createWorkflowRunLedger } from "./ledger.ts";
+import type { WorkflowAgentRequest } from "./types.ts";
 
-const readOnlyAgents: AgentDefinition[] = [
-  {
-    name: "explorer",
-    description: "Explore",
-    tools: ["read"],
-    extensions: [],
-    systemPrompt: "Explore only",
-    disableSkills: true,
-    disablePromptTemplates: true,
-  },
-];
+const POLICY = `intent: "test run", capabilities: [], modelTier: "medium", thinking: "high"`;
+const registry = { find: () => ({ provider: "p", id: "m", reasoning: true }) };
 
+function script(body: string) {
+  return parseWorkflowScript(
+    `export const meta = { name: "test", description: "test" };\n${body}`,
+  );
+}
+function request(
+  overrides: Partial<WorkflowAgentRequest> = {},
+): WorkflowAgentRequest {
+  return {
+    id: 1,
+    prompt: "inspect",
+    intent: "inspect repository",
+    capabilities: ["read-filesystem"],
+    modelTier: "medium",
+    thinking: "high",
+    ...overrides,
+  };
+}
 function successfulOutcome(stdout = "ok") {
   return {
     ok: true as const,
@@ -33,332 +41,380 @@ function successfulOutcome(stdout = "ok") {
   };
 }
 
-function script(body: string) {
-  return parseWorkflowScript(
-    `export const meta = { name: "test", description: "test" };\n${body}`,
-  );
-}
-
-test("runtime exposes args, phase, log, parallel ordering, and pipeline", async () => {
-  const updates: any[] = [];
+test("runtime preserves args, phases, logs, bounded parallelism, and pipeline ordering", async () => {
+  let active = 0;
+  let maximum = 0;
   const result = await runWorkflow(
     script(`export async function run() {
       phase("fanout");
       log(args.topic);
       const values = await parallel([
-        () => agent("a"),
-        () => agent("b"),
-        () => agent("c"),
+        () => agent("a", { ${POLICY} }),
+        () => agent("b", { ${POLICY} }),
+        () => agent("c", { ${POLICY} }),
       ], { concurrency: 2 });
       return await pipeline(values, (value) => value + "!", (value, index) => index + ":" + value);
     }`),
     {
       cwd: "/tmp",
       args: { topic: "hello" },
-      onUpdate: (s) => updates.push(s),
-      spawnAgent: async (request) => ({
-        ok: true,
-        text: request.prompt.toUpperCase(),
-      }),
+      maxConcurrency: 2,
+      spawnAgent: async (value) => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        active -= 1;
+        return { ok: true, text: value.prompt.toUpperCase() };
+      },
     },
   );
   assert.deepEqual(result.result, ["0:A!", "1:B!", "2:C!"]);
   assert.deepEqual(result.phases, ["fanout"]);
   assert.equal(result.logs[0].message, "hello");
-  assert.ok(updates.length > 0);
-  assert.equal(updates[0].meta.name, "test");
-  assert.equal(updates[0].phase, undefined);
-  assert.deepEqual(updates[0].agents, []);
+  assert.equal(maximum, 2);
 });
 
-test("runtime rejects absent and undefined run results but accepts null", async () => {
-  for (const body of [
-    'export const unused = () => agent("unused");',
-    'export async function run() { if (false) await agent("unused"); }',
-  ] as const) {
+test("agent requires explicit intent, capabilities, tier, and thinking", async () => {
+  for (const options of [
+    `capabilities: [], modelTier: "medium", thinking: "high"`,
+    `intent: "x", modelTier: "medium", thinking: "high"`,
+    `intent: "x", capabilities: [], thinking: "high"`,
+    `intent: "x", capabilities: [], modelTier: "medium"`,
+  ]) {
     await assert.rejects(
-      runWorkflow(script(body), {
-        cwd: "/tmp",
-        spawnAgent: async () => ({ ok: true, text: "unused" }),
-      }),
-      (error: any) => {
-        assert.equal(error.code, "workflow_missing_result");
-        assert.match(error.message, /must return a result/i);
-        return true;
-      },
+      runWorkflow(
+        script(
+          `export async function run() { return await agent("x", { ${options} }); }`,
+        ),
+        {
+          cwd: "/tmp",
+          spawnAgent: async () => ({ ok: true, text: "unexpected" }),
+        },
+      ),
+      /agent (intent|capabilities|modelTier|thinking)/,
     );
   }
-
-  const result = await runWorkflow(
-    script(
-      'export async function run() { if (false) await agent("unused"); return null; }',
-    ),
-    {
-      cwd: "/tmp",
-      spawnAgent: async () => ({ ok: true, text: "unused" }),
-    },
-  );
-  assert.equal(result.result, null);
 });
 
-test("runtime bounds workflow log volume and message size", async () => {
-  const long = await runWorkflow(
-    script(`export async function run() {
-      if (false) await agent("unused");
-      log("x".repeat(3000));
-      return "done";
-    }`),
-    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-  );
-  assert.equal(long.logs.length, 1);
-  assert.equal(long.logs[0].message.length, 2_000);
-
+test("verify requires the same explicit execution policy and remains a strict verdict helper", async () => {
   await assert.rejects(
     runWorkflow(
-      script(`export async function run() {
-        if (false) await agent("unused");
-        for (let index = 0; index < 101; index += 1) log(index);
-      }`),
-      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-    ),
-    /workflow log limit exceeded/,
-  );
-
-  await assert.rejects(
-    runWorkflow(
-      script(`export async function run() {
-        if (false) await agent("unused");
-        return await parallel(Array.from({ length: 101 }, () => () => {
-          throw new Error("x".repeat(3000));
-        }));
-      }`),
-      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-    ),
-    /workflow log limit exceeded/,
-  );
-
-  const longPhase = await runWorkflow(
-    script(`export async function run() {
-      if (false) await agent("unused");
-      phase("x".repeat(300));
-      return null;
-    }`),
-    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-  );
-  assert.equal(longPhase.phases[0].length, 200);
-  await assert.rejects(
-    runWorkflow(
-      script(`export async function run() {
-        if (false) await agent("unused");
-        for (let index = 0; index < 101; index += 1) phase(String(index));
-      }`),
-      { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-    ),
-    /workflow phase limit exceeded/,
-  );
-});
-
-test("runtime defensively normalizes configured and per-call concurrency", async () => {
-  async function observedMax(
-    maxConcurrency: number | undefined,
-    perCall: string,
-    count = 20,
-  ): Promise<number> {
-    let active = 0;
-    let maximum = 0;
-    const thunks = Array.from(
-      { length: count },
-      (_, index) => `() => agent("${index}")`,
-    ).join(",");
-    await runWorkflow(
-      script(`export async function run() {
-        return await parallel([${thunks}], { concurrency: ${perCall} });
-      }`),
+      script(
+        `export async function run() { return await verify("claim", { intent: "verify" }); }`,
+      ),
       {
         cwd: "/tmp",
-        maxConcurrency,
-        spawnAgent: async () => {
-          active += 1;
-          maximum = Math.max(maximum, active);
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          active -= 1;
-          return { ok: true, text: "ok" };
-        },
+        spawnAgent: async () => ({ ok: true, text: "unexpected" }),
       },
-    );
-    return maximum;
-  }
-
-  assert.equal(await observedMax(2, "20"), 2);
-  assert.equal(await observedMax(99, "20"), 16);
-  for (const value of [undefined, Number.NaN, 1.5, 0, -1]) {
-    assert.equal(await observedMax(value, "20", 8), 4);
-  }
-  assert.equal(await observedMax(3, "1.5", 8), 3);
-  assert.equal(await observedMax(3, "0", 8), 3);
-});
-
-test("runtime resolves agent calls with structured output values when requested", async () => {
-  const requests: any[] = [];
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await agent("find auth files", {
-        agent: "explorer",
-        intent: "auth",
-        output: {
-          schema: {
-            type: "object",
-            required: ["files"],
-            properties: { files: { type: "array", items: { type: "string" } } },
-          },
-        },
-      });
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async (request) => {
-        requests.push(request);
-        return {
-          ok: true,
-          text: "fallback text",
-          hasStructured: true,
-          value: { files: ["src/auth.ts"] },
-        } as any;
-      },
-    },
+    ),
+    /agent capabilities/,
   );
 
-  assert.deepEqual(result.result, { files: ["src/auth.ts"] });
-  assert.deepEqual(requests[0].output, {
-    schema: {
-      type: "object",
-      required: ["files"],
-      properties: { files: { type: "array", items: { type: "string" } } },
-    },
-  });
-});
-
-test("verify defaults to reviewer and resolves structured verdicts", async () => {
-  const requests: any[] = [];
+  const calls: any[] = [];
   const result = await runWorkflow(
     script(`export async function run() {
-      const confirmed = await verify("The tests pass", { context: { suite: "unit" } });
-      const refuted = await verify("The sky is green", {
-        agent: "analyst", intent: "check color", model: "small", retries: 2, timeoutMs: 1234
+      return await verify("The tests pass", {
+        intent: "verify tests",
+        capabilities: ["read-filesystem"],
+        modelTier: "large",
+        thinking: "high",
+        context: { suite: "unit" },
+        retries: 1,
+        timeoutMs: 1234,
       });
-      return { confirmed, refuted };
     }`),
     {
       cwd: "/tmp",
-      spawnAgent: async (request) => {
-        requests.push(request);
+      spawnAgent: async (value) => {
+        calls.push(value);
         return {
           ok: true,
           text: null,
           hasStructured: true,
-          value:
-            requests.length === 1
-              ? { confirmed: true, reasons: ["unit evidence"] }
-              : { confirmed: false, reasons: ["contradicted"] },
+          value: { confirmed: true, reasons: ["unit evidence"] },
         };
       },
     },
   );
-
-  assert.deepEqual(result.result, {
-    confirmed: { ok: true, reasons: ["unit evidence"] },
-    refuted: { ok: false, reasons: ["contradicted"] },
-  });
-  assert.equal(requests[0].agent, "reviewer");
-  assert.equal(requests[0].intent, "Verify claim");
-  assert.match(requests[0].prompt, /The tests pass/);
-  assert.match(requests[0].prompt, /{"suite":"unit"}/);
-  assert.deepEqual(requests[0].output.schema.required, [
-    "confirmed",
-    "reasons",
-  ]);
-  assert.equal(requests[0].output.schema.additionalProperties, false);
-  assert.equal(requests[1].agent, "analyst");
-  assert.equal(requests[1].intent, "check color");
-  assert.equal(requests[1].model, "small");
-  assert.equal(requests[1].retries, 2);
-  assert.equal(requests[1].timeoutMs, 1234);
+  assert.deepEqual(result.result, { ok: true, reasons: ["unit evidence"] });
+  assert.equal(calls[0].intent, "verify tests");
+  assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
+  assert.equal(calls[0].modelTier, "large");
+  assert.equal(calls[0].thinking, "high");
+  assert.equal(calls[0].retries, 1);
+  assert.equal(calls[0].timeoutMs, 1234);
+  assert.deepEqual(calls[0].output.schema.required, ["confirmed", "reasons"]);
+  assert.equal(calls[0].output.schema.additionalProperties, false);
+  assert.match(calls[0].prompt, /The tests pass/);
+  assert.match(calls[0].prompt, /{"suite":"unit"}/);
+  assert.equal("agent" in calls[0], false);
+  assert.equal("model" in calls[0], false);
 });
 
-test("verify failures compose as ordinary agent failures", async () => {
+test("runtime forwards structured output values and preserves explicit policy", async () => {
+  const calls: any[] = [];
   const result = await runWorkflow(
     script(`export async function run() {
-      return await parallelSettled([() => verify("claim")]);
+      return await agent("find auth files", {
+        intent: "find auth",
+        capabilities: ["read-filesystem"],
+        modelTier: "medium",
+        thinking: "high",
+        output: { schema: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "string" } } } } },
+      });
     }`),
     {
       cwd: "/tmp",
-      spawnAgent: async () => ({
-        ok: false,
-        text: null,
-        error: "structured verdict missing",
-        errorCode: "structured_output_not_called",
-      }),
-    },
-  );
-  assert.deepEqual(result.result, [
-    {
-      ok: false,
-      error: {
-        code: "structured_output_not_called",
-        message: "structured verdict missing",
-        details: {
-          code: "structured_output_not_called",
-          message: "structured verdict missing",
-          agentId: 1,
-          intent: "Verify claim",
-          logFile: undefined,
-        },
+      spawnAgent: async (value) => {
+        calls.push(value);
+        return {
+          ok: true,
+          text: "fallback",
+          hasStructured: true,
+          value: { files: ["src/auth.ts"] },
+        };
       },
     },
-  ]);
+  );
+  assert.deepEqual(result.result, { files: ["src/auth.ts"] });
+  assert.equal(calls[0].intent, "find auth");
+  assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
+  assert.equal(calls[0].modelTier, "medium");
+  assert.equal(calls[0].thinking, "high");
 });
 
-test("report awaits gates, returns original values, and normalizes rejections", async () => {
+test("unsupported structured schemas fail before spawn", async () => {
+  let spawns = 0;
   const result = await runWorkflow(
     script(`export async function run() {
-      if (false) await verify("parser marker");
-      const first = { answer: 42 };
-      const accepted = await report(first, { gate: async (value) => value.answer === 42 });
-      const acceptedObject = await report("ok", { gate: async () => ({ ok: true }) });
-      const rejected = await parallelSettled([
-        () => report("bad", { gate: async () => ({ ok: false, reasons: ["wrong", 7, "unsafe"] }) }),
-        () => report("boom", { gate: async () => { throw new Error("gate exploded"); } }),
-      ]);
-      return { same: accepted === first, acceptedObject, rejected };
+      return await parallelSettled([() => agent("go", {
+        ${POLICY},
+        output: { schema: { oneOf: [{ type: "string" }, { type: "number" }] } },
+      })]);
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async () => {
+        spawns += 1;
+        return { ok: true, text: "unexpected" };
+      },
+    },
+  );
+  assert.equal(spawns, 0);
+  assert.equal((result.result as any)[0].error.code, "agent_policy_rejected");
+  assert.match((result.result as any)[0].error.message, /oneOf is unsupported/);
+});
+
+test("retries are bounded and activity accounting keeps attempts distinct", async () => {
+  let calls = 0;
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await agent("flaky", { ${POLICY}, retries: 2 });
+    }`),
+    {
+      cwd: "/tmp",
+      spawnAgent: async () => {
+        calls += 1;
+        return calls < 3
+          ? {
+              ok: false,
+              text: null,
+              error: "temporary",
+              errorCode: "subagent_failed",
+            }
+          : { ok: true, text: "recovered" };
+      },
+    },
+  );
+  assert.equal(result.result, "recovered");
+  assert.equal(calls, 3);
+});
+
+test("per-agent timeout aborts an attempt and returns a structured failure", async () => {
+  let sawAbort = false;
+  const result = await runWorkflow(
+    script(`export async function run() {
+      return await parallelSettled([() => agent("slow", { ${POLICY}, timeoutMs: 5 })]);
+    }`),
+    {
+      cwd: "/tmp",
+      agentTimeoutMs: 100,
+      spawnAgent: async (value) => {
+        await new Promise<void>((resolve) => {
+          value.signal?.addEventListener(
+            "abort",
+            () => {
+              sawAbort = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        return {
+          ok: false,
+          text: null,
+          error: "aborted",
+          errorCode: "subagent_aborted",
+        };
+      },
+    },
+  );
+  assert.equal(sawAbort, true);
+  assert.equal((result.result as any)[0].error.code, "agent_timeout");
+});
+
+test("workflow cancellation stops admission and returns an abort diagnostic", async () => {
+  const controller = new AbortController();
+  const pending = runWorkflow(
+    script(
+      `export async function run() { return await agent("slow", { ${POLICY} }); }`,
+    ),
+    {
+      cwd: "/tmp",
+      signal: controller.signal,
+      spawnAgent: async (value) => {
+        await new Promise<void>((resolve) =>
+          value.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          }),
+        );
+        return {
+          ok: false,
+          text: null,
+          error: "aborted",
+          errorCode: "subagent_aborted",
+        };
+      },
+    },
+  );
+  controller.abort();
+  await assert.rejects(pending, (error: any) => {
+    assert.equal(error.code, "workflow_aborted");
+    return true;
+  });
+});
+
+test("ledger run cap denies later calls without invoking the spawner", async () => {
+  const ledger = createWorkflowRunLedger({ maxTokens: 0, maxAgents: 1 });
+  let calls = 0;
+  const spawn = createWorkflowAgentSpawner({
+    cwd: "/repo",
+    logId: "workflow",
+    modelRegistry: registry,
+    ledger,
+  });
+  mock.method(_runSubagent, "fn", async () => {
+    calls += 1;
+    return successfulOutcome();
+  });
+  try {
+    assert.equal((await spawn(request({ id: 1 }))).ok, true);
+    const denied = await spawn(request({ id: 2 }));
+    assert.equal(denied.ok, false);
+    assert.equal(denied.errorCode, "workflow_run_cap_exceeded");
+    assert.equal(calls, 1);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test("workflow spawner calls sanitized API and publishes intent-first metadata", async () => {
+  const calls: any[] = [];
+  const updates: any[] = [];
+  mock.method(_runSubagent, "fn", async (value: any) => {
+    calls.push(value);
+    value.onEvent?.({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: "done",
+        usage: { totalTokens: 7 },
+      },
+    });
+    return {
+      ...successfulOutcome("fallback"),
+      structured: { ok: true, value: { answer: 42 } },
+      logFile: "/tmp/subagent.log",
+    };
+  });
+  try {
+    const spawn = createWorkflowAgentSpawner({
+      cwd: "/repo",
+      logId: "workflow",
+      modelRegistry: registry,
+      onAgentUpdate: (value) => updates.push(value),
+    });
+    const response = await spawn(
+      request({
+        capabilities: ["read-web"],
+        modelTier: "large",
+        output: { schema: { type: "object" } },
+      }),
+    );
+    assert.equal(response.ok, true);
+    assert.deepEqual(response.value, { answer: 42 });
+    assert.equal(calls[0].intent, "inspect repository");
+    assert.deepEqual(calls[0].capabilities, ["read-web"]);
+    assert.equal(calls[0].modelTier, "large");
+    assert.equal(calls[0].thinking, "high");
+    assert.equal(calls[0].modelRegistry, registry);
+    assert.equal("agent" in calls[0], false);
+    assert.equal("model" in calls[0], false);
+    const latest = updates.at(-1);
+    assert.equal(latest.intent, "inspect repository");
+    assert.deepEqual(latest.capabilities, ["read-web"]);
+    assert.equal(latest.activity.modelTier, "large");
+    assert.equal(latest.activity.totalTokens, 7);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test("workflow spawner preserves provider, cancellation, log, and diagnostic failures", async () => {
+  mock.method(_runSubagent, "fn", async () => ({
+    ok: false,
+    aborted: false,
+    stdout: "",
+    stderr: "provider failed",
+    exitCode: 1,
+    signal: null,
+    errorMessage: "provider failed",
+    errorCode: "provider_error" as const,
+    logFile: "/tmp/failure.log",
+    diagnosticWarnings: ["warning"],
+  }));
+  try {
+    const spawn = createWorkflowAgentSpawner({
+      cwd: "/repo",
+      logId: "workflow",
+      modelRegistry: registry,
+    });
+    const response = await spawn(request());
+    assert.equal(response.ok, false);
+    assert.equal(response.errorCode, "provider_error");
+    assert.equal(response.errorDetails?.logFile, "/tmp/failure.log");
+    assert.deepEqual(response.errorDetails?.diagnosticWarnings, ["warning"]);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test("report gates terminate with pass or structured rejection", async () => {
+  const passed = await runWorkflow(
+    script(`export async function run() {
+      if (false) await agent("unused", { ${POLICY} });
+      const value = { answer: 42 };
+      return await report(value, { gate: () => ({ ok: value.answer === 42 }) });
     }`),
     { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
   );
+  assert.deepEqual(passed.result, { answer: 42 });
 
-  assert.equal((result.result as any).same, true);
-  assert.equal((result.result as any).acceptedObject, "ok");
-  assert.deepEqual((result.result as any).rejected, [
-    {
-      ok: false,
-      error: {
-        code: "workflow_report_rejected",
-        message: "workflow report rejected: wrong; unsafe",
-        details: { reasons: ["wrong", "unsafe"] },
-      },
-    },
-    {
-      ok: false,
-      error: { code: "workflow_script_error", message: "gate exploded" },
-    },
-  ]);
-});
-
-test("unhandled report rejection remains a distinct top-level cause", async () => {
   await assert.rejects(
     runWorkflow(
-      script(`export async function run() {
-        if (false) await agent("unused");
-        return await report("bad", { gate: () => ({ ok: false, reasons: ["unsafe"] }) });
-      }`),
+      script(
+        `export async function run() { if (false) await agent("unused", { ${POLICY} }); return await report("bad", { gate: () => ({ ok: false, reasons: ["unsafe"] }) }); }`,
+      ),
       { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
     ),
     (error: any) => {
@@ -367,1119 +423,4 @@ test("unhandled report rejection remains a distinct top-level cause", async () =
       return true;
     },
   );
-});
-
-test("workflow rejects unsupported structured schemas before spawning", async () => {
-  let spawnCount = 0;
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallelSettled([() => agent("go", {
-        output: { schema: { oneOf: [{ type: "string" }, { type: "number" }] } },
-      })]);
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async () => {
-        spawnCount += 1;
-        return { ok: true, text: "must not spawn" };
-      },
-    },
-  );
-
-  assert.equal(spawnCount, 0);
-  assert.deepEqual(result.result, [
-    {
-      ok: false,
-      error: {
-        code: "agent_policy_rejected",
-        message: "output.schema.oneOf is unsupported",
-        details: {
-          code: "agent_policy_rejected",
-          message: "output.schema.oneOf is unsupported",
-          agentId: 1,
-          intent: "explorer",
-        },
-      },
-    },
-  ]);
-});
-
-test("workflow agent spawner returns structured values from spawn outcomes", async () => {
-  const agents: AgentDefinition[] = [
-    {
-      name: "explorer",
-      description: "Explore",
-      tools: ["read"],
-      extensions: [],
-      systemPrompt: "Explore only",
-      disableSkills: true,
-      disablePromptTemplates: true,
-    },
-  ];
-  const calls: any[] = [];
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    calls.push(invocation);
-    return {
-      ok: true,
-      aborted: false,
-      stdout: "fallback text",
-      stderr: "",
-      exitCode: 0,
-      signal: null,
-      structured: { ok: true, value: { files: ["src/auth.ts"] } },
-    };
-  });
-
-  try {
-    const spawn = createWorkflowAgentSpawner({
-      cwd: "/repo",
-      logId: "wf",
-      agents,
-    });
-    const response = await spawn({
-      id: 1,
-      prompt: "go",
-      output: {
-        schema: {
-          type: "object",
-          required: ["files"],
-          properties: {
-            files: { type: "array", items: { type: "string" } },
-          },
-        },
-      },
-    } as any);
-
-    assert.equal(response.ok, true);
-    assert.equal((response as any).hasStructured, true);
-    assert.deepEqual((response as any).value, { files: ["src/auth.ts"] });
-    assert.deepEqual(calls[0].output, {
-      schema: {
-        type: "object",
-        required: ["files"],
-        properties: {
-          files: { type: "array", items: { type: "string" } },
-        },
-      },
-    });
-
-    const invalid = await spawn({
-      id: 2,
-      prompt: "invalid",
-      output: { schema: { oneOf: [{ type: "string" }] } },
-    } as any);
-    assert.equal(invalid.ok, false);
-    assert.equal(invalid.errorCode, "agent_policy_rejected");
-    assert.match(invalid.error ?? "", /oneOf is unsupported/);
-    assert.equal(calls.length, 1);
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("workflow agent spawner resolves only configured fixed model aliases", async () => {
-  const calls: any[] = [];
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    calls.push(invocation);
-    return {
-      ok: true,
-      aborted: false,
-      stdout: "ok",
-      stderr: "",
-      exitCode: 0,
-      signal: null,
-    };
-  });
-  const agents: AgentDefinition[] = [
-    {
-      name: "explorer",
-      description: "Explore",
-      tools: ["read"],
-      extensions: [],
-      model: "definition/model",
-      systemPrompt: "Explore only",
-      disableSkills: true,
-      disablePromptTemplates: true,
-    },
-  ];
-
-  try {
-    const spawn = createWorkflowAgentSpawner({
-      cwd: "/repo",
-      logId: "wf",
-      agents,
-      model: "parent/model",
-      modelTiers: { small: "tier/small" },
-    });
-    assert.equal(
-      (await spawn({ id: 1, prompt: "small", model: "small" })).ok,
-      true,
-    );
-    assert.equal((await spawn({ id: 2, prompt: "default" })).ok, true);
-    const unknown = await spawn({ id: 3, prompt: "unknown", model: "medium" });
-    const unconfigured = await spawn({
-      id: 4,
-      prompt: "big",
-      model: "big",
-    });
-
-    assert.deepEqual(
-      calls.map((call) => call.model),
-      ["tier/small", "definition/model"],
-    );
-    assert.equal(unknown.errorCode, "agent_policy_rejected");
-    assert.match(unknown.error ?? "", /medium/);
-    assert.equal(unconfigured.errorCode, "agent_policy_rejected");
-    assert.match(unconfigured.error ?? "", /not configured/);
-    assert.equal(calls.length, 2);
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("parallel aggregates branch failures as null and logs them", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallel([
-        () => agent("ok"),
-        () => agent("bad"),
-      ]);
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async (request) =>
-        request.prompt === "bad"
-          ? { ok: false, text: null, error: "boom" }
-          : { ok: true, text: "ok" },
-    },
-  );
-  assert.deepEqual(result.result, ["ok", null]);
-  assert.equal(result.agentFailureCount, 1);
-  assert.equal(result.loggedBranchFailureCount, 1);
-  assert.equal(result.settledBranchFailureCount, 0);
-  assert.match(result.logs.at(-1)?.message ?? "", /boom/);
-});
-
-test("runtime converts rejected spawn promises into agent failures", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallel([
-        () => agent("ok"),
-        () => agent("throws"),
-      ]);
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async (request) => {
-        if (request.prompt === "throws") throw new Error("spawn exploded");
-        return { ok: true, text: "ok" };
-      },
-    },
-  );
-
-  assert.deepEqual(result.result, ["ok", null]);
-  assert.equal(result.agentFailureCount, 1);
-  assert.equal(result.loggedBranchFailureCount, 1);
-  assert.equal(result.settledBranchFailureCount, 0);
-  assert.match(result.logs.at(-1)?.message ?? "", /spawn exploded/);
-});
-
-test("parallelSettled preserves branch failure codes", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallelSettled([
-        () => agent("ok"),
-        () => agent("throws"),
-      ]);
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async (request) => {
-        if (request.prompt === "throws") throw new Error("spawn exploded");
-        return { ok: true, text: "ok" };
-      },
-    },
-  );
-
-  assert.deepEqual(result.result, [
-    { ok: true, value: "ok" },
-    {
-      ok: false,
-      error: {
-        code: "agent_spawn_exception",
-        message: "spawn exploded",
-        details: {
-          code: "agent_spawn_exception",
-          message: "spawn exploded",
-          agentId: 2,
-        },
-      },
-    },
-  ]);
-  assert.equal(result.agentFailureCount, 1);
-  assert.equal(result.loggedBranchFailureCount, 0);
-  assert.equal(result.settledBranchFailureCount, 1);
-});
-
-test("agent retries retryable failures when requested", async () => {
-  const prompts: string[] = [];
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await agent("flaky", { retries: 1 });
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async (request) => {
-        prompts.push(request.prompt);
-        if (prompts.length === 1) {
-          return {
-            ok: false,
-            text: null,
-            error: "provider hiccup",
-            errorCode: "subagent_failed",
-          } as any;
-        }
-        return { ok: true, text: "recovered" };
-      },
-    },
-  );
-
-  assert.equal(result.result, "recovered");
-  assert.deepEqual(prompts, ["flaky", "flaky"]);
-});
-
-test("agent retries skip permanent provider schema rejections", async () => {
-  let calls = 0;
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallelSettled([
-        () => agent("invalid schema", { retries: 2 }),
-      ]);
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async () => {
-        calls += 1;
-        return {
-          ok: false,
-          text: null,
-          error: "provider rejected tool schema",
-          errorCode: "provider_schema_rejected",
-        } as any;
-      },
-    },
-  );
-
-  assert.equal(calls, 1);
-  assert.equal(
-    (result.result as any)[0].error.code,
-    "provider_schema_rejected",
-  );
-});
-
-test("runtime previews cyclic workflow results safely", async () => {
-  const updates: any[] = [];
-  const result = await runWorkflow(
-    script(`export async function run() {
-      await agent("ok");
-      const value = { name: "cycle" };
-      value.self = value;
-      return value;
-    }`),
-    {
-      cwd: "/tmp",
-      onUpdate: (snapshot) => updates.push(snapshot),
-      spawnAgent: async () => ({ ok: true, text: "ok" }),
-    },
-  );
-
-  assert.equal((result.result as any).name, "cycle");
-  assert.match(updates.at(-1)?.resultPreview ?? "", /\[Circular\]/);
-});
-
-test("run cap rejects later calls without aborting admitted work", async () => {
-  const ledger = createWorkflowRunLedger({ maxAgents: 2 });
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    return successfulOutcome(invocation.prompt);
-  });
-  try {
-    const spawnAgent = createWorkflowAgentSpawner({
-      cwd: "/tmp",
-      logId: "cap",
-      agents: readOnlyAgents,
-      ledger,
-    });
-    const result = await runWorkflow(
-      script(`export async function run() {
-        return await parallelSettled([
-          () => agent("first"), () => agent("second"), () => agent("third")
-        ]);
-      }`),
-      { cwd: "/tmp", ledger, spawnAgent },
-    );
-
-    assert.deepEqual(result.result, [
-      { ok: true, value: "first" },
-      { ok: true, value: "second" },
-      {
-        ok: false,
-        error: {
-          code: "workflow_run_cap_exceeded",
-          message: "workflow agent run cap exceeded",
-          details: {
-            code: "workflow_run_cap_exceeded",
-            message: "workflow agent run cap exceeded",
-            agentId: 3,
-            intent: undefined,
-            logFile: undefined,
-          },
-        },
-      },
-    ]);
-    assert.equal(stub.mock.callCount(), 2);
-    assert.equal(ledger.snapshot().launched, 2);
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("retries reuse a logical reservation and accumulate every attempt", async () => {
-  const ledger = createWorkflowRunLedger({ maxTokens: 100, maxAgents: 1 });
-  let attempt = 0;
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    attempt += 1;
-    if (attempt === 1) {
-      for (const totalTokens of [2, 3]) {
-        invocation.onEvent({
-          type: "message_end",
-          message: { role: "assistant", usage: { totalTokens } },
-        });
-      }
-    } else {
-      invocation.onEvent({
-        type: "message_end",
-        message: { role: "assistant", usage: { totalTokens: 7 } },
-      });
-    }
-    if (attempt === 1) {
-      return {
-        ...successfulOutcome(""),
-        ok: false,
-        errorCode: "provider_error",
-      };
-    }
-    return successfulOutcome("done");
-  });
-  try {
-    const spawnAgent = createWorkflowAgentSpawner({
-      cwd: "/tmp",
-      logId: "retry-budget",
-      agents: readOnlyAgents,
-      ledger,
-    });
-    const result = await runWorkflow(
-      script(
-        `export async function run() { return await agent("retry", { retries: 1 }); }`,
-      ),
-      { cwd: "/tmp", ledger, spawnAgent },
-    );
-    assert.equal(result.result, "done");
-    assert.equal(stub.mock.callCount(), 2);
-    assert.deepEqual(ledger.snapshot(), {
-      total: 100,
-      used: 12,
-      launched: 1,
-      maxAgents: 1,
-    });
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("token exhaustion prevents a retry after a retryable provider failure", async () => {
-  const ledger = createWorkflowRunLedger({ maxTokens: 5 });
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    invocation.onEvent({
-      type: "message_end",
-      message: { role: "assistant", usage: { totalTokens: 5 } },
-    });
-    return {
-      ...successfulOutcome(""),
-      ok: false,
-      errorCode: "provider_error",
-    };
-  });
-  try {
-    const spawnAgent = createWorkflowAgentSpawner({
-      cwd: "/tmp",
-      logId: "retry-stop",
-      agents: readOnlyAgents,
-      ledger,
-    });
-    const result = await runWorkflow(
-      script(`export async function run() {
-        return await parallelSettled([() => agent("retry", { retries: 2 })]);
-      }`),
-      { cwd: "/tmp", ledger, spawnAgent },
-    );
-    assert.equal(
-      (result.result as any[])[0].error.code,
-      "workflow_budget_exceeded",
-    );
-    assert.equal(stub.mock.callCount(), 1);
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("streamed token exhaustion aborts active agents but leaves sandbox fan-in alive", async () => {
-  const ledger = createWorkflowRunLedger({ maxTokens: 10 });
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    if (invocation.prompt === "fast") return successfulOutcome("fast");
-    if (invocation.prompt === "cross") {
-      await new Promise((resolve) => setImmediate(resolve));
-      invocation.onEvent({
-        type: "message_end",
-        message: { role: "assistant", usage: { totalTokens: 10 } },
-      });
-    } else if (!invocation.signal.aborted) {
-      await new Promise<void>((resolve) =>
-        invocation.signal.addEventListener("abort", () => resolve(), {
-          once: true,
-        }),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 40));
-    }
-    return {
-      ...successfulOutcome(""),
-      ok: false,
-      aborted: true,
-      signal: "SIGTERM",
-    };
-  });
-  try {
-    const spawnAgent = createWorkflowAgentSpawner({
-      cwd: "/tmp",
-      logId: "token-budget",
-      agents: readOnlyAgents,
-      ledger,
-    });
-    const result = await runWorkflow(
-      script(`export async function run() {
-        return await parallelSettled([
-          () => agent("fast"), () => agent("cross"), () => agent("blocked")
-        ]);
-      }`),
-      { cwd: "/tmp", ledger, spawnAgent, agentTimeoutMs: 20 },
-    );
-    const branches = result.result as any[];
-    assert.deepEqual(branches[0], { ok: true, value: "fast" });
-    assert.equal(branches[1].error.code, "workflow_budget_exceeded");
-    assert.equal(branches[2].error.code, "workflow_budget_exceeded");
-    assert.equal(ledger.snapshot().used, 10);
-    assert.equal(result.settledBranchFailureCount, 2);
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("token enforcement remains active after the logical call cap denies work", async () => {
-  const ledger = createWorkflowRunLedger({ maxTokens: 5, maxAgents: 2 });
-  const stub = mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    if (invocation.prompt === "cross") {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      invocation.onEvent({
-        type: "message_end",
-        message: { role: "assistant", usage: { totalTokens: 5 } },
-      });
-    } else if (!invocation.signal.aborted) {
-      await new Promise<void>((resolve) =>
-        invocation.signal.addEventListener("abort", () => resolve(), {
-          once: true,
-        }),
-      );
-    }
-    return {
-      ...successfulOutcome(""),
-      ok: false,
-      aborted: true,
-      signal: "SIGTERM",
-    };
-  });
-  try {
-    const spawnAgent = createWorkflowAgentSpawner({
-      cwd: "/tmp",
-      logId: "independent-budgets",
-      agents: readOnlyAgents,
-      ledger,
-    });
-    const result = await runWorkflow(
-      script(`export async function run() {
-        return await parallelSettled([
-          () => agent("cross"), () => agent("blocked"), () => agent("denied")
-        ]);
-      }`),
-      { cwd: "/tmp", ledger, spawnAgent },
-    );
-    const codes = (result.result as any[]).map((branch) => branch.error.code);
-    assert.deepEqual(codes, [
-      "workflow_budget_exceeded",
-      "workflow_budget_exceeded",
-      "workflow_run_cap_exceeded",
-    ]);
-    assert.equal(ledger.isTokenExceeded(), true);
-  } finally {
-    stub.mock.restore();
-  }
-});
-
-test("budget is an immutable advisory sandbox facade", async () => {
-  const ledger = createWorkflowRunLedger();
-  const result = await runWorkflow(
-    script(`export async function run() {
-      await agent("one");
-      const before = {
-        total: budget.total,
-        spent: budget.spent(),
-        remaining: budget.remaining(),
-        launched: budget.launched,
-        maxAgents: budget.maxAgents,
-      };
-      let assignmentRejected = false;
-      let replacementRejected = false;
-      let redefineRejected = false;
-      try { budget.spent = () => 999; } catch { assignmentRejected = true; }
-      try { budget = { total: 999 }; } catch { replacementRejected = true; }
-      try { Object.defineProperty(budget, "total", { value: 999 }); } catch { redefineRejected = true; }
-      return { before, assignmentRejected, replacementRejected, redefineRejected, frozen: Object.isFrozen(budget) };
-    }`),
-    {
-      cwd: "/tmp",
-      ledger,
-      spawnAgent: async (request) => {
-        ledger.reserve(request.id);
-        return { ok: true, text: "ok" };
-      },
-    },
-  );
-  assert.deepEqual(result.result, {
-    before: {
-      total: null,
-      spent: 0,
-      remaining: Infinity,
-      launched: 1,
-      maxAgents: null,
-    },
-    assignmentRejected: true,
-    replacementRejected: true,
-    redefineRejected: true,
-    frozen: true,
-  });
-});
-
-test("workflow disables string code generation inside the sandbox", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      if (false) await agent("unused");
-      const probe = (factory) => {
-        try { return factory(); }
-        catch (error) { return error.name; }
-      };
-      return {
-        direct: probe(() => Function("return typeof process")()),
-        constructor: probe(() => (() => {}).constructor("return typeof process")()),
-      };
-    }`),
-    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-  );
-  assert.deepEqual(result.result, {
-    direct: "EvalError",
-    constructor: "EvalError",
-  });
-});
-
-test("parallelSettled normalizes non-string codes and clone-unsafe details", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      if (false) await agent("unused");
-      return await parallelSettled([
-        () => {
-          const error = new Error("clone-safe failure");
-          error.code = 25;
-          error.details = { kept: "yes", dropped: () => true };
-          Object.defineProperty(error.details, "explosive", {
-            enumerable: true,
-            get() { throw new Error("getter exploded"); },
-          });
-          throw error;
-        },
-        () => {
-          const error = {};
-          for (const key of ["code", "message", "details", "toString"]) {
-            Object.defineProperty(error, key, {
-              get() { throw new Error("error getter exploded"); },
-            });
-          }
-          throw error;
-        },
-      ]);
-    }`),
-    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-  );
-  assert.deepEqual(result.result, [
-    {
-      ok: false,
-      error: {
-        code: "workflow_script_error",
-        message: "clone-safe failure",
-        details: { kept: "yes" },
-      },
-    },
-    {
-      ok: false,
-      error: {
-        code: "workflow_script_error",
-        message: "workflow script failed",
-      },
-    },
-  ]);
-});
-
-test("workflow reports an actionable error for non-cloneable results", async () => {
-  await assert.rejects(
-    runWorkflow(
-      script(`export async function run() {
-        if (false) await agent("unused");
-        return { ...budget };
-      }`),
-      {
-        cwd: "/tmp",
-        spawnAgent: async () => ({ ok: true, text: "unused" }),
-      },
-    ),
-    /workflow result must be structured-cloneable/,
-  );
-});
-
-test("workflow scripts cannot access sandbox RPC or budget backing state", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      if (false) await agent("unused");
-      let backingMutationRejected = false;
-      try { budgetSnapshot = { total: 1, used: 1, launched: 1, maxAgents: 1 }; }
-      catch { backingMutationRejected = true; }
-      return {
-        parentPort: typeof parentPort,
-        nodeProcess: typeof nodeProcess,
-        workerData: typeof workerData,
-        pending: typeof pending,
-        budgetSnapshot: typeof budgetSnapshot,
-        backingMutationRejected,
-      };
-    }`),
-    { cwd: "/tmp", spawnAgent: async () => ({ ok: true, text: "unused" }) },
-  );
-  assert.deepEqual(result.result, {
-    parentPort: "undefined",
-    nodeProcess: "undefined",
-    workerData: "undefined",
-    pending: "undefined",
-    budgetSnapshot: "undefined",
-    backingMutationRejected: true,
-  });
-});
-
-test("runtime default workflow timeout is one hour", () => {
-  assert.equal(DEFAULT_TIMEOUT_MS, 60 * 60 * 1000);
-});
-
-test("invalid per-call agent timeouts fall back to the configured default", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallelSettled([() => agent("slow", { timeoutMs: 0 })]);
-    }`),
-    {
-      cwd: "/tmp",
-      timeoutMs: 500,
-      agentTimeoutMs: 20,
-      spawnAgent: async (request) =>
-        await new Promise((resolve) => {
-          request.signal?.addEventListener(
-            "abort",
-            () =>
-              resolve({
-                ok: false,
-                text: null,
-                error: "aborted",
-                errorCode: "subagent_aborted",
-              }),
-            { once: true },
-          );
-        }),
-    },
-  );
-  assert.equal((result.result as any)[0].error.code, "agent_timeout");
-});
-
-test("agent timeout waits for termination before releasing scheduler capacity", async () => {
-  let active = 0;
-  let maximum = 0;
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallelSettled([
-        () => agent("slow", { timeoutMs: 10 }),
-        () => agent("next"),
-      ], { concurrency: 1 });
-    }`),
-    {
-      cwd: "/tmp",
-      timeoutMs: 500,
-      spawnAgent: async (request) => {
-        active += 1;
-        maximum = Math.max(maximum, active);
-        if (request.prompt === "slow") {
-          await new Promise<void>((resolve) => {
-            request.signal?.addEventListener(
-              "abort",
-              () => setTimeout(resolve, 30),
-              { once: true },
-            );
-          });
-          active -= 1;
-          return {
-            ok: false,
-            text: null,
-            error: "terminated",
-            errorCode: "subagent_aborted",
-          };
-        }
-        active -= 1;
-        return { ok: true, text: "next" };
-      },
-    },
-  );
-  assert.equal(maximum, 1);
-  assert.equal((result.result as any)[0].error.code, "agent_timeout");
-  assert.deepEqual((result.result as any)[1], { ok: true, value: "next" });
-});
-
-test("agent timeout fails only that agent branch", async () => {
-  const result = await runWorkflow(
-    script(`export async function run() {
-      return await parallelSettled([
-        () => agent("slow", { timeoutMs: 50 }),
-        () => agent("fast"),
-      ]);
-    }`),
-    {
-      cwd: "/tmp",
-      timeoutMs: 1_000,
-      spawnAgent: async (request) => {
-        if (request.prompt === "fast") return { ok: true, text: "fast ok" };
-        return await new Promise((resolve) => {
-          request.signal?.addEventListener(
-            "abort",
-            () => resolve({ ok: false, text: null, error: "terminated" }),
-            { once: true },
-          );
-        });
-      },
-    },
-  );
-
-  assert.deepEqual(result.result, [
-    {
-      ok: false,
-      error: {
-        code: "agent_timeout",
-        message: "agent timed out after 50ms",
-        details: {
-          code: "agent_timeout",
-          message: "agent timed out after 50ms",
-          agentId: 1,
-          effectiveTimeoutMs: 50,
-        },
-      },
-    },
-    { ok: true, value: "fast ok" },
-  ]);
-});
-
-test("abnormal termination drains admitted calls and recovers only structured values and typed failures", async () => {
-  let cleanupAcknowledged = false;
-  await assert.rejects(
-    runWorkflow(
-      script(`export async function run() {
-        await parallelSettled([
-          () => agent("structured", { output: { schema: { type: "object" } }, timeoutMs: 25 }),
-          () => agent("prose"),
-          () => agent("failed"),
-        ]);
-        throw new Error("top-level boom");
-      }`),
-      {
-        cwd: "/tmp",
-        agentTimeoutMs: 500,
-        spawnAgent: async (request) => {
-          if (request.prompt === "structured") {
-            return {
-              ok: true,
-              text: "free prose excluded",
-              hasStructured: true,
-              value: { files: ["a.ts"] },
-              attempts: 2,
-            };
-          }
-          if (request.prompt === "prose") {
-            return { ok: true, text: "successful prose excluded" };
-          }
-          cleanupAcknowledged = true;
-          return {
-            ok: false,
-            text: null,
-            error: "RAW_PROVIDER_OUTPUT_SECRET",
-            errorCode: "provider_error",
-            errorDetails: {
-              code: "provider_error",
-              message: "RAW_PROVIDER_OUTPUT_SECRET",
-              logFile: "/tmp/child.log.gz",
-            },
-          };
-        },
-      },
-    ),
-    (error: any) => {
-      assert.equal(error.code, "workflow_script_error");
-      assert.equal(cleanupAcknowledged, true);
-      assert.deepEqual(error.diagnostic.counts, {
-        completed: 2,
-        failed: 1,
-        timedOut: 0,
-        canceled: 0,
-        outstanding: 0,
-      });
-      assert.equal(error.diagnostic.recoveryRecords.length, 2);
-      const [structured, failed] = error.diagnostic.recoveryRecords;
-      assert.deepEqual(structured.structuredValue, { files: ["a.ts"] });
-      assert.equal(structured.effectiveTimeoutMs, 25);
-      assert.equal(structured.attempts, 1);
-      assert.equal(failed.failure.code, "provider_error");
-      assert.equal(failed.failure.message, "subagent provider failed");
-      assert.equal(failed.logFile, "/tmp/child.log.gz");
-      assert.doesNotMatch(
-        JSON.stringify(error.diagnostic),
-        /RAW_PROVIDER_OUTPUT_SECRET/,
-      );
-      assert.doesNotMatch(JSON.stringify(error.diagnostic), /successful prose/);
-      assert.doesNotMatch(JSON.stringify(error.diagnostic), /free prose/);
-      assert.doesNotMatch(JSON.stringify(error.diagnostic), /structured\"/);
-      return true;
-    },
-  );
-});
-
-test("normal result waits for an unawaited admitted child to terminate", async () => {
-  let acknowledged = false;
-  const result = await runWorkflow(
-    script(`export async function run() {
-      void agent("detached");
-      return "done";
-    }`),
-    {
-      cwd: "/tmp",
-      spawnAgent: async (request) =>
-        await new Promise((resolve) => {
-          request.signal?.addEventListener(
-            "abort",
-            () => {
-              acknowledged = true;
-              resolve({ ok: false, text: null, error: "terminated" });
-            },
-            { once: true },
-          );
-        }),
-    },
-  );
-  assert.equal(result.result, "done");
-  assert.equal(acknowledged, true);
-});
-
-test("workflow agent states distinguish explicit and fallback timeouts", async (t) => {
-  const states: any[] = [];
-  mock.method(_spawnSubagent, "fn", async () => successfulOutcome("ok"));
-  t.after(() => mock.restoreAll());
-  const spawner = createWorkflowAgentSpawner({
-    cwd: "/tmp",
-    logId: "timeout-state",
-    agents: readOnlyAgents,
-    onAgentUpdate: (state) => states.push(state),
-  });
-  await spawner({
-    id: 1,
-    prompt: "fallback",
-    intent: "fallback",
-    effectiveTimeoutMs: 600_000,
-  });
-  await spawner({
-    id: 2,
-    prompt: "explicit",
-    intent: "explicit",
-    timeoutMs: 7,
-    effectiveTimeoutMs: 7,
-  });
-  const finalStates = states.filter((state) => state.status === "done");
-  assert.equal(finalStates[0].effectiveTimeoutMs, 600_000);
-  assert.equal(finalStates[0].explicitTimeoutMs, undefined);
-  assert.equal(finalStates[1].effectiveTimeoutMs, 7);
-  assert.equal(finalStates[1].explicitTimeoutMs, 7);
-});
-
-test("workflow timeout aborts in-flight agent requests", async () => {
-  let signalAborted = false;
-
-  await assert.rejects(
-    runWorkflow(
-      script(`export async function run() { return await agent("slow"); }`),
-      {
-        cwd: "/tmp",
-        timeoutMs: 200,
-        spawnAgent: async (request) =>
-          await new Promise((resolve) => {
-            request.signal?.addEventListener(
-              "abort",
-              () => {
-                signalAborted = true;
-                resolve({ ok: false, text: null, error: "aborted" });
-              },
-              { once: true },
-            );
-          }),
-      },
-    ),
-    (error: any) => {
-      assert.equal(error.code, "workflow_timeout");
-      assert.match(error.message, /timed out/);
-      assert.equal(error.diagnostic.counts.outstanding, 0);
-      return true;
-    },
-  );
-
-  assert.equal(signalAborted, true);
-});
-
-test("parent cancellation remains authoritative if its cleanup crosses the workflow timeout", async () => {
-  const controller = new AbortController();
-  const promise = runWorkflow(
-    script(`export async function run() { return await agent("slow"); }`),
-    {
-      cwd: "/tmp",
-      signal: controller.signal,
-      timeoutMs: 5,
-      spawnAgent: async (request) =>
-        await new Promise((resolve) => {
-          request.signal?.addEventListener(
-            "abort",
-            () =>
-              setTimeout(
-                () => resolve({ ok: false, text: null, error: "terminated" }),
-                20,
-              ),
-            { once: true },
-          );
-        }),
-    },
-  );
-  controller.abort();
-  await assert.rejects(promise, (error: any) => {
-    assert.equal(error.code, "workflow_aborted");
-    return true;
-  });
-});
-
-test("aborts runaway sandbox promptly", async () => {
-  const controller = new AbortController();
-  const promise = runWorkflow(
-    script(
-      `export async function run() { while (true) {} await agent("never"); }`,
-    ),
-    {
-      cwd: "/tmp",
-      signal: controller.signal,
-      spawnAgent: async () => ({ ok: true, text: "never" }),
-    },
-  );
-  controller.abort();
-  await assert.rejects(promise, (error: any) => {
-    assert.equal(error.code, "workflow_aborted");
-    assert.match(error.message, /aborted|exited/);
-    return true;
-  });
-});
-
-test("agent spawner uses safe spawn defaults and rejects writable agents", async () => {
-  const agents: AgentDefinition[] = [
-    {
-      name: "explorer",
-      description: "Explore",
-      tools: ["read", "bash"],
-      extensions: [],
-      env: { MCP_BROKER_READONLY: "1" },
-      systemPrompt: "Explore only",
-      disableSkills: true,
-      disablePromptTemplates: true,
-    },
-    {
-      name: "writer",
-      description: "Writer",
-      tools: ["write"],
-      extensions: [],
-      systemPrompt: "Write",
-      disableSkills: false,
-      disablePromptTemplates: false,
-    },
-  ];
-  const calls: any[] = [];
-  const updates: any[] = [];
-  mock.method(_spawnSubagent, "fn", async (invocation: any) => {
-    calls.push(invocation);
-    invocation.onEvent?.({ type: "agent_start" });
-    invocation.onEvent?.({
-      type: "tool_execution_start",
-      toolName: "read",
-      args: { path: "README.md" },
-    });
-    invocation.onEvent?.({ type: "tool_execution_end", toolName: "read" });
-    return {
-      ok: true,
-      aborted: false,
-      stdout: "done",
-      stderr: "",
-      exitCode: 0,
-      signal: null,
-    };
-  });
-
-  const spawn = createWorkflowAgentSpawner({
-    cwd: "/repo",
-    logId: "wf",
-    agents,
-    model: "p/m",
-    thinking: "high",
-    onAgentUpdate: (state) => updates.push(state),
-  });
-  assert.equal((await spawn({ id: 1, prompt: "go" })).text, "done");
-  assert.equal(calls[0].inheritSession, "none");
-  assert.deepEqual(calls[0].env, { MCP_BROKER_READONLY: "1" });
-  assert.deepEqual(calls[0].toolAllowlist, ["read"]);
-  assert.equal(calls[0].cwd, "/repo");
-  assert.equal(calls[0].model, "p/m");
-  assert.equal(calls[0].thinking, "high");
-  assert.ok(updates.some((state) => state.activity?.toolUseCount === 1));
-  assert.equal(updates.at(-1)?.activity?.resolved, true);
-  assert.equal(updates.at(-1)?.activity?.agentType, "explorer");
-
-  const rejected = await spawn({ id: 2, prompt: "write", agent: "writer" });
-  assert.equal(rejected.ok, false);
-  assert.match(rejected.error ?? "", /not allowed/);
 });
