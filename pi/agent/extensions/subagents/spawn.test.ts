@@ -331,6 +331,59 @@ test("spawnSubagent: aborted signal before spawn returns error without running",
   }
 });
 
+test("spawnSubagent: cancellation during secure logger creation prevents launch", async (t) => {
+  const controller = new AbortController();
+  let startFactory!: () => void;
+  const factoryStarted = new Promise<void>((resolve) => {
+    startFactory = resolve;
+  });
+  let resolveFactory!: (value: any) => void;
+  const factoryResult = new Promise<any>((resolve) => {
+    resolveFactory = resolve;
+  });
+  let discarded = false;
+  const writer = {
+    write: () => true,
+    onDrain: () => {},
+    onError: () => {},
+    finalize: async () => ({ retained: false as const }),
+    discard: async () => {
+      discarded = true;
+    },
+  };
+  const artifactStub = mock.method(_retainedArtifactFactory, "fn", async () => {
+    startFactory();
+    return await factoryResult;
+  });
+  let launched = false;
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    launched = true;
+    throw new Error("must not launch");
+  });
+  t.after(() => {
+    artifactStub.mock.restore();
+    spawnStub.mock.restore();
+  });
+
+  const pending = spawnSubagent({
+    prompt: "p",
+    toolAllowlist: [],
+    extensionAllowlist: [],
+    cwd: "/tmp",
+    signal: controller.signal,
+  });
+  await factoryStarted;
+  controller.abort();
+  resolveFactory(writer);
+  const result = await pending;
+
+  assert.equal(launched, false);
+  assert.equal(discarded, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.aborted, true);
+  assert.equal(result.errorMessage, "aborted before spawn");
+});
+
 // ─── spawnSubagent structured output ─────────────────────────────────────────
 
 test("spawnSubagent: captures valid structured output from child tool result", async () => {

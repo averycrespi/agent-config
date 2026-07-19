@@ -538,6 +538,19 @@ async function runSpawn(
     };
   }
 
+  if (signal?.aborted) {
+    await log.discard();
+    return {
+      ok: false,
+      aborted: true,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      signal: null,
+      errorMessage: "aborted before spawn",
+    };
+  }
+
   return await new Promise<SpawnOutcome>((resolve) => {
     let finished = false;
     let aborted = Boolean(signal?.aborted);
