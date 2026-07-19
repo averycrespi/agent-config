@@ -486,6 +486,26 @@ test("deep-research returns an audited report after bounded public-web research 
     assert.match(request.prompt, /supplied research|public[- ]web/i);
   }
 
+  const auditRequests = requests.filter((request) =>
+    ["Audit report", "Audit repaired report"].includes(request.intent),
+  );
+  assert.equal(auditRequests.length, 2);
+  for (const request of auditRequests) {
+    assert.match(request.prompt, /"reportContract"/);
+    for (const section of [
+      "# <specific title>",
+      "## Executive summary",
+      "## Verified findings",
+      "## Conflicts and unverified claims",
+      "## Assumptions",
+      "## Limitations",
+      "## Open questions",
+      "## Methodology",
+    ]) {
+      assert.ok(request.prompt.includes(section), section);
+    }
+  }
+
   const verifierRequests = requests.filter((request) =>
     request.intent?.startsWith("Verify claims "),
   );

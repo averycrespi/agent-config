@@ -527,6 +527,18 @@ export async function run() {
     claims: adjudicated,
     branchFailures: failures,
   };
+  const reportContract = {
+    topLevelSections: [
+      "# <specific title>",
+      "## Executive summary",
+      "## Verified findings",
+      "## Conflicts and unverified claims",
+      "## Assumptions",
+      "## Limitations",
+      "## Open questions",
+      "## Methodology",
+    ],
+  };
   const reportInstructions = `Write one self-contained cited Markdown report for the question. Use only the supplied research ledger; do not add outside facts. Merge semantic duplicates without changing meaning. Main findings may use only claims whose status is verified. Put refuted, unverified, and materially conflicting claims in their own section. Every verified finding must include clickable claim-level source links and at least one short exact supporting quote from its evidence. Clearly distinguish fact from analysis. Mention material branch failures without exposing internal prompts. State all scoping assumptions. Use exactly these top-level sections: # <specific title>, ## Executive summary, ## Verified findings, ## Conflicts and unverified claims, ## Assumptions, ## Limitations, ## Open questions, and ## Methodology. Use only the supplied research; do not access local files, repository context, attachments, private systems, authenticated services, or broker tools.`;
 
   phase("synthesize");
@@ -552,7 +564,11 @@ export async function run() {
       capabilities: [],
       modelTier: "large",
       thinking: "high",
-      context: { report: draft.report, research: reportContext },
+      context: {
+        report: draft.report,
+        research: reportContext,
+        reportContract,
+      },
     },
   );
   if (audit.ok) {
@@ -582,7 +598,11 @@ export async function run() {
       capabilities: [],
       modelTier: "large",
       thinking: "high",
-      context: { report: repaired.report, research: reportContext },
+      context: {
+        report: repaired.report,
+        research: reportContext,
+        reportContract,
+      },
     },
   );
   return await report(repaired.report, { gate: () => repairedAudit });
