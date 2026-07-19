@@ -8,6 +8,7 @@ import {
   open,
   opendir,
   readFile,
+  rename,
   rm,
   unlink,
 } from "node:fs/promises";
@@ -312,11 +313,44 @@ async function reclaimDeadLock(
   }
 }
 
+async function recoverReclaimMarker(
+  lockPath: string,
+  reclaimPath: string,
+): Promise<void> {
+  const capturedPath = `${reclaimPath}-${process.pid}-${_retainedArtifacts.nonce()}`;
+  try {
+    await rename(reclaimPath, capturedPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  try {
+    const captured = await readLock(capturedPath);
+    if (!captured || _retainedArtifacts.processAlive(captured.pid)) return;
+    const [currentInfo, capturedInfo] = await Promise.all([
+      lstat(lockPath).catch(() => undefined),
+      lstat(capturedPath),
+    ]);
+    if (
+      currentInfo &&
+      currentInfo.dev === capturedInfo.dev &&
+      currentInfo.ino === capturedInfo.ino
+    ) {
+      await unlink(lockPath);
+    }
+  } finally {
+    await unlink(capturedPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
+}
+
 async function acquireLock(dir: string): Promise<() => Promise<void>> {
   const lockPath = join(dir, LOCK_NAME);
   const reclaimPath = join(dir, RECLAIM_NAME);
   for (let attempt = 0; attempt < MAX_LOCK_ATTEMPTS; attempt += 1) {
     if (await lockExists(reclaimPath)) {
+      await recoverReclaimMarker(lockPath, reclaimPath);
       await new Promise<void>((resolve) => setImmediate(resolve));
       continue;
     }

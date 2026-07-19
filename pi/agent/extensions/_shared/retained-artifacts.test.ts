@@ -260,6 +260,33 @@ test("dead old staging and lock files are reclaimed without touching active stag
   assert.ok(await lstat(liveStage));
 });
 
+test("abandoned dead-owner reclaim markers do not block future finalizers", async (t) => {
+  const dir = await fixture(t);
+  await mkdir(dir, { mode: 0o700 });
+  const lock = join(dir, ".retention.lock");
+  const marker = join(dir, ".retention-reclaim");
+  await writeFile(lock, JSON.stringify({ pid: 999999, token: "dead" }), {
+    mode: 0o600,
+  });
+  await fsLink(lock, marker);
+  const aliveStub = mock.method(
+    _retainedArtifacts,
+    "processAlive",
+    (pid: number) => pid === process.pid,
+  );
+  t.after(() => aliveStub.mock.restore());
+
+  const result = await persistRetainedJson(
+    "workflow-recovery",
+    "after-reclaim-crash",
+    { ok: true },
+    { dir },
+  );
+  assert.equal(result.retained, true);
+  await assert.rejects(() => lstat(lock), /ENOENT/);
+  await assert.rejects(() => lstat(marker), /ENOENT/);
+});
+
 test("live lock contention discards the new artifact without publishing", async (t) => {
   const dir = await fixture(t);
   await mkdir(dir, { mode: 0o700 });
