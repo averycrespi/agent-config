@@ -70,7 +70,9 @@ Inventory ignores non-JavaScript files and directories. Unsafe names, unreadable
 | `phase` / `log`   | Updates the current phase or adds a progress log.                                                                                                                                                                                                                                             |
 | `args` / `cwd`    | Tool-call JSON arguments and the current working-directory string.                                                                                                                                                                                                                            |
 
-The scheduler defaults to four concurrent thunks, is configurable up to a host ceiling of 16, and clamps each `parallel(..., { concurrency })` request to the effective limit. Final workflow results must be structured-cloneable; return budget values by calling `spent()` and `remaining()` rather than spreading the facade, whose methods are functions.
+The scheduler defaults to four concurrent thunks, is configurable up to a host ceiling of 16, and clamps each `parallel(..., { concurrency })` request to the effective limit. Every workflow must export `run()` and return a value. A missing `run()` or a function that resolves `undefined` fails non-retryably with `workflow_missing_result`; return `null` for an explicit empty result. Other final results must be structured-cloneable. Return budget values by calling `spent()` and `remaining()` rather than spreading the facade, whose methods are functions.
+
+An explicit positive `timeoutMs` below the configured default is valid. The host resolves the effective timeout once for each logical call, uses it across retries, and exposes it in expanded terminal diagnostics; the default is a fallback, not a minimum.
 
 ## Structured output and verification
 
@@ -99,7 +101,7 @@ export async function run() {
 
 `maxTokensPerRun` observes streamed child token usage across every retry attempt. Meeting or exceeding a positive limit is sticky: active subagents are aborted, retries and later spawns are prevented, and affected attempts fail with `workflow_budget_exceeded`. The sandbox process remains alive, allowing `parallelSettled()` to fan in prior successes and typed failures. Token accounting reacts to observed usage, so some overshoot is possible and the `budget` mirror is not a reservation system.
 
-`workflow_report_rejected` is produced only when a report gate returns a non-passing verdict. A thrown gate error is not relabeled. Timeouts, parent cancellation, policy failures, and provider failures retain their own codes rather than being inferred from current budget state.
+`workflow_report_rejected` is produced only when a report gate returns a non-passing verdict. A thrown gate error is not relabeled. Missing results, script errors, whole-workflow timeouts, parent cancellation, per-agent timeouts, policy failures, and provider failures retain distinct codes rather than being inferred from current budget state. Failed tool text reports the authoritative top-level cause plus completed, failed, timed-out, canceled, and outstanding counts.
 
 A normally returning workflow is still reported as completed when it deliberately handles branch failures. Final counters remain distinct:
 
@@ -109,9 +111,9 @@ A normally returning workflow is still reported as completed when it deliberatel
 
 ## TUI rendering
 
-Tool rows use compact action-oriented summaries by default. Running and completed workflows show the workflow name, agent counts, failures, phase when active, and elapsed time without exposing inline script source. Expand the tool row to inspect per-agent activity, recent workflow logs, saved inventory entries, or validation source paths.
+Tool rows use compact action-oriented summaries by default. Running and completed workflows show the workflow name, agent counts, failures, phase when active, and elapsed time without exposing inline script source. Failed collapsed rows show one concise authoritative cause/count summary. Expand the tool row to inspect per-agent activity, effective timeout and typed failure metadata, recent workflow logs, saved inventory entries, validation source paths, and retained diagnostic paths.
 
-Errors retain context instead of replacing the row with a bare exception: run failures keep the latest workflow and agent summary, while earlier failures identify the attempted action and saved workflow name when available. Dynamic workflow, agent, activity, and log text is normalized before terminal rendering.
+Errors retain context instead of replacing the row with a bare exception: run failures keep the latest workflow and agent summary, while earlier failures identify the attempted action and saved workflow name when available. Dynamic workflow, agent, activity, warning, and path text is control-normalized, bounded, and width-aware. Compressed contents are never previewed or decompressed automatically.
 
 ## Model aliases
 
@@ -163,7 +165,11 @@ This repository stows entries inside the parent `<agentDir>`, but intentionally 
 
 Saved definitions persist until the user edits or removes them. After successful resolution and parsing, every `run` copies the exact original effective source into the dedicated owner-controlled system temporary `pi-workflow-scripts` directory before the sandbox starts. Directories are mode `0700`, artifacts are created exclusively at mode `0600`, existing files are never overwritten, and unsafe metadata/tool-call values cannot escape the directory. Persistence failure stops execution. Tool text and details report the immutable run-script path; named runs also report the saved source path.
 
-Workflow script artifacts contain source only—never results, responses, ledger snapshots, checkpoints, journals, or metadata sidecars—and are removed best-effort after seven days. Shared spillover files are separate, may contain raw model/tool output, and retain their own cleanup behavior. Progress and ledger state live only for the active foreground call. A script may retain at most 100 `log()` entries of 2,000 characters each and 100 phase entries of 200 characters each. Subagent failures may produce retained logs through `subagents`; this extension has no additional retained diagnostic log.
+Workflow script artifacts contain source only and are removed best-effort after seven days. Shared spillover files are separate, may contain raw model/tool output, and retain their own cleanup behavior. Progress and ledger state otherwise live only for the active foreground call. A script may retain at most 100 `log()` entries of 2,000 characters each and 100 phase entries of 200 characters each.
+
+After a top-level abnormal termination, the host waits for every admitted child to acknowledge settlement, then may persist one versioned owner-only `.json.gz` recovery envelope under `${tmpdir()}/pi-retained-diagnostics`. It contains workflow/phase/request identity, timings, attempts, host-resolved effective timeouts, aggregate counts/usage, validated structured successes, typed terminal failures, and finalized child-log paths. It explicitly excludes prompts, workflow args, successful free-form prose, raw activity/stdout/stderr, tool traces/outputs, environment, credentials, and script source. Successful runs—including workflow-authored `partial` or `inconclusive` values—never journal results. Failures with no settled structured value or typed logical-call failure create no empty envelope.
+
+Recovery files and compressed subagent logs share a fixed 1 GiB quota in compressed on-disk bytes and seven-day lazy cleanup. Oldest finalized recognized artifacts are evicted when necessary; active files, symlinks, directories, and unrelated files are ignored. An oversized artifact or persistence/lock/quota failure is discarded, the original workflow error remains authoritative, and bounded tool text reports the secondary warning. Tool/session output exposes only the finalized `.json.gz` path and bounded metadata. These files are sensitive; gzip is not sanitization or encryption. Inspect explicitly with `gzip -dc /path/to/file.json.gz` and never send an artifact to a provider without deliberate review.
 
 ## Limitations
 
@@ -171,7 +177,7 @@ Workflow script artifacts contain source only—never results, responses, ledger
 - No workflow-specific save, read, update, delete, import, export, or rename actions; use ordinary filesystem tools.
 - No per-workflow slash commands, prompt templates, arbitrary `scriptPath`, or execution outside the configured store.
 - No workflow-to-workflow composition, nested workflow RPC, recursion policy, background manager, or navigator.
-- No journaled resume, run IDs, checkpoints, response caches, retained results, run database, or durable run state.
+- No journaled resume, replay, run IDs, checkpoints, response caches, successful-run result journaling, run database, or durable run state. The only retained result data is the narrow abnormal-run recovery envelope described above.
 - No writable workflow mode, parallel implementation, session inheritance, or git worktree coordination.
 - No additional workflow metadata such as argument schemas, phases, model/tool policy, defaults, or `whenToUse`.
 - No arbitrary script-selected model IDs, user-defined alias maps, or general quality-helper framework beyond `verify()` and `report()`.
@@ -185,7 +191,9 @@ Workflow script artifacts contain source only—never results, responses, ledger
 - `Unknown saved workflow`: call `workflow({ action: "list" })` or `/workflows-list`, then check the configured directory and strict filename.
 - `Saved workflow ... is invalid`: fix the listed name, size, symlink, identity, read, or parser diagnostic before running.
 - Artifact persistence errors: check that the system temporary scripts directory is an owner-controlled real directory.
+- `workflow_missing_result`: export `run()` and return a value; use `return null` when no payload is intended.
 - `workflow sandbox exited`: check for an unsupported Node runtime, script error, infinite loop, timeout, or cancellation.
+- Recovery persistence warnings: the workflow's original cause still applies; inspect root ownership/mode, available storage, lock contention, and the fixed shared quota. A path appears only when retention succeeded.
 - Retryable provider failures may use `retries: 1`; policy, cap, budget, timeout, abort, and permanent provider schema failures are not retried.
 
 ## Prior art

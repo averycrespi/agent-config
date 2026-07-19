@@ -41,8 +41,8 @@ For each agent:
 1. Wait in the queued activity state and acquire direct-child capacity.
 2. Resolve the already-prevalidated agent definition.
 3. Create an activity tracker.
-4. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, native file arguments, optional structured schema, system prompt, env, cwd, parent session file, and abort signal.
-5. Feed child JSONL events into the tracker.
+4. Call `spawnSubagent()` with prompt, tool allowlist, extension allowlist, model/thinking, native file arguments, optional structured schema, system prompt, env, cwd, parent session file, and abort signal. The common spawner must securely create its gzip staging destination before launching the child.
+5. Feed child JSONL events into the tracker while `spawn.ts` writes callback-ordered stdout/stderr to gzip and pauses both streams together on backpressure.
 6. Format success or failure into that agent's result section.
 7. Finalize activity, clear UI hooks, and release capacity exactly once.
 
@@ -101,9 +101,11 @@ It accepts directory-based extensions and single-file extension modules with kno
 
 ## Logs and spillover
 
-Each child process writes raw stdout/stderr to a managed temp log. Successful logs are deleted after completion. Failed or aborted logs are retained and surfaced in failure text/details.
+`spawn.ts` is the single logging lifecycle for every launched child, including direct tools, workflows, goal review, and external `api.ts` callers. It creates `_shared/retained-artifacts.ts` gzip staging before spawn, writes the command header and combined stdout/stderr in callback order, and honors writable backpressure by pausing and resuming both child streams. Success closes and discards staging. Failure or abort closes gzip fully, enters the shared cross-process retention transaction, and exposes `SpawnOutcome.logFile` only when no-overwrite `.log.gz` publication survives age cleanup and quota enforcement.
 
-Both individual `stdout`/`stderr` fields and combined tool output can spill to temporary files via the shared spillover helper. Spillover artifacts and retained logs may contain raw tool/model output; they are not sanitized.
+The retained-diagnostics root and files are owner-controlled (`0700`/`0600`). Finalized logs share the helper's fixed 1 GiB compressed-byte quota and seven-day lazy retention with abnormal workflow recovery artifacts. Active staging is excluded; finalized capacity reservation, eviction, and publication are serialized across processes. Unsafe prelaunch storage fails closed. Stream, gzip, storage, lock, and quota failures after launch discard incomplete staging, preserve the child outcome, and add bounded `diagnosticWarnings`; no incomplete path is published. The spawner must resume paused child streams on diagnostic failure so logging cannot deadlock termination.
+
+Both individual `stdout`/`stderr` fields and combined tool output can separately spill through the shared spillover helper. Spillover and compressed logs may contain raw tool/model output and are sensitive; compression is not sanitization. Renderers expose paths only and never decompress contents.
 
 ## Boundaries and non-goals
 

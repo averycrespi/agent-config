@@ -131,9 +131,11 @@ Subagent types remain configured by markdown files with YAML frontmatter; see [A
 
 ## Logging
 
-Each child process writes raw stdout and stderr to a managed temp log while it runs. Successful subagent logs are deleted after the process exits. Failed or aborted subagents retain their log under `${tmpdir()}/pi-extension-logs/subagents/`, and the path is shown in the tool result and activity rendering.
+Every child that launches through the shared spawner streams its complete combined stdout/stderr into a lossless gzip staging file, including the command header and JSONL/process diagnostics. Backpressure pauses both child output streams until gzip drains. Successful child logs are closed and deleted. Failed and aborted children finalize an owner-only `.log.gz` file under `${tmpdir()}/pi-retained-diagnostics`; the tool result and expanded activity rendering show only the finalized path. Direct `spawn_agents`, workflow agents, goal reviewers, and programmatic API callers all use this path.
 
-Retained logs may contain raw subagent output, tool results, command output, structured values, attached file contents echoed through model/tool output, and stderr. Spillover files may contain the full raw combined subagent response. Do not treat these artifacts as sanitized output. Managed logs and spillover files are written with owner-only permissions and old files are cleaned up lazily by the shared helpers.
+Retained logs may contain raw subagent output, tool results, command output, structured values, attached file contents echoed through model/tool output, stderr, and credentials emitted by those sources. Gzip is not sanitization or encryption. Inspect a retained log explicitly with `gzip -dc /path/to/file.log.gz`; Pi never previews or decompresses it automatically and never sends it to a provider.
+
+Compressed subagent logs share a fixed 1 GiB finalized-artifact quota with abnormal workflow recovery files. Cleanup is lazy: a later artifact operation removes recognized finalized files older than seven days and then evicts oldest files until the compressed pool fits. Active files, symlinks, directories, and unrelated files are ignored. If compression/storage fails after launch, required eviction fails, lock acquisition is unsafe or busy, or a file cannot fit, the child result remains authoritative, no incomplete path is published, and a bounded diagnostic warning explains why no complete log was retained. An unsafe diagnostics root prevents child launch. Preflight failures that launch no child need no log. Spillover files are separate and retain their existing policy.
 
 ## Notes
 

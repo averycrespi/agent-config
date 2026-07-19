@@ -17,6 +17,11 @@ import { pipeline } from "node:stream/promises";
 import { createGzip, type Gzip } from "node:zlib";
 
 export const RETAINED_ARTIFACTS_DIR = join(tmpdir(), "pi-retained-diagnostics");
+export const LEGACY_SUBAGENT_LOG_DIR = join(
+  tmpdir(),
+  "pi-extension-logs",
+  "subagents",
+);
 export const RETAINED_ARTIFACT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const RETAINED_ARTIFACT_QUOTA_BYTES = 1024 * 1024 * 1024;
 const LOCK_NAME = ".retention.lock";
@@ -62,7 +67,10 @@ interface FinalizedFile {
 
 export const _retainedArtifacts = {
   root: () => RETAINED_ARTIFACTS_DIR,
+  legacyRoot: () => LEGACY_SUBAGENT_LOG_DIR,
   nonce: () => randomBytes(10).toString("hex"),
+  evict: unlink,
+  publish: link,
   processAlive: (pid: number): boolean => {
     try {
       process.kill(pid, 0);
@@ -111,6 +119,46 @@ async function ensureOwnerDirectory(dir: string): Promise<void> {
   await chmod(dir, 0o700);
 }
 
+async function cleanupLegacySubagentLogs(now: number): Promise<void> {
+  const dir = _retainedArtifacts.legacyRoot();
+  try {
+    const root = await lstat(dir);
+    const uid =
+      typeof process.getuid === "function" ? process.getuid() : undefined;
+    if (
+      !root.isDirectory() ||
+      root.isSymbolicLink() ||
+      (uid !== undefined && root.uid !== uid)
+    ) {
+      return;
+    }
+    const entries = await opendir(dir);
+    for await (const entry of entries) {
+      if (
+        !/^[a-zA-Z0-9_.:+-]+\.log$/.test(entry.name) ||
+        entry.isSymbolicLink()
+      ) {
+        continue;
+      }
+      const path = join(dir, entry.name);
+      try {
+        const info = await lstat(path);
+        if (
+          info.isFile() &&
+          !info.isSymbolicLink() &&
+          now - info.mtimeMs > RETAINED_ARTIFACT_MAX_AGE_MS
+        ) {
+          await unlink(path);
+        }
+      } catch {
+        // Legacy migration cleanup is best-effort and outside the new quota.
+      }
+    }
+  } catch {
+    // Missing or unsafe legacy storage must not affect current diagnostics.
+  }
+}
+
 function finalName(
   kind: RetainedArtifactKind,
   id: string,
@@ -148,6 +196,32 @@ async function listFinalized(dir: string): Promise<FinalizedFile[]> {
     }
   }
   return files;
+}
+
+async function cleanupStaleStaging(dir: string, now: number): Promise<void> {
+  const entries = await opendir(dir);
+  for await (const entry of entries) {
+    const match = /^\.stage-(\d+)-[a-f0-9]+\.tmp$/.exec(entry.name);
+    if (!match || entry.isSymbolicLink()) continue;
+    const path = join(dir, entry.name);
+    try {
+      const info = await lstat(path);
+      const uid =
+        typeof process.getuid === "function" ? process.getuid() : undefined;
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        (uid !== undefined && info.uid !== uid) ||
+        now - info.mtimeMs <= RETAINED_ARTIFACT_MAX_AGE_MS
+      ) {
+        continue;
+      }
+      const pid = Number(match[1]);
+      if (!_retainedArtifacts.processAlive(pid)) await unlink(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
 }
 
 async function readLockPid(lockPath: string): Promise<number | undefined> {
@@ -237,6 +311,7 @@ async function enforceAndPublish(
 
   const release = await acquireLock(options.dir);
   try {
+    await cleanupStaleStaging(options.dir, options.now);
     let files = await listFinalized(options.dir);
     for (const file of files) {
       if (options.now - file.mtimeMs <= RETAINED_ARTIFACT_MAX_AGE_MS) {
@@ -258,7 +333,7 @@ async function enforceAndPublish(
     for (const file of files) {
       if (finalizedBytes + staged.size <= options.quotaBytes) break;
       try {
-        await unlink(file.path);
+        await _retainedArtifacts.evict(file.path);
         finalizedBytes -= file.size;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -280,7 +355,7 @@ async function enforceAndPublish(
         finalName(kind, id, _retainedArtifacts.nonce()),
       );
       try {
-        await link(stagingPath, path);
+        await _retainedArtifacts.publish(stagingPath, path);
         await chmod(path, 0o600);
         await unlink(stagingPath);
         return { retained: true, path };
@@ -384,6 +459,7 @@ export async function createRetainedArtifact(
 ): Promise<RetainedArtifactWriter> {
   const dir = options.dir ?? _retainedArtifacts.root();
   await ensureOwnerDirectory(dir);
+  await cleanupLegacySubagentLogs(options.now ?? Date.now());
   for (let attempt = 0; attempt < MAX_COLLISION_ATTEMPTS; attempt += 1) {
     const stagingPath = join(
       dir,
@@ -425,6 +501,11 @@ export async function persistRetainedJson(
   options: Omit<RetainedArtifactOptions, "kind" | "id"> = {},
 ): Promise<RetainedArtifactResult> {
   const artifact = await createRetainedArtifact({ kind, id, ...options });
-  artifact.write(JSON.stringify(value));
-  return artifact.finalize();
+  try {
+    artifact.write(JSON.stringify(value));
+    return await artifact.finalize();
+  } catch (error) {
+    await artifact.discard();
+    throw error;
+  }
 }

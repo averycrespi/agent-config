@@ -810,6 +810,65 @@ test("spawnSubagent: logging backpressure pauses and resumes both child streams"
   ]);
 });
 
+test("spawnSubagent: stream errors resume output and never publish an incomplete path", async (t) => {
+  let streamError: ((error: Error) => void) | undefined;
+  let discarded = false;
+  const writer = {
+    write: () => true,
+    onDrain: () => {},
+    onError: (listener: (error: Error) => void) => {
+      streamError = listener;
+    },
+    finalize: async () => {
+      throw new Error("must not finalize an incomplete stream");
+    },
+    discard: async () => {
+      discarded = true;
+    },
+  };
+  const artifactStub = mock.method(
+    _retainedArtifactFactory,
+    "fn",
+    async () => writer,
+  );
+  const calls: string[] = [];
+  const spawnStub = mock.method(_spawn, "fn", () => {
+    const child = new EventEmitter() as any;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdout.setEncoding = () => {};
+    child.stderr.setEncoding = () => {};
+    child.stdout.pause = () => calls.push("stdout-pause");
+    child.stderr.pause = () => calls.push("stderr-pause");
+    child.stdout.resume = () => calls.push("stdout-resume");
+    child.stderr.resume = () => calls.push("stderr-resume");
+    setImmediate(() => {
+      child.stderr.emit("data", "primary stderr\n");
+      streamError?.(new Error("gzip destination failed"));
+      child.emit("close", 9, null);
+    });
+    return child;
+  });
+  t.after(() => {
+    artifactStub.mock.restore();
+    spawnStub.mock.restore();
+  });
+
+  const result = await spawnSubagent({
+    prompt: "p",
+    toolAllowlist: [],
+    extensionAllowlist: [],
+    cwd: "/tmp",
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.exitCode, 9);
+  assert.equal(result.stderr, "primary stderr\n");
+  assert.equal(result.logFile, undefined);
+  assert.equal(discarded, true);
+  assert.deepEqual(calls, ["stdout-resume", "stderr-resume"]);
+  assert.match(result.diagnosticWarnings?.[0] ?? "", /gzip destination failed/);
+});
+
 test("spawnSubagent: retention failure preserves primary failure and warns", async (t) => {
   const writer = {
     write: () => true,
