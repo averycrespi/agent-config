@@ -100,7 +100,7 @@ export default function (pi: ExtensionAPI) {
   let captured = false;
   let remindersSent = 0;
   let reminderTurnStarting = false;
-  let terminalProviderError = false;
+  let terminalRunFailure = false;
 
   async function ensureRegistered(cwd: string): Promise<void> {
     const warnings: string[] = [];
@@ -134,7 +134,7 @@ export default function (pi: ExtensionAPI) {
   function resetAttempt(): void {
     captured = false;
     remindersSent = 0;
-    terminalProviderError = false;
+    terminalRunFailure = false;
   }
 
   pi.on("session_start", async (_event, ctx) => {
@@ -145,39 +145,40 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (_event, ctx) => {
     await ensureRegistered(ctx.cwd);
+    return undefined;
+  });
+
+  pi.on("agent_start", async () => {
     if (reminderTurnStarting) {
       reminderTurnStarting = false;
     } else {
       resetAttempt();
     }
-    return undefined;
   });
 
-  pi.on("agent_end", async (event: { messages?: unknown }) => {
-    if (!Array.isArray(event.messages)) return;
-    for (let index = event.messages.length - 1; index >= 0; index -= 1) {
-      const message = event.messages[index];
-      if (
-        typeof message === "object" &&
-        message !== null &&
-        (message as { role?: unknown }).role === "assistant"
-      ) {
-        terminalProviderError =
-          (message as { stopReason?: unknown }).stopReason === "error";
-        break;
+  pi.on(
+    "agent_end",
+    async (event: { messages?: unknown }, ctx: ExtensionContext) => {
+      if (!Array.isArray(event.messages)) return;
+      for (let index = event.messages.length - 1; index >= 0; index -= 1) {
+        const message = event.messages[index];
+        if (
+          typeof message === "object" &&
+          message !== null &&
+          (message as { role?: unknown }).role === "assistant"
+        ) {
+          const stopReason = (message as { stopReason?: unknown }).stopReason;
+          terminalRunFailure =
+            stopReason === "error" || stopReason === "aborted";
+          break;
+        }
       }
-    }
-  });
 
-  (pi as any).on(
-    "agent_settled",
-    async (_event: unknown, ctx: ExtensionContext) => {
       if (
         !activeConfig ||
         captured ||
-        terminalProviderError ||
-        remindersSent >= activeConfig.missingOutputReminders ||
-        !ctx.isIdle()
+        terminalRunFailure ||
+        remindersSent >= activeConfig.missingOutputReminders
       ) {
         return;
       }

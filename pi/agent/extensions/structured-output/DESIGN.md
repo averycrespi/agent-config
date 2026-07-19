@@ -14,7 +14,7 @@ The extension is no-op by default. On `session_start` and `before_agent_start`, 
 
 A `registeredKey` prevents re-registering the same schema path and terminate setting repeatedly in one process. If config changes to a different active key, the extension registers the new tool definition under the same stable name.
 
-The extension tracks capture and reminder state for the current user-initiated run. When `agent_settled` fires without a captured value, terminal provider error, pending continuation, or exhausted reminder budget, it sends a focused follow-up through `pi.sendUserMessage()`. The resulting `before_agent_start` is marked as a reminder turn so it does not reset the budget. A later external turn resets capture and reminder state. This keeps repair in the same process and context while guaranteeing bounded termination.
+The extension tracks capture and reminder state for the current user-initiated run. `agent_start` resets that state for an external run but preserves it when a queued reminder starts. When `agent_end` fires without a captured value and the reminder budget remains, the extension queues a focused `followUp` through `pi.sendUserMessage()` unless the run ended in error or abort or another continuation is pending. A retried run is evaluated independently after its next `agent_start`. Pi drains follow-ups queued by `agent_end` before `agent_settled`, so repair remains inside the active loop and works in one-shot print/JSON sessions. A later external `agent_start` resets capture and reminder state. This keeps repair in the same process and context while guaranteeing bounded termination.
 
 ## Tool contract
 

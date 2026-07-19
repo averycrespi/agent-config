@@ -123,7 +123,7 @@ test("extension registers structured_output when schema file is configured", asy
   }
 });
 
-test("extension sends the configured number of bounded reminders when output is missing", async () => {
+test("extension queues bounded reminders from agent_end and resets for later runs", async () => {
   const root = join(
     tmpdir(),
     `structured-output-reminder-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -143,17 +143,23 @@ test("extension sends the configured number of bounded reminders when output is 
     structuredOutputExtension(harness.pi as any);
     const ctx = {
       cwd,
-      isIdle: () => true,
       hasPendingMessages: async () => false,
     };
+    const successfulEnd = {
+      messages: [{ role: "assistant", stopReason: "stop" }],
+    };
     await harness.emit("session_start", ctx);
-    await harness.emit("agent_settled", ctx);
-    await harness.emit("before_agent_start", ctx);
-    await harness.emit("agent_settled", ctx);
-    await harness.emit("before_agent_start", ctx);
-    await harness.emit("agent_settled", ctx);
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, successfulEnd);
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, successfulEnd);
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, successfulEnd);
 
     assert.equal(harness.userMessages.length, 2);
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, successfulEnd);
+    assert.equal(harness.userMessages.length, 3);
     assert.match(harness.userMessages[0]!.content, /structured_output/);
     assert.deepEqual(harness.userMessages[0]!.options, {
       deliverAs: "followUp",
@@ -163,7 +169,7 @@ test("extension sends the configured number of bounded reminders when output is 
   }
 });
 
-test("extension suppresses reminders for terminal provider errors and recovers after retry", async () => {
+test("extension suppresses reminders for errors and aborts, then recovers after retry", async () => {
   const root = join(
     tmpdir(),
     `structured-output-provider-error-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -186,18 +192,63 @@ test("extension suppresses reminders for terminal provider errors and recovers a
       hasPendingMessages: async () => false,
     };
     await harness.emit("session_start", ctx);
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, {
+      messages: [{ role: "assistant", stopReason: "aborted" }],
+    });
+    assert.deepEqual(harness.userMessages, []);
+
+    await harness.emit("agent_start", ctx);
     await harness.emit("agent_end", ctx, {
       messages: [
         { role: "assistant", stopReason: "error", errorMessage: "unavailable" },
       ],
     });
-    await harness.emit("agent_settled", ctx);
     assert.deepEqual(harness.userMessages, []);
 
+    await harness.emit("agent_start", ctx);
     await harness.emit("agent_end", ctx, {
       messages: [{ role: "assistant", stopReason: "stop" }],
     });
-    await harness.emit("agent_settled", ctx);
+    assert.equal(harness.userMessages.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("extension waits for an existing continuation before reminding", async () => {
+  const root = join(
+    tmpdir(),
+    `structured-output-pending-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const agentDir = join(root, "agent");
+  const cwd = join(root, "project");
+  const schemaFile = join(root, "schema.json");
+  await mkdir(join(cwd, ".pi"), { recursive: true });
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(schemaFile, JSON.stringify({ type: "object" }));
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  process.env.PI_STRUCTURED_OUTPUT_SCHEMA_FILE = schemaFile;
+
+  try {
+    const harness = makePi();
+    structuredOutputExtension(harness.pi as any);
+    let pending = true;
+    const ctx = {
+      cwd,
+      hasPendingMessages: async () => pending,
+    };
+    const successfulEnd = {
+      messages: [{ role: "assistant", stopReason: "stop" }],
+    };
+    await harness.emit("session_start", ctx);
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, successfulEnd);
+    assert.deepEqual(harness.userMessages, []);
+
+    pending = false;
+    await harness.emit("agent_start", ctx);
+    await harness.emit("agent_end", ctx, successfulEnd);
     assert.equal(harness.userMessages.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -221,10 +272,16 @@ test("extension does not remind after structured output is captured", async () =
   try {
     const harness = makePi();
     structuredOutputExtension(harness.pi as any);
-    const ctx = { cwd, isIdle: () => true };
+    const ctx = {
+      cwd,
+      hasPendingMessages: async () => false,
+    };
     await harness.emit("session_start", ctx);
+    await harness.emit("agent_start", ctx);
     await harness.tools[0].execute("tool-1", {});
-    await harness.emit("agent_settled", ctx);
+    await harness.emit("agent_end", ctx, {
+      messages: [{ role: "assistant", stopReason: "toolUse" }],
+    });
 
     assert.deepEqual(harness.userMessages, []);
   } finally {
