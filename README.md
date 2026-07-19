@@ -12,7 +12,7 @@ This is my personal agent operating system for software work. It combines:
 
 - **A Pi-native workflow layer** for planning, executing, independently reviewing, and completing engineering tasks
 - **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, prechecked scheduled tasks, brokered external tools, web access, and TUI polish
-- **Reusable skills** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, memory workflows, and agent-harness engineering
+- **Reusable skills and saved workflows** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, deep public-web research, memory workflows, and agent-harness engineering
 - **Subagent definitions** for isolated exploration, scouting, research, review, and analysis
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
 
@@ -36,7 +36,7 @@ Supporting rails keep the loop safer and more inspectable:
 
 - **Route authenticated external access** through `mcp-broker` instead of exposing credentials directly to the agent
 - **Use direct web access** through `web-access` for public search and page fetching
-- **Orchestrate multi-agent checks** with inline or reusable named user-scoped `workflow` definitions that support discovery and validation, then fan out read-mostly subagents under host-enforced concurrency and run budgets, structured verification/report gates, and fixed model-tier routing
+- **Orchestrate multi-agent work** with inline or reusable named `workflow` definitions—including a repository-managed `deep-research` workflow—that support discovery and validation, then fan out read-mostly subagents under host-enforced concurrency and run budgets, structured verification/report gates, and fixed model-tier routing
 
 This turns Pi from a chat interface with tools into a more structured development harness.
 
@@ -65,7 +65,7 @@ Subagents live in [`pi/agent/agents/`](pi/agent/agents/) and are loaded dynamica
 - holistic review of diffs, plans, and branches
 - signal analysis for logs, traces, metrics, and large outputs
 
-The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions, including bounded host-enforced concurrency and run budgets, structured verification/report gates, fixed host-resolved model tiers, and compact progress.
+The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions, including bounded host-enforced concurrency and run budgets, structured verification/report gates, fixed host-resolved model tiers, and compact progress. The repository also ships [`deep-research`](pi/agent/workflows/deep-research.js), a bounded public-web workflow that cross-checks source-backed claims before returning one cited Markdown report.
 
 ### Extension Development
 
@@ -82,10 +82,10 @@ Useful development commands:
 
 ```sh
 make install-dev      # install Node dependencies and Husky git hooks
-npm run lint          # lint Pi extension TypeScript files
+npm run lint          # lint Pi extension and saved-workflow TypeScript files
 npm run format:check  # check formatting for TS/JS/JSON/Markdown/YAML files
-make typecheck        # type-check Pi extension TypeScript files
-make test             # run Pi extension unit tests
+make typecheck        # type-check Pi extension and saved-workflow TypeScript files
+make test             # run Pi extension and saved-workflow unit tests
 ```
 
 ## Companion: agent-tools

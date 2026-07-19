@@ -35,10 +35,10 @@ make install-playwright # install Playwright for browser automation
 make stow-claude         # symlink claude/ into ~/.claude/
 make stow-claude-sandbox # stow-claude + patch sandbox overrides
 make stow-pi             # symlink pi/agent/ into ~/.pi/agent/
-npm run lint            # lint Pi extension TypeScript files
+npm run lint            # lint Pi extension and saved-workflow TypeScript files
 npm run format:check    # check formatting for TS/JS/JSON/Markdown/YAML files
-make typecheck          # type-check Pi extension TypeScript files
-make test               # run all Pi extension unit tests
+make typecheck          # type-check Pi extension and saved-workflow TypeScript files
+make test               # run all Pi extension and saved-workflow unit tests
 ```
 
 ## Testing
@@ -48,11 +48,14 @@ Pure-logic tests run via Node's built-in `node:test` runner, loaded through `tsx
 ```bash
 make test                                                    # run everything
 npx tsx --test pi/agent/extensions/<ext>/*.test.ts           # run one extension
+npx tsx --test pi/agent/workflows/<workflow>.test.ts         # run one saved workflow
 ```
+
+Extension tests stay colocated with their extension. Saved-workflow tests stay beside the corresponding `*.js` definition under `pi/agent/workflows/`; the test imports the generic runtime through `pi/agent/extensions/workflows/` and loads the actual adjacent definition.
 
 Test files import source with `.ts` extensions (e.g. `from "./state.ts"`). This requires `"allowImportingTsExtensions": true` in `tsconfig.json` — don't remove it or `make typecheck` will break.
 
-**Before reporting any Pi extension change complete, run both `make typecheck` AND `make test`.** Typecheck alone catches type errors but not behavioral regressions — the tests cover pure logic that types can't verify.
+**Before reporting any Pi extension or saved-workflow change complete, run both `make typecheck` AND `make test`.** Typecheck alone catches type errors but not behavioral regressions — the tests cover pure logic that types can't verify.
 
 ## Skill Naming Convention
 
@@ -86,6 +89,7 @@ Preferred structure:
 Repo-specific structure rules:
 
 - Do not add top-level single-file Pi extensions under `pi/agent/extensions/*.ts` in this repo. Keep each extension in its own directory so colocated `*.test.ts` files are never mistaken for extension entrypoints.
+- Keep saved-workflow `*.test.ts` files beside their `*.js` definitions under `pi/agent/workflows/`; repository lint, typecheck, test, and lint-staged globs must include that directory.
 - When adding a new Pi extension, also add it to the extension table in `pi/README.md` with a concise user-facing purpose and update the root `README.md` when the extension changes the repository's top-level capability overview.
 - Put general cross-extension helpers in `pi/agent/extensions/_shared/`. Keep that directory loader-inert: do not add an `index.ts`.
 - If shared code grows into a real library with its own conceptual surface, promote it to a top-level underscore-prefixed directory with an `api.ts` public surface instead of stretching `_shared/` into an ad hoc package.

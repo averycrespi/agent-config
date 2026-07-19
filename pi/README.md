@@ -11,7 +11,8 @@ pi/agent/
 ├── agents/         # Subagent definitions (explorer, scout, researcher, reviewer, analyst)
 ├── extensions/     # TypeScript extensions
 ├── prompts/        # Custom prompt templates
-└── skills/         # Custom skills
+├── skills/         # Custom skills
+└── workflows/      # Reusable foreground orchestration scripts
 ```
 
 ## How It Works
@@ -46,6 +47,16 @@ Underscore-prefixed directories are libraries imported by sibling extensions, no
 | `_shared` | Stateless helpers shared across extensions |
 
 See [AGENTS.md](../AGENTS.md) for repo-specific authoring guidance.
+
+## Saved Workflows
+
+JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, read-mostly subagent policy, fixed model aliases, concurrency, budgets, and validation as inline workflows. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
+
+| Workflow        | Purpose                                                                           |
+| --------------- | --------------------------------------------------------------------------------- |
+| `deep-research` | Research a question across public web sources and return a verified cited report. |
+
+Run it through the `workflow` tool with `action: "run"`, `name: "deep-research"`, and the research question as `args`. See [the workflows README](agent/extensions/workflows/README.md#shipped-saved-workflows) for its evidence policy, limits, output contract, and public-web safety boundary.
 
 ## Prompt Templates
 

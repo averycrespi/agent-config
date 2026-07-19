@@ -54,6 +54,28 @@ workflow({ action: "run", name: "repo-audit", args: { scope: "tests" } });
 
 Definitions are loaded on every list, validation, or named run, so file additions, edits, and removals are visible without restarting Pi. `/workflows-list` displays the same current inventory for users. Create or edit definitions with ordinary filesystem tools at the absolute paths shown by `/workflows-config` and listing output. Missing directories are treated as empty.
 
+### Shipped saved workflows
+
+This repository installs ordinary saved definitions into the default store through Stow:
+
+| Workflow        | Input                   | Purpose                                                                       |
+| --------------- | ----------------------- | ----------------------------------------------------------------------------- |
+| `deep-research` | Non-empty question text | Research public web sources, cross-check claims, and return one cited report. |
+
+```js
+workflow({
+  action: "run",
+  name: "deep-research",
+  args: "What changed in the latest version of the example protocol?",
+});
+```
+
+`deep-research` scopes up to five complementary facets, searches with the `small` model tier, extracts at most twelve public HTTPS sources with the `big` tier, and has three independent `big`-tier researchers adjudicate source-backed claims. A claim reaches the verified findings only with two verifier votes plus either one primary/authoritative source or reputable secondary evidence from at least two publishers with distinct canonical homepage hostnames. Search, fetch, and verifier failures are retained as limitations when at least one material claim remains verified.
+
+The successful result is one Markdown report with an executive summary, verified findings and claim-level evidence, conflicts and unverified claims, assumptions, limitations, open questions, and methodology. A final reviewer audits the report against the internal evidence ledger. One repair is allowed; a second failed integrity audit rejects the report. The script admits at most 25 logical calls—below its explicit ceiling of 30—and retrieval calls retry at most once.
+
+The public-web boundary is prompt-enforced in this version. Research prompts require public HTTPS sources and forbid local files, repository context, attachments, private systems, authenticated services, and broker tools, but the generic agent tool allowlist does not mechanically narrow those capabilities per saved workflow. Remote content remains untrusted data. Successful reports are returned to the conversation and are not retained as workflow artifacts.
+
 Inventory ignores non-JavaScript files and directories. Unsafe names, unreadable or oversized files, symlinked entries, filename/metadata mismatches, and parser failures appear as invalid with diagnostics and cannot run. Processing is capped at 256 KiB per file, 200 candidate entries, 2 MiB aggregate parsed source, and 32 KiB of tool text; descriptions and diagnostics are single-line and capped. Listing marks truncation explicitly. Direct resolution of a validated name does not depend on the truncated inventory subset.
 
 ## Script globals
@@ -159,7 +181,7 @@ Configure `extension:workflows` in Pi settings. Environment variables override s
 
 The default aliases use the `openai-codex` provider and require it to be authenticated. Override either selector when using another available Pi provider.
 
-This repository stows entries inside the parent `<agentDir>`, but intentionally does not ship a `pi/agent/workflows/` entry. Consequently, the default directory is currently user-local rather than repository-managed. An override is optional when a different private location is more convenient; it is not required for privacy.
+This repository ships `pi/agent/workflows/deep-research.js`, so `make stow-pi` installs the default workflow store and definition under `<agentDir>/workflows`. Other saved definitions may be added there or kept in a different private directory through `userWorkflowsDir`. The configured store remains the only store; the extension does not add project lookup or precedence rules.
 
 ## Logging and retained output
 
@@ -173,7 +195,7 @@ Recovery files and compressed subagent logs share a fixed 1 GiB quota in compres
 
 ## Limitations
 
-- No project workflow stores, implicit `<cwd>/.pi/workflows`, directory walking, precedence/shadowing between stores, or bundled definitions.
+- No project workflow stores, implicit `<cwd>/.pi/workflows`, directory walking, or precedence/shadowing between stores. The extension has no built-in definition registry; this repository's `deep-research.js` is an ordinary file in the configured saved-workflow store.
 - No workflow-specific save, read, update, delete, import, export, or rename actions; use ordinary filesystem tools.
 - No per-workflow slash commands, prompt templates, arbitrary `scriptPath`, or execution outside the configured store.
 - No workflow-to-workflow composition, nested workflow RPC, recursion policy, background manager, or navigator.

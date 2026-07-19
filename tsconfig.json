@@ -8,6 +8,6 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["pi/agent/extensions/**/*.ts"],
+  "include": ["pi/agent/extensions/**/*.ts", "pi/agent/workflows/**/*.ts"],
   "exclude": ["node_modules"]
 }

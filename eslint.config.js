@@ -5,7 +5,7 @@ export default [
     ignores: ["node_modules/**", ".husky/_/**"],
   },
   {
-    files: ["pi/agent/extensions/**/*.ts"],
+    files: ["pi/agent/extensions/**/*.ts", "pi/agent/workflows/**/*.ts"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {

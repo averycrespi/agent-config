@@ -35,4 +35,4 @@ typecheck:
 	npx -p typescript tsc
 
 test:
-	npx tsx --test "pi/agent/extensions/**/*.test.ts"
+	npx tsx --test "pi/agent/extensions/**/*.test.ts" "pi/agent/workflows/**/*.test.ts"

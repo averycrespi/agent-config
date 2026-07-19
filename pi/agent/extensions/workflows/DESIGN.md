@@ -14,6 +14,7 @@ The `workflows` extension owns deterministic foreground orchestration above the 
 - `runtime.ts` owns the sandbox process and RPC boundary, terminal cutover/drain, retries, authoritative cancellation causes, effective timeout resolution, structured recovery accumulation, policy enforcement, model resolution, schema validation, and activity tracking.
 - `sandbox-source.ts` exposes deterministic script globals, clone-safe errors, combinators, and the advisory budget mirror.
 - `display.ts`, `safe-stringify.ts`, and `types.ts` own rendering, safe previews, and shared contracts.
+- `pi/agent/workflows/deep-research.js` is a repository-managed ordinary saved definition, not extension runtime code or a parser bypass.
 
 Imports from subagents must remain limited to `../subagents/api.ts`. The ledger is internal and has no persisted or cross-run state.
 
@@ -24,6 +25,8 @@ Imports from subagents must remain limited to `../subagents/api.ts`. The ledger 
 Saved identity is strict: a regular `<name>.js` file and literal `meta.name` must match `^[a-z0-9][a-z0-9-]{0,63}$`. Entries are opened without following symlinks, checked as regular files, bounded to 256 KiB, and passed to `parseWorkflowScript()`. Inventory is deterministic and fail-soft, capped at 200 candidates and 2 MiB aggregate parsed source; invalid entries retain capped single-line diagnostics. Formatted tool text is capped at 32 KiB with explicit truncation. Direct requested-name resolution computes and validates `<name>.js` independently of inventory truncation.
 
 `list` loads config and current inventory only. `validate(script)` invokes only the parser; `validate(name)` additionally performs safe store resolution and identity checks. Neither path loads agents, creates a ledger, writes an artifact, or starts a child. `run` resolves and parses one inline or named source, then persists `ParsedWorkflow.script` before loading agents or constructing runtime state. Named and inline sources converge at that point and cannot drift in parser, sandbox, policy, budget, cancellation, rendering, or failure behavior.
+
+The repository-managed `deep-research` definition uses this unchanged saved-file path. Its deterministic structure bounds the run to five search facets, twelve source extractions, three independent claim-verification ballots, one synthesis, one initial audit, and at most one repair plus final audit: 25 logical calls at the ceiling. The script owns public-web prompts, authority-aware claim adjudication, partial-failure reporting, and the final Markdown contract; the host still owns model-alias resolution, retries, accounting, cancellation, schemas, and policy. Tests load the actual saved file through `parseWorkflowScript()` and execute it through `runWorkflow()` with controlled structured subagent results.
 
 The artifact directory must be a real owner-controlled mode-`0700` directory. Files use independently sanitized names plus an opaque nonce and exclusive mode-`0600` creation, so metadata and tool-call IDs cannot affect containment or overwrite an existing artifact. Failure is fatal before execution. Cleanup considers only this helper's old regular `.js` files and leaves symlinks, unrelated spillover, and other content alone. Run results and runtime errors expose `scriptFile`; named runs separately expose `sourceFile`. No result or run-state sidecar is written.
 
@@ -109,7 +112,7 @@ The recovery envelope is diagnostic partial work, not a durable run system. No r
 
 ## Non-goals
 
-- Project stores, implicit repository lookup, bundled definitions, precedence/shadowing, workflow-specific mutation actions, or arbitrary file paths.
+- Project stores, implicit repository lookup, an extension-owned built-in definition registry, precedence/shadowing, workflow-specific mutation actions, or arbitrary file paths.
 - Workflow composition, nesting, recursion, per-workflow commands/templates, background execution, or a workflow navigator.
 - Retained successful runs/results, journaling/resume/replay, run IDs, checkpoints, response caching, or additional metadata schemas/policies. Narrow abnormal structured recovery is the explicit exception.
 - Writable workflow agents, parallel implementation, session inheritance, git worktree isolation, or writable coordination.
