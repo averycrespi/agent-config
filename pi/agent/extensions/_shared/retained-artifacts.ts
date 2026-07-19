@@ -25,6 +25,7 @@ export const LEGACY_SUBAGENT_LOG_DIR = join(
 export const RETAINED_ARTIFACT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const RETAINED_ARTIFACT_QUOTA_BYTES = 1024 * 1024 * 1024;
 const LOCK_NAME = ".retention.lock";
+const RECLAIM_NAME = ".retention-reclaim";
 const MAX_COLLISION_ATTEMPTS = 100;
 const MAX_LOCK_ATTEMPTS = 20;
 
@@ -224,7 +225,9 @@ async function cleanupStaleStaging(dir: string, now: number): Promise<void> {
   }
 }
 
-async function readLockPid(lockPath: string): Promise<number | undefined> {
+async function readLock(
+  lockPath: string,
+): Promise<{ pid: number; token?: string } | undefined> {
   let info;
   try {
     info = await lstat(lockPath);
@@ -243,15 +246,81 @@ async function readLockPid(lockPath: string): Promise<number | undefined> {
   }
   const value = JSON.parse(await readFile(lockPath, "utf8")) as {
     pid?: unknown;
+    token?: unknown;
   };
   return Number.isInteger(value.pid) && Number(value.pid) > 0
-    ? Number(value.pid)
+    ? {
+        pid: Number(value.pid),
+        ...(typeof value.token === "string" ? { token: value.token } : {}),
+      }
     : undefined;
+}
+
+async function lockExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function releaseOwnedLock(
+  lockPath: string,
+  token: string,
+): Promise<void> {
+  const current = await readLock(lockPath);
+  if (current?.token !== token) return;
+  await unlink(lockPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+
+async function reclaimDeadLock(
+  lockPath: string,
+  reclaimPath: string,
+): Promise<boolean> {
+  try {
+    await link(lockPath, reclaimPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST" || code === "ENOENT") return false;
+    throw error;
+  }
+  try {
+    const captured = await readLock(reclaimPath);
+    if (!captured || _retainedArtifacts.processAlive(captured.pid))
+      return false;
+    const [currentInfo, capturedInfo] = await Promise.all([
+      lstat(lockPath).catch(() => undefined),
+      lstat(reclaimPath),
+    ]);
+    if (
+      currentInfo &&
+      currentInfo.dev === capturedInfo.dev &&
+      currentInfo.ino === capturedInfo.ino
+    ) {
+      await unlink(lockPath);
+      return true;
+    }
+    return false;
+  } finally {
+    await unlink(reclaimPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
 }
 
 async function acquireLock(dir: string): Promise<() => Promise<void>> {
   const lockPath = join(dir, LOCK_NAME);
+  const reclaimPath = join(dir, RECLAIM_NAME);
   for (let attempt = 0; attempt < MAX_LOCK_ATTEMPTS; attempt += 1) {
+    if (await lockExists(reclaimPath)) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      continue;
+    }
+    const token = _retainedArtifacts.nonce();
     try {
       const handle = await open(
         lockPath,
@@ -261,26 +330,26 @@ async function acquireLock(dir: string): Promise<() => Promise<void>> {
           (constants.O_NOFOLLOW ?? 0),
         0o600,
       );
-      await handle.writeFile(JSON.stringify({ pid: process.pid }));
+      try {
+        await handle.writeFile(JSON.stringify({ pid: process.pid, token }));
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await unlink(lockPath).catch(() => undefined);
+        throw error;
+      }
       await handle.close();
-      return async () => {
-        await unlink(lockPath).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error;
-        });
-      };
+      if (await lockExists(reclaimPath)) {
+        await releaseOwnedLock(lockPath, token);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        continue;
+      }
+      return () => releaseOwnedLock(lockPath, token);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let pid: number | undefined;
       try {
-        pid = await readLockPid(lockPath);
+        if (await reclaimDeadLock(lockPath, reclaimPath)) continue;
       } catch {
         throw new Error("retention lock ownership is ambiguous");
-      }
-      if (pid !== undefined && !_retainedArtifacts.processAlive(pid)) {
-        await unlink(lockPath).catch((unlinkError: NodeJS.ErrnoException) => {
-          if (unlinkError.code !== "ENOENT") throw unlinkError;
-        });
-        continue;
       }
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
