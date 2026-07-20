@@ -51,11 +51,12 @@ See [AGENTS.md](../AGENTS.md) for repo-specific authoring guidance.
 
 JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, centrally resolved subagent capabilities/model tiers/thinking, concurrency, budgets, and validation as inline workflows. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
 
-| Workflow        | Purpose                                                                           |
-| --------------- | --------------------------------------------------------------------------------- |
-| `deep-research` | Research a question across public web sources and return a verified cited report. |
+| Workflow        | Purpose                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `deep-research` | Research a question across public web sources and return a verified cited report.               |
+| `review`        | Review caller-prepared change evidence through bounded independent lenses and one adjudication. |
 
-Run it through the `workflow` tool with `action: "run"`, `name: "deep-research"`, and the research question as `args`. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for its evidence policy, limits, output contract, and public-web safety boundary.
+Run definitions through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. `deep-research` accepts a question string; `review` requires prepared target, context-path, and deterministic-check evidence. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for their exact contracts and safety boundaries.
 
 ## Prompt Templates
 
@@ -82,7 +83,6 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends    |
 | `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                         |
-| `review`                  | Reviewing a PR, branch, commit range, working tree, plan, document, or unit of work holistically     |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                  |
 | `visualize-plan`          | Turning plans into visual HTML artifacts for easier human review                                     |
 

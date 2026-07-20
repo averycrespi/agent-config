@@ -70,7 +70,7 @@ Saved definitions are regular `<name>.js` files in `userWorkflowsDir`. Filename 
 
 ```json
 { "action": "list" }
-{ "action": "validate", "name": "deep-research" }
+{ "action": "validate", "name": "review" }
 { "action": "run", "name": "deep-research", "args": "What changed?" }
 ```
 
@@ -85,6 +85,35 @@ The shipped workflow accepts a non-empty question and uses exact routing:
 - extraction and three claim-verification ballots: `read-web`, large tier, high thinking; extraction retries once.
 
 It scopes up to five facets, extracts up to twelve public HTTPS sources, requires two verification votes plus authoritative/primary evidence or reputable independent secondary publishers, then audits the final cited report. One repair is allowed; a second failed audit rejects the report. Remote content is untrusted data. No branch receives broker, shell, or filesystem-discovery capability from the workflow.
+
+### `review`
+
+The shipped review workflow accepts a caller-prepared evidence package. Target discovery, Git/GitHub retrieval, diff capture, and deterministic checks stay with the caller because the workflow sandbox cannot perform them safely. At least one `contextPaths` entry is required; reviewers may inspect those paths and declared changed files with `read-filesystem` only.
+
+```json
+{
+  "action": "run",
+  "name": "review",
+  "args": {
+    "target": { "kind": "working-tree", "label": "current changes" },
+    "objective": "Implement the requested behavior",
+    "acceptanceCriteria": ["The behavior is correct"],
+    "changedFiles": ["src/example.ts"],
+    "contextPaths": ["/tmp/review.patch", "AGENTS.md"],
+    "checks": [{ "name": "tests", "status": "passed", "summary": "12 passed" }],
+    "priorReviewContext": [],
+    "knownGaps": [],
+    "riskTags": [],
+    "requestedLenses": []
+  }
+}
+```
+
+Target `kind` is one of `working-tree`, `branch`, `commit-range`, `pull-request`, `document`, or `other`. Check status is `passed`, `failed`, or `not-run`. Optional lenses are `architecture` and `performance`; risk tags `architecture`, `migration`, `multi-module`, or `public-api` add architecture, while `concurrency`, `database`, `hot-path`, or `performance` add performance.
+
+Three core medium/high reviewers cover behavior, assurance, and maintainability in parallel. They return strict evidence-backed finding batches. Exact duplicates are grouped before one large/high adjudicator confirms, rejects, or sends each immutable group for human judgment. The workflow validates that every exact group is dispositioned once without splitting, combining, rewriting, or inventing findings, and falls back to an incomplete human-review report if adjudication fails semantically or operationally. Final Markdown is rendered deterministically; it never claims merge readiness. Failed or missing checks, reviewer failures, model-reported gaps, and unresolved candidates remain visible.
+
+All model calls receive only `read-filesystem`; no review branch gets shell, web, broker, or mutation authority. Repository artifacts, diffs, comments, and prior model output are treated as untrusted evidence. The workflow does not fix findings or loop back into implementation; rerun it against a newly prepared revision after repairs.
 
 ## Model and capability policy
 

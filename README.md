@@ -12,7 +12,7 @@ This is my personal agent operating system for software work. It combines:
 
 - **A Pi-native workflow layer** for planning, executing, independently reviewing, and completing engineering tasks
 - **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, prechecked scheduled tasks, brokered external tools, web access, and TUI polish
-- **Reusable skills and saved workflows** for planning, plan visualization, diagnosis, TDD, review, browser automation, frontend design, Jira ticket creation, deep public-web research, memory workflows, and agent-harness engineering
+- **Reusable skills and saved workflows** for planning, plan visualization, diagnosis, TDD, browser automation, frontend design, Jira ticket creation, evidence-based review, deep public-web research, memory workflows, and agent-harness engineering
 - **Centrally governed subagents** with explicit composable capabilities, model tiers, and thinking
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
 
@@ -30,7 +30,7 @@ The Pi setup is built around a durable development loop:
 - **Plan the work** with `plan`, then stress-test substantial plans with `challenge-plan` before execution
 - **Execute deliberately** with session-scoped goals via `goal`, optional fail-closed independent completion review, and in-session task tracking via `todo`
 - **Delegate isolated research** with self-contained prompts and explicit filesystem, web, broker, or shell capabilities
-- **Review independently** with `review` for diffs, branches, plans, documents, and other coherent units of work
+- **Review independently** with the saved `review` workflow after preparing the target, context paths, acceptance criteria, and deterministic-check evidence
 
 Supporting rails keep the loop safer and more inspectable:
 
@@ -55,11 +55,11 @@ See the [Pi README](pi/README.md#extensions) for the full extension table.
 
 ### Skills and Subagents
 
-The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, reviewing, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
+The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
 
 The [`subagents`](pi/agent/extensions/subagents/) extension runs isolated child contexts from self-contained prompts. Each call explicitly selects from four fixed capabilities—filesystem reads, shell execution, read-only broker access, and public web access—plus a centrally configured small/medium/large model tier and allowed thinking level. There are no named roles or Markdown agent presets; intent is the visible identity and authority is composed per request.
 
-The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions. Workflow calls carry the same explicit capability/tier/thinking contract and use host-enforced concurrency, run budgets, structured verification/report gates, and compact progress. The repository also ships [`deep-research`](pi/agent/workflows/deep-research.js), a bounded public-web workflow that cross-checks source-backed claims before returning one cited Markdown report.
+The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions. Workflow calls carry the same explicit capability/tier/thinking contract and use host-enforced concurrency, run budgets, structured verification/report gates, and compact progress. The repository ships [`deep-research`](pi/agent/workflows/deep-research.js), a bounded public-web workflow that cross-checks source-backed claims, and [`review`](pi/agent/workflows/review.js), a read-only workflow that reviews caller-prepared evidence through independent structured lenses and one fail-closed adjudication.
 
 ### Extension Development
 

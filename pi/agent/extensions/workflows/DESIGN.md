@@ -11,7 +11,7 @@
 - `runtime.ts` owns sandbox lifecycle, RPC admission, retries, timeouts, cancellation, ledgers, structured output, recovery records, and sanitized `runSubagent()` calls.
 - `workflow-tool.ts` implements list/validate/run, source persistence, progress, final spillover, and abnormal recovery persistence.
 - `ledger.ts`, `display.ts`, `safe-stringify.ts`, `script-artifacts.ts`, and `types.ts` own accounting, terminal-safe rendering, previews, source retention, and contracts.
-- `pi/agent/workflows/deep-research.js` is an ordinary saved definition tested beside its source.
+- `pi/agent/workflows/deep-research.js` and `review.js` are ordinary saved definitions tested beside their sources.
 
 Cross-extension imports remain limited to `../subagents/api.ts`.
 
@@ -53,6 +53,14 @@ The saved workflow deliberately narrows each phase:
 - extraction and claim verification use `read-web`, large, high.
 
 Search/extraction retry once; verification does not. Deterministic tests execute the actual saved source and assert routing, retries, strict output contracts, claim thresholds, bounded repair, and public-web prompt boundaries.
+
+## Review routing
+
+The saved review workflow deliberately separates caller-owned evidence preparation from model review. The caller supplies target metadata, acceptance criteria, changed files, readable context paths, deterministic check results, prior review context, known gaps, and optional risk/lens tags. The sandbox validates and bounds this package but does not run Git, fetch remote data, or execute checks.
+
+Behavior, assurance, and maintainability reviews always run with `read-filesystem`, medium tier, and high thinking. At most two deterministic optional lenses—architecture and performance—use the same policy. `parallelSettled()` preserves partial results and turns branch failures into explicit coverage gaps. Reviewer outputs are strict finding batches; exact duplicate groups retain every candidate ID.
+
+One `read-filesystem`, large/high adjudicator may confirm, reject, or defer each immutable exact-duplicate group. Parent-side semantic validation requires every group exactly once and rejects split, combined, rewritten, duplicate, or invented groups. Invalid or failed adjudication moves every candidate group to human judgment and marks the report incomplete. JavaScript renders the final severity-grouped report without another synthesis call, merge-readiness claim, or fix loop.
 
 ## State and ledger
 
