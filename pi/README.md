@@ -56,7 +56,7 @@ JavaScript orchestration definitions under `agent/workflows/` are installed into
 | `deep-research` | Research a question across public web sources and return a verified cited report.               |
 | `review`        | Review caller-prepared change evidence through bounded independent lenses and one adjudication. |
 
-Run definitions through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. `deep-research` accepts a question string; `review` requires prepared target, context-path, and deterministic-check evidence. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for their exact contracts and safety boundaries.
+Run definitions through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. `deep-research` accepts a question string; `review` requires prepared target, patch/context-path, and deterministic-check evidence. The companion [`review` skill](agent/skills/review/SKILL.md) prepares that package for normal interactive use. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for exact contracts and safety boundaries.
 
 ## Prompt Templates
 
@@ -83,6 +83,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends    |
 | `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                         |
+| `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings      |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                  |
 | `visualize-plan`          | Turning plans into visual HTML artifacts for easier human review                                     |
 

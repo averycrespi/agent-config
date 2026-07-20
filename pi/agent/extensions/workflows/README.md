@@ -88,7 +88,7 @@ It scopes up to five facets, extracts up to twelve public HTTPS sources, require
 
 ### `review`
 
-The shipped review workflow accepts a caller-prepared evidence package. Target discovery, Git/GitHub retrieval, diff capture, and deterministic checks stay with the caller because the workflow sandbox cannot perform them safely. At least one `contextPaths` entry is required; reviewers may inspect those paths and declared changed files with `read-filesystem` only.
+The shipped review workflow accepts a caller-prepared evidence package. Target discovery, Git/GitHub retrieval, diff capture, and deterministic checks stay with the caller because the workflow sandbox cannot perform them safely. At least one `contextPaths` entry is required; reviewers may inspect those paths and declared changed files with `read-filesystem` only. The companion [`review` skill](../../skills/review/SKILL.md) is the interactive adapter: it prepares a patch and check evidence, invokes this workflow, and presents the deterministic report without adding a second review layer.
 
 ```json
 {
