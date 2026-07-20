@@ -1,6 +1,7 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   mergeExtensionConfig,
+  parseBooleanEnv,
   readExtensionSettings,
   readPiSettingsFiles,
 } from "../_shared/config.ts";
@@ -8,11 +9,13 @@ import {
 export type WebAccessConfig = {
   tavilyApiKey?: string;
   jinaApiKey?: string;
+  playwrightEnabled?: boolean;
 };
 
 const DEFAULT_CONFIG: WebAccessConfig = {
   tavilyApiKey: undefined,
   jinaApiKey: undefined,
+  playwrightEnabled: true,
 };
 
 export async function loadWebAccessConfig(
@@ -34,6 +37,10 @@ export async function loadWebAccessConfig(
   return {
     tavilyApiKey: normalizeString(merged.tavilyApiKey),
     jinaApiKey: normalizeString(merged.jinaApiKey),
+    playwrightEnabled:
+      typeof merged.playwrightEnabled === "boolean"
+        ? merged.playwrightEnabled
+        : DEFAULT_CONFIG.playwrightEnabled,
   };
 }
 
@@ -44,6 +51,12 @@ export function readEnvSettings(): Partial<WebAccessConfig> {
   }
   if (process.env.JINA_API_KEY !== undefined) {
     settings.jinaApiKey = normalizeString(process.env.JINA_API_KEY);
+  }
+  const playwrightEnabled = parseBooleanEnv(
+    process.env.WEB_ACCESS_PLAYWRIGHT_ENABLED,
+  );
+  if (playwrightEnabled !== undefined) {
+    settings.playwrightEnabled = playwrightEnabled;
   }
   return settings;
 }

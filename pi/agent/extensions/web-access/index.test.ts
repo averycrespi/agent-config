@@ -27,6 +27,27 @@ const identityTheme = {
   bold: (text: string) => text,
 };
 
+function exaSearchResponse(
+  title: string,
+  url: string,
+  snippet: string,
+): Response {
+  return new Response(
+    `event: message\ndata: ${JSON.stringify({
+      result: {
+        content: [
+          {
+            type: "text",
+            text: `Title: ${title}\nURL: ${url}\nHighlights:\n${snippet}`,
+          },
+        ],
+      },
+      jsonrpc: "2.0",
+      id: 1,
+    })}\n\n`,
+  );
+}
+
 type RegisteredTool = {
   name: string;
   renderCall: (
@@ -207,15 +228,11 @@ test("web_search wraps external results in an untrusted-content envelope", async
   delete process.env.TAVILY_API_KEY;
   delete process.env.JINA_API_KEY;
   globalThis.fetch = (async () =>
-    Response.json({
-      data: [
-        {
-          title: "Example",
-          url: "https://example.com",
-          description: "External snippet",
-        },
-      ],
-    })) as typeof fetch;
+    exaSearchResponse(
+      "Example",
+      "https://example.com",
+      "External snippet",
+    )) as typeof fetch;
 
   const tool = registeredTools().get("web_search");
   const result = await tool.execute(
@@ -260,9 +277,12 @@ test("web_search frames remote error bodies as untrusted external content", asyn
 
 test("web_search spills oversized wrapped results and bounds renderer details", async () => {
   delete process.env.TAVILY_API_KEY;
-  delete process.env.JINA_API_KEY;
-  globalThis.fetch = (async () =>
-    Response.json({
+  process.env.JINA_API_KEY = "jina-test-key";
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).includes("mcp.exa.ai")) {
+      return new Response("unavailable", { status: 503 });
+    }
+    return Response.json({
       data: [
         {
           title: "Oversized",
@@ -270,7 +290,8 @@ test("web_search spills oversized wrapped results and bounds renderer details", 
           description: "x".repeat(30_000),
         },
       ],
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   const tool = registeredTools().get("web_search");
   const result = await tool.execute(
@@ -397,6 +418,29 @@ test("web_fetch spills oversized wrapped page content", async () => {
   } finally {
     if (filePath) await rm(filePath, { force: true });
   }
+});
+
+test("web_fetch blocks private PDF URLs before making a request", async () => {
+  delete process.env.TAVILY_API_KEY;
+  delete process.env.JINA_API_KEY;
+  let fetchCalled = false;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    return new Response("unexpected");
+  }) as typeof fetch;
+
+  const tool = registeredTools().get("web_fetch");
+  const result = await tool.execute(
+    "private-pdf",
+    { url: "http://127.0.0.1/private.pdf", max_chars: 1_000 },
+    new AbortController().signal,
+    undefined,
+    { cwd: "/private-pdf-test" },
+  );
+  const text = result.content[0].text;
+
+  assert.match(text, /public HTTP\(S\) URLs/);
+  assert.equal(fetchCalled, false);
 });
 
 test("web_fetch returns a recoverable message for GitHub rate-limit failures", async () => {

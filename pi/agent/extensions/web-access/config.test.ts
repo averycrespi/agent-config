@@ -8,6 +8,7 @@ import { loadWebAccessConfig, readEnvSettings } from "./config.ts";
 const ENV_NAMES = [
   "TAVILY_API_KEY",
   "JINA_API_KEY",
+  "WEB_ACCESS_PLAYWRIGHT_ENABLED",
   "PI_CODING_AGENT_DIR",
 ] as const;
 
@@ -25,16 +26,19 @@ afterEach(() => {
 test("readEnvSettings maps web access environment overrides", () => {
   process.env.TAVILY_API_KEY = " tavily-token ";
   process.env.JINA_API_KEY = " jina-token ";
+  process.env.WEB_ACCESS_PLAYWRIGHT_ENABLED = "false";
 
   assert.deepEqual(readEnvSettings(), {
     tavilyApiKey: "tavily-token",
     jinaApiKey: "jina-token",
+    playwrightEnabled: false,
   });
 });
 
 test("loadWebAccessConfig surfaces invalid settings warnings", async () => {
   delete process.env.TAVILY_API_KEY;
   delete process.env.JINA_API_KEY;
+  delete process.env.WEB_ACCESS_PLAYWRIGHT_ENABLED;
 
   const root = join(
     tmpdir(),
@@ -53,6 +57,7 @@ test("loadWebAccessConfig surfaces invalid settings warnings", async () => {
     assert.deepEqual(await loadWebAccessConfig(cwd, warnings), {
       tavilyApiKey: undefined,
       jinaApiKey: undefined,
+      playwrightEnabled: true,
     });
     assert.equal(warnings.length, 1);
     assert.match(warnings[0]!, /Ignoring invalid JSON settings file/);
@@ -64,6 +69,7 @@ test("loadWebAccessConfig surfaces invalid settings warnings", async () => {
 test("loadWebAccessConfig merges global, project, and env settings", async () => {
   delete process.env.TAVILY_API_KEY;
   delete process.env.JINA_API_KEY;
+  delete process.env.WEB_ACCESS_PLAYWRIGHT_ENABLED;
 
   const root = join(
     tmpdir(),
@@ -98,6 +104,7 @@ test("loadWebAccessConfig merges global, project, and env settings", async () =>
     assert.deepEqual(await loadWebAccessConfig(cwd), {
       tavilyApiKey: "project-tavily",
       jinaApiKey: "env-jina",
+      playwrightEnabled: true,
     });
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -5,14 +5,16 @@
 ## Architecture
 
 - `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content, applies large-output spillover, and renders compact tool output.
-- `config.ts` loads Tavily/Jina API keys from Pi settings and environment variables.
-- `search.ts` implements provider fallback for search: Tavily first when configured, then Jina Search.
-- `fetch.ts` implements generic web-page extraction: local Readability/Turndown first, then Jina Reader fallback.
+- `config.ts` loads Tavily/Jina API keys and the Playwright toggle from Pi settings and environment variables.
+- `search.ts` implements provider fallback for search: Tavily, keyless Exa MCP, then configured Jina Search.
+- `fetch.ts` implements generic extraction: local Readability, optional local Playwright, Jina Reader, then keyless Exa MCP.
+- `exa.ts` implements the small JSON-RPC/SSE adapter shared by Exa search and fetch fallbacks.
+- `url-safety.ts` validates public HTTP(S) targets, DNS answers, and redirects before local network access.
 - `github.ts` parses GitHub URLs, shallow-clones repositories, returns README/file tree or blob contents, and handles local clone cache paths.
 - `pdf.ts` extracts PDF text and metadata through `unpdf`.
-- Tests cover config, search formatting/fallback, GitHub URL handling, and extension routing.
+- Tests cover config, provider fallback, browser extraction, URL safety, GitHub URL handling, and extension routing.
 
-There is no persistent database, retained logging, browser automation, or background crawler.
+There is no persistent database, retained logging, persistent browser profile, or background crawler.
 
 ## Tool model
 
@@ -28,13 +30,20 @@ Do not merge search and fetch into a generic research workflow inside the extens
 Config is cached by cwd in `index.ts` and loaded through the shared settings helper. API keys are optional:
 
 - `tavilyApiKey` enables Tavily as the primary search provider.
-- `jinaApiKey` improves Jina-backed search/fetch rate limits.
+- `jinaApiKey` enables Jina Search and raises Jina Reader limits.
+- `playwrightEnabled` controls the local browser fallback and defaults to `true`.
 
-Missing keys should not disable the extension. Anonymous Jina fallback keeps the tools usable where rate limits allow. Keys are sensitive and must stay masked in `/web-access-config` output and out of tool results/logs.
+Missing keys do not disable the extension because Exa MCP provides keyless search/fetch and Jina Reader accepts anonymous fetches. Jina Search itself requires a key. Keys are sensitive and must stay masked in `/web-access-config` output and out of tool results/logs.
 
 ## Search provider flow
 
-`webSearch()` tries Tavily only when a Tavily key exists. Tavily failures are swallowed and Jina Search is attempted. Jina failures surface as tool-result errors.
+`webSearch()` tries providers in a fixed order:
+
+1. Tavily when configured.
+2. Hosted Exa MCP without a key.
+3. Jina Search when configured.
+
+Cancellation stops fallback immediately. Other provider errors are accumulated so a final tool-result error identifies each failed provider. The hosted Exa service has no contractual free quota, so failure must remain recoverable and must not disable later configured providers.
 
 Search output is normalized to `SearchResponse` with provider name and result list. `formatResults()` is the canonical Markdown formatter used for agent-facing content and preview rendering.
 
@@ -44,22 +53,20 @@ Search output is normalized to `SearchResponse` with provider name and result li
 
 1. GitHub repository/blob/tree URLs go to `fetchGitHub()`.
 2. URLs whose path ends in `.pdf` go to direct fetch plus `extractPdf()`.
-3. Everything else goes to `webFetch()` for Readability extraction with Jina Reader fallback.
+3. Everything else goes to `webFetch()` for static, browser, and hosted extraction.
 
-Each route respects `max_chars`, clamped to the schema bounds. Route-specific metadata is returned in `details` so renderers can summarize clone paths, PDF page counts, or page titles.
+Generic and PDF routes pass through public-URL validation. Each route respects `max_chars`, clamped to the schema bounds. Route-specific metadata is returned in `details` so renderers can summarize clone paths, PDF page counts, page titles, or extraction methods.
 
 ## Generic web extraction
 
-`fetch.ts` prefers local extraction for normal HTML:
+`fetch.ts` uses this ordered pipeline:
 
-- fetch with browser-like user agent and HTML accept headers;
-- require an HTML/XHTML content type;
-- parse with `linkedom`;
-- extract article content with Readability;
-- convert to Markdown with Turndown;
-- require a minimum readable text length.
+1. Fetch static HTML with a browser-like user agent, parse with `linkedom`, extract with Readability, and convert through Turndown.
+2. When enabled, launch an ephemeral Playwright Chromium context, block image/media/font requests, validate every subrequest, and apply the same Readability/Turndown extraction to the rendered DOM.
+3. Request Markdown from Jina Reader. When a configured key returns 401/402, retry once without authentication because anonymous Reader remains independently available.
+4. Call Exa MCP `web_fetch_exa` without a key.
 
-If local extraction fails or content is too sparse, Jina Reader is used with markdown output and common chrome selectors removed. Jina's header block is stripped before returning content.
+Provider failures are accumulated, while cancellation stops the chain. Playwright load, browser-installation, or rendering failures are normal fallback conditions. Browser contexts never load user profiles, cookies, workspace files, or persistent state.
 
 ## GitHub handling
 
@@ -75,7 +82,11 @@ Important boundaries:
 
 GitHub rate-limit-looking errors are converted into recoverable tool-result messages with retry guidance.
 
-## External content safety
+## Network and external content safety
+
+`url-safety.ts` accepts only public HTTP(S) URLs without credentials. It blocks literal and DNS-resolved loopback, private, link-local, metadata, multicast, documentation, benchmarking, and reserved addresses. Static/PDF fetches use manual redirects so every destination is revalidated. Playwright intercepts every subrequest and applies the same policy before continuing it.
+
+These checks do not pin the validated address to the eventual socket and therefore do not fully eliminate DNS-rebinding or other time-of-check/time-of-use races. Playwright is a renderer, not a network sandbox; deployments with sensitive network access should also enforce egress restrictions outside the process.
 
 All successful search/fetch content and remote provider/fetch error messages are wrapped with `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT`. Preserve this envelope and escape delimiter-like lines from external payloads. Search snippets, fetched pages, repository files, PDFs, and remote error bodies can contain prompt injection; they must be framed as untrusted data for the agent.
 
@@ -94,9 +105,9 @@ The extension writes no retained diagnostic logs.
 ## Boundaries and non-goals
 
 - No authenticated GitHub integration; use the MCP broker for authenticated GitHub work.
-- No Playwright/browser rendering fallback.
 - No recursive crawl or multi-page research orchestration.
-- No private-host blocking in v1.
+- No browser profiles, cookies, screenshots, interaction, downloads, or arbitrary page scripts supplied by the caller.
+- No guarantee that hosted keyless providers remain free or available.
 - No configurable retention policy for temporary GitHub clones.
 - No exact content deduplication or cache invalidation policy.
 

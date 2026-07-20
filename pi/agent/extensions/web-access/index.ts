@@ -32,6 +32,7 @@ import {
 } from "./github.ts";
 import { extractPdf } from "./pdf.ts";
 import { formatResults, webSearch } from "./search.ts";
+import { safeFetch } from "./url-safety.ts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -299,7 +300,7 @@ const fetchTool = {
 
       // PDF URL → extract text
       if (isPdfUrl(params.url)) {
-        const response = await fetch(params.url, {
+        const response = await safeFetch(params.url, {
           signal: fetchSignal,
           headers: { Accept: "application/pdf" },
         });

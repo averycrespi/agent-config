@@ -19,8 +19,11 @@ Example:
 { "query": "Pi coding agent extension docs", "num_results": 3 }
 ```
 
-- **Primary provider**: [Tavily](https://app.tavily.com) (1,000 free searches/month)
-- **Fallback**: [Jina Search](https://jina.ai) (works without an API key)
+Provider order:
+
+1. [Tavily](https://app.tavily.com) when configured.
+2. The hosted [Exa MCP](https://docs.exa.ai/docs/reference/exa-mcp), which currently works without an API key but does not publish a fixed free quota.
+3. [Jina Search](https://jina.ai) when a Jina API key is configured. Jina Search no longer accepts anonymous requests.
 
 ### web_fetch
 
@@ -39,18 +42,21 @@ Example:
 
 Routes by URL type:
 
-- **HTML pages** — returns cleaned Markdown, with fallback handling for pages that are hard to extract locally
+- **HTML pages** — local Readability extraction, optional local Playwright rendering, anonymous/keyed Jina Reader, then keyless Exa MCP
 - **GitHub repos** — shallow-clones the repository and returns the README, file tree, and clone path for further exploration with Pi's built-in tools
 - **PDFs** — returns extracted text and page-count metadata
+
+The Playwright fallback requires Chromium installed for the repository's pinned `playwright-core` version. Run `make install-playwright` from the repository root. If Playwright or Chromium is unavailable, the extension continues to the hosted fallbacks.
 
 ## Configuration
 
 Configure via `extension:web-access` in Pi settings. Environment variables override settings when set. Use `/web-access-config` to display the effective parsed config with API keys masked.
 
-| Field          | Default | Environment override | Description                                                                                                                  |
-| -------------- | ------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `tavilyApiKey` | unset   | `TAVILY_API_KEY`     | Recommended for `web_search`; when absent, `web_search` falls back to Jina Search.                                           |
-| `jinaApiKey`   | unset   | `JINA_API_KEY`       | Optional; improves Jina rate limits. When absent, Jina-backed search/fetch still works where anonymous rate limits allow it. |
+| Field               | Default | Environment override            | Description                                                                                                                                                        |
+| ------------------- | ------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tavilyApiKey`      | unset   | `TAVILY_API_KEY`                | Enables Tavily as the primary search provider.                                                                                                                     |
+| `jinaApiKey`        | unset   | `JINA_API_KEY`                  | Enables keyed Jina Search and raises Jina Reader limits. Reader retries anonymously after a keyed 401/402; Search requires a funded key.                           |
+| `playwrightEnabled` | `true`  | `WEB_ACCESS_PLAYWRIGHT_ENABLED` | Enables local browser rendering after static extraction fails. Boolean environment values accept `1`/`true` and `0`/`false`; missing browser binaries are skipped. |
 
 Example settings:
 
@@ -58,7 +64,8 @@ Example settings:
 {
   "extension:web-access": {
     "tavilyApiKey": "tvly-...",
-    "jinaApiKey": "jina_..."
+    "jinaApiKey": "jina_...",
+    "playwrightEnabled": true
   }
 }
 ```
@@ -66,6 +73,10 @@ Example settings:
 ## External content safety
 
 Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT` envelope. Remote provider/fetch error messages are framed too, while the renderer uses a bounded error preview. The envelope reminds the agent that fetched web pages, search snippets, GitHub contents, PDF text, and remote error bodies are external data rather than instructions. Delimiter-like lines inside external content are escaped. Content is wrapped before large-output spillover so the persisted file retains the same trust boundary.
+
+Generic and PDF fetches accept only public HTTP(S) URLs without embedded credentials. The extension rejects literal and DNS-resolved loopback, private, link-local, metadata, multicast, and reserved destinations; validates every HTTP redirect; and applies the same checks to Playwright subrequests. These application checks reduce SSRF risk but do not eliminate DNS-rebinding races, so do not treat the browser as a network sandbox.
+
+Search queries and fallback fetch URLs are sent to the selected external provider. Exa MCP and anonymous Jina Reader require no local credential but remain third-party services with changeable limits and privacy policies.
 
 GitHub rate-limit failures are returned as recoverable tool-result messages with a retry/backoff hint instead of being treated as unrecoverable extension failures.
 

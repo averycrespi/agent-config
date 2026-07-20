@@ -1,48 +1,63 @@
 /**
- * Web content fetching — local Readability extraction with Jina fallback.
+ * Web content fetching — local extraction with browser and hosted fallbacks.
  */
 
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
+import { fetchExa } from "./exa.ts";
+import { assertSafeHttpUrl, safeFetch } from "./url-safety.ts";
 
 type FetchConfig = {
   jinaApiKey?: string;
+  playwrightEnabled?: boolean;
 };
 
-/** Minimum extracted text length to consider Readability successful. */
 const MIN_READABLE_LENGTH = 200;
+const PLAYWRIGHT_NAVIGATION_TIMEOUT_MS = 10_000;
+const PLAYWRIGHT_NETWORK_IDLE_TIMEOUT_MS = 2_500;
 
 const turndown = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
 });
 
+turndown.remove(["img", "iframe", "video", "audio", "canvas"]);
+turndown.remove((node) => node.nodeName === "SVG");
+
 export interface FetchResponse {
   text: string;
   title?: string;
-  method: "readability" | "jina";
+  method: "readability" | "playwright" | "jina" | "exa";
 }
 
-/**
- * Fetch a URL and extract readable markdown content.
- * Tries local Readability extraction first, falls back to Jina Reader.
- */
-export async function webFetch(
-  url: string,
+export const _playwright: {
+  load: () => Promise<typeof import("playwright-core")>;
+} = {
+  load: () => import("playwright-core"),
+};
+
+function truncateContent(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[Content truncated — ${text.length.toLocaleString()} total characters. Use max_chars to read more.]`;
+}
+
+function extractReadable(
+  html: string,
   maxChars: number,
-  signal: AbortSignal,
-  config: FetchConfig = {},
-): Promise<FetchResponse> {
-  // Try local extraction first
-  try {
-    const result = await fetchWithReadability(url, maxChars, signal);
-    if (result) return result;
-  } catch {
-    // fall through to Jina
+  method: "readability" | "playwright",
+): FetchResponse | null {
+  const { document } = parseHTML(html);
+  const article = new Readability(document as any).parse();
+  if (!article?.content || article.textContent.length < MIN_READABLE_LENGTH) {
+    return null;
   }
 
-  return fetchWithJina(url, maxChars, signal, config.jinaApiKey);
+  return {
+    text: truncateContent(turndown.turndown(article.content), maxChars),
+    title: article.title || undefined,
+    method,
+  };
 }
 
 async function fetchWithReadability(
@@ -50,44 +65,82 @@ async function fetchWithReadability(
   maxChars: number,
   signal: AbortSignal,
 ): Promise<FetchResponse | null> {
-  const response = await fetch(url, {
+  const response = await safeFetch(url, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (compatible; PiAgent/1.0; +https://github.com/badlogic/pi-mono)",
       Accept: "text/html,application/xhtml+xml,*/*",
     },
     signal,
-    redirect: "follow",
   });
-
   if (!response.ok) return null;
 
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html") && !contentType.includes("xhtml")) {
     return null;
   }
+  return extractReadable(await response.text(), maxChars, "readability");
+}
 
-  const html = await response.text();
-  const { document } = parseHTML(html);
-  const reader = new Readability(document as any);
-  const article = reader.parse();
+async function fetchWithPlaywright(
+  url: string,
+  maxChars: number,
+  signal: AbortSignal,
+): Promise<FetchResponse | null> {
+  const { chromium } = await _playwright.load();
+  signal.throwIfAborted();
+  const browser = await chromium.launch({ headless: true });
+  const closeOnAbort = () => void browser.close().catch(() => undefined);
+  signal.addEventListener("abort", closeOnAbort, { once: true });
 
-  if (!article?.content || article.textContent.length < MIN_READABLE_LENGTH) {
-    return null;
+  try {
+    const context = await browser.newContext({ serviceWorkers: "block" });
+    try {
+      const page = await context.newPage();
+      await page.route("**/*", async (route) => {
+        const request = route.request();
+        if (["image", "media", "font"].includes(request.resourceType())) {
+          await route.abort("blockedbyclient");
+          return;
+        }
+        try {
+          await assertSafeHttpUrl(request.url());
+          await route.continue();
+        } catch {
+          await route.abort("blockedbyclient");
+        }
+      });
+      await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: PLAYWRIGHT_NAVIGATION_TIMEOUT_MS,
+      });
+      await page
+        .waitForLoadState("networkidle", {
+          timeout: PLAYWRIGHT_NETWORK_IDLE_TIMEOUT_MS,
+        })
+        .catch(() => undefined);
+      return extractReadable(await page.content(), maxChars, "playwright");
+    } finally {
+      await context.close();
+    }
+  } finally {
+    signal.removeEventListener("abort", closeOnAbort);
+    await browser.close();
   }
+}
 
-  let markdown = turndown.turndown(article.content);
-  if (markdown.length > maxChars) {
-    markdown =
-      markdown.slice(0, maxChars) +
-      `\n\n[Content truncated — ${markdown.length.toLocaleString()} total characters. Use max_chars to read more.]`;
-  }
-
-  return {
-    text: markdown,
-    title: article.title || undefined,
-    method: "readability",
+async function requestJina(
+  url: string,
+  signal: AbortSignal,
+  apiKey?: string,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    Accept: "text/plain",
+    "X-Return-Format": "markdown",
+    "X-Remove-Selector": "nav, header, footer, aside, .sidebar, .ads",
   };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  return fetch(`https://r.jina.ai/${url}`, { headers, signal });
 }
 
 async function fetchWithJina(
@@ -96,37 +149,72 @@ async function fetchWithJina(
   signal: AbortSignal,
   apiKey?: string,
 ): Promise<FetchResponse> {
-  const jinaUrl = `https://r.jina.ai/${url}`;
-  const headers: Record<string, string> = {
-    Accept: "text/plain",
-    "X-Return-Format": "markdown",
-    "X-Remove-Selector": "nav, header, footer, aside, .sidebar, .ads",
-  };
-  if (apiKey) {
-    headers["Authorization"] = `Bearer ${apiKey}`;
+  let response = await requestJina(url, signal, apiKey);
+  if (apiKey && (response.status === 401 || response.status === 402)) {
+    await response.body?.cancel();
+    response = await requestJina(url, signal);
   }
-
-  const response = await fetch(jinaUrl, { headers, signal });
-
   if (!response.ok) {
-    throw new Error(`Fetch failed (HTTP ${response.status}): ${url}`);
+    throw new Error(`Jina Reader HTTP ${response.status}`);
   }
 
-  let text = await response.text();
-  text = text.trim();
-
-  // Extract title before stripping Jina's header block
-  const titleMatch = text.match(/^Title: (.+)$/m);
-  const title = titleMatch?.[1]?.trim();
-
-  // Strip Jina's header block (URL/Title/Description/URL Source lines)
+  let text = (await response.text()).trim();
+  const title = text.match(/^Title: (.+)$/m)?.[1]?.trim();
   text = text.replace(/^(URL Source|URL|Title|Description): .+\n/gm, "").trim();
+  return { text: truncateContent(text, maxChars), title, method: "jina" };
+}
 
-  if (text.length > maxChars) {
-    text =
-      text.slice(0, maxChars) +
-      `\n\n[Content truncated — ${text.length.toLocaleString()} total characters. Use max_chars to read more.]`;
+export async function webFetch(
+  url: string,
+  maxChars: number,
+  signal: AbortSignal,
+  config: FetchConfig = {},
+): Promise<FetchResponse> {
+  const safeUrl = (await assertSafeHttpUrl(url)).href;
+  const errors: string[] = [];
+
+  try {
+    const result = await fetchWithReadability(safeUrl, maxChars, signal);
+    if (result) return result;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    errors.push(
+      `Readability: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
-  return { text, title, method: "jina" };
+  if (config.playwrightEnabled !== false) {
+    try {
+      const result = await fetchWithPlaywright(safeUrl, maxChars, signal);
+      if (result) return result;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      errors.push(
+        `Playwright: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  try {
+    return await fetchWithJina(safeUrl, maxChars, signal, config.jinaApiKey);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    errors.push(
+      `Jina: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  try {
+    return {
+      text: await fetchExa(safeUrl, maxChars, signal),
+      method: "exa",
+    };
+  } catch (error) {
+    if (signal.aborted) throw error;
+    errors.push(
+      `Exa: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  throw new Error(`Web fetch providers failed: ${errors.join("; ")}`);
 }

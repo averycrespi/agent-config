@@ -8,6 +8,7 @@ install-playwright:
 	npm install -g playwright@latest
 	playwright install-deps
 	playwright install
+	npx playwright-core install chromium
 
 stow-claude:
 	mkdir -p ~/.claude

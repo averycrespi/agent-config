@@ -125,7 +125,7 @@ git clone git@github.com:averycrespi/agent-config.git
 cd agent-config
 brew bundle             # install system dependencies on macOS
 make install-dev        # install Node dependencies and Husky git hooks
-make install-playwright # for the playwright skill
+make install-playwright # for browser automation and web-access JS rendering
 make stow-pi            # symlink pi/agent/ into ~/.pi/agent/
 ```
 

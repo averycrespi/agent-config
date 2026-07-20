@@ -1,6 +1,8 @@
 /**
- * Web search providers — Tavily (primary) with Jina Search fallback.
+ * Web search providers — Tavily, keyless Exa MCP, then configured Jina Search.
  */
+
+import { searchExa } from "./exa.ts";
 
 export interface SearchResult {
   title: string;
@@ -92,24 +94,47 @@ async function searchJina(
   };
 }
 
-/**
- * Search the web. Tries Tavily first; falls back to Jina Search on
- * failure or when TAVILY_API_KEY is not set.
- */
+/** Search the web through the first available provider. */
 export async function webSearch(
   query: string,
   numResults: number,
   signal: AbortSignal,
   config: SearchConfig = {},
 ): Promise<SearchResponse> {
+  const errors: string[] = [];
+
   if (config.tavilyApiKey) {
     try {
       return await searchTavily(query, numResults, signal, config.tavilyApiKey);
-    } catch {
-      // fall through to Jina
+    } catch (error) {
+      if (signal.aborted) throw error;
+      errors.push(
+        `Tavily: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
-  return searchJina(query, numResults, signal, config.jinaApiKey);
+
+  try {
+    return await searchExa(query, numResults, signal);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    errors.push(
+      `Exa: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  if (config.jinaApiKey) {
+    try {
+      return await searchJina(query, numResults, signal, config.jinaApiKey);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      errors.push(
+        `Jina: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  throw new Error(`Web search providers failed: ${errors.join("; ")}`);
 }
 
 /** Format search results as markdown for the model. */
