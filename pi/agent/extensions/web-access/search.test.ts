@@ -122,6 +122,10 @@ test("webSearch falls back from Tavily to keyless Exa MCP", async () => {
   const exaRequest = JSON.parse(String(calls[1]!.init!.body));
   assert.equal(exaRequest.params.name, "web_search_exa");
   assert.equal(exaRequest.params.arguments.numResults, 1);
+  assert.equal(
+    (calls[1]!.init!.headers as Record<string, string>)["x-api-key"],
+    undefined,
+  );
 });
 
 test("webSearch falls back from Exa MCP to configured Jina Search", async () => {
@@ -142,9 +146,14 @@ test("webSearch falls back from Exa MCP to configured Jina Search", async () => 
   const response = await webSearch("query", 1, new AbortController().signal, {
     tavilyApiKey: "configured-tavily",
     jinaApiKey: "configured-jina",
+    exaApiKey: "configured-exa",
   });
 
   assert.equal(response.provider, "jina");
+  assert.equal(
+    (calls[1]!.init!.headers as Record<string, string>)["x-api-key"],
+    "configured-exa",
+  );
   assert.equal(
     (calls[2]!.init!.headers as Record<string, string>).Authorization,
     "Bearer configured-jina",

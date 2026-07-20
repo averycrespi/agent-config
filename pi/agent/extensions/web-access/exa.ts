@@ -14,13 +14,17 @@ async function callExaMcp(
   toolName: "web_search_exa" | "web_fetch_exa",
   args: Record<string, unknown>,
   signal: AbortSignal,
+  apiKey?: string,
 ): Promise<string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json, text/event-stream",
+    "Content-Type": "application/json",
+  };
+  if (apiKey) headers["x-api-key"] = apiKey;
+
   const response = await fetch(EXA_MCP_URL, {
     method: "POST",
-    headers: {
-      Accept: "application/json, text/event-stream",
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
@@ -108,6 +112,7 @@ export async function searchExa(
   query: string,
   numResults: number,
   signal: AbortSignal,
+  apiKey?: string,
 ): Promise<SearchResponse> {
   const text = await callExaMcp(
     "web_search_exa",
@@ -119,6 +124,7 @@ export async function searchExa(
       contextMaxCharacters: 3_000,
     },
     signal,
+    apiKey,
   );
   const results = parseSearchResults(text).slice(0, numResults);
   if (results.length === 0)
@@ -130,8 +136,14 @@ export async function fetchExa(
   url: string,
   maxChars: number,
   signal: AbortSignal,
+  apiKey?: string,
 ): Promise<string> {
-  const text = await callExaMcp("web_fetch_exa", { urls: [url] }, signal);
+  const text = await callExaMcp(
+    "web_fetch_exa",
+    { urls: [url] },
+    signal,
+    apiKey,
+  );
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars)}\n\n[Content truncated — ${text.length.toLocaleString()} total characters. Use max_chars to read more.]`;
 }

@@ -194,6 +194,7 @@ test("web_fetch renderResult truncates long clone paths instead of wrapping", ()
 test("/web-access-config displays effective config with masked keys", async () => {
   process.env.TAVILY_API_KEY = "tavily-secret";
   process.env.JINA_API_KEY = "jina-secret";
+  process.env.EXA_API_KEY = "exa-secret";
   const commands = new Map<string, any>();
   const notifications: Array<{ message: string; level: string }> = [];
   const pi = {
@@ -220,8 +221,10 @@ test("/web-access-config displays effective config with masked keys", async () =
   assert.match(notifications[0].message, /web-access effective config:/);
   assert.match(notifications[0].message, /"tavilyApiKey": "\*\*\*\*\*\*\*\*"/);
   assert.match(notifications[0].message, /"jinaApiKey": "\*\*\*\*\*\*\*\*"/);
+  assert.match(notifications[0].message, /"exaApiKey": "\*\*\*\*\*\*\*\*"/);
   assert.doesNotMatch(notifications[0].message, /tavily-secret/);
   assert.doesNotMatch(notifications[0].message, /jina-secret/);
+  assert.doesNotMatch(notifications[0].message, /exa-secret/);
 });
 
 test("web_search wraps external results in an untrusted-content envelope", async () => {

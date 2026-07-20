@@ -10,6 +10,7 @@ import { assertSafeHttpUrl, safeFetch } from "./url-safety.ts";
 
 type FetchConfig = {
   jinaApiKey?: string;
+  exaApiKey?: string;
   playwrightEnabled?: boolean;
 };
 
@@ -206,7 +207,7 @@ export async function webFetch(
 
   try {
     return {
-      text: await fetchExa(safeUrl, maxChars, signal),
+      text: await fetchExa(safeUrl, maxChars, signal, config.exaApiKey),
       method: "exa",
     };
   } catch (error) {

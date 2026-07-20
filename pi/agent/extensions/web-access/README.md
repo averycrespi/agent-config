@@ -22,7 +22,7 @@ Example:
 Provider order:
 
 1. [Tavily](https://app.tavily.com) when configured.
-2. The hosted [Exa MCP](https://docs.exa.ai/docs/reference/exa-mcp), which currently works without an API key but does not publish a fixed free quota.
+2. The hosted [Exa MCP](https://docs.exa.ai/docs/reference/exa-mcp), authenticated when an Exa API key is configured and otherwise keyless. The anonymous service does not publish a fixed free quota.
 3. [Jina Search](https://jina.ai) when a Jina API key is configured. Jina Search no longer accepts anonymous requests.
 
 ### web_fetch
@@ -42,7 +42,7 @@ Example:
 
 Routes by URL type:
 
-- **HTML pages** — local Readability extraction, optional local Playwright rendering, anonymous/keyed Jina Reader, then keyless Exa MCP
+- **HTML pages** — local Readability extraction, optional local Playwright rendering, anonymous/keyed Jina Reader, then authenticated or keyless Exa MCP
 - **GitHub repos** — shallow-clones the repository and returns the README, file tree, and clone path for further exploration with Pi's built-in tools
 - **PDFs** — returns extracted text and page-count metadata
 
@@ -56,6 +56,7 @@ Configure via `extension:web-access` in Pi settings. Environment variables overr
 | ------------------- | ------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `tavilyApiKey`      | unset   | `TAVILY_API_KEY`                | Enables Tavily as the primary search provider.                                                                                                                     |
 | `jinaApiKey`        | unset   | `JINA_API_KEY`                  | Enables keyed Jina Search and raises Jina Reader limits. Reader retries anonymously after a keyed 401/402; Search requires a funded key.                           |
+| `exaApiKey`         | unset   | `EXA_API_KEY`                   | Authenticates hosted Exa MCP search and fetch requests through the `x-api-key` header; requests remain anonymous when unset.                                       |
 | `playwrightEnabled` | `true`  | `WEB_ACCESS_PLAYWRIGHT_ENABLED` | Enables local browser rendering after static extraction fails. Boolean environment values accept `1`/`true` and `0`/`false`; missing browser binaries are skipped. |
 
 Example settings:
@@ -65,6 +66,7 @@ Example settings:
   "extension:web-access": {
     "tavilyApiKey": "tvly-...",
     "jinaApiKey": "jina_...",
+    "exaApiKey": "exa-...",
     "playwrightEnabled": true
   }
 }
@@ -76,7 +78,7 @@ Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/EN
 
 Generic and PDF fetches accept only public HTTP(S) URLs without embedded credentials. The extension rejects literal and DNS-resolved loopback, private, link-local, metadata, multicast, and reserved destinations; validates every HTTP redirect; and applies the same checks to Playwright subrequests. These application checks reduce SSRF risk but do not eliminate DNS-rebinding races, so do not treat the browser as a network sandbox.
 
-Search queries and fallback fetch URLs are sent to the selected external provider. Exa MCP and anonymous Jina Reader require no local credential but remain third-party services with changeable limits and privacy policies.
+Search queries and fallback fetch URLs are sent to the selected external provider. Exa MCP receives the configured Exa key in an `x-api-key` header; without one it uses the anonymous service. Anonymous Exa MCP and Jina Reader require no local credential but remain third-party services with changeable limits and privacy policies.
 
 GitHub rate-limit failures are returned as recoverable tool-result messages with a retry/backoff hint instead of being treated as unrecoverable extension failures.
 

@@ -349,7 +349,7 @@ export default function (pi: ExtensionAPI) {
   registerConfigCommand(pi, {
     extensionName: "web-access",
     loadConfig: loadWebAccessConfig,
-    sensitiveFields: ["tavilyApiKey", "jinaApiKey"],
+    sensitiveFields: ["tavilyApiKey", "jinaApiKey", "exaApiKey"],
   });
 
   pi.on("session_start", async (_event, ctx) => {

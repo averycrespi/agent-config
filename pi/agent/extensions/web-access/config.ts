@@ -9,12 +9,14 @@ import {
 export type WebAccessConfig = {
   tavilyApiKey?: string;
   jinaApiKey?: string;
+  exaApiKey?: string;
   playwrightEnabled?: boolean;
 };
 
 const DEFAULT_CONFIG: WebAccessConfig = {
   tavilyApiKey: undefined,
   jinaApiKey: undefined,
+  exaApiKey: undefined,
   playwrightEnabled: true,
 };
 
@@ -37,6 +39,7 @@ export async function loadWebAccessConfig(
   return {
     tavilyApiKey: normalizeString(merged.tavilyApiKey),
     jinaApiKey: normalizeString(merged.jinaApiKey),
+    exaApiKey: normalizeString(merged.exaApiKey),
     playwrightEnabled:
       typeof merged.playwrightEnabled === "boolean"
         ? merged.playwrightEnabled
@@ -51,6 +54,9 @@ export function readEnvSettings(): Partial<WebAccessConfig> {
   }
   if (process.env.JINA_API_KEY !== undefined) {
     settings.jinaApiKey = normalizeString(process.env.JINA_API_KEY);
+  }
+  if (process.env.EXA_API_KEY !== undefined) {
+    settings.exaApiKey = normalizeString(process.env.EXA_API_KEY);
   }
   const playwrightEnabled = parseBooleanEnv(
     process.env.WEB_ACCESS_PLAYWRIGHT_ENABLED,

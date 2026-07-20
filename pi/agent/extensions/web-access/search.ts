@@ -1,5 +1,5 @@
 /**
- * Web search providers — Tavily, keyless Exa MCP, then configured Jina Search.
+ * Web search providers — Tavily, optional authenticated Exa MCP, then configured Jina Search.
  */
 
 import { searchExa } from "./exa.ts";
@@ -19,6 +19,7 @@ export interface SearchResponse {
 type SearchConfig = {
   tavilyApiKey?: string;
   jinaApiKey?: string;
+  exaApiKey?: string;
 };
 
 async function searchTavily(
@@ -115,7 +116,7 @@ export async function webSearch(
   }
 
   try {
-    return await searchExa(query, numResults, signal);
+    return await searchExa(query, numResults, signal, config.exaApiKey);
   } catch (error) {
     if (signal.aborted) throw error;
     errors.push(

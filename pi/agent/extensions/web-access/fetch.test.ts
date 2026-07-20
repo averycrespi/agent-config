@@ -52,44 +52,50 @@ test("webFetch retries Jina Reader anonymously when a configured key has no bala
   );
 });
 
-test("webFetch falls back to keyless Exa MCP when Jina Reader fails", async () => {
-  globalThis.fetch = (async (
-    url: string | URL | Request,
-    init?: RequestInit,
-  ) => {
-    if (String(url) === targetUrl) return unreadableHtml();
-    if (String(url).startsWith("https://r.jina.ai/")) {
-      return new Response("unavailable", { status: 503 });
-    }
-    const request = JSON.parse(String(init?.body));
-    assert.equal(request.params.name, "web_fetch_exa");
-    assert.deepEqual(request.params.arguments.urls, [targetUrl]);
-    return new Response(
-      `event: message\ndata: ${JSON.stringify({
-        result: {
-          content: [
-            {
-              type: "text",
-              text: "# Exa result\nURL: https://93.184.216.34/page\n\nExa page content.",
-            },
-          ],
-        },
-        jsonrpc: "2.0",
-        id: 1,
-      })}\n\n`,
+for (const exaApiKey of [undefined, "configured-exa"]) {
+  test(`webFetch uses ${exaApiKey ? "authenticated" : "anonymous"} Exa MCP fallback`, async () => {
+    globalThis.fetch = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      if (String(url) === targetUrl) return unreadableHtml();
+      if (String(url).startsWith("https://r.jina.ai/")) {
+        return new Response("unavailable", { status: 503 });
+      }
+      assert.equal(
+        (init?.headers as Record<string, string>)["x-api-key"],
+        exaApiKey,
+      );
+      const request = JSON.parse(String(init?.body));
+      assert.equal(request.params.name, "web_fetch_exa");
+      assert.deepEqual(request.params.arguments.urls, [targetUrl]);
+      return new Response(
+        `event: message\ndata: ${JSON.stringify({
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "# Exa result\nURL: https://93.184.216.34/page\n\nExa page content.",
+              },
+            ],
+          },
+          jsonrpc: "2.0",
+          id: 1,
+        })}\n\n`,
+      );
+    }) as typeof fetch;
+
+    const result = await webFetch(
+      targetUrl,
+      1_000,
+      new AbortController().signal,
+      { exaApiKey, playwrightEnabled: false },
     );
-  }) as typeof fetch;
 
-  const result = await webFetch(
-    targetUrl,
-    1_000,
-    new AbortController().signal,
-    { playwrightEnabled: false },
-  );
-
-  assert.equal(result.method, "exa");
-  assert.match(result.text, /Exa page content/);
-});
+    assert.equal(result.method, "exa");
+    assert.match(result.text, /Exa page content/);
+  });
+}
 
 test("webFetch uses Playwright for client-rendered pages before remote providers", async () => {
   let remoteFallbackCalled = false;
