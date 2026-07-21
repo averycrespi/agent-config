@@ -73,7 +73,7 @@ Every process launch:
 
 ## Activity and rendering
 
-Collapsed tool output is one aggregate `spawn_agents` line; expanded output owns the per-agent inventory. Intent is the primary row identity. State carries capabilities, tier, thinking, status, timings, tool/token counts, safe activity identity, terminal errors, and retained-log paths. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths are expanded diagnostics.
+Collapsed tool output is one aggregate `spawn_agents` line; expanded output owns the per-agent inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `tier:thinking (capabilities)`, maps fixed capabilities to `fs`, `shell`, `broker`, and `web`, and omits empty capability sets. State also carries terminal errors and retained-log paths. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths are expanded diagnostics.
 
 ## Recursion, cancellation, and diagnostics
 

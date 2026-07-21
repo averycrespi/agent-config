@@ -6,7 +6,7 @@ import {
   getTruncatedText,
   startPartialTimer,
 } from "../_shared/render.ts";
-import { agentProgressLine } from "../subagents/render.ts";
+import { agentProgressLines } from "../subagents/render.ts";
 import {
   DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
   type WorkflowAgentState,
@@ -180,37 +180,35 @@ function safeAgentActivity(
   };
 }
 
-function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
-  const glyph =
-    agent.status === "done"
-      ? "✓"
-      : agent.status === "running"
-        ? "●"
-        : agent.status === "aborted"
-          ? "!"
-          : "✗";
-  const policy = theme.fg(
-    "muted",
-    safeDisplay(
-      `${agent.capabilities.join(",") || "none"} · ${agent.modelTier}/${agent.thinking}`,
-    ),
-  );
-  const label = `${glyph} ${safeDisplay(agent.intent)}`;
-  const sep = separator(theme);
-  if (agent.status === "running")
-    return `${label}${sep}${policy}${sep}${theme.fg("muted", "initializing")}`;
-  if (agent.status === "done")
-    return `${label}${sep}${policy}${sep}${theme.fg("muted", "done")}`;
-  return `${label}${sep}${policy}${sep}${theme.fg("error", safeDisplay(agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed"))}`;
+function fallbackAgentActivity(
+  agent: WorkflowAgentState,
+): NonNullable<WorkflowAgentState["activity"]> {
+  return {
+    intent: agent.intent,
+    capabilities: agent.capabilities,
+    modelTier: agent.modelTier,
+    thinking: agent.thinking,
+    phase: agent.status === "running" ? "starting" : agent.status,
+    recentEvents: [],
+    toolUseCount: 0,
+    totalTokens: 0,
+    resolved: agent.status === "done",
+    errorMessage: agent.errorMessage,
+    logFile: agent.logFile,
+    startedAt: agent.startedAt,
+    lastUpdateAt: agent.finishedAt ?? Date.now(),
+  };
 }
 
 function agentLines(agent: WorkflowAgentState, theme: any): string[] {
-  let primary = agent.activity
-    ? agentProgressLine(safeAgentActivity(agent.activity), theme)
-    : fallbackAgentLine(agent, theme);
-  if (agent.explicitTimeoutMs !== undefined) {
-    primary += `${separator(theme)}${theme.fg("dim", `timeout ${agent.explicitTimeoutMs}ms`)}`;
-  }
+  const activity = agent.activity
+    ? safeAgentActivity(agent.activity)
+    : fallbackAgentActivity(agent);
+  const secondaryMetadata =
+    agent.explicitTimeoutMs === undefined
+      ? []
+      : [`timeout ${formatDuration(agent.explicitTimeoutMs)}`];
+  const lines = agentProgressLines(activity, theme, { secondaryMetadata });
   const metadata: string[] = [];
   if (agent.errorCode) metadata.push(`failure ${safeDisplay(agent.errorCode)}`);
   if (agent.logFile) metadata.push(`log ${safeDisplay(agent.logFile)}`);
@@ -219,9 +217,10 @@ function agentLines(agent: WorkflowAgentState, theme: any): string[] {
       `warning ${safeDisplay(agent.diagnosticWarnings.join("; "))}`,
     );
   }
-  return metadata.length > 0
-    ? [primary, theme.fg("dim", `  ${metadata.join(" · ")}`)]
-    : [primary];
+  if (metadata.length > 0) {
+    lines.push(theme.fg("dim", `  ${metadata.join(" · ")}`));
+  }
+  return lines;
 }
 
 function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {

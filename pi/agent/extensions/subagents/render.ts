@@ -47,12 +47,11 @@ export function statsLine(
   totalTokens: number,
   durationMs: number,
 ): string {
-  const parts: string[] = [];
+  const parts = [formatDuration(durationMs)];
   if (toolUseCount > 0) {
     parts.push(`${toolUseCount} tool ${toolUseCount === 1 ? "use" : "uses"}`);
   }
   if (totalTokens > 0) parts.push(`${formatTokens(totalTokens)} tokens`);
-  parts.push(formatDuration(durationMs));
   return parts.join(" · ");
 }
 
@@ -86,9 +85,28 @@ function isDone(agent: SubagentRunState): boolean {
   return agent.resolved === true || agent.phase === "done" || isFailed(agent);
 }
 
+function compactCapability(capability: string): string {
+  switch (capability) {
+    case "read-filesystem":
+      return "fs";
+    case "exec-shell":
+      return "shell";
+    case "read-broker":
+      return "broker";
+    case "read-web":
+      return "web";
+    default:
+      return safe(capability, 40);
+  }
+}
+
 function policyLabel(agent: SubagentRunState): string {
-  const capabilities = agent.capabilities?.join(",") || "none";
-  return `${capabilities} · ${agent.modelTier ?? "?"}/${agent.thinking ?? "?"}`;
+  const tier = safe(agent.modelTier ?? "?", 40);
+  const thinking = safe(agent.thinking ?? "?", 40);
+  const capabilities = agent.capabilities?.map(compactCapability) ?? [];
+  return capabilities.length > 0
+    ? `${tier}:${thinking} (${capabilities.join(", ")})`
+    : `${tier}:${thinking}`;
 }
 
 function separator(theme: any): string {
@@ -137,17 +155,24 @@ function agentsHeader(
   return `${status}${title}${separator(theme)}${theme.fg("muted", parts.join(" · "))}`;
 }
 
-export function agentProgressLine(agent: SubagentRunState, theme: any): string {
+export function agentProgressLines(
+  agent: SubagentRunState,
+  theme: any,
+  options: { secondaryMetadata?: string[] } = {},
+): string[] {
   const elapsedMs = Math.max(
     0,
-    (agent.lastUpdateAt ?? Date.now()) - agent.startedAt,
+    (isDone(agent) ? agent.lastUpdateAt : Date.now()) - agent.startedAt,
   );
   const label = `${statusGlyph(agent)} ${safe(agent.intent, 160)}`;
-  const policy = theme.fg("muted", policyLabel(agent));
-  const sep = separator(theme);
+  const first = `${label}${separator(theme)}${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
+  const secondary = [
+    policyLabel(agent),
+    ...(options.secondaryMetadata ?? []).map((value) => safe(value, 80)),
+  ];
 
   if (isFailed(agent)) {
-    const msg = safe(
+    const message = safe(
       agent.errorMessage
         ? firstLine(agent.errorMessage)
         : agent.phase === "aborted"
@@ -155,20 +180,16 @@ export function agentProgressLine(agent: SubagentRunState, theme: any): string {
           : "Error: subagent failed",
       180,
     );
-    return `${label}${sep}${policy}${sep}${theme.fg("muted", formatDuration(elapsedMs))}${sep}${theme.fg("error", msg)}`;
+    return [
+      first,
+      `  ${theme.fg("muted", secondary.join(" · "))}${separator(theme)}${theme.fg("error", message)}`,
+    ];
   }
 
-  if (agent.resolved === true || agent.phase === "done") {
-    return `${label}${sep}${policy}${sep}${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
+  if (!isDone(agent)) {
+    secondary.push(compactRecentActivity(agent) ?? "initializing");
   }
-
-  const activity = compactRecentActivity(agent) ?? "initializing";
-  const stats = statsLine(
-    agent.toolUseCount,
-    agent.totalTokens,
-    Date.now() - agent.startedAt,
-  );
-  return `${label}${sep}${policy}${sep}${theme.fg("muted", stats)}${sep}${theme.fg("muted", activity)}`;
+  return [first, `  ${theme.fg("muted", secondary.join(" · "))}`];
 }
 
 export function renderAgentsCall(
@@ -205,7 +226,10 @@ export function renderAgentsResult(
     ),
   ];
   if (options.expanded) {
-    lines.push("", ...agents.map((agent) => agentProgressLine(agent, theme)));
+    lines.push(
+      "",
+      ...agents.flatMap((agent) => agentProgressLines(agent, theme)),
+    );
     for (const agent of agents) {
       if (agent.logFile)
         lines.push(theme.fg("muted", `Log: ${safe(agent.logFile, 240)}`));

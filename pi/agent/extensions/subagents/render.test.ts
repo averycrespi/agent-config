@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
-  agentProgressLine,
+  agentProgressLines,
   formatTokens,
   getActivity,
   renderAgentsResult,
@@ -42,22 +42,40 @@ for (const [value, expected] of [
 
 test("statsLine includes only nonzero counters and duration", () => {
   assert.equal(statsLine(0, 0, 3000), "3s");
-  assert.equal(statsLine(1, 0, 5000), "1 tool use · 5s");
+  assert.equal(statsLine(1, 0, 5000), "5s · 1 tool use");
   assert.equal(
     statsLine(5, 20_300, 20_000),
-    "5 tool uses · 20.3k tokens · 20s",
+    "20s · 5 tool uses · 20.3k tokens",
   );
 });
 
-test("done progress row is intent-first and includes execution policy", () => {
-  assert.equal(
-    agentProgressLine(state() as any, theme),
-    "✓ docs · read-filesystem · medium/high · 2 tool uses · 4.1k tokens · 12s",
+test("done progress rows split intent stats from compact execution policy", () => {
+  assert.deepEqual(agentProgressLines(state() as any, theme), [
+    "✓ docs · 12s · 2 tool uses · 4.1k tokens",
+    "  medium:high (fs)",
+  ]);
+
+  assert.deepEqual(
+    agentProgressLines(
+      state({
+        capabilities: [
+          "read-filesystem",
+          "exec-shell",
+          "read-broker",
+          "read-web",
+        ],
+      }) as any,
+      theme,
+    ),
+    [
+      "✓ docs · 12s · 2 tool uses · 4.1k tokens",
+      "  medium:high (fs, shell, broker, web)",
+    ],
   );
 });
 
-test("running progress row includes safe tool identity without arguments", () => {
-  const line = agentProgressLine(
+test("running progress rows keep volatile tool identity at the end", () => {
+  const lines = agentProgressLines(
     state({
       intent: "tests",
       capabilities: ["read-web"],
@@ -73,14 +91,12 @@ test("running progress row includes safe tool identity without arguments", () =>
     }) as any,
     theme,
   );
-  assert.match(
-    line,
-    /^● tests · read-web · small\/medium · 1 tool use · \d+s · web_fetch$/,
-  );
+  assert.match(lines[0]!, /^● tests · \d+s · 1 tool use$/);
+  assert.equal(lines[1], "  small:medium (web) · web_fetch");
 });
 
-test("failure row keeps status and error but hides retained log until expanded", () => {
-  const line = agentProgressLine(
+test("failure rows omit empty capabilities and keep retained logs hidden", () => {
+  const lines = agentProgressLines(
     state({
       intent: "security",
       capabilities: [],
@@ -94,11 +110,11 @@ test("failure row keeps status and error but hides retained log until expanded",
     }) as any,
     theme,
   );
-  assert.equal(
-    line,
-    "✗ security · none · medium/high · 1s · Error: subagent failed",
-  );
-  assert.doesNotMatch(line, /Log:/);
+  assert.deepEqual(lines, [
+    "✗ security · 1s",
+    "  medium:high · Error: subagent failed",
+  ]);
+  assert.doesNotMatch(lines.join("\n"), /Log:/);
 });
 
 function context() {
@@ -116,10 +132,10 @@ test("aggregate and per-agent separators are muted", () => {
       color === "muted" ? `{${text}}` : text,
   };
 
-  assert.equal(
-    agentProgressLine(state() as any, markerTheme),
-    "✓ docs{ · }{read-filesystem · medium/high}{ · }{2 tool uses · 4.1k tokens · 12s}",
-  );
+  assert.deepEqual(agentProgressLines(state() as any, markerTheme), [
+    "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
+    "  {medium:high (fs)}",
+  ]);
 
   const result = renderAgentsResult(
     {
@@ -214,9 +230,10 @@ test("result renderer is width-aware for partial, final, and expanded states", (
     const partialLines = partial.render(200);
     assert.match(partialLines.join("\n"), /^spawn_agents · 1 done · 1 running/);
     assert.ok(
-      partialLines.some((line: string) =>
-        line.includes("✓ docs · read-filesystem · medium/high"),
-      ),
+      partialLines.some((line: string) => line.startsWith("✓ docs · ")),
+    );
+    assert.ok(
+      partialLines.some((line: string) => line === "  medium:high (fs)"),
     );
     ctx.lastComponent = partial;
     const final = renderAgentsResult(
@@ -245,7 +262,7 @@ test("result renderer is width-aware for partial, final, and expanded states", (
 });
 
 test("renderer strips hostile controls and collapses line breaks", () => {
-  const line = agentProgressLine(
+  const lines = agentProgressLines(
     state({
       intent: "bad\x1b]8;;https://evil.example\x07link\x1b]8;;\x07\nnext",
       phase: "error",
@@ -253,10 +270,10 @@ test("renderer strips hostile controls and collapses line breaks", () => {
     }) as any,
     theme,
   );
-  assert.doesNotMatch(line, /\x1b|\n/);
-  assert.match(line, /badlink next/);
-  assert.match(line, /Error: nope/);
-  assert.doesNotMatch(line, /secret/);
+  assert.doesNotMatch(lines.join("\n"), /\x1b/);
+  assert.match(lines[0]!, /badlink next/);
+  assert.match(lines[1]!, /Error: nope/);
+  assert.doesNotMatch(lines.join("\n"), /secret/);
 });
 
 test("getActivity accepts nested or direct activity shapes", () => {

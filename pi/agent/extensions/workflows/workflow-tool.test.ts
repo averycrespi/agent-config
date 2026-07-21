@@ -285,11 +285,8 @@ test("snapshot rendering is intent-first and metadata-rich", () => {
     finishedAt: 2000,
   };
   const lines = renderSnapshot(snapshot, theme, { final: true });
-  assert.ok(
-    lines.some((line) =>
-      line.includes("✓ Search docs · read-web · small/medium"),
-    ),
-  );
+  assert.ok(lines.includes("✓ Search docs · 1s"));
+  assert.ok(lines.includes("  small:medium (web)"));
   assert.ok(
     lines.every(
       (line) => !line.includes("explorer") && !line.includes("reviewer"),
@@ -692,6 +689,42 @@ test("workflow summaries use explicit action grammar", () => {
   assert.deepEqual(validate.render(200), ["✓ workflow validate research"]);
 });
 
+test("workflow agent rows keep timeout before the volatile tool", () => {
+  const snapshot = workflowSnapshot({
+    agents: [
+      {
+        ...workflowSnapshot().agents[0],
+        status: "running",
+        explicitTimeoutMs: 30_000,
+        activity: {
+          intent: "Search docs",
+          capabilities: ["read-web"],
+          modelTier: "small",
+          thinking: "medium",
+          phase: "web_fetch",
+          activeTool: "web_fetch",
+          recentEvents: [],
+          toolUseCount: 3,
+          totalTokens: 7200,
+          resolved: false,
+          startedAt: Date.now() - 18_000,
+          lastUpdateAt: Date.now(),
+        },
+      },
+    ],
+  });
+
+  const lines = renderSnapshot(snapshot, theme);
+  assert.match(
+    lines.find((line) => line.startsWith("● Search docs")) ?? "",
+    /^● Search docs · \d+s · 3 tool uses · 7\.2k tokens$/,
+  );
+  assert.equal(
+    lines.find((line) => line.startsWith("  small:medium")),
+    "  small:medium (web) · timeout 30s · web_fetch",
+  );
+});
+
 test("workflow headers and fallback agent rows mute every separator", () => {
   const markerTheme = {
     bold: (value: string) => `*${value}*`,
@@ -708,7 +741,8 @@ test("workflow headers and fallback agent rows mute every separator", () => {
   assert.deepEqual(lines, [
     "✓ [*workflow*] run research{ · }{1 done · 0 failed · 12s}",
     "",
-    "✓ Search docs{ · }{read-web · small/medium}{ · }{done}",
+    "✓ Search docs{ · }{12s}",
+    "  {small:medium (web)}",
   ]);
 });
 
