@@ -343,7 +343,7 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
   };
 
   const lines = renderSnapshot(snapshot, theme);
-  assert.match(lines[0], /^Workflow: ordered/);
+  assert.match(lines[0], /^workflow ordered/);
   assert.deepEqual(
     lines
       .filter((line) => /(Oldest done|Middle failed|Newest running)/.test(line))
@@ -352,7 +352,8 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
       ),
     ["Oldest done", "Middle failed", "Newest running"],
   );
-  assert.match(lines[1], /Oldest done/);
+  assert.equal(lines[1], "");
+  assert.match(lines[2], /Oldest done/);
 });
 
 test("workflow widget title uses a concise failed count", () => {
@@ -383,6 +384,334 @@ test("workflow widget title uses a concise failed count", () => {
   assert.doesNotMatch(title, /agents? failed/);
 });
 
+function workflowSnapshot(overrides: Record<string, unknown> = {}) {
+  return {
+    meta: { name: "research", description: "test" },
+    phase: "search",
+    phases: ["search"],
+    logs: [],
+    agents: [
+      {
+        id: 1,
+        intent: "Search docs",
+        capabilities: ["read-web"],
+        modelTier: "small",
+        thinking: "medium",
+        status: "done",
+        startedAt: 1000,
+        finishedAt: 13000,
+      },
+    ],
+    agentFailureCount: 0,
+    loggedBranchFailureCount: 0,
+    settledBranchFailureCount: 0,
+    startedAt: 1000,
+    finishedAt: 13000,
+    ...overrides,
+  } as any;
+}
+
+function rendererContext(args: Record<string, unknown> = {}) {
+  return {
+    state: {},
+    invalidate() {},
+    args: { action: "run", name: "research", ...args },
+    isError: false,
+  } as any;
+}
+
+function stopRendererTimer(context: any) {
+  clearInterval(context.state.renderTimer as ReturnType<typeof setInterval>);
+  context.state.renderTimer = undefined;
+}
+
+test("workflow collapsed rendering is always one total line", () => {
+  const context = rendererContext();
+  assert.deepEqual(
+    renderWorkflowCall(
+      { action: "run", name: "research" },
+      theme,
+      context,
+    ).render(200),
+    [],
+  );
+
+  const snapshot = workflowSnapshot();
+  const cases = [
+    {
+      label: "running",
+      result: { content: [], details: { snapshot } },
+      options: { isPartial: true },
+    },
+    {
+      label: "success",
+      result: { content: [], details: { snapshot } },
+      options: { isPartial: false },
+    },
+    {
+      label: "snapshot error",
+      result: {
+        content: [{ type: "text", text: "Error: timed out" }],
+        details: {
+          snapshot,
+          errorCode: "workflow_timeout",
+          counts: {
+            completed: 1,
+            failed: 1,
+            timedOut: 1,
+            canceled: 0,
+            outstanding: 0,
+          },
+        },
+      },
+      options: { isPartial: false },
+    },
+    {
+      label: "input error",
+      result: {
+        content: [{ type: "text", text: "Invalid workflow input: bad args" }],
+        details: { action: "run", inputError: true },
+      },
+      options: { isPartial: false },
+    },
+    {
+      label: "list",
+      result: {
+        content: [],
+        details: {
+          action: "list",
+          inventory: { storeDir: "/workflows", entries: [] },
+        },
+      },
+      options: { isPartial: false },
+    },
+    {
+      label: "validate",
+      result: {
+        content: [],
+        details: {
+          action: "validate",
+          meta: { name: "research" },
+          sourceFile: "/workflows/research.js",
+        },
+      },
+      options: { isPartial: false },
+    },
+  ];
+
+  for (const item of cases) {
+    const lines = renderWorkflowResult(
+      item.result,
+      item.options,
+      theme,
+      context,
+    ).render(200);
+    if (item.options.isPartial) stopRendererTimer(context);
+    assert.equal(lines.length, 1, item.label);
+  }
+});
+
+test("expanded workflows preserve the collapsed header and add details", () => {
+  const context = rendererContext();
+  const cases = [
+    {
+      label: "running",
+      result: {
+        content: [],
+        details: { snapshot: workflowSnapshot() },
+      },
+      partial: true,
+    },
+    {
+      label: "success",
+      result: {
+        content: [],
+        details: { snapshot: workflowSnapshot() },
+      },
+      partial: false,
+    },
+    {
+      label: "error",
+      result: {
+        content: [{ type: "text", text: "Error: timed out" }],
+        details: {
+          snapshot: workflowSnapshot(),
+          errorCode: "workflow_timeout",
+          recoveryFile: "/tmp/recovery.gz",
+        },
+      },
+      partial: false,
+    },
+    {
+      label: "list",
+      result: {
+        content: [],
+        details: {
+          action: "list",
+          inventory: {
+            storeDir: "/workflows",
+            entries: [{ name: "research", valid: true }],
+          },
+        },
+      },
+      partial: false,
+    },
+    {
+      label: "validate",
+      result: {
+        content: [],
+        details: {
+          action: "validate",
+          meta: { name: "research" },
+          sourceFile: "/workflows/research.js",
+        },
+      },
+      partial: false,
+    },
+  ];
+
+  for (const item of cases) {
+    const collapsed = renderWorkflowResult(
+      item.result,
+      { isPartial: item.partial },
+      theme,
+      context,
+    ).render(300);
+    const expanded = renderWorkflowResult(
+      item.result,
+      { isPartial: item.partial, expanded: true },
+      theme,
+      context,
+    ).render(300);
+    if (item.partial) stopRendererTimer(context);
+    assert.equal(expanded[0], collapsed[0], item.label);
+    assert.ok(expanded.length > collapsed.length, item.label);
+  }
+});
+
+test("workflow summaries follow the spawn_agents-style grammar", () => {
+  const context = rendererContext();
+  const running = renderWorkflowResult(
+    { content: [], details: { snapshot: workflowSnapshot() } },
+    { isPartial: true },
+    theme,
+    context,
+  );
+  assert.deepEqual(running.render(200), [
+    "workflow research · search · 1 done · 0 running · 0 failed · 12s",
+  ]);
+  stopRendererTimer(context);
+
+  const success = renderWorkflowResult(
+    { content: [], details: { snapshot: workflowSnapshot() } },
+    { isPartial: false },
+    theme,
+    context,
+  );
+  assert.deepEqual(success.render(200), [
+    "✓ workflow research · 1 done · 0 failed · 12s",
+  ]);
+
+  const partialFailure = renderWorkflowResult(
+    {
+      content: [],
+      details: {
+        snapshot: workflowSnapshot({
+          agents: [
+            workflowSnapshot().agents[0],
+            {
+              id: 2,
+              intent: "Audit",
+              capabilities: [],
+              modelTier: "medium",
+              thinking: "high",
+              status: "error",
+              startedAt: 2000,
+              finishedAt: 3000,
+            },
+          ],
+          agentFailureCount: 1,
+          loggedBranchFailureCount: 1,
+        }),
+      },
+    },
+    { isPartial: false },
+    theme,
+    context,
+  );
+  assert.deepEqual(partialFailure.render(200), [
+    "! workflow research · 1 done · 1 agent failed · 1 branch failed · 12s",
+  ]);
+
+  const failure = renderWorkflowResult(
+    {
+      content: [{ type: "text", text: "Error: timed out" }],
+      details: {
+        snapshot: workflowSnapshot(),
+        errorCode: "workflow_timeout",
+        counts: {
+          completed: 1,
+          failed: 1,
+          timedOut: 1,
+          canceled: 0,
+          outstanding: 0,
+        },
+      },
+    },
+    { isPartial: false },
+    theme,
+    context,
+  );
+  assert.deepEqual(failure.render(200), [
+    "✗ workflow research · workflow_timeout · 1 done · 1 failed · 1 timed out · 12s — timed out",
+  ]);
+
+  const list = renderWorkflowResult(
+    {
+      content: [],
+      details: {
+        action: "list",
+        inventory: { storeDir: "/workflows", entries: [{ valid: true }] },
+      },
+    },
+    { isPartial: false },
+    theme,
+    rendererContext({ action: "list", name: undefined }),
+  );
+  assert.deepEqual(list.render(200), ["✓ workflow list · 1 saved"]);
+
+  const validate = renderWorkflowResult(
+    {
+      content: [],
+      details: { action: "validate", meta: { name: "research" } },
+    },
+    { isPartial: false },
+    theme,
+    rendererContext({ action: "validate" }),
+  );
+  assert.deepEqual(validate.render(200), ["✓ workflow validate research"]);
+});
+
+test("workflow headers and fallback agent rows mute every separator", () => {
+  const markerTheme = {
+    bold: (value: string) => `*${value}*`,
+    fg: (color: string, value: string) =>
+      color === "toolTitle"
+        ? `[${value}]`
+        : color === "muted"
+          ? `{${value}}`
+          : value,
+  };
+  const lines = renderSnapshot(workflowSnapshot(), markerTheme, {
+    final: true,
+  });
+  assert.deepEqual(lines, [
+    "✓ [*workflow*] research{ · }{1 done · 0 failed · 12s}",
+    "",
+    "✓ Search docs{ · }{read-web · small/medium}{ · }{done}",
+  ]);
+});
+
 test("workflow renderers truncate controls and narrow widths", () => {
   const context: any = {
     state: {},
@@ -407,5 +736,21 @@ test("workflow renderers truncate controls and narrow widths", () => {
     theme,
     context,
   );
-  assert.deepEqual(result.render(200), ["✓ validated valid"]);
+  assert.deepEqual(result.render(200), ["✓ workflow validate valid"]);
+
+  const hostilePolicy = renderSnapshot(
+    workflowSnapshot({
+      agents: [
+        {
+          ...workflowSnapshot().agents[0],
+          capabilities: ["read-web\x1b[2J\nspoof"],
+          modelTier: "small\nspoof",
+          thinking: "medium\x1b[2J",
+        },
+      ],
+    }),
+    theme,
+  );
+  assert.ok(hostilePolicy.every((line) => !line.includes("\n")));
+  assert.doesNotMatch(hostilePolicy.join("\n"), /\x1b/);
 });

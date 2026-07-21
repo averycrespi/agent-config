@@ -24,33 +24,31 @@ function safeDisplay(value: unknown): string {
     .slice(0, MAX_DISPLAY_CHARS);
 }
 
-export function formatWorkflowResult(details: unknown, text: string): string {
-  const info = details as
-    | {
-        meta?: { name?: string };
-        durationMs?: number;
-        agentFailureCount?: number;
-        loggedBranchFailureCount?: number;
-        settledBranchFailureCount?: number;
-        spilled?: boolean;
-      }
-    | undefined;
-  const name = info?.meta?.name ? ` ${safeDisplay(info.meta.name)}` : "";
-  const agentFailures = info?.agentFailureCount
-    ? `, ${info.agentFailureCount} agent failure${info.agentFailureCount === 1 ? "" : "s"}`
-    : "";
-  const branchFailures =
-    (info?.loggedBranchFailureCount ?? 0) +
-    (info?.settledBranchFailureCount ?? 0);
-  const branches = branchFailures
-    ? `, ${branchFailures} branch failure${branchFailures === 1 ? "" : "s"}`
-    : "";
-  const duration =
-    typeof info?.durationMs === "number"
-      ? ` in ${formatDuration(info.durationMs)}`
-      : "";
-  const first = text.trim().split("\n").find(Boolean);
-  return `✓ workflow${name}${duration}${agentFailures}${branches}${first ? ` — ${safeDisplay(first).slice(0, 80)}` : ""}`;
+function separator(theme: any): string {
+  return theme.fg("muted", " · ");
+}
+
+function workflowIdentity(theme: any, action: string, name?: string): string {
+  const title = theme.fg("toolTitle", theme.bold("workflow"));
+  const safeName = name ? ` ${safeDisplay(name)}` : "";
+  return action === "run"
+    ? `${title}${safeName}`
+    : `${title} ${safeDisplay(action)}${safeName}`;
+}
+
+function statusPrefix(
+  theme: any,
+  status: "success" | "warning" | "error",
+): string {
+  const glyph = status === "success" ? "✓" : status === "warning" ? "!" : "✗";
+  return `${theme.fg(status, glyph)} `;
+}
+
+function conciseErrorMessage(text: string): string {
+  return safeDisplay(text)
+    .replace(/^(?:Error:|Invalid workflow input:)\s*/i, "")
+    .replace(/^-\s*/, "")
+    .slice(0, 100);
 }
 
 function countAgents(snapshot: WorkflowSnapshot): {
@@ -67,84 +65,69 @@ function countAgents(snapshot: WorkflowSnapshot): {
   };
 }
 
-function workflowHeader(
+function workflowSummaryLine(
   snapshot: WorkflowSnapshot,
   theme: any,
   options: { final?: boolean; error?: boolean } = {},
 ): string {
   const elapsed = formatDuration(
-    (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt,
-  );
-  const name = safeDisplay(snapshot.meta?.name ?? "workflow");
-  const { running, done, failed } = countAgents(snapshot);
-  const agentFailures = snapshot.agentFailureCount ?? failed;
-  const hasCounts = snapshot.agents.length > 0 || agentFailures > 0;
-  let counts = hasCounts
-    ? options.final
-      ? ` · ${done} done · ${agentFailures} failed`
-      : ` · ${done} done · ${running} running · ${agentFailures} failed`
-    : "";
-  const logged = snapshot.loggedBranchFailureCount ?? 0;
-  const settled = snapshot.settledBranchFailureCount ?? 0;
-  if (logged > 0) {
-    counts += ` · ${logged} logged branch failure${logged === 1 ? "" : "s"}`;
-  }
-  if (settled > 0) {
-    counts += ` · ${settled} settled branch failure${settled === 1 ? "" : "s"}`;
-  }
-  if (options.final) {
-    const glyph = options.error
-      ? theme.fg("error", "✗")
-      : theme.fg("success", "✓");
-    return `${theme.bold("Workflow")}: ${name} ${glyph} · ${elapsed}${counts}`;
-  }
-  const phase = snapshot.phase ? ` · ${safeDisplay(snapshot.phase)}` : "";
-  return `${theme.bold("Workflow")}: ${name}${phase}${counts} · ${elapsed}`;
-}
-
-function compactSnapshotLine(
-  snapshot: WorkflowSnapshot,
-  theme: any,
-  final: boolean,
-  error = false,
-): string {
-  const elapsed = formatDuration(
     Math.max(0, (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt),
   );
-  const name = safeDisplay(snapshot.meta?.name ?? "workflow");
-  const phase =
-    !final && snapshot.phase ? ` · ${safeDisplay(snapshot.phase)}` : "";
   const { running, done, failed } = countAgents(snapshot);
   const agentFailures = snapshot.agentFailureCount ?? failed;
   const branchFailures =
     (snapshot.loggedBranchFailureCount ?? 0) +
     (snapshot.settledBranchFailureCount ?? 0);
-  const branches =
-    branchFailures > 0 ? ` · ${branchFailures} branch failed` : "";
-  if (!final) {
-    return theme.fg(
-      "warning",
-      `Running ${name}${phase} · ${done} done · ${running} running · ${agentFailures} failed${branches} · ${elapsed}`,
+  const parts: string[] = [];
+  if (!options.final && snapshot.phase) parts.push(safeDisplay(snapshot.phase));
+  parts.push(`${done} done`);
+  if (!options.final) parts.push(`${running} running`);
+  parts.push(
+    branchFailures > 0
+      ? `${agentFailures} agent${agentFailures === 1 ? "" : "s"} failed`
+      : `${agentFailures} failed`,
+  );
+  if (branchFailures > 0) {
+    parts.push(
+      `${branchFailures} branch${branchFailures === 1 ? "" : "es"} failed`,
     );
   }
+  parts.push(elapsed);
+
   const hasFailures = agentFailures > 0 || branchFailures > 0;
-  return theme.fg(
-    error ? "error" : hasFailures ? "warning" : "success",
-    `${error ? "✗" : hasFailures ? "!" : "✓"} ${name} · ${done} done · ${agentFailures} failed${branches} · ${elapsed}`,
-  );
+  const status = options.final
+    ? statusPrefix(
+        theme,
+        options.error ? "error" : hasFailures ? "warning" : "success",
+      )
+    : "";
+  const identity = workflowIdentity(theme, "run", snapshot.meta?.name);
+  return `${status}${identity}${separator(theme)}${theme.fg("muted", parts.join(" · "))}`;
 }
 
-function compactErrorLine(
-  snapshot: WorkflowSnapshot,
+function errorSummaryLine(
+  snapshot: WorkflowSnapshot | undefined,
   details: any,
-  message: string,
+  text: string,
   theme: any,
+  context: any,
 ): string {
-  const elapsed = formatDuration(
-    Math.max(0, (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt),
+  const input = context.args as { action?: string; name?: string } | undefined;
+  const action = safeDisplay(details?.action ?? input?.action ?? "run");
+  const name = safeDisplay(
+    snapshot?.meta?.name ?? details?.meta?.name ?? input?.name,
   );
-  const name = safeDisplay(snapshot.meta?.name ?? "workflow");
-  const code = safeDisplay(details?.errorCode ?? "workflow_script_error");
+  const code = safeDisplay(
+    details?.errorCode ??
+      (details?.inputError
+        ? "invalid input"
+        : details?.validationError
+          ? "invalid definition"
+          : details?.artifactError
+            ? "artifact error"
+            : `${action} failed`),
+  );
+  const parts = [code];
   const counts = details?.counts as
     | {
         completed?: number;
@@ -154,13 +137,26 @@ function compactErrorLine(
         outstanding?: number;
       }
     | undefined;
-  const summary = counts
-    ? ` · ${counts.completed ?? 0} done · ${counts.failed ?? 0} failed · ${counts.timedOut ?? 0} timed out · ${(counts.canceled ?? 0) + (counts.outstanding ?? 0)} canceled/outstanding`
+  if (counts) {
+    parts.push(`${counts.completed ?? 0} done`, `${counts.failed ?? 0} failed`);
+    if ((counts.timedOut ?? 0) > 0) {
+      parts.push(`${counts.timedOut} timed out`);
+    }
+    const canceled = (counts.canceled ?? 0) + (counts.outstanding ?? 0);
+    if (canceled > 0) parts.push(`${canceled} canceled/outstanding`);
+  }
+  if (snapshot) {
+    parts.push(
+      formatDuration(
+        Math.max(0, (snapshot.finishedAt ?? Date.now()) - snapshot.startedAt),
+      ),
+    );
+  }
+  const message = conciseErrorMessage(text);
+  const suffix = message
+    ? `${theme.fg("muted", " — ")}${theme.fg("error", message)}`
     : "";
-  return theme.fg(
-    "error",
-    `✗ ${name} · ${code}${summary} · ${elapsed} — ${safeDisplay(message).slice(0, 100)}`,
-  );
+  return `${statusPrefix(theme, "error")}${workflowIdentity(theme, action, name || undefined)}${separator(theme)}${theme.fg("muted", parts.join(" · "))}${suffix}`;
 }
 
 function safeAgentActivity(
@@ -195,12 +191,19 @@ function fallbackAgentLine(agent: WorkflowAgentState, theme: any): string {
         : agent.status === "aborted"
           ? "!"
           : "✗";
-  const policy = `${agent.capabilities.join(",") || "none"} · ${agent.modelTier}/${agent.thinking}`;
-  const label = `${glyph} ${safeDisplay(agent.intent)} · ${safeDisplay(policy)}`;
+  const policy = theme.fg(
+    "muted",
+    safeDisplay(
+      `${agent.capabilities.join(",") || "none"} · ${agent.modelTier}/${agent.thinking}`,
+    ),
+  );
+  const label = `${glyph} ${safeDisplay(agent.intent)}`;
+  const sep = separator(theme);
   if (agent.status === "running")
-    return `${label} · ${theme.fg("muted", "initializing")}`;
-  if (agent.status === "done") return `${label} · ${theme.fg("muted", "done")}`;
-  return `${label} · ${theme.fg("error", safeDisplay(agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed"))}`;
+    return `${label}${sep}${policy}${sep}${theme.fg("muted", "initializing")}`;
+  if (agent.status === "done")
+    return `${label}${sep}${policy}${sep}${theme.fg("muted", "done")}`;
+  return `${label}${sep}${policy}${sep}${theme.fg("error", safeDisplay(agent.errorMessage?.split("\n")[0] ?? "Error: subagent failed"))}`;
 }
 
 function agentLines(agent: WorkflowAgentState, theme: any): string[] {
@@ -208,7 +211,7 @@ function agentLines(agent: WorkflowAgentState, theme: any): string[] {
     ? agentProgressLine(safeAgentActivity(agent.activity), theme)
     : fallbackAgentLine(agent, theme);
   if (agent.explicitTimeoutMs !== undefined) {
-    primary += ` · ${theme.fg("dim", `timeout ${agent.explicitTimeoutMs}ms`)}`;
+    primary += `${separator(theme)}${theme.fg("dim", `timeout ${agent.explicitTimeoutMs}ms`)}`;
   }
   const metadata: string[] = [];
   if (agent.errorCode) metadata.push(`failure ${safeDisplay(agent.errorCode)}`);
@@ -235,24 +238,18 @@ function workflowLogLines(snapshot: WorkflowSnapshot, theme: any): string[] {
   ];
 }
 
-export function renderSnapshot(
+function renderSnapshotDetails(
   snapshot: WorkflowSnapshot,
   theme: any,
-  options: {
-    final?: boolean;
-    error?: boolean;
-    maxVisibleSettledAgents?: number;
-  } = {},
+  maxVisibleSettledAgents = DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
 ): string[] {
-  const lines: string[] = [workflowHeader(snapshot, theme, options)];
+  const lines: string[] = [];
   const chronologicalAgents = [...snapshot.agents].sort(
     (a, b) => a.startedAt - b.startedAt || a.id - b.id,
   );
   const settled = chronologicalAgents.filter(
     (agent) => agent.status !== "running",
   );
-  const maxVisibleSettledAgents =
-    options.maxVisibleSettledAgents ?? DEFAULT_MAX_VISIBLE_SETTLED_AGENTS;
   const visibleSettled =
     maxVisibleSettledAgents === 0
       ? []
@@ -266,6 +263,7 @@ export function renderSnapshot(
     (agent) => agent.status === "running" || visibleSettledSet.has(agent),
   );
   if (snapshot.agents.length > 0) {
+    lines.push("");
     if (hiddenSettled.length > 0) {
       const done = hiddenSettled.filter(
         (agent) => agent.status === "done",
@@ -285,13 +283,45 @@ export function renderSnapshot(
   return lines;
 }
 
-export function renderWorkflowCall(params: unknown, theme: any, context: any) {
-  const input = params as { action?: string; name?: string } | undefined;
-  const action = safeDisplay(input?.action ?? "run");
-  const name = input?.name ? ` ${safeDisplay(input.name)}` : "";
-  return getTruncatedText(context.lastComponent, [
-    `${theme.fg("toolTitle", theme.bold("workflow"))} ${theme.fg("muted", `${action}${name}`)}`,
-  ]);
+export function renderSnapshot(
+  snapshot: WorkflowSnapshot,
+  theme: any,
+  options: {
+    final?: boolean;
+    error?: boolean;
+    maxVisibleSettledAgents?: number;
+  } = {},
+): string[] {
+  return [
+    workflowSummaryLine(snapshot, theme, options),
+    ...renderSnapshotDetails(
+      snapshot,
+      theme,
+      options.maxVisibleSettledAgents ?? DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+    ),
+  ];
+}
+
+function actionSummaryLine(
+  theme: any,
+  status: "success" | "warning",
+  action: string,
+  name: string | undefined,
+  parts: string[] = [],
+): string {
+  const suffix =
+    parts.length > 0
+      ? `${separator(theme)}${theme.fg("muted", parts.join(" · "))}`
+      : "";
+  return `${statusPrefix(theme, status)}${workflowIdentity(theme, action, name)}${suffix}`;
+}
+
+export function renderWorkflowCall(
+  _params: unknown,
+  _theme: any,
+  context: any,
+) {
+  return getTruncatedText(context.lastComponent, []);
 }
 
 export function renderWorkflowResult(
@@ -303,18 +333,27 @@ export function renderWorkflowResult(
   if (isPartial) {
     startPartialTimer(context);
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
-    const lines = snapshot
-      ? expanded
-        ? [
-            "",
-            ...renderSnapshot(snapshot, theme, {
-              maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
-            }),
-          ]
-        : [compactSnapshotLine(snapshot, theme, false)]
-      : [theme.fg("warning", "workflow running...")];
-    return getTruncatedText(context.lastComponent, lines);
+    if (snapshot) {
+      const lines = expanded
+        ? renderSnapshot(snapshot, theme, {
+            maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+          })
+        : [workflowSummaryLine(snapshot, theme)];
+      return getTruncatedText(context.lastComponent, lines);
+    }
+    const input = context.args as
+      | { action?: string; name?: string }
+      | undefined;
+    const identity = workflowIdentity(
+      theme,
+      safeDisplay(input?.action ?? "run"),
+      input?.name,
+    );
+    return getTruncatedText(context.lastComponent, [
+      `${identity}${separator(theme)}${theme.fg("muted", "starting")}`,
+    ]);
   }
+
   clearPartialTimer(context);
   const text = getResultText(result);
   if (
@@ -322,47 +361,41 @@ export function renderWorkflowResult(
     text.startsWith("Error") ||
     text.startsWith("Invalid workflow input:")
   ) {
-    const message = theme.fg(
-      "error",
-      safeDisplay(text.split("\n").find(Boolean) ?? "Workflow failed"),
-    );
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
-    if (snapshot) {
-      const recoveryFile = result.details?.recoveryFile
-        ? safeDisplay(result.details.recoveryFile)
-        : undefined;
-      const persistenceWarning = result.details?.persistenceWarning
-        ? safeDisplay(result.details.persistenceWarning)
-        : undefined;
-      const lines = expanded
-        ? [
-            "",
-            ...renderSnapshot(snapshot, theme, {
-              final: true,
-              error: true,
-              maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
-            }),
-            "",
-            message,
-            ...(recoveryFile ? [`Recovery: ${recoveryFile}`] : []),
-            ...(persistenceWarning
-              ? [theme.fg("warning", `Warning: ${persistenceWarning}`)]
-              : []),
-          ]
-        : [compactErrorLine(snapshot, result.details, message, theme)];
-      return getTruncatedText(context.lastComponent, lines);
-    }
-    const input = context.args as
-      | { action?: string; name?: string }
-      | undefined;
-    const action = safeDisplay(
-      result.details?.action ?? input?.action ?? "run",
+    const summary = errorSummaryLine(
+      snapshot,
+      result.details,
+      text,
+      theme,
+      context,
     );
-    const name = input?.name ? ` ${safeDisplay(input.name)}` : "";
-    return getTruncatedText(context.lastComponent, [
-      theme.fg("error", `✗ workflow ${action}${name}`),
-      message,
-    ]);
+    if (!expanded || !snapshot) {
+      return getTruncatedText(context.lastComponent, [summary]);
+    }
+
+    const lines = [
+      summary,
+      ...renderSnapshotDetails(
+        snapshot,
+        theme,
+        result.details?.maxVisibleSettledAgents ??
+          DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+      ),
+    ];
+    const recoveryFile = result.details?.recoveryFile
+      ? safeDisplay(result.details.recoveryFile)
+      : undefined;
+    const persistenceWarning = result.details?.persistenceWarning
+      ? safeDisplay(result.details.persistenceWarning)
+      : undefined;
+    if (recoveryFile || persistenceWarning) {
+      lines.push("");
+      if (recoveryFile) lines.push(`Recovery: ${recoveryFile}`);
+      if (persistenceWarning) {
+        lines.push(theme.fg("warning", `Warning: ${persistenceWarning}`));
+      }
+    }
+    return getTruncatedText(context.lastComponent, lines);
   }
 
   if (result.details?.action === "list") {
@@ -380,55 +413,82 @@ export function renderWorkflowResult(
         }
       | undefined;
     const entries = inventory?.entries ?? [];
-    if (!expanded) {
-      const count = entries.length;
-      return getTruncatedText(context.lastComponent, [
-        `${theme.fg("success", "✓")} ${count} saved workflow${count === 1 ? "" : "s"}`,
-      ]);
-    }
-    return getTruncatedText(context.lastComponent, [
-      `saved workflows · ${safeDisplay(inventory?.storeDir ?? "unknown store")}`,
-      ...entries.map((entry) => {
-        const name = safeDisplay(entry.name ?? entry.filename);
-        return entry.valid
-          ? `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`
-          : `✗ ${name} — ${safeDisplay(entry.diagnostic ?? "invalid")}`;
-      }),
-      ...(inventory?.truncated
-        ? [`… ${safeDisplay(inventory.truncated)}`]
-        : []),
+    const summary = actionSummaryLine(theme, "success", "list", undefined, [
+      `${entries.length} saved`,
     ]);
+    const lines = [summary];
+    if (expanded) {
+      lines.push(
+        "",
+        `store ${safeDisplay(inventory?.storeDir ?? "unknown")}`,
+        ...entries.map((entry) => {
+          const name = safeDisplay(entry.name ?? entry.filename);
+          return entry.valid
+            ? `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`
+            : `✗ ${name} — ${safeDisplay(entry.diagnostic ?? "invalid")}`;
+        }),
+        ...(inventory?.truncated
+          ? [`… ${safeDisplay(inventory.truncated)}`]
+          : []),
+      );
+    }
+    return getTruncatedText(context.lastComponent, lines);
   }
 
   if (result.details?.action === "validate") {
     const name = safeDisplay(result.details.meta?.name ?? "workflow");
-    const source = expanded
-      ? result.details.sourceFile
-        ? ` · ${safeDisplay(result.details.sourceFile)}`
-        : " · inline"
-      : "";
-    return getTruncatedText(context.lastComponent, [
-      `${theme.fg("success", "✓")} validated ${name}${source}`,
-    ]);
+    const summary = actionSummaryLine(theme, "success", "validate", name);
+    const lines = [summary];
+    if (expanded) {
+      lines.push(
+        "",
+        `source ${safeDisplay(result.details.sourceFile ?? "inline")}`,
+      );
+    }
+    return getTruncatedText(context.lastComponent, lines);
   }
 
   const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
   if (snapshot) {
-    return getTruncatedText(
-      context.lastComponent,
-      expanded
-        ? [
-            "",
-            ...renderSnapshot(snapshot, theme, {
-              final: true,
-              maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
-            }),
-          ]
-        : [compactSnapshotLine(snapshot, theme, true)],
-    );
+    const lines = expanded
+      ? renderSnapshot(snapshot, theme, {
+          final: true,
+          maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+        })
+      : [workflowSummaryLine(snapshot, theme, { final: true })];
+    return getTruncatedText(context.lastComponent, lines);
   }
 
+  const info = result.details as
+    | {
+        meta?: { name?: string };
+        durationMs?: number;
+        agentFailureCount?: number;
+        loggedBranchFailureCount?: number;
+        settledBranchFailureCount?: number;
+      }
+    | undefined;
+  const agentFailures = info?.agentFailureCount ?? 0;
+  const branchFailures =
+    (info?.loggedBranchFailureCount ?? 0) +
+    (info?.settledBranchFailureCount ?? 0);
+  const parts: string[] = [];
+  if (agentFailures > 0) parts.push(`${agentFailures} failed`);
+  if (branchFailures > 0) {
+    parts.push(
+      `${branchFailures} branch${branchFailures === 1 ? "" : "es"} failed`,
+    );
+  }
+  if (typeof info?.durationMs === "number") {
+    parts.push(formatDuration(info.durationMs));
+  }
   return getTruncatedText(context.lastComponent, [
-    theme.fg("success", formatWorkflowResult(result.details, text)),
+    actionSummaryLine(
+      theme,
+      agentFailures > 0 || branchFailures > 0 ? "warning" : "success",
+      "run",
+      info?.meta?.name,
+      parts,
+    ),
   ]);
 }
