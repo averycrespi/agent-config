@@ -109,7 +109,7 @@ function context() {
   };
 }
 
-test("result renderer is width-aware for partial, final, and expanded states", () => {
+test("collapsed result is one aggregate line for running and final states", () => {
   const ctx = context();
   try {
     const partial = renderAgentsResult(
@@ -128,7 +128,65 @@ test("result renderer is width-aware for partial, final, and expanded states", (
       ctx,
     );
     const partialLines = partial.render(200);
-    assert.match(partialLines.join("\n"), /^Spawn agents · 1 done · 1 running/);
+    assert.equal(partialLines.length, 1);
+    assert.match(
+      partialLines[0]!,
+      /^spawn_agents · 1 done · 1 running · 0 failed · \d+(?:m \d+s|s)$/,
+    );
+    assert.doesNotMatch(partialLines[0]!, /docs|tests/);
+
+    ctx.lastComponent = partial;
+    const final = renderAgentsResult(
+      {
+        content: [],
+        details: {
+          total: 2,
+          failed: 1,
+          agents: [
+            state(),
+            state({
+              intent: "tests",
+              phase: "error",
+              resolved: false,
+              errorMessage: "Error: failed",
+              startedAt: 2000,
+              lastUpdateAt: 3000,
+            }),
+          ],
+        },
+      },
+      { isPartial: false },
+      theme,
+      ctx,
+    );
+    assert.deepEqual(final.render(200), [
+      "✗ spawn_agents · 1 done · 1 failed · 12s",
+    ]);
+  } finally {
+    clearInterval(ctx.state.renderTimer as ReturnType<typeof setInterval>);
+  }
+});
+
+test("result renderer is width-aware for partial, final, and expanded states", () => {
+  const ctx = context();
+  try {
+    const partial = renderAgentsResult(
+      {
+        content: [],
+        details: {
+          total: 2,
+          agents: [
+            state(),
+            state({ intent: "tests", phase: "read", resolved: false }),
+          ],
+        },
+      },
+      { isPartial: true, expanded: true },
+      theme,
+      ctx,
+    );
+    const partialLines = partial.render(200);
+    assert.match(partialLines.join("\n"), /^spawn_agents · 1 done · 1 running/);
     assert.ok(
       partialLines.some((line: string) =>
         line.includes("✓ docs · read-filesystem · medium/high"),

@@ -91,7 +91,7 @@ Results use `## <intent>` headings followed by capability/tier/thinking metadata
 
 ## UI
 
-Progress rows use intent as the primary identity and show capabilities, tier/thinking, status, duration, tool/token counts, and safe tool identity. They never render prompts, tool arguments, or raw retained logs. Expanded output includes finalized diagnostic paths. Dynamic text is control-normalized, bounded, and width-aware.
+Collapsed output is one `spawn_agents` aggregate line with running or final counts, failures, and elapsed time. Expanded progress rows use intent as the primary identity and show capabilities, tier/thinking, status, duration, tool/token counts, and safe tool identity. They never render prompts, tool arguments, or raw retained logs. Expanded output also includes finalized diagnostic paths. Dynamic text is control-normalized, bounded, and width-aware.
 
 ## Configuration
 

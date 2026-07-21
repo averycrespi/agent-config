@@ -98,11 +98,12 @@ function agentsHeader(
   theme: any,
   final: boolean,
 ): string {
-  const done = agents.filter(isDone).length;
+  const settled = agents.filter(isDone).length;
   const failureCount =
     failed ??
     agents.filter((agent) => isFailed(agent) || agent.errorMessage).length;
-  const running = Math.max(0, (total ?? agents.length) - done);
+  const running = Math.max(0, (total ?? agents.length) - settled);
+  const done = Math.max(0, settled - failureCount);
   const start = agents.reduce<number | undefined>(
     (min, agent) =>
       min === undefined ? agent.startedAt : Math.min(min, agent.startedAt),
@@ -121,13 +122,15 @@ function agentsHeader(
     start === undefined || end === undefined
       ? undefined
       : formatDuration(Math.max(0, end - start));
-  const parts = [
-    `${done} done`,
-    `${running} running`,
-    `${failureCount} failed`,
-  ];
+  const parts = final
+    ? [`${done} done`, `${failureCount} failed`]
+    : [`${done} done`, `${running} running`, `${failureCount} failed`];
   if (elapsed) parts.push(elapsed);
-  return `${theme.bold("Spawn agents")} · ${theme.fg("muted", parts.join(" · "))}`;
+  const title = theme.fg("toolTitle", theme.bold("spawn_agents"));
+  const status = final
+    ? `${theme.fg(failureCount > 0 ? "error" : "success", failureCount > 0 ? "✗" : "✓")} `
+    : "";
+  return `${status}${title} · ${theme.fg("muted", parts.join(" · "))}`;
 }
 
 export function agentProgressLine(agent: SubagentRunState, theme: any): string {
@@ -195,10 +198,9 @@ export function renderAgentsResult(
       theme,
       !options.isPartial,
     ),
-    "",
-    ...agents.map((agent) => agentProgressLine(agent, theme)),
   ];
   if (options.expanded) {
+    lines.push("", ...agents.map((agent) => agentProgressLine(agent, theme)));
     for (const agent of agents) {
       if (agent.logFile)
         lines.push(theme.fg("muted", `Log: ${safe(agent.logFile, 240)}`));
