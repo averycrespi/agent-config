@@ -31,9 +31,7 @@ function separator(theme: any): string {
 function workflowIdentity(theme: any, action: string, name?: string): string {
   const title = theme.fg("toolTitle", theme.bold("workflow"));
   const safeName = name ? ` ${safeDisplay(name)}` : "";
-  return action === "run"
-    ? `${title}${safeName}`
-    : `${title} ${safeDisplay(action)}${safeName}`;
+  return `${title} ${safeDisplay(action)}${safeName}`;
 }
 
 function statusPrefix(

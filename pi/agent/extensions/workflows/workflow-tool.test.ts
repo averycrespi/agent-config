@@ -343,7 +343,7 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
   };
 
   const lines = renderSnapshot(snapshot, theme);
-  assert.match(lines[0], /^workflow ordered/);
+  assert.match(lines[0], /^workflow run ordered/);
   assert.deepEqual(
     lines
       .filter((line) => /(Oldest done|Middle failed|Newest running)/.test(line))
@@ -589,7 +589,7 @@ test("expanded workflows preserve the collapsed header and add details", () => {
   }
 });
 
-test("workflow summaries follow the spawn_agents-style grammar", () => {
+test("workflow summaries use explicit action grammar", () => {
   const context = rendererContext();
   const running = renderWorkflowResult(
     { content: [], details: { snapshot: workflowSnapshot() } },
@@ -598,7 +598,7 @@ test("workflow summaries follow the spawn_agents-style grammar", () => {
     context,
   );
   assert.deepEqual(running.render(200), [
-    "workflow research · search · 1 done · 0 running · 0 failed · 12s",
+    "workflow run research · search · 1 done · 0 running · 0 failed · 12s",
   ]);
   stopRendererTimer(context);
 
@@ -609,7 +609,7 @@ test("workflow summaries follow the spawn_agents-style grammar", () => {
     context,
   );
   assert.deepEqual(success.render(200), [
-    "✓ workflow research · 1 done · 0 failed · 12s",
+    "✓ workflow run research · 1 done · 0 failed · 12s",
   ]);
 
   const partialFailure = renderWorkflowResult(
@@ -640,7 +640,7 @@ test("workflow summaries follow the spawn_agents-style grammar", () => {
     context,
   );
   assert.deepEqual(partialFailure.render(200), [
-    "! workflow research · 1 done · 1 agent failed · 1 branch failed · 12s",
+    "! workflow run research · 1 done · 1 agent failed · 1 branch failed · 12s",
   ]);
 
   const failure = renderWorkflowResult(
@@ -663,7 +663,7 @@ test("workflow summaries follow the spawn_agents-style grammar", () => {
     context,
   );
   assert.deepEqual(failure.render(200), [
-    "✗ workflow research · workflow_timeout · 1 done · 1 failed · 1 timed out · 12s — timed out",
+    "✗ workflow run research · workflow_timeout · 1 done · 1 failed · 1 timed out · 12s — timed out",
   ]);
 
   const list = renderWorkflowResult(
@@ -706,7 +706,7 @@ test("workflow headers and fallback agent rows mute every separator", () => {
     final: true,
   });
   assert.deepEqual(lines, [
-    "✓ [*workflow*] research{ · }{1 done · 0 failed · 12s}",
+    "✓ [*workflow*] run research{ · }{1 done · 0 failed · 12s}",
     "",
     "✓ Search docs{ · }{read-web · small/medium}{ · }{done}",
   ]);
