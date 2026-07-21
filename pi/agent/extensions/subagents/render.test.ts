@@ -109,6 +109,32 @@ function context() {
   };
 }
 
+test("aggregate and per-agent separators are muted", () => {
+  const markerTheme = {
+    bold: (text: string) => text,
+    fg: (color: string, text: string) =>
+      color === "muted" ? `{${text}}` : text,
+  };
+
+  assert.equal(
+    agentProgressLine(state() as any, markerTheme),
+    "✓ docs{ · }{read-filesystem · medium/high}{ · }{2 tool uses · 4.1k tokens · 12s}",
+  );
+
+  const result = renderAgentsResult(
+    {
+      content: [],
+      details: { total: 1, failed: 0, agents: [state()] },
+    },
+    { isPartial: false },
+    markerTheme,
+    context(),
+  );
+  assert.deepEqual(result.render(200), [
+    "✓ spawn_agents{ · }{1 done · 0 failed · 12s}",
+  ]);
+});
+
 test("collapsed result is one aggregate line for running and final states", () => {
   const ctx = context();
   try {

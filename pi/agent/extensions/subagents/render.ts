@@ -91,6 +91,10 @@ function policyLabel(agent: SubagentRunState): string {
   return `${capabilities} · ${agent.modelTier ?? "?"}/${agent.thinking ?? "?"}`;
 }
 
+function separator(theme: any): string {
+  return theme.fg("muted", " · ");
+}
+
 function agentsHeader(
   agents: SubagentRunState[],
   total: number | undefined,
@@ -130,7 +134,7 @@ function agentsHeader(
   const status = final
     ? `${theme.fg(failureCount > 0 ? "error" : "success", failureCount > 0 ? "✗" : "✓")} `
     : "";
-  return `${status}${title} · ${theme.fg("muted", parts.join(" · "))}`;
+  return `${status}${title}${separator(theme)}${theme.fg("muted", parts.join(" · "))}`;
 }
 
 export function agentProgressLine(agent: SubagentRunState, theme: any): string {
@@ -140,6 +144,7 @@ export function agentProgressLine(agent: SubagentRunState, theme: any): string {
   );
   const label = `${statusGlyph(agent)} ${safe(agent.intent, 160)}`;
   const policy = theme.fg("muted", policyLabel(agent));
+  const sep = separator(theme);
 
   if (isFailed(agent)) {
     const msg = safe(
@@ -150,11 +155,11 @@ export function agentProgressLine(agent: SubagentRunState, theme: any): string {
           : "Error: subagent failed",
       180,
     );
-    return `${label} · ${policy} · ${theme.fg("muted", formatDuration(elapsedMs))} · ${theme.fg("error", msg)}`;
+    return `${label}${sep}${policy}${sep}${theme.fg("muted", formatDuration(elapsedMs))}${sep}${theme.fg("error", msg)}`;
   }
 
   if (agent.resolved === true || agent.phase === "done") {
-    return `${label} · ${policy} · ${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
+    return `${label}${sep}${policy}${sep}${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
   }
 
   const activity = compactRecentActivity(agent) ?? "initializing";
@@ -163,7 +168,7 @@ export function agentProgressLine(agent: SubagentRunState, theme: any): string {
     agent.totalTokens,
     Date.now() - agent.startedAt,
   );
-  return `${label} · ${policy} · ${theme.fg("muted", stats)} · ${theme.fg("muted", activity)}`;
+  return `${label}${sep}${policy}${sep}${theme.fg("muted", stats)}${sep}${theme.fg("muted", activity)}`;
 }
 
 export function renderAgentsCall(
