@@ -10,7 +10,7 @@ claude/
 ├── settings.json       # Permissions, hooks, and status line
 ├── agents/             # Custom agent definitions
 ├── commands/           # Reserved for slash command definitions
-├── hooks/              # PreToolUse / PostToolUse hooks
+├── hooks/              # PreToolUse hooks
 ├── scripts/            # Status line and other scripts
 └── skills/             # Custom skill definitions
 ```
