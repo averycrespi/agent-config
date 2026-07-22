@@ -23,7 +23,7 @@ skill-name/
 
 ## Naming Convention
 
-- **Workflow skills** (invoked to perform a task): use gerund form (e.g., `brainstorming`, `reviewing-prs`)
+- **Workflow skills** (invoked to perform a task): use a verb-object or concise task name (e.g., `plan`, `review`, `creating-jira-tickets`)
 - **Reference skills** (provide information/context): use nouns (e.g., `playwright-cli`, `tdd`)
 
 ## SKILL.md Frontmatter

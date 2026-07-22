@@ -1,4 +1,4 @@
-.PHONY: install-dev install-playwright stow-claude stow-claude-sandbox unstow-claude stow-pi unstow-pi typecheck test
+.PHONY: install-dev install-playwright stow-claude unstow-claude stow-pi unstow-pi typecheck test
 
 install-dev:
 	npm install
@@ -13,14 +13,6 @@ install-playwright:
 stow-claude:
 	mkdir -p ~/.claude
 	stow claude -t ~/.claude
-
-stow-claude-sandbox:
-	mkdir -p ~/.claude
-	rm -f ~/.claude/CLAUDE.md ~/.claude/settings.json
-	stow -R claude -t ~/.claude
-	rm -f ~/.claude/CLAUDE.md ~/.claude/settings.json
-	cp claude/sandbox/CLAUDE.md ~/.claude/CLAUDE.md
-	cp claude/sandbox/settings.json ~/.claude/settings.json
 
 unstow-claude:
 	stow -D claude -t ~/.claude

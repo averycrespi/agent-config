@@ -15,7 +15,7 @@ Independently developed workflows all landed in roughly the same place:
 - **[Superpowers](https://github.com/obra/superpowers)** (Jesse Vincent) — brainstorm → plan → isolated-worktree execution → two-stage review (spec, then code quality). Test-first is mandatory.
 - **[spec-kit](https://github.com/github/spec-kit)** (GitHub) — constitution → specify → plan → tasks → implement → validate. Agent-agnostic; upstream "constitution" encodes project principles.
 - **[GSD](https://crtlaltclaude.com/)** — questionnaire-driven setup → research → planning → roadmap execution → checkpoint verification.
-- **My own skills** (`brainstorming` → `writing-plans` → `executing-plans` → `verifying-work` → `completing-work` → `reviewing-prs`) — subagent triplets per task (implement → spec review → code review), plus a 5-parallel-reviewer verification pass before PR.
+- **My own skills** (`clarify` → `plan` → `challenge-plan` → `/goal` → `review` → `completing-work`) — a stateless clarify interview, an acceptance-criteria-to-verification plan, a pre-execution challenge pass, bounded autonomous execution via the native `/goal` command, then a non-destructive multi-dimension review before PR.
 
 ## Why it works
 

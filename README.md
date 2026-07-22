@@ -1,8 +1,8 @@
 # Agent Config
 
-A Pi-first coding-agent harness: configuration, TypeScript extensions, skills, subagents, and workflow conventions for turning a general-purpose coding agent into a reliable software engineering partner.
+A coding-agent harness: configuration, TypeScript extensions, skills, subagents, and workflow conventions for turning a general-purpose coding agent into a reliable software engineering partner.
 
-The active focus of this repository is [Pi](https://pi.dev/) under [`pi/agent/`](pi/README.md). The older [Claude Code](https://www.anthropic.com/claude-code) setup remains in [`claude/`](claude/README.md) as legacy/reference material.
+This repository manages two active agent configurations: [Claude Code](https://www.anthropic.com/claude-code) under [`claude/`](claude/README.md) and [Pi](https://pi.dev/) under [`pi/agent/`](pi/README.md). Both share one development philosophy — clarify, plan, challenge, execute, review, complete — adapted to each agent's native tool surface. Claude Code is the day-to-day driver for work; Pi remains fully supported.
 
 This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-tools), especially the MCP broker for safe external tool access.
 
@@ -20,7 +20,7 @@ The goal is not just to store settings. The goal is to make the agent more state
 
 ## Pi Agent Harness
 
-[`pi/agent/`](pi/README.md) is the main artifact in this repository. Running `make stow-pi` symlinks it into `~/.pi/agent/`.
+[`pi/agent/`](pi/README.md) is the more heavily engineered of the two configurations. Running `make stow-pi` symlinks it into `~/.pi/agent/`.
 
 ### Core Workflow
 
@@ -90,18 +90,18 @@ The main integration point is the **MCP broker**: a credentials-holding proxy th
 
 `agent-tools` also includes a sandbox manager (`sb`) for isolated agent runs. It is relevant to Pi as an outer isolation layer: this Pi config adds workflow guidance and broker preferences, but it does not implement shell command restrictions itself.
 
-## Legacy Claude Code Configuration
+## Claude Code Configuration
 
-[`claude/`](claude/README.md) contains my earlier Claude Code setup. It is retained for reference and compatibility, but new harness development in this repo is focused on Pi.
+[`claude/`](claude/README.md) is the Claude Code setup and the day-to-day environment for work. Running `make stow-claude` symlinks it into `~/.claude/`.
 
 The Claude setup includes:
 
-- structured workflow skills adapted from earlier agent workflow experiments
-- security and quality hooks, including secret scanning and format-on-write behavior
-- sandbox-mode overrides for headless or remote environments
+- a structured development lifecycle (`/clarify → /plan → /challenge-plan → /goal → /review → /completing-work`) that mirrors the Pi loop using Claude Code's native tools, including the built-in `/goal` command for bounded autonomous execution with an independent completion evaluator
+- security and quality hooks, including secret scanning, format-on-write, and MCP-preference hints
 - a custom status line
+- direct MCP broker access — Claude Code connects to broker-hosted tools natively, without a broker extension
 
-Some skills and workflow ideas originated there and were later adapted into Pi-specific versions with Pi tool names, Pi extension conventions, and GPT-5.x-friendly prose.
+It runs inside an isolated sandbox, so its `settings.json` enables dangerous mode and relies on the sandbox for isolation rather than a permission allowlist. See the [Claude README](claude/README.md) for the full skill catalog, hooks, and Pi parity gaps.
 
 ## Notes
 
@@ -111,12 +111,10 @@ Some skills and workflow ideas originated there and were later adapted into Pi-s
 
 ### Requirements
 
-- [Pi agent](https://pi.dev/)
+- [Claude Code](https://www.anthropic.com/claude-code) and/or [Pi agent](https://pi.dev/)
 - [Homebrew](https://brew.sh/)
 - [Node.js](https://nodejs.org/) 24+
 - macOS assumed, adaptable for Linux
-
-Claude Code is only required if you want to use the legacy `claude/` configuration.
 
 ### Pi Setup
 
@@ -129,11 +127,10 @@ make install-playwright # for browser automation and web-access JS rendering
 make stow-pi            # symlink pi/agent/ into ~/.pi/agent/
 ```
 
-### Legacy Claude Setup
+### Claude Setup
 
 ```sh
-make stow-claude         # symlink claude/ into ~/.claude/
-make stow-claude-sandbox # stow claude/ and apply sandbox overrides
+make stow-claude # symlink claude/ into ~/.claude/
 ```
 
 ## License

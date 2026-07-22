@@ -1,169 +1,8 @@
 {
+  "skipDangerousModePermissionPrompt": true,
   "permissions": {
-    "allow": [
-      "WebFetch",
-      "WebSearch",
-      "Read(~/.claude/skills/**)",
-      "Read(//tmp/**)",
-      "Read(//private/tmp/**)",
-      "Edit(//tmp/**)",
-      "Edit(//private/tmp/**)",
-      "Write(//tmp/**)",
-      "Write(//private/tmp/**)",
-      "Bash(cd:*)",
-      "Bash(cut:*)",
-      "Bash(diff:*)",
-      "Bash(echo:*)",
-      "Bash(file:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(jq:*)",
-      "Bash(launchctl list:*)",
-      "Bash(launchctl print:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(mkdir -p:*)",
-      "Bash(pandoc:*)",
-      "Bash(plutil -lint:*)",
-      "Bash(pwd:*)",
-      "Bash(rg:*)",
-      "Bash(sort:*)",
-      "Bash(tr:*)",
-      "Bash(tree:*)",
-      "Bash(type:*)",
-      "Bash(uniq:*)",
-      "Bash(which:*)",
-      "Bash(wc:*)",
-      "Bash(gh api:*)",
-      "Bash(gh cache list:*)",
-      "Bash(gh gist list:*)",
-      "Bash(gh gist view:*)",
-      "Bash(gh issue list:*)",
-      "Bash(gh issue status:*)",
-      "Bash(gh issue view:*)",
-      "Bash(gh label list:*)",
-      "Bash(gh pr checks:*)",
-      "Bash(gh pr diff:*)",
-      "Bash(gh pr list:*)",
-      "Bash(gh pr view:*)",
-      "Bash(gh project field-list:*)",
-      "Bash(gh project item-list:*)",
-      "Bash(gh project list:*)",
-      "Bash(gh project view:*)",
-      "Bash(gh release list:*)",
-      "Bash(gh release view:*)",
-      "Bash(gh repo list:*)",
-      "Bash(gh repo view:*)",
-      "Bash(gh ruleset check:*)",
-      "Bash(gh ruleset list:*)",
-      "Bash(gh ruleset view:*)",
-      "Bash(gh run list:*)",
-      "Bash(gh run view:*)",
-      "Bash(gh search code:*)",
-      "Bash(gh search commits:*)",
-      "Bash(gh search issues:*)",
-      "Bash(gh search prs:*)",
-      "Bash(gh search repos:*)",
-      "Bash(gh status:*)",
-      "Bash(gh variable get:*)",
-      "Bash(gh variable list:*)",
-      "Bash(gh workflow list:*)",
-      "Bash(gh workflow view:*)",
-      "Bash(git add:*)",
-      "Bash(git blame:*)",
-      "Bash(git commit:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git mv:*)",
-      "Bash(git remote get-url:*)",
-      "Bash(git rev-parse:*)",
-      "Bash(git rm:*)",
-      "Bash(git show:*)",
-      "Bash(git status:*)",
-      "Bash(git -C * add *)",
-      "Bash(git -C * blame *)",
-      "Bash(git -C * commit *)",
-      "Bash(git -C * diff *)",
-      "Bash(git -C * log *)",
-      "Bash(git -C * mv *)",
-      "Bash(git -C * remote get-url *)",
-      "Bash(git -C * rev-parse *)",
-      "Bash(git -C * rm *)",
-      "Bash(git -C * show *)",
-      "Bash(git -C * status *)",
-      "Bash(go doc:*)",
-      "Bash(go env:*)",
-      "Bash(go list:*)",
-      "Bash(go mod graph:*)",
-      "Bash(go mod tidy:*)",
-      "Bash(go mod verify:*)",
-      "Bash(go mod why:*)",
-      "Bash(go test:*)",
-      "Bash(go version:*)",
-      "Bash(go vet:*)",
-      "Bash(playwright-cli:*)",
-      "Bash(terraform fmt:*)",
-      "Bash(terraform validate:*)",
-      "Skill(assisting-research)",
-      "Skill(brainstorming)",
-      "Skill(completing-work)",
-      "Skill(creating-jira-tickets)",
-      "Skill(executing-plans)",
-      "Skill(executing-plans-quickly)",
-      "Skill(frontend-design)",
-      "Skill(playwright-cli)",
-      "Skill(reviewing-prs)",
-      "Skill(skill-creator)",
-      "Skill(test-driven-development)",
-      "Skill(troubleshooting)",
-      "Skill(verifying-work)",
-      "Skill(writing-plans)",
-      "mcp__atlassian__atlassianUserInfo",
-      "mcp__atlassian__fetch",
-      "mcp__atlassian__getAccessibleAtlassianResources",
-      "mcp__atlassian__getConfluencePage",
-      "mcp__atlassian__getConfluencePageDescendants",
-      "mcp__atlassian__getConfluencePageFooterComments",
-      "mcp__atlassian__getConfluencePageInlineComments",
-      "mcp__atlassian__getConfluenceSpaces",
-      "mcp__atlassian__getJiraIssue",
-      "mcp__atlassian__getJiraIssueRemoteIssueLinks",
-      "mcp__atlassian__getJiraIssueTypeMetaWithFields",
-      "mcp__atlassian__getJiraProjectIssueTypesMetadata",
-      "mcp__atlassian__getTransitionsForJiraIssue",
-      "mcp__atlassian__getVisibleJiraProjects",
-      "mcp__atlassian__lookupJiraAccountId",
-      "mcp__atlassian__getPagesInConfluenceSpace",
-      "mcp__atlassian__search",
-      "mcp__atlassian__searchConfluenceUsingCql",
-      "mcp__atlassian__searchJiraIssuesUsingJql",
-      "mcp__datadog__analyze_datadog_logs",
-      "mcp__datadog__get_datadog_incident",
-      "mcp__datadog__get_datadog_metric",
-      "mcp__datadog__get_datadog_metric_context",
-      "mcp__datadog__get_datadog_notebook",
-      "mcp__datadog__get_datadog_trace",
-      "mcp__datadog__search_datadog_dashboards",
-      "mcp__datadog__search_datadog_events",
-      "mcp__datadog__search_datadog_hosts",
-      "mcp__datadog__search_datadog_incidents",
-      "mcp__datadog__search_datadog_logs",
-      "mcp__datadog__search_datadog_metrics",
-      "mcp__datadog__search_datadog_monitors",
-      "mcp__datadog__search_datadog_notebooks",
-      "mcp__datadog__search_datadog_rum_events",
-      "mcp__datadog__search_datadog_service_dependencies",
-      "mcp__datadog__search_datadog_services",
-      "mcp__datadog__search_datadog_spans"
-    ],
-    "deny": [
-      "Read(~/.aws/**)",
-      "Read(~/.bash_secrets)",
-      "Read(~/.config/gh/**)",
-      "Read(~/.docker/**)",
-      "Read(~/.gnupg/**)",
-      "Read(~/.ssh/**)"
-    ]
+    "allow": [],
+    "deny": []
   },
   "hooks": {
     "PreToolUse": [
@@ -173,6 +12,14 @@
           {
             "type": "command",
             "command": "~/.claude/hooks/scan-secrets-before-commit"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/hint-gh-cli"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/hint-git-remote"
           }
         ]
       }
@@ -196,69 +43,10 @@
           }
         ]
       }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "terminal-notifier -title 'Claude needs your attention' -message \"$PWD\" && afplay /System/Library/Sounds/Ping.aiff",
-            "async": true
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "terminal-notifier -title 'Claude is done' -message \"$PWD\" && afplay /System/Library/Sounds/Glass.aiff",
-            "async": true
-          }
-        ]
-      }
     ]
   },
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/scripts/statusline.sh"
-  },
-  "enabledPlugins": {},
-  "sandbox": {
-    "enabled": true,
-    "autoAllowBashIfSandboxed": true,
-    "allowUnsandboxedCommands": true,
-    "network": {
-      "allowedDomains": [
-        "bitbucket.org",
-        "files.pythonhosted.org",
-        "github.com",
-        "gitlab.com",
-        "golang.org",
-        "gopkg.in",
-        "index.golang.org",
-        "proxy.golang.org",
-        "pypi.org",
-        "registry.npmjs.org",
-        "storage.googleapis.com",
-        "sum.golang.org"
-      ]
-    },
-    "excludedCommands": [
-      "aws:*",
-      "docker:*",
-      "docker-compose:*",
-      "gh:*",
-      "git:*",
-      "go build:*",
-      "go install:*",
-      "go test:*",
-      "launchctl:*",
-      "playwright-cli:*"
-    ]
-  },
-  "preferredNotifChannel": "iterm2"
+  }
 }

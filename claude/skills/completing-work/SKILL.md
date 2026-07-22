@@ -1,6 +1,6 @@
 ---
 name: completing-work
-description: Use when finishing the structured development workflow after verifying work - cleans up plan files, reflects on learnings, and presents PR options
+description: Use when finishing the structured development workflow after reviewing work - cleans up plan files, reflects on learnings, and presents PR options
 ---
 
 # Completing Work
@@ -33,7 +33,7 @@ Guide completion of development work by presenting clear options and handling ch
 **What to look for:**
 
 - Explicit corrections or guidance from the user during the session
-- Findings from spec-reviewer and code-quality-reviewer subagents
+- Findings surfaced by the `review` skill's reviewer subagents
 - Friction points you figured out (build commands, test setup, file locations, naming conventions)
 - Patterns discovered in existing code that weren't documented
 
