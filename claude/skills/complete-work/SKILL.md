@@ -1,5 +1,5 @@
 ---
-name: completing-work
+name: complete-work
 description: Use when finishing the structured development workflow after reviewing work - cleans up plan files, reflects on learnings, and presents PR options
 ---
 
@@ -11,7 +11,7 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Core principle:** Clean up plan files → Reflect on learnings → Present options → Execute choice.
 
-**Announce at start:** "I'm using the completing-work skill to complete this work."
+**Announce at start:** "I'm using the complete-work skill to complete this work."
 
 ## The Process
 

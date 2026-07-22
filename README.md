@@ -96,8 +96,8 @@ The main integration point is the **MCP broker**: a credentials-holding proxy th
 
 The Claude setup includes:
 
-- a structured development lifecycle (`/clarify → /plan → /challenge-plan → /goal → /review → /completing-work`) that mirrors the Pi loop using Claude Code's native tools, including the built-in `/goal` command for bounded autonomous execution with an independent completion evaluator
-- security and quality hooks, including secret scanning, format-on-write, and MCP-preference hints
+- a structured development lifecycle (`/clarify → /plan → /challenge-plan → /goal → /review → /complete-work`) that mirrors the Pi loop using Claude Code's native tools, including the built-in `/goal` command for bounded autonomous execution with an independent completion evaluator
+- MCP-preference hint hooks that steer `gh` and git-remote usage toward broker tools
 - a custom status line
 - direct MCP broker access — Claude Code connects to broker-hosted tools natively, without a broker extension
 

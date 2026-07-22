@@ -7,7 +7,7 @@ description: Use when turning clarified intent into a research-grounded, executi
 
 Turn clarified intent into a durable, execution-ready plan that a fresh agent — or a native `/goal` run — can pick up in a new session and implement autonomously until complete.
 
-This skill sits in the middle of the workflow: `clarify` → **`plan`** → `challenge-plan` → `/goal` → `review` → `completing-work`. Because the upstream `clarify` skill no longer emits a design document, the design shape and chosen approach are synthesized **here**, as part of planning.
+This skill sits in the middle of the workflow: `clarify` → **`plan`** → `challenge-plan` → `/goal` → `review` → `complete-work`. Because the upstream `clarify` skill no longer emits a design document, the design shape and chosen approach are synthesized **here**, as part of planning.
 
 Do not implement the plan while using this skill. Stop after writing the plan and summarizing the handoff. Do not start a `/goal` run automatically.
 

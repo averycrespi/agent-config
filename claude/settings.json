@@ -11,35 +11,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/scan-secrets-before-commit"
-          },
-          {
-            "type": "command",
             "command": "~/.claude/hooks/hint-gh-cli"
           },
           {
             "type": "command",
             "command": "~/.claude/hooks/hint-git-remote"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/format-on-write"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/format-on-write"
           }
         ]
       }

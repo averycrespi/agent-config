@@ -191,7 +191,7 @@ Present the full report before offering any fix:
 Only after the full report is presented, offer next steps with `AskUserQuestion`.
 
 **If the verdict is Ready with no findings:** state that, then proceed to
-`Skill(completing-work)` (in-lifecycle) or stop (standalone) — no fix step needed.
+`Skill(complete-work)` (in-lifecycle) or stop (standalone) — no fix step needed.
 
 **If findings exist:**
 
@@ -203,7 +203,7 @@ AskUserQuestion(
     multiSelect: false,
     options: [
       { label: "Fix selected findings", description: "Apply approved fixes as a separate step, then stop" },
-      { label: "Proceed as-is", description: "Continue to completing-work; findings are informational" },
+      { label: "Proceed as-is", description: "Continue to complete-work; findings are informational" },
       { label: "Leave it", description: "Take no further action now" }
     ]
   }]
@@ -213,7 +213,7 @@ AskUserQuestion(
 - **Fix selected findings:** confirm which findings to address, then dispatch a fixer
   agent using `fixer-prompt.md`. Report what was fixed and what remains. Do not
   auto-re-run the panel; the user can invoke this skill again to re-verify.
-- **Proceed as-is:** call `Skill(completing-work)`.
+- **Proceed as-is:** call `Skill(complete-work)`.
 - **Leave it:** stop.
 
 ## Red flags

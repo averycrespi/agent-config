@@ -1,5 +1,5 @@
 ---
-name: creating-html-artifacts
+name: create-html-artifact
 description: Use when the user asks Claude Code to create a standalone HTML artifact, HTML report, interactive explainer, visual plan, dashboard, slide deck, diagram, or throwaway HTML tool.
 ---
 

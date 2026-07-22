@@ -1,5 +1,5 @@
 ---
-name: troubleshooting
+name: diagnose
 description: Use when troubleshooting a system issue, investigating an outage, debugging a production problem, or responding to an incident
 ---
 

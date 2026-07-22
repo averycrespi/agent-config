@@ -2,7 +2,7 @@
 
 ## Sandbox Environment
 
-Claude Code runs inside an isolated Linux VM (Ubuntu 24.04) with full permissions — install packages, run any commands, use Docker freely. There are no permission prompts. Hooks still run for secret scanning, formatting, and MCP tool guidance.
+Claude Code runs inside an isolated Linux VM (Ubuntu 24.04) with full permissions — install packages, run any commands, use Docker freely. There are no permission prompts. Hooks still run to steer `gh` and git-remote usage toward MCP broker tools.
 
 ## Task & Workflow Discipline
 

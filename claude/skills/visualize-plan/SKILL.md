@@ -11,7 +11,7 @@ Transform a plan into a standalone HTML document that helps humans understand, c
 
 ## Required dependency
 
-Before building the HTML, load `Skill(creating-html-artifacts)` and follow it for:
+Before building the HTML, load `Skill(create-html-artifact)` and follow it for:
 
 - standalone HTML constraints (single file, no build step, dependency policy)
 - accessibility and responsive behavior
@@ -26,7 +26,7 @@ Use this skill for the layer on top of that workflow:
 - preserving plan facts
 - surfacing risks, dependencies, assumptions, and decisions
 
-If the finished document should get a shareable link rather than stay a local file, publish it with the `Artifact` tool after building it (load the `artifact-design` skill first, as `creating-html-artifacts` and `Artifact` direct). Otherwise write it to disk as a normal file — publishing is optional, not the default.
+If the finished document should get a shareable link rather than stay a local file, publish it with the `Artifact` tool after building it (load the `artifact-design` skill first, as `create-html-artifact` and `Artifact` direct). Otherwise write it to disk as a normal file — publishing is optional, not the default.
 
 ## When to use
 
@@ -110,7 +110,7 @@ The document should help a reviewer answer:
 
 ### 5. Validate the plan representation
 
-Follow `creating-html-artifacts` for HTML construction, accessibility, privacy, rendering checks, and final reporting. Add these plan-specific checks:
+Follow `create-html-artifact` for HTML construction, accessibility, privacy, rendering checks, and final reporting. Add these plan-specific checks:
 
 - Every visual maps to source-plan facts or clearly labeled assumptions.
 - Dependencies, ordering, risks, acceptance criteria, and decision points preserve the source meaning.

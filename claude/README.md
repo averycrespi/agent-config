@@ -29,7 +29,7 @@ This means every Claude Code session on your machine picks up these settings, sk
 A workflow for reliably turning ideas into pull requests. It mirrors the lifecycle used by the companion Pi setup, adapted to Claude Code's native tools:
 
 ```
-/clarify → /plan → /challenge-plan → /goal → /review → /completing-work
+/clarify → /plan → /challenge-plan → /goal → /review → /complete-work
 ```
 
 - **`/goal` is a native Claude Code command**, not a skill — it holds a completion condition across turns, auto-continues, and uses an independent evaluator to decide when the condition is met. `/plan` hands off to it with an acceptance-criteria-based condition.
@@ -49,24 +49,22 @@ A workflow for reliably turning ideas into pull requests. It mirrors the lifecyc
 
 ### Structured Development Workflow
 
-| Skill             | Purpose                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------- |
-| `clarify`         | Stateless requirements interview that resolves ambiguity before planning (no artifact)          |
-| `plan`            | Turn clarified intent into a research-grounded, execution-ready plan with AC→verification       |
-| `challenge-plan`  | Stress-test a plan against a rubric before an autonomous `/goal` run                            |
-| `review`          | Non-destructive, target-parameterized review across parallel dimensions vs. acceptance criteria |
-| `completing-work` | Clean up plan files, reflect on learnings, create or update PR                                  |
+| Skill            | Purpose                                                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `clarify`        | Stateless requirements interview that resolves ambiguity before planning (no artifact)          |
+| `plan`           | Turn clarified intent into a research-grounded, execution-ready plan with AC→verification       |
+| `challenge-plan` | Stress-test a plan against a rubric before an autonomous `/goal` run                            |
+| `review`         | Non-destructive, target-parameterized review across parallel dimensions vs. acceptance criteria |
+| `complete-work`  | Clean up plan files, reflect on learnings, create or update PR                                  |
 
 ### Other Workflows
 
-| Skill                     | Purpose                                                                |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `assisting-research`      | Structured multi-session research with experiments and HTML reports    |
-| `creating-html-artifacts` | Create standalone HTML reports, explainers, visual plans, decks, tools |
-| `creating-jira-tickets`   | Draft and create well-structured Jira tickets                          |
-| `visualize-plan`          | Turn a plan into a visual HTML document for easier human review        |
-| `troubleshooting`         | Battle buddy for incident response and system troubleshooting          |
-| `using-hindsight`         | Retain and query Hindsight memories through MCP broker tools           |
+| Skill                  | Purpose                                                                |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `create-html-artifact` | Create standalone HTML reports, explainers, visual plans, decks, tools |
+| `create-jira-tickets`  | Draft and create well-structured Jira tickets                          |
+| `visualize-plan`       | Turn a plan into a visual HTML document for easier human review        |
+| `diagnose`             | Battle buddy for incident response and system troubleshooting          |
 
 ### Reference Skills
 
@@ -81,12 +79,10 @@ A workflow for reliably turning ideas into pull requests. It mirrors the lifecyc
 
 All hooks run in every session (Claude Code always runs sandboxed).
 
-| Hook                         | Event       | Matcher     | Description                                                                                  |
-| ---------------------------- | ----------- | ----------- | -------------------------------------------------------------------------------------------- |
-| `scan-secrets-before-commit` | PreToolUse  | Bash        | Runs gitleaks on staged changes before `git commit`; blocks the commit if secrets are found  |
-| `hint-gh-cli`                | PreToolUse  | Bash        | Allows `gh` CLI commands but injects a hint to prefer MCP tools (gh is unauthenticated here) |
-| `hint-git-remote`            | PreToolUse  | Bash        | Allows `git push/pull/fetch/remote` but injects a hint to prefer MCP tools                   |
-| `format-on-write`            | PostToolUse | Edit, Write | Auto-formats files after edits using Prettier, gofmt, rustfmt, or shfmt based on extension   |
+| Hook              | Event      | Matcher | Description                                                                                  |
+| ----------------- | ---------- | ------- | -------------------------------------------------------------------------------------------- |
+| `hint-gh-cli`     | PreToolUse | Bash    | Allows `gh` CLI commands but injects a hint to prefer MCP tools (gh is unauthenticated here) |
+| `hint-git-remote` | PreToolUse | Bash    | Allows `git push/pull/fetch/remote` but injects a hint to prefer MCP tools                   |
 
 ## Status Line
 
