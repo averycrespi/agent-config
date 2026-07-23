@@ -161,11 +161,7 @@ else
 fi
 
 # Build output with powerline style
-# Sandbox prefix
-BG_PURPLE=$'\033[48;5;141m'
-FG_PURPLE=$'\033[38;5;141m'
-echo -n "${BG_PURPLE}${FG_BLACK}${BOLD} sandbox ${RESET}"
-echo -n "${FG_PURPLE}${model_bg}${SEP}${FG_BLACK}${BOLD} $model ${RESET}"
+echo -n "${model_bg}${FG_BLACK}${BOLD} $model ${RESET}"
 echo -n "${model_fg}${BG_BLUE}${SEP}${FG_BLACK}  $dir_name ${RESET}"
 echo -n "$git_segment"
 echo -n "$context_segment"
