@@ -2,7 +2,7 @@
 
 A coding-agent harness: configuration, TypeScript extensions, skills, subagents, and workflow conventions for turning a general-purpose coding agent into a reliable software engineering partner.
 
-This repository manages two active agent configurations: [Claude Code](https://www.anthropic.com/claude-code) under [`claude/`](claude/README.md) and [Pi](https://pi.dev/) under [`pi/agent/`](pi/README.md). Both share one development philosophy — clarify, plan, challenge, execute, review, complete — adapted to each agent's native tool surface. Claude Code is the day-to-day driver for work; Pi remains fully supported.
+This repository manages my [Pi](https://pi.dev/) agent configuration under [`pi/agent/`](pi/README.md), built around one development philosophy — clarify, plan, challenge, execute, review, complete — adapted to Pi's native tool surface. (My Claude Code configuration lives in a separate private repository.)
 
 This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-tools), especially the MCP broker for safe external tool access.
 
@@ -90,19 +90,6 @@ The main integration point is the **MCP broker**: a credentials-holding proxy th
 
 `agent-tools` also includes a sandbox manager (`sb`) for isolated agent runs. It is relevant to Pi as an outer isolation layer: this Pi config adds workflow guidance and broker preferences, but it does not implement shell command restrictions itself.
 
-## Claude Code Configuration
-
-[`claude/`](claude/README.md) is the Claude Code setup and the day-to-day environment for work. Running `make stow-claude` symlinks it into `~/.claude/`.
-
-The Claude setup includes:
-
-- a structured development lifecycle (`/clarify → /plan → /challenge-plan → /goal → /review → /complete-work`) that mirrors the Pi loop using Claude Code's native tools, including the built-in `/goal` command for bounded autonomous execution with an independent completion evaluator
-- MCP-preference hint hooks that steer `gh` and git-remote usage toward broker tools
-- a custom status line
-- direct MCP broker access — Claude Code connects to broker-hosted tools natively, without a broker extension
-
-It runs inside an isolated sandbox, so its `settings.json` enables dangerous mode and relies on the sandbox for isolation rather than a permission allowlist. See the [Claude README](claude/README.md) for the full skill catalog, hooks, and Pi parity gaps.
-
 ## Notes
 
 [`notes/`](notes/) contains public essays and working notes about agent harness design, permissions, subagents, planning workflows, and related topics.
@@ -111,12 +98,12 @@ It runs inside an isolated sandbox, so its `settings.json` enables dangerous mod
 
 ### Requirements
 
-- [Claude Code](https://www.anthropic.com/claude-code) and/or [Pi agent](https://pi.dev/)
+- [Pi agent](https://pi.dev/)
 - [Homebrew](https://brew.sh/)
 - [Node.js](https://nodejs.org/) 24+
 - macOS assumed, adaptable for Linux
 
-### Pi Setup
+### Setup
 
 ```sh
 git clone git@github.com:averycrespi/agent-config.git
@@ -125,12 +112,6 @@ brew bundle             # install system dependencies on macOS
 make install-dev        # install Node dependencies and Husky git hooks
 make install-playwright # for browser automation and web-access JS rendering
 make stow-pi            # symlink pi/agent/ into ~/.pi/agent/
-```
-
-### Claude Setup
-
-```sh
-make stow-claude # symlink claude/ into ~/.claude/
 ```
 
 ## License

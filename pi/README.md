@@ -89,7 +89,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 
 Notes:
 
-- Most skills are mirrored from `claude/skills/` with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
+- Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
 - Collaborative clarification lives in the `clarify` skill; durable implementation planning lives in `plan`; `challenge-plan` stress-tests plans before autonomous execution, and `goal` drives execution/completion evidence.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

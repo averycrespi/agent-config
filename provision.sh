@@ -7,9 +7,6 @@ command_exists() { command -v "$1" &>/dev/null; }
 
 cd ~/work/agent-config
 
-echo "Stowing Claude config"
-make stow-claude
-
 echo "Stowing pi config"
 make stow-pi
 

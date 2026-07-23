@@ -1,4 +1,4 @@
-.PHONY: install-dev install-playwright stow-claude unstow-claude stow-pi unstow-pi typecheck test
+.PHONY: install-dev install-playwright stow-pi unstow-pi typecheck test
 
 install-dev:
 	npm install
@@ -9,13 +9,6 @@ install-playwright:
 	playwright install-deps
 	playwright install
 	npx playwright-core install chromium
-
-stow-claude:
-	mkdir -p ~/.claude
-	stow claude -t ~/.claude
-
-unstow-claude:
-	stow -D claude -t ~/.claude
 
 stow-pi:
 	mkdir -p ~/.pi/agent

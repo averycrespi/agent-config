@@ -1,5 +1,4 @@
 .DS_Store
 .playwright-cli/
-.claude/settings.local.json
 pi/agent/settings.json
 node_modules/
