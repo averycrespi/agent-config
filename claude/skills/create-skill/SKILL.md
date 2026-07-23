@@ -1,5 +1,5 @@
 ---
-name: skill-creator
+name: create-skill
 description: Use when creating a new skill or updating an existing skill
 license: Complete terms in LICENSE
 ---

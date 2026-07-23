@@ -72,7 +72,7 @@ A workflow for reliably turning ideas into pull requests. It mirrors the lifecyc
 | ------------------------- | ---------------------------------------------------------- |
 | `frontend-design`         | Distinctive, production-grade frontend design and building |
 | `playwright-cli`          | Browser automation for testing and data extraction         |
-| `skill-creator`           | Guide for creating new skills                              |
+| `create-skill`            | Guide for creating new skills                              |
 | `test-driven-development` | TDD discipline: red-green-refactor cycle                   |
 
 ## Hooks
@@ -110,7 +110,7 @@ This configuration is derived from a companion Pi setup. A few Pi capabilities h
 ## Attribution
 
 - Structured-workflow skills originally adapted from [superpowers](https://github.com/obra/superpowers) by Jesse Vincent (MIT), since substantially reworked to mirror the Pi lifecycle
-- `skill-creator` adapted from [Anthropic's skill-creator](https://github.com/anthropics/skills/tree/main/skill-creator) (Apache 2.0)
+- `create-skill` adapted from [Anthropic's skill-creator](https://github.com/anthropics/skills/tree/main/skill-creator) (Apache 2.0)
 - `frontend-design` adapted from [Anthropic's frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) (Apache 2.0)
 - `playwright-cli` derived from [playwright-cli](https://github.com/microsoft/playwright-cli) by Microsoft (Apache 2.0)
 - Status line script adapted from [claude-code-tools](https://github.com/pchalasani/claude-code-tools) by Prasad Chalasani (MIT)
