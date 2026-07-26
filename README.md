@@ -1,57 +1,43 @@
 # Agent Config
 
-This is my [Pi](https://pi.dev/) agent configuration for software development. It combines:
+My personal [Pi](https://pi.dev/) setup for software development. It adds a structured workflow for clarifying requirements, planning and challenging an approach, implementing against a durable goal, and independently reviewing the result.
 
-- **A Pi-native workflow layer** for planning, executing, reviewing, and completing engineering tasks
-- **Custom TypeScript extensions** for TODOs, workflows, goals, scheduled tasks, MCP, web access, and more
-- **Reusable skills and saved workflows** for planning, research, review, and more
-- **Centrally governed subagents** with explicit composable capabilities, model tiers, and thinking
-- **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
-
-This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-tools), especially the MCP broker for safe external tool access.
+The repository contains the skills, extensions, prompts, and saved workflows that power that setup. Custom extensions are written in TypeScript and maintained with tests and documentation.
 
 ## Pi Agent Harness
 
-### Core Workflow
+The harness combines a simple development loop with tools that keep work scoped, observable, and verifiable.
 
-The Pi setup is built around a durable development loop:
+### Workflow
 
-- **Clarify scope** with `clarify` when requirements, edge cases, acceptance criteria, or design intent are fuzzy
-- **Plan the work** with `plan`, then stress-test substantial plans, proposals, designs, and architecture decisions with `challenge` before implementation
-- **Execute deliberately** with session-scoped goals via `goal`, optional fail-closed independent completion review, and in-session task tracking via `todo`
-- **Delegate isolated research** with self-contained prompts and explicit filesystem, web, broker, or shell capabilities
-- **Review independently** with the `review` skill, which prepares target, patch, acceptance-criteria, and deterministic-check evidence for the saved `review` workflow
+1. **Clarify** unclear requirements, edge cases, and acceptance criteria with `clarify`.
+2. **Plan and challenge** the approach with `plan` and, for substantial work, `challenge`.
+3. **Implement** against a session-scoped objective with `goal`, using `todo` to track work in progress.
+4. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
+
+Isolated subagents support research and verification throughout the workflow. Each receives a self-contained task and explicit filesystem, shell, web, or broker permissions.
 
 ### Extensions
 
-The Pi extensions are directory-based TypeScript modules under [`pi/agent/extensions/`](pi/agent/extensions/). They are grouped around the capabilities I want the agent to have:
+Custom TypeScript extensions under [`pi/agent/extensions/`](pi/agent/extensions/) provide:
 
-- **Workflow state:** `goal`, `todo`, `scheduled-tasks`
-- **Delegation and orchestration:** `subagents`, `workflows`, `structured-output`
-- **External access:** `mcp-broker`, `web-access`
-- **Agent/user interaction:** `ask-user`
-- **Context and TUI polish:** `context-usage`, `extra-context`, `compact-tools`, `startup-header`, `statusline`
-- **Shared infrastructure:** `_shared` helpers for rendering, config, logging, and common extension behavior
+- **Work tracking and automation:** goals, TODOs, and scheduled tasks
+- **Delegation and orchestration:** isolated subagents, saved workflows, and structured output
+- **External access:** broker-backed services and web research
+- **Interaction and context:** user prompts, context reporting, compact tool output, and TUI status information
 
-### Extension Development
+See [`pi/README.md`](pi/README.md) for the complete extension and skill catalog.
 
-Pi extension work is treated like real software, not just config:
+### Development
 
-- TypeScript source lives beside extension docs and tests
-- shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/)
-- meaningful logic has colocated `*.test.ts` coverage
-- `README.md` documents user-facing behavior
-- `DESIGN.md` documents architecture and maintenance invariants for non-trivial extensions
-- `API.md` / `api.ts` define reusable public surfaces when an extension exposes code to other extensions
-
-Useful development commands:
+Extensions are directory-based TypeScript modules with colocated tests and user-facing documentation. Non-trivial extensions also include design guidance, while shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/).
 
 ```sh
-make install-dev      # install Node dependencies and Husky git hooks
-npm run lint          # lint Pi extension and saved-workflow TypeScript files
-npm run format:check  # check formatting for TS/JS/JSON/Markdown/YAML files
-make typecheck        # type-check Pi extension and saved-workflow TypeScript files
-make test             # run Pi extension and saved-workflow unit tests
+make install-dev      # install dependencies and Git hooks
+npm run lint          # lint extensions and saved workflows
+npm run format:check  # check formatting
+make typecheck        # run TypeScript checks
+make test             # run unit tests
 ```
 
 ## Companion: agent-tools
