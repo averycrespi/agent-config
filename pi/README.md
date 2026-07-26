@@ -62,10 +62,9 @@ Run definitions through the `workflow` tool with `action: "run"`, a saved `name`
 
 Markdown snippets invoked with `/name` in Pi, where `name` is the filename without `.md`.
 
-| Prompt template | Purpose                                                                    |
-| --------------- | -------------------------------------------------------------------------- |
-| `refresh`       | Reconstruct current branch context from git history and an open PR, if any |
-| `scan-secrets`  | Scan branch or unpushed commits for secrets and personal information       |
+| Prompt template | Purpose                                                              |
+| --------------- | -------------------------------------------------------------------- |
+| `scan-secrets`  | Scan branch or unpushed commits for secrets and personal information |
 
 ## Skills
 
