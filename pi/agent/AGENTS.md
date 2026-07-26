@@ -90,6 +90,7 @@ When recalling:
 - Never commit likely secrets (`.env`, credentials, etc.). Warn the user if they specifically request it.
 - Never push to remote unless the user explicitly asks.
 - Prefix newly created branch names with `avery/`. Use `avery/<description>` for unticketed work (for example, `avery/fix-the-thing`) or `avery/<ticket>-<description>` when a ticket is known (for example, `avery/ABC-123-fix`).
+- Use native `git worktree` commands. Put linked worktrees at `$HOME/worktrees/<primary-repo-basename>/<branch-slug>` (lowercase, with `/` replaced by `-`); inspect `git worktree list` first, never overwrite an occupied path, and remove them with `git worktree remove`.
 - When creating or switching branches, do not assume upstream tracking is set.
 - If tracking an existing remote branch, use `git switch --track origin/<branch>` or `git branch --set-upstream-to=origin/<branch> <branch>`.
 - If pushing a new branch, use `git push -u origin <branch>` when the user explicitly asked to push.

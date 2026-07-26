@@ -144,7 +144,7 @@ Caveats:
 
 - **Worktrees isolate code, not runtime.** Shared ports, databases, services bite hard. Solve this separately.
 - **Disk cost is real.** Reports of ~10GB consumed in 20 minutes on a 2GB codebase via auto-worktree.
-- **Branch naming + cleanup matters.** `agent/<task-id>/<timestamp>` plus a janitor.
+- **Branch naming + cleanup matters.** Follow the active Git rules and use a janitor.
 - **At the time of writing, issue reports say Claude Code's `isolation: worktree` silently no-ops outside a git repo** ([issue #39886](https://github.com/anthropics/claude-code/issues/39886)) and **branches from `origin/main`, not parent's HEAD** ([issue #50850](https://github.com/anthropics/claude-code/issues/50850)). Build accordingly.
 
 Pattern for ticket→PR: worktree created at plan-acceptance time, branch name encodes the ticket ID, orchestrator pushes the branch on success and either deletes the worktree or hands it to a janitor.
