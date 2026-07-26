@@ -17,7 +17,7 @@ This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-
 The Pi setup is built around a durable development loop:
 
 - **Clarify scope** with `clarify` when requirements, edge cases, acceptance criteria, or design intent are fuzzy
-- **Plan the work** with `plan`, then stress-test substantial plans with `challenge-plan` before execution
+- **Plan the work** with `plan`, then stress-test substantial plans, proposals, designs, and architecture decisions with `challenge` before implementation
 - **Execute deliberately** with session-scoped goals via `goal`, optional fail-closed independent completion review, and in-session task tracking via `todo`
 - **Delegate isolated research** with self-contained prompts and explicit filesystem, web, broker, or shell capabilities
 - **Review independently** with the `review` skill, which prepares target, patch, acceptance-criteria, and deterministic-check evidence for the saved `review` workflow

@@ -70,25 +70,25 @@ Markdown snippets invoked with `/name` in Pi, where `name` is the filename witho
 
 Markdown skill packages that load on demand via progressive disclosure — only the `name` and `description` are pre-registered; the body of `SKILL.md` and any bundled `references/` files load only when the skill activates.
 
-| Skill                     | Use when                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows     |
-| `challenge-plan`          | Stress-testing, challenging, reviewing, repairing, or grilling a plan before execution               |
-| `clarify`                 | Interviewing through fuzzy requirements, scope, behavior, edge cases, and acceptance criteria        |
-| `create-html-artifact`    | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools        |
-| `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace             |
-| `create-skill`            | Creating a new skill or updating an existing one                                                     |
-| `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                       |
-| `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends    |
-| `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff |
-| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                         |
-| `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings      |
-| `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                  |
-| `visualize-plan`          | Turning plans into visual HTML artifacts for easier human review                                     |
+| Skill                     | Use when                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows       |
+| `challenge`               | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation |
+| `clarify`                 | Interviewing through fuzzy requirements, scope, behavior, edge cases, and acceptance criteria          |
+| `create-html-artifact`    | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools          |
+| `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace               |
+| `create-skill`            | Creating a new skill or updating an existing one                                                       |
+| `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                         |
+| `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends      |
+| `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff   |
+| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
+| `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |
+| `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                    |
+| `visualize-plan`          | Turning plans into visual HTML artifacts for easier human review                                       |
 
 Notes:
 
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
-- Collaborative clarification lives in the `clarify` skill; durable implementation planning lives in `plan`; `challenge-plan` stress-tests plans before autonomous execution, and `goal` drives execution/completion evidence.
+- Collaborative clarification lives in `clarify`; durable implementation planning lives in `plan`; `challenge` stress-tests concrete approaches before implementation; `review` evaluates completed changes; and `goal` drives execution/completion evidence.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

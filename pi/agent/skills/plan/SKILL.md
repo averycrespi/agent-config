@@ -179,7 +179,7 @@ Plan quality rules:
 
 ### 5. Challenge before finalizing when risk is non-trivial
 
-For substantial or risky plans, run a read-only challenge pass before finalizing. If the challenge can run independently from other research, include it in the same parallel `spawn_agents` bundle; otherwise run it after the draft exists. Use a review agent or invoke the existing `challenge-plan` skill if appropriate.
+For substantial or risky plans, run a read-only challenge pass before finalizing. If the challenge can run independently from other research, include it in the same parallel `spawn_agents` bundle; otherwise run it after the draft exists. Invoke the `challenge` skill when a concrete draft is ready for a dedicated pre-implementation stress test.
 
 Review against:
 

@@ -1,0 +1,5 @@
+# Attribution
+
+This skill is adapted in part from aaddrick's [`contrarian`](https://github.com/aaddrick/contrarian) agent, particularly its constructive steel-man, assumption-audit, pre-mortem, inversion, second-order-effects, and calibration techniques.
+
+The original project is released under the Unlicense. See [LICENSE](./LICENSE).
