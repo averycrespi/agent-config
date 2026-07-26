@@ -1,9 +1,8 @@
 #!/bin/bash
 # Provisioning script for https://github.com/averycrespi/agent-tools/tree/main/sandbox-manager
+# Assumes that the repo is located at ~/work/agent-config
 
 set -euo pipefail
-
-command_exists() { command -v "$1" &>/dev/null; }
 
 cd ~/work/agent-config
 
@@ -25,8 +24,11 @@ asdf reshim nodejs
 echo "Installing pi agent"
 npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
-echo "Installing agent-config dependencies"
-npm install
+echo "Installing node dependencies"
+make install-dev
+
+echo "Installing playwright dependencies"
+make install-playwright
 
 MARKER_START="# >>> pi-alias >>>"
 MARKER_END="# <<< pi-alias <<<"
@@ -45,19 +47,4 @@ EOF
 
 else
 	echo "pi alias already configured in ~/.bashrc"
-fi
-
-if ! command_exists curl; then
-	echo "Installing curl (required to fetch the Claude Code installer)"
-	sudo apt-get update -qq
-	sudo apt-get install -y -qq curl
-else
-	echo "curl already installed"
-fi
-
-if ! command_exists claude; then
-	echo "Installing Claude Code (native binary)"
-	curl -fsSL https://claude.ai/install.sh | bash
-else
-	echo "Claude Code already installed"
 fi

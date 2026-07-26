@@ -6,6 +6,7 @@ install-dev:
 install-playwright:
 	npm install -g @playwright/cli@latest
 	npm install -g playwright@latest
+	@if command -v asdf >/dev/null 2>&1 && asdf current nodejs >/dev/null 2>&1; then asdf reshim nodejs; fi
 	playwright install-deps
 	playwright install
 	npx playwright-core install chromium

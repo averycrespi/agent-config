@@ -1,26 +1,16 @@
 # Agent Config
 
-A coding-agent harness: configuration, TypeScript extensions, skills, subagents, and workflow conventions for turning a general-purpose coding agent into a reliable software engineering partner.
+This is my [Pi](https://pi.dev/) agent configuration for software development. It combines:
 
-This repository manages my [Pi](https://pi.dev/) agent configuration under [`pi/agent/`](pi/README.md), built around one development philosophy — clarify, plan, challenge, execute, review, complete — adapted to Pi's native tool surface. (My Claude Code configuration lives in a separate private repository.)
-
-This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-tools), especially the MCP broker for safe external tool access.
-
-## What This Repo Is
-
-This is my personal agent operating system for software work. It combines:
-
-- **A Pi-native workflow layer** for planning, executing, independently reviewing, and completing engineering tasks
-- **Custom TypeScript extensions** that add durable goals, TODO tracking, subagents, prechecked scheduled tasks, brokered external tools, web access, and TUI polish
-- **Reusable skills and saved workflows** for planning, plan visualization, diagnosis, TDD, browser automation, frontend design, Jira ticket creation, evidence-based review, deep public-web research, memory workflows, and agent-harness engineering
+- **A Pi-native workflow layer** for planning, executing, reviewing, and completing engineering tasks
+- **Custom TypeScript extensions** for TODOs, workflows, goals, scheduled tasks, MCP, web access, and more
+- **Reusable skills and saved workflows** for planning, research, review, and more
 - **Centrally governed subagents** with explicit composable capabilities, model tiers, and thinking
 - **Extension development conventions** with shared helpers, colocated tests, and deterministic checks
 
-The goal is not just to store settings. The goal is to make the agent more stateful, safer, more inspectable, and better at real development workflows.
+This repo pairs well with my [agent-tools](https://github.com/averycrespi/agent-tools), especially the MCP broker for safe external tool access.
 
 ## Pi Agent Harness
-
-[`pi/agent/`](pi/README.md) is the more heavily engineered of the two configurations. Running `make stow-pi` symlinks it into `~/.pi/agent/`.
 
 ### Core Workflow
 
@@ -32,14 +22,6 @@ The Pi setup is built around a durable development loop:
 - **Delegate isolated research** with self-contained prompts and explicit filesystem, web, broker, or shell capabilities
 - **Review independently** with the `review` skill, which prepares target, patch, acceptance-criteria, and deterministic-check evidence for the saved `review` workflow
 
-Supporting rails keep the loop safer and more inspectable:
-
-- **Route authenticated external access** through `mcp-broker` instead of exposing credentials directly to the agent
-- **Use direct web access** through `web-access` for public search and page fetching
-- **Orchestrate multi-agent work** with inline or reusable named `workflow` definitions—including a repository-managed `deep-research` workflow—that fan out explicitly routed subagents under host-enforced concurrency, central tier policy, run budgets, and structured verification/report gates
-
-This turns Pi from a chat interface with tools into a more structured development harness.
-
 ### Extensions
 
 The Pi extensions are directory-based TypeScript modules under [`pi/agent/extensions/`](pi/agent/extensions/). They are grouped around the capabilities I want the agent to have:
@@ -50,16 +32,6 @@ The Pi extensions are directory-based TypeScript modules under [`pi/agent/extens
 - **Agent/user interaction:** `ask-user`
 - **Context and TUI polish:** `context-usage`, `extra-context`, `compact-tools`, `startup-header`, `statusline`
 - **Shared infrastructure:** `_shared` helpers for rendering, config, logging, and common extension behavior
-
-See the [Pi README](pi/README.md#extensions) for the full extension table.
-
-### Skills and Subagents
-
-The Pi skill set lives in [`pi/agent/skills/`](pi/agent/skills/) and is written for Pi's tool surface and GPT-5.x-style instruction following. It includes workflow skills for clarifying requirements, planning, visualizing plans as HTML artifacts, diagnosing failures, building frontend UI, using Playwright, creating skills, and working with retained memory.
-
-The [`subagents`](pi/agent/extensions/subagents/) extension runs isolated child contexts from self-contained prompts. Each call explicitly selects from four fixed capabilities—filesystem reads, shell execution, read-only broker access, and public web access—plus a centrally configured small/medium/large model tier and allowed thinking level. There are no named roles or Markdown agent presets; intent is the visible identity and authority is composed per request.
-
-The [`workflows`](pi/agent/extensions/workflows/) extension adds compound listing, validation, and foreground JavaScript execution for inline or reusable named user-scoped definitions. Workflow calls carry the same explicit capability/tier/thinking contract and use host-enforced concurrency, run budgets, structured verification/report gates, and compact progress. The repository ships [`deep-research`](pi/agent/workflows/deep-research.js), a bounded public-web workflow that cross-checks source-backed claims, and [`review`](pi/agent/workflows/review.js), a read-only workflow that reviews caller-prepared evidence through independent structured lenses and one fail-closed adjudication. The companion [`review` skill](pi/agent/skills/review/SKILL.md) prepares the evidence package, invokes that workflow, and preserves its report.
 
 ### Extension Development
 
