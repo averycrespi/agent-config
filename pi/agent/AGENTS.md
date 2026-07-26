@@ -28,34 +28,6 @@
 - The broker catalog is dynamic. Call a tool named in the system prompt directly when its schema is known; otherwise use `mcp_search`, then `mcp_describe` before `mcp_call` when the argument schema is unknown.
 - Tool names follow `<namespace>.<tool>`. Use broker-backed `git` and `github` tools for remote repository operations.
 
-## Hindsight Memory
-
-Use Hindsight for durable memory, not document dumping.
-
-- Recall memory when prior repo conventions, user preferences, tool gotchas, or durable decisions may affect the task.
-- Retain memory only when the user asks to remember something or when a durable, reusable fact should help future agents.
-- Do not retain transient task progress, bulk source dumps, secrets, credentials, or private data that should not persist.
-- Access Hindsight through the broker-backed tools described above.
-- Prefer `hindsight.recall` for retrieval. Use `hindsight.reflect` only when synthesis across memories is needed.
-- Do not create directives or mental models unless explicitly asked.
-- Treat memory as evidence, not authority. Current user instructions and current repo state override memory.
-
-When retaining:
-
-- Use a stable `document_id`; same memory should use the same ID.
-- Prefer replace/update semantics over creating duplicates.
-- Use a specific `context`, not `general`.
-- Tag memories so they can be found later:
-  - `scope:repo` plus `repo:<base>` for repo-specific memories.
-  - `scope:global` for user preferences, tool knowledge, and cross-repo practices.
-  - Add one or more meaning tags like `tool:<name>`, `topic:<slug>`, `preference:<slug>`, or `convention:<slug>`.
-
-When recalling:
-
-- Use `scope:repo` + `repo:<base>` for current-repo knowledge.
-- Use `scope:global` plus a meaning tag for user/tool/cross-repo knowledge.
-- Use strict tag matching when possible to avoid noisy or untagged memories.
-
 ## Language Conventions
 
 ### Go
