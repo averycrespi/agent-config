@@ -14,7 +14,7 @@
 
 - For nontrivial tasks, identify acceptance criteria before implementing. Treat plans as intent and constraints, not literal diffs to apply blindly.
 - Prefer validated machine-readable outputs for automation and workflow boundaries. Avoid relying on free-text completion markers when a schema or structured format is available.
-- Use subagents for read-only exploration, retrieval, review, and verification. Avoid parallel writes or overlapping edits; sequence implementation work in the main thread.
+- Use subagents for independent read-only exploration, retrieval, review, or verification when isolation or parallelism materially helps. Avoid parallel writes or overlapping edits; sequence implementation work in the main thread.
 - Run deterministic checks such as typecheck, lint, tests, or focused scripts before dispatching LLM reviewers when practical. Pass them first or report their failures and gaps in the reviewer brief.
 - Keep verification and fix loops bounded. If deterministic checks or reviewer feedback repeat without meaningful progress, stop and report known issues with the evidence gathered.
 
@@ -24,19 +24,7 @@
 
 ## Broker-backed External Access
 
-- Do not assume direct access to external services through local secrets or ad hoc authenticated CLIs. Use the `mcp-broker` tools for authenticated external systems; prefer local tools for purely local work.
-- The broker catalog is dynamic. Call a tool named in the system prompt directly when its schema is known; otherwise use `mcp_search`, then `mcp_describe` before `mcp_call` when the argument schema is unknown.
-- Tool names follow `<namespace>.<tool>`. Use broker-backed `git` and `github` tools for remote repository operations.
-
-## Language Conventions
-
-### Go
-
-- Prefer simple, idiomatic Go using the standard library before writing custom helpers or adding dependencies.
-- Before implementing parsing, collection helpers, sorting, filesystem/path handling, HTTP behavior, JSON encoding/decoding, error wrapping, time handling, synchronization, hashing, or string/byte manipulation, check whether the Go standard library already provides the needed behavior.
-- Do not add generic helpers such as `contains`, `min`, `max`, set types, path normalizers, retry loops, JSON wrappers, or HTTP abstractions unless they are clearly simpler than direct standard-library usage or the repository already has an established helper.
-- When a custom implementation is still necessary, keep it narrow and be prepared to explain why standard-library behavior is insufficient.
-- During review, flag homegrown code that duplicates clear standard-library functionality.
+- Do not assume direct access to external services through local secrets or ad hoc authenticated CLIs. Use the `mcp-broker` tools for authenticated external systems, including remote Git and GitHub operations; prefer local tools for purely local work.
 
 ## Reading & Editing Files
 
@@ -90,8 +78,8 @@ Title under 70 chars: `ABC-123: description` when a ticket is known, otherwise u
 
 ## Reporting Outcomes
 
-- Before reporting a task complete, verify it actually works: run the test, execute the script, check the output.
-- Before reporting code or configuration changes complete, check whether user-facing behavior, configuration, APIs, commands, examples, or workflows changed. If so, update the corresponding documentation. If documentation was not affected, say so in the final response.
+- Before reporting a task complete, verify it with the most relevant available evidence, such as a focused test, command, artifact inspection, or observed output.
+- Before reporting code or configuration changes complete, check whether user-facing behavior, configuration, APIs, commands, examples, or workflows changed. When they did, update the corresponding existing documentation.
 - If tests fail, say so with the relevant output. Never claim success when output shows failures.
 - If you did not run a verification step, say so explicitly rather than implying it succeeded.
 - When a check did pass, state it plainly — don't hedge confirmed results with unnecessary disclaimers.
