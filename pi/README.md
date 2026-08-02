@@ -81,6 +81,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                         |
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends      |
 | `golang`                  | Writing, modifying, debugging, planning, or reviewing idiomatic Go code                                |
+| `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                 |
 | `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff   |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
 | `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |

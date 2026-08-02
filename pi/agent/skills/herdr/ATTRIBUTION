@@ -1,0 +1,5 @@
+# Attribution
+
+This skill is adapted from Herdr's [`herdr`](https://github.com/herdrdev/herdr/blob/master/skills/herdr/SKILL.md) skill. The activation description is modified to include explicit Git worktree requests, because this configuration manages worktrees through Herdr.
+
+The original project is released under the Apache License 2.0. See [LICENSE](./LICENSE).

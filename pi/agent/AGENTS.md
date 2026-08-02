@@ -50,7 +50,10 @@
 - Never commit likely secrets (`.env`, credentials, etc.). Warn the user if they specifically request it.
 - Never push to remote unless the user explicitly asks.
 - Prefix newly created branch names with `avery/`. Use `avery/<description>` for unticketed work (for example, `avery/fix-the-thing`) or `avery/<ticket>-<description>` when a ticket is known (for example, `avery/ABC-123-fix`).
-- Use native `git worktree` commands. Put linked worktrees at `$HOME/worktrees/<primary-repo-basename>/<branch-slug>` (lowercase, with `/` replaced by `-`); inspect `git worktree list` first, never overwrite an occupied path, and remove them with `git worktree remove`.
+- Manage linked Git worktrees only through `herdr worktree` commands, never bare `git worktree` or generic `herdr workspace` commands. Git worktree requests activate the `herdr` skill; follow its environment check and inspect the installed `herdr worktree` syntax before acting.
+- Put linked checkouts at `$HOME/worktrees/<repo-slug>/<branch-slug>`. Derive `<repo-slug>` from the primary repository basename and `<branch-slug>` from the full branch name; normalize each by lowercasing, replacing every run of non-ASCII-alphanumeric characters (including `/`) with `-`, and trimming leading or trailing `-`.
+- Before creating or opening a worktree, run `herdr worktree list --cwd <path-inside-repo>` and read the parent checkout and workspace identifiers from its JSON. Never overwrite an occupied path. Create with `herdr worktree create --cwd <parent-checkout> --branch <branch> --path <normalized-path> --no-focus` unless the user asked to focus it; this opens the checkout as a Herdr workspace grouped beneath its base repository in the sidebar.
+- Register an existing linked checkout with `herdr worktree open` against the parent repository. Remove a linked checkout with `herdr worktree remove --workspace <workspace-id>` using the ID returned by Herdr; do not use `herdr workspace close` as a substitute for checkout removal.
 - When creating or switching branches, do not assume upstream tracking is set.
 - If tracking an existing remote branch, use `git switch --track origin/<branch>` or `git branch --set-upstream-to=origin/<branch> <branch>`.
 - If pushing a new branch, use `git push -u origin <branch>` when the user explicitly asked to push.
