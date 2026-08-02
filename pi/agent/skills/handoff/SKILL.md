@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Use when explicitly asked to compact the current Pi session into a temporary handoff document that a fresh agent can use to continue the work.
+description: Use when explicitly asked to compact the current Pi session into a repo-local handoff document that a fresh agent can use to continue the work.
 license: See LICENSE
 disable-model-invocation: true
 ---
@@ -22,13 +22,16 @@ If the invocation includes a next-session focus, make that focus the handoff's o
 
 ## Write the handoff
 
-Create a unique Markdown file in the operating system's temporary directory, never in the current workspace. Obtain the path with:
+Create a unique Markdown file under `.handoffs/` at the active Git repository root. Obtain the path with:
 
 ```bash
-handoff_path="$(mktemp "${TMPDIR:-/tmp}/pi-handoff-XXXXXX.md")" && printf '%s\n' "$handoff_path"
+repo_root="$(git rev-parse --show-toplevel)" &&
+  mkdir -p "$repo_root/.handoffs" &&
+  handoff_path="$(mktemp "$repo_root/.handoffs/pi-handoff-XXXXXX.md")" &&
+  printf '%s\n' "$handoff_path"
 ```
 
-Write the document to the returned absolute path with the `write` tool. Do not interpolate handoff content into a shell command.
+If the current directory is not inside a Git repository, stop and report that a repo-local handoff cannot be created. Write the document to the returned absolute path with the `write` tool. Do not interpolate handoff content into a shell command, and do not stage or commit the handoff.
 
 Use this structure, omitting empty sections:
 
@@ -65,4 +68,4 @@ Apply these rules:
 
 ## Finish
 
-Read the completed document once to check that it is self-contained, concise, correctly redacted, and aligned with the requested next-session focus. Report the temporary file's absolute path and a one-sentence summary. Note that the operating system may clean up temporary files.
+Read the completed document once to check that it is self-contained, concise, correctly redacted, and aligned with the requested next-session focus. Report the file's absolute path and a one-sentence summary. Note that `.handoffs/` is transient local context and must not be committed.

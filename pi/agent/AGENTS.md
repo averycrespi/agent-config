@@ -18,6 +18,11 @@
 - Run deterministic checks such as typecheck, lint, tests, or focused scripts before dispatching LLM reviewers when practical. Pass them first or report their failures and gaps in the reviewer brief.
 - Keep verification and fix loops bounded. If deterministic checks or reviewer feedback repeat without meaningful progress, stop and report known issues with the evidence gathered.
 
+## Session Handoffs
+
+- When continuing prior work in a repository, inspect `.handoffs/` at the repository root and read the relevant handoff before acting. Prefer a handoff named by the user; otherwise use the newest one that matches the work. Verify its claims against current workspace state.
+- Treat `.handoffs/` as transient local context. Never stage or commit the directory or its contents.
+
 ## Environment Assumptions
 
 - The agent operates in a sandboxed environment with restricted permissions.
