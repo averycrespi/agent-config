@@ -48,3 +48,42 @@ EOF
 else
 	echo "pi alias already configured in ~/.bashrc"
 fi
+
+# ~/.config/herdr is a virtiofs mount from the host, so herdr's session and config
+# survive sandbox rebuilds. But chmod() on a unix socket fails with EINVAL on
+# virtiofs, and herdr chmods its sockets to 0600 right after binding — so the
+# server dies at startup unless its sockets live on the guest filesystem.
+echo "Pointing herdr sockets at the guest filesystem"
+herdr_socket="$HOME/.local/state/herdr/herdr.sock"
+mkdir -p "$(dirname "$herdr_socket")"
+
+HERDR_MARKER_START="# >>> herdr-socket >>>"
+HERDR_MARKER_END="# <<< herdr-socket <<<"
+
+if ! grep -qF "$HERDR_MARKER_START" /etc/environment 2>/dev/null; then
+	echo "Adding herdr socket path to /etc/environment"
+
+	sudo tee -a /etc/environment >/dev/null <<EOF
+
+$HERDR_MARKER_START
+HERDR_SOCKET_PATH=$herdr_socket
+$HERDR_MARKER_END
+EOF
+
+else
+	echo "herdr socket path already configured in /etc/environment"
+fi
+
+if ! grep -qF "$HERDR_MARKER_START" "$HOME/.bashrc" 2>/dev/null; then
+	echo "Adding herdr socket path to ~/.bashrc"
+
+	cat >>"$HOME/.bashrc" <<EOF
+
+$HERDR_MARKER_START
+export HERDR_SOCKET_PATH="$herdr_socket"
+$HERDR_MARKER_END
+EOF
+
+else
+	echo "herdr socket path already configured in ~/.bashrc"
+fi
