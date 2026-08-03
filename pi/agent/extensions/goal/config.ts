@@ -17,9 +17,6 @@ export type GoalConfig = {
   autoRunEnabled: boolean;
   autoRunMaxContinuations: number;
   autoRunMaxActiveMinutes: number;
-  reviewEnabled: boolean;
-  reviewMaxFixRounds: number;
-  reviewTimeoutSeconds: number;
 };
 
 type PlainObject = Record<string, unknown>;
@@ -35,9 +32,6 @@ export const DEFAULT_GOAL_CONFIG: GoalConfig = {
   autoRunEnabled: true,
   autoRunMaxContinuations: 10,
   autoRunMaxActiveMinutes: 60,
-  reviewEnabled: false,
-  reviewMaxFixRounds: 1,
-  reviewTimeoutSeconds: 600,
 };
 
 function parsePositiveInteger(
@@ -53,25 +47,6 @@ function parsePositiveInteger(
         ? Number(value)
         : undefined;
   if (parsed !== undefined && Number.isInteger(parsed) && parsed > 0)
-    return parsed;
-  if (value !== undefined)
-    warnings.push(`Ignoring invalid ${field}: ${String(value)}`);
-  return fallback;
-}
-
-function parseNonNegativeInteger(
-  value: unknown,
-  field: string,
-  fallback: number,
-  warnings: string[],
-): number {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && value.trim() !== ""
-        ? Number(value)
-        : undefined;
-  if (parsed !== undefined && Number.isInteger(parsed) && parsed >= 0)
     return parsed;
   if (value !== undefined)
     warnings.push(`Ignoring invalid ${field}: ${String(value)}`);
@@ -167,25 +142,6 @@ function readEnvSettings(
     ...(env.GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES !== undefined
       ? { autoRunMaxActiveMinutes: env.GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES }
       : {}),
-    ...(parseBooleanEnv(
-      env.GOAL_REVIEW_ENABLED,
-      "GOAL_REVIEW_ENABLED",
-      warnings,
-    ) !== undefined
-      ? {
-          reviewEnabled: parseBooleanEnv(
-            env.GOAL_REVIEW_ENABLED,
-            "GOAL_REVIEW_ENABLED",
-            warnings,
-          ),
-        }
-      : {}),
-    ...(env.GOAL_REVIEW_MAX_FIX_ROUNDS !== undefined
-      ? { reviewMaxFixRounds: env.GOAL_REVIEW_MAX_FIX_ROUNDS }
-      : {}),
-    ...(env.GOAL_REVIEW_TIMEOUT_SECONDS !== undefined
-      ? { reviewTimeoutSeconds: env.GOAL_REVIEW_TIMEOUT_SECONDS }
-      : {}),
   };
 }
 
@@ -248,22 +204,6 @@ export function parseGoalConfig(options: {
       merged.autoRunMaxActiveMinutes,
       "autoRunMaxActiveMinutes",
       DEFAULT_GOAL_CONFIG.autoRunMaxActiveMinutes,
-      warnings,
-    ),
-    reviewEnabled:
-      typeof merged.reviewEnabled === "boolean"
-        ? merged.reviewEnabled
-        : DEFAULT_GOAL_CONFIG.reviewEnabled,
-    reviewMaxFixRounds: parseNonNegativeInteger(
-      merged.reviewMaxFixRounds,
-      "reviewMaxFixRounds",
-      DEFAULT_GOAL_CONFIG.reviewMaxFixRounds,
-      warnings,
-    ),
-    reviewTimeoutSeconds: parsePositiveInteger(
-      merged.reviewTimeoutSeconds,
-      "reviewTimeoutSeconds",
-      DEFAULT_GOAL_CONFIG.reviewTimeoutSeconds,
       warnings,
     ),
   };

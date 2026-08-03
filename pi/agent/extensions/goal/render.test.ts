@@ -124,53 +124,6 @@ test("appends disabled auto-run reasons to the usage line", () => {
   assert.match(paused[1], /auto-run disabled \(goal paused\)/);
 });
 
-test("renders compact review phases without full findings", () => {
-  const reviewing = renderGoalWidgetLines(
-    {
-      ...baseGoal,
-      review: {
-        status: "reviewing",
-        attemptToken: "t",
-        attemptCount: 1,
-        fixRoundsUsed: 0,
-        claimEvidence: "proof",
-        startedAt: 1,
-        updatedAt: 1,
-        findings: [
-          {
-            severity: "important",
-            confidence: 99,
-            description: "secret detailed finding",
-            evidence: "artifact",
-          },
-        ],
-      },
-    },
-    30,
-  );
-  const paused = renderGoalWidgetLines(
-    {
-      ...baseGoal,
-      status: "paused",
-      review: {
-        status: "unavailable",
-        attemptCount: 1,
-        fixRoundsUsed: 0,
-        claimEvidence: "proof",
-        startedAt: 1,
-        updatedAt: 1,
-        failure: { kind: "timeout", message: "long failure details" },
-      },
-    },
-    30,
-  );
-
-  assert.match(reviewing[1], /Review: reviewing/);
-  assert.doesNotMatch(reviewing.join("\n"), /secret detailed finding/);
-  assert.match(paused[1], /review paused/);
-  assert.ok(reviewing.every((line) => line.length <= 30));
-});
-
 test("appends idle auto-run state to the usage line", () => {
   const lines = renderGoalWidgetLines(goalWithUsage, 120, undefined, {
     showUsage: true,

@@ -56,10 +56,6 @@ function formatStopReason(reason: AutoRunStopReason): string {
       return "provider error";
     case "aborted":
       return "aborted";
-    case "review_exhausted":
-      return "review exhausted";
-    case "review_unavailable":
-      return "review unavailable";
   }
 }
 
@@ -109,18 +105,6 @@ export function renderGoalWidgetLines(
       safeWidth,
     ),
   ];
-  if (goal.review) {
-    const label =
-      goal.review.status === "reviewing"
-        ? "reviewing"
-        : goal.review.status === "fix_required"
-          ? `fix required · round ${goal.review.fixRoundsUsed + 1}`
-          : goal.review.status === "exhausted" ||
-              goal.review.status === "unavailable"
-            ? `review paused · ${goal.review.status}`
-            : `review ${goal.review.status}`;
-    lines.push(truncateLine(theme.fg("dim", `Review: ${label}`), safeWidth));
-  }
   if (options.showUsage) {
     const usageLine = formatUsageLine(goal);
     if (usageLine) {

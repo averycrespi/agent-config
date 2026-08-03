@@ -1,6 +1,6 @@
 # Goal Extension
 
-The goal extension keeps one session-scoped, fork-safe objective for the current Pi session tree. It can also run a bounded in-session continuation loop so headless commands like `pi "/goal <objective>"` keep making progress until completion, user interruption, or a configured stop condition. An optional independent completion review can fail closed before agent-submitted completion is accepted.
+The goal extension keeps one session-scoped, fork-safe objective for the current Pi session tree. It can also run a bounded in-session continuation loop so headless commands like `pi "/goal <objective>"` keep making progress until completion, user interruption, or a configured stop condition.
 
 ## Commands
 
@@ -9,8 +9,7 @@ The goal extension keeps one session-scoped, fork-safe objective for the current
 - `/goal-show` — show the current goal, usage counters when enabled, completion evidence when present, or report that none is set.
 - `/goal-set <objective>` — create or replace the current goal as active without starting auto-run.
 - `/goal-pause` — pause the current goal and stop auto-run.
-- `/goal-resume` — resume a paused or completed goal as active without starting auto-run; this resets the completion-review cycle and stale review action state.
-- `/goal-approve <reason>` — human-only completion override for a goal paused because review was exhausted or unavailable. It requires a bounded reason and preserves the unresolved review report.
+- `/goal-resume` — resume a paused or completed goal as active without starting auto-run.
 - `/goal-renew` — renew auto-run for the current active goal without changing the objective.
 - `/goal-clear` — clear the current goal and stop auto-run.
 
@@ -46,17 +45,13 @@ The extension registers two tools:
 
 Completion is intentionally conservative. Agents should call `goal_update` only after mapping every explicit requirement in the objective to concrete evidence from files, command output, tests, UI state, or other real artifacts. The tool schema, prompt snippet, and prompt guidelines tell agents to keep evidence concise and at most `evidenceMaxChars`; evidence should summarize logs/results and cite artifacts rather than paste raw output. TODO completion, tests passing, implementation effort, a plausible final answer, or context pressure are not sufficient by themselves.
 
-When `reviewEnabled` is `false` (the default), validated evidence completes the goal immediately without spawning a child. When enabled, evidence is a provisional claim: the extension persists `reviewing`, builds a complete read-only audit prompt, and calls the sanitized subagent API with `read-filesystem`, medium tier, high thinking, the current live model registry, and a strict structured schema. Re-reviews include previous blockers. Normal Pi context files remain available, while skills/templates and shell execution are unavailable.
-
-Only validated `blocker` and `important` findings at confidence 80 or higher block completion. High-confidence suggestions are reported but do not block. The initial blocking review leaves the goal active for up to `reviewMaxFixRounds` fix/re-review opportunities; `0` means the initial review can run but any blocker immediately exhausts the cycle. After exhaustion the goal is paused. Policy/model resolution, process/provider, structured-output, timeout, or cancellation failure also pauses the goal as review unavailable without consuming a fix round or retrying automatically. Use `/goal-resume` to start a fresh cycle, or `/goal-approve <reason>` for a human-only audited override. There is no agent approval tool.
+Validated evidence completes the active goal immediately, freezes its usage counters, and stops a running auto-run with `goal_complete`.
 
 ## State and persistence
 
 Goal state is scoped to Pi's session tree branch, not the git branch. The extension restores the latest valid snapshot from the active session branch on session start, resume, and tree navigation; starting a fresh Pi session in the same git branch does not restore the goal. For plan-driven work, keep the plan file as the durable artifact and use the goal as the current session's steering state.
 
-Snapshots include goal lifecycle state, completion-review lifecycle/report data, and, when present, auto-run lifecycle state. Auto-run state is separate from goal status so automation can stop while the goal remains active for steering and manual continuation. Review claims, attempts/fix rounds, latest evidence, bounded findings, failure metadata, and human override metadata survive valid branch restoration. Legacy snapshots without review data remain valid.
-
-A restored `reviewing` snapshot cannot safely reconnect to its child process. Restoration therefore atomically normalizes it to a paused, review-unavailable goal and stops a paired running auto-run with `review_unavailable`; it never respawns or treats the interrupted review as passed. Any pause, replacement, clear, resume, approval, tree navigation, or state restoration invalidates a pending attempt, so late results cannot mutate current state.
+Snapshots include goal lifecycle state and, when present, auto-run lifecycle state. Auto-run state is separate from goal status so automation can stop while the goal remains active for steering and manual continuation. Legacy snapshots remain valid; obsolete nested metadata is ignored, while an interrupted legacy completion claim is restored as paused and stops a paired running auto-run.
 
 When `showUsage` is enabled, snapshots also include observational usage counters: active elapsed time, assistant turns, and best-effort total tokens reported by Pi message usage events. Active elapsed time counts only while the goal is active; pausing stops the timer, resuming starts it again, and completion freezes it.
 
@@ -83,11 +78,11 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 ## Widget
 
-When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective plus a compact `reviewing`, `fix required`, or `review paused` indicator when applicable. When `showUsage` is enabled, it also shows one usage line with active time, token/turn counters, and current auto-run state such as `auto-run enabled (3/10 continuations, 40m left)`, `auto-run disabled (user input)`, or `auto-run idle`. Completion evidence and full review findings are available through `/goal-show` instead of the widget.
+When `showWidget` is enabled and a goal exists, a compact fixed-size widget appears below the editor. It shows the goal status and truncated objective. When `showUsage` is enabled, it also shows one usage line with active time, token/turn counters, and current auto-run state such as `auto-run enabled (3/10 continuations, 40m left)`, `auto-run disabled (user input)`, or `auto-run idle`. Completion evidence is available through `/goal-show` instead of the widget.
 
 ## Compaction
 
-When `compactSummaryEnabled` is enabled and a goal exists, the extension provides a goal-aware custom compaction summary that preserves the objective, status, completion evidence when present, actionable review state/findings, and the anti-early-completion rule.
+When `compactSummaryEnabled` is enabled and a goal exists, the extension provides a goal-aware custom compaction summary that preserves the objective, status, completion evidence when present, and the anti-early-completion rule.
 
 This custom compaction behavior is intentionally not composable with other extensions that also return `session_before_compact` compaction content. Pi keeps one custom compaction result, so extension load order can determine which result wins when multiple compaction-providing extensions are active.
 
@@ -109,9 +104,6 @@ Settings live under `extension:goal`. Environment variables override settings. U
 | `autoRunEnabled`          |  `true` | `GOAL_AUTO_RUN_ENABLED`            | Allow `/goal <objective>` and continuation scheduling to run automatically.                                                  |
 | `autoRunMaxContinuations` |    `10` | `GOAL_AUTO_RUN_MAX_CONTINUATIONS`  | Maximum continuation prompts scheduled by one auto-run.                                                                      |
 | `autoRunMaxActiveMinutes` |    `60` | `GOAL_AUTO_RUN_MAX_ACTIVE_MINUTES` | Maximum active time for one auto-run session before auto-run stops.                                                          |
-| `reviewEnabled`           | `false` | `GOAL_REVIEW_ENABLED`              | Require an independent fail-closed reviewer before accepting agent completion.                                               |
-| `reviewMaxFixRounds`      |     `1` | `GOAL_REVIEW_MAX_FIX_ROUNDS`       | Non-negative number of fix/re-review opportunities after the initial blocking review.                                        |
-| `reviewTimeoutSeconds`    |   `600` | `GOAL_REVIEW_TIMEOUT_SECONDS`      | Positive reviewer timeout; timeout aborts the child, waits for cleanup, and pauses the goal as review unavailable.           |
 
 Boolean environment overrides accept `1`/`true` and `0`/`false`.
 
@@ -129,19 +121,14 @@ Example:
     "showUsage": true,
     "autoRunEnabled": true,
     "autoRunMaxContinuations": 10,
-    "autoRunMaxActiveMinutes": 60,
-    "reviewEnabled": false,
-    "reviewMaxFixRounds": 1,
-    "reviewTimeoutSeconds": 600
+    "autoRunMaxActiveMinutes": 60
   }
 }
 ```
 
 ## Logging
 
-The goal extension itself writes no standalone logs. Goal objectives, usage counters, auto-run/review state, completion evidence, bounded findings, and override metadata are persisted in Pi session history as described above. Completion reviews use the subagents extension's normal diagnostics: successful child logs are deleted, while failed or aborted review logs may be retained by that extension and their path recorded in failure metadata. Raw review process output is not copied into goal state.
-
-All review behavior works in TUI, RPC, JSON, and print/headless modes. It does not require dialogs or another TUI-only API.
+The goal extension writes no standalone logs. Goal objectives, usage counters, auto-run state, and completion evidence are persisted in Pi session history as described above.
 
 ## Prior art
 
@@ -150,4 +137,4 @@ All review behavior works in TUI, RPC, JSON, and print/headless modes. It does n
 
 ## V1 omissions
 
-This extension adapts the durable objective, lifecycle controls, bounded continuation loop, model-visible goal context, and conservative completion audit from Codex-style goal workflows. It includes observational time/token counters and an optional single-reviewer completion gate, but intentionally omits background scheduling after Pi exits, project-global goals, hard token enforcement, budget-limited goal status, automatic TODO creation, reviewer fan-out, automatic verification commands, automatic fixes, agent-controlled override, and unbounded review loops.
+This extension adapts the durable objective, lifecycle controls, bounded continuation loop, model-visible goal context, and conservative completion audit from Codex-style goal workflows. It includes observational time/token counters, but intentionally omits background scheduling after Pi exits, project-global goals, hard token enforcement, budget-limited goal status, automatic TODO creation, and automatic verification or fixes.

@@ -40,7 +40,7 @@ Structured output is orthogonal policy composition. When requested, `spawn.ts` a
 
 ## Public/internal boundary
 
-`api.ts` exports `runSubagent()` and sanitized types, outcomes, structured-output contracts, schema validation, and activity tracking. It does not export `spawnSubagent`, `SpawnInvocation`, loaders, raw tools, extension resolution, or process controls. Direct spawning, workflows, and goal review all route through `runSubagent()`.
+`api.ts` exports `runSubagent()` and sanitized types, outcomes, structured-output contracts, schema validation, and activity tracking. It does not export `spawnSubagent`, `SpawnInvocation`, loaders, raw tools, extension resolution, or process controls. Direct spawning and workflows both route through `runSubagent()`.
 
 Keep `spawn.ts` import-local to this directory; colocated engine tests may import it directly. Never add a convenience export that lets another extension bypass capability, tier, thinking, or live-model validation.
 
