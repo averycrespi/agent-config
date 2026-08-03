@@ -73,7 +73,6 @@ Every child:
 - starts a fresh session;
 - disables skill discovery and prompt-template discovery;
 - loads normal Pi context files such as `AGENTS.md` and `CLAUDE.md`;
-- does not load `extra-context` solely because it is a subagent;
 - inherits the complete parent process environment, with capability-owned values applied afterward;
 - resolves extension short names through the existing project, agent-directory, and configured extension roots.
 

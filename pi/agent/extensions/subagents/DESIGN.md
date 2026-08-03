@@ -65,7 +65,7 @@ Every process launch:
 - creates secure retained-log staging before launch;
 - settles only after process cleanup.
 
-`extra-context` is absent because no capability grants it. Environment inheritance is deliberate; `exec-shell` is not a security sandbox and can mutate.
+Environment inheritance is deliberate; `exec-shell` is not a security sandbox and can mutate.
 
 ## Structured output
 
