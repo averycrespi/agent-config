@@ -31,7 +31,6 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                       |
 | `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
 | `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
-| `startup-header`    | Minimal colored startup header with Pi version, repo, branch, and recent commits                        |
 | `structured-output` | Schema-backed final output tool, no-op unless configured                                                |
 | `subagents`         | Explicit capability/tier/thinking policy and isolated child dispatch                                    |
 | `todo`              | Session-persisted TODO tool with a sticky widget                                                        |
