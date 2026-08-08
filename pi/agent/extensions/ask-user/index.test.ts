@@ -9,9 +9,19 @@ const identityTheme = {
   bold: (text: string) => text,
 };
 
+function registerAskUser(
+  tools: Map<string, any>,
+  emit: (channel: string, data: unknown) => void = () => {},
+): void {
+  askUser({
+    registerTool: (def: any) => tools.set(def.name, def),
+    events: { emit },
+  } as any);
+}
+
 test("custom UI wraps long question text instead of truncating it", async () => {
   const tools = new Map<string, any>();
-  askUser({ registerTool: (def: any) => tools.set(def.name, def) } as any);
+  registerAskUser(tools);
 
   let renderedLines: string[] = [];
   const ctx = {
@@ -53,9 +63,93 @@ test("custom UI wraps long question text instead of truncating it", async () => 
   );
 });
 
+test("ask_user reports Herdr blocked state only while the custom UI is open", async () => {
+  const tools = new Map<string, any>();
+  const events: Array<{ channel: string; data: unknown }> = [];
+  registerAskUser(tools, (channel, data) => events.push({ channel, data }));
+
+  let closeUI!: (value: null) => void;
+  const ctx = {
+    hasUI: true,
+    ui: {
+      custom() {
+        return new Promise<null>((resolve) => {
+          closeUI = resolve;
+        });
+      },
+    },
+  };
+
+  const execution = tools.get("ask_user").execute(
+    "call-1",
+    {
+      question: "Choose a path",
+      options: [{ label: "A" }, { label: "B" }],
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  assert.deepEqual(events, [
+    {
+      channel: "herdr:blocked",
+      data: { active: true, label: "Waiting for user answer" },
+    },
+  ]);
+
+  closeUI(null);
+  await execution;
+
+  assert.deepEqual(events, [
+    {
+      channel: "herdr:blocked",
+      data: { active: true, label: "Waiting for user answer" },
+    },
+    { channel: "herdr:blocked", data: { active: false } },
+  ]);
+});
+
+test("ask_user clears Herdr blocked state when the custom UI throws", async () => {
+  const tools = new Map<string, any>();
+  const events: Array<{ channel: string; data: unknown }> = [];
+  registerAskUser(tools, (channel, data) => events.push({ channel, data }));
+
+  const ctx = {
+    hasUI: true,
+    ui: {
+      async custom() {
+        throw new Error("render failed");
+      },
+    },
+  };
+
+  await assert.rejects(
+    tools.get("ask_user").execute(
+      "call-1",
+      {
+        question: "Choose a path",
+        options: [{ label: "A" }, { label: "B" }],
+      },
+      undefined,
+      undefined,
+      ctx,
+    ),
+    /render failed/,
+  );
+
+  assert.deepEqual(events, [
+    {
+      channel: "herdr:blocked",
+      data: { active: true, label: "Waiting for user answer" },
+    },
+    { channel: "herdr:blocked", data: { active: false } },
+  ]);
+});
+
 test("ask_user resolves as cancelled when the tool signal aborts", async () => {
   const tools = new Map<string, any>();
-  askUser({ registerTool: (def: any) => tools.set(def.name, def) } as any);
+  registerAskUser(tools);
 
   const controller = new AbortController();
   const ctx = {
@@ -90,7 +184,7 @@ test("ask_user resolves as cancelled when the tool signal aborts", async () => {
 
 test("custom UI rewraps question text when render width changes", async () => {
   const tools = new Map<string, any>();
-  askUser({ registerTool: (def: any) => tools.set(def.name, def) } as any);
+  registerAskUser(tools);
 
   let component: { render(width: number): string[] };
   const ctx = {

@@ -33,6 +33,9 @@ make install-playwright
 echo "Installing herdr"
 curl -fsSL https://herdr.dev/install.sh | sh
 
+echo "Installing herdr Pi integration"
+herdr integration install pi
+
 MARKER_START="# >>> pi-alias >>>"
 MARKER_END="# <<< pi-alias <<<"
 

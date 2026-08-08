@@ -18,6 +18,23 @@ pi/agent/
 
 Running `make stow-pi` creates symlinks from `pi/agent/` into `~/.pi/agent/`. Edits here take effect immediately — no need to re-stow after changing files.
 
+## Herdr Integration
+
+The Herdr integration has three distinct ownership boundaries:
+
+- Repository-owned skills (`herdr` and `handoff-to-worktree`) teach agents how to inspect and control Herdr sessions and manage Herdr-backed worktrees.
+- The repository-owned `ask-user` extension emits balanced `herdr:blocked` events while an interactive question is open.
+- Herdr owns the generated `herdr-agent-state.ts` lifecycle bridge. It reports Pi session identity and `working`, `blocked`, and `idle` state to the current Herdr pane.
+
+Install or update the bridge after `make stow-pi` so Herdr writes it through the managed `~/.pi/agent/extensions` symlink:
+
+```sh
+herdr integration install pi
+herdr integration status
+```
+
+The generated bridge is a local installer artifact: do not edit or commit it. Re-running the install command may overwrite it. Restart Pi or run `/reload` after installing or updating the bridge. The repository's provisioning script performs the installation automatically.
+
 ## Extensions
 
 TypeScript modules that customize the Pi agent. Type-check with `make typecheck`.

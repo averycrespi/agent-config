@@ -38,6 +38,7 @@ Renders a custom TUI widget at the bottom of the terminal:
 - The recommended option is labelled "(Recommended)"
 - Option descriptions appear below their label in muted text
 - Context (if provided) appears between the question and the options
+- While the prompt is open, the extension emits balanced `herdr:blocked` events so an installed Herdr integration reports the agent as blocked; the event is harmless when no listener is installed
 
 In non-interactive mode (`!ctx.hasUI`) the tool returns an error immediately.
 

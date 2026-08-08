@@ -9,5 +9,5 @@
     "skipLibCheck": true
   },
   "include": ["pi/agent/extensions/**/*.ts", "pi/agent/workflows/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "pi/agent/extensions/herdr-agent-state.ts"]
 }

@@ -2,7 +2,11 @@ import tseslint from "typescript-eslint";
 
 export default [
   {
-    ignores: ["node_modules/**", ".husky/_/**"],
+    ignores: [
+      "node_modules/**",
+      ".husky/_/**",
+      "pi/agent/extensions/herdr-agent-state.ts",
+    ],
   },
   {
     files: ["pi/agent/extensions/**/*.ts", "pi/agent/workflows/**/*.ts"],

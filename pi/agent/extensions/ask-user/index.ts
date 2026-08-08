@@ -141,7 +141,11 @@ export default function (pi: ExtensionAPI) {
       ];
 
       let abortHandler: (() => void) | undefined;
-      const result = await ctx.ui.custom<{
+      pi.events.emit("herdr:blocked", {
+        active: true,
+        label: "Waiting for user answer",
+      });
+      const resultPromise = ctx.ui.custom<{
         answer: string;
         index: number | null;
         isCustom: boolean;
@@ -312,7 +316,10 @@ export default function (pi: ExtensionAPI) {
           handleInput,
         };
       });
-      if (abortHandler) signal?.removeEventListener("abort", abortHandler);
+      const result = await resultPromise.finally(() => {
+        if (abortHandler) signal?.removeEventListener("abort", abortHandler);
+        pi.events.emit("herdr:blocked", { active: false });
+      });
 
       if (!result) {
         return cancelledResult();

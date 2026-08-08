@@ -28,6 +28,10 @@ Custom TypeScript extensions under [`pi/agent/extensions/`](pi/agent/extensions/
 
 See [`pi/README.md`](pi/README.md) for the complete extension and skill catalog.
 
+### Herdr integration
+
+[Herdr](https://herdr.dev/) provides the terminal and worktree control plane used by the `herdr` and `handoff-to-worktree` skills. Herdr's Pi integration installs a local lifecycle bridge, while the repository-owned `ask_user` extension reports interactive questions through that bridge. See the [Pi Herdr integration documentation](pi/README.md#herdr-integration) for component ownership, installation, and updates.
+
 ### Development
 
 Extensions are directory-based TypeScript modules with colocated tests and user-facing documentation. Non-trivial extensions also include design guidance, while shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/).
@@ -57,6 +61,7 @@ The main integration point is the **MCP broker**: a credentials-holding proxy th
 ### Requirements
 
 - [Pi agent](https://pi.dev/)
+- [Herdr](https://herdr.dev/) for pane, agent, and worktree integration
 - [Homebrew](https://brew.sh/)
 - [Node.js](https://nodejs.org/) 24+
 - macOS assumed, adaptable for Linux
@@ -70,6 +75,7 @@ brew bundle             # install system dependencies on macOS
 make install-dev        # install Node dependencies and Husky git hooks
 make install-playwright # for browser automation and web-access JS rendering
 make stow-pi            # symlink pi/agent/ into ~/.pi/agent/
+herdr integration install pi # install/update the local Pi lifecycle bridge
 ```
 
 ## License
