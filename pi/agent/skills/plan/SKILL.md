@@ -91,7 +91,22 @@ Do not ask permission to continue with obvious research or mechanical plan writi
 
 Save the plan under `.plans/YYYY-MM-DD-<short-slug>.md` unless the user asks for a different path or an existing plan should be updated. Use repo-relative paths only; never include absolute local paths.
 
-Create `.plans/` if needed and use normal file tools to write or update the plan.
+When using `.plans/` inside a Git repository, first add the root-anchored `/.plans/` pattern to the repository's local Git exclude file if it is absent. Resolve that file through Git so this also works in linked worktrees; do not add the pattern to the tracked `.gitignore`:
+
+```bash
+if repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  exclude_path="$(git rev-parse --path-format=absolute --git-path info/exclude)" &&
+    mkdir -p "$(dirname "$exclude_path")" &&
+    touch "$exclude_path" &&
+    { grep -qxF '/.plans/' "$exclude_path" ||
+      printf '\n/.plans/\n' >> "$exclude_path"; }
+else
+  repo_root="$(pwd -P)"
+fi &&
+  mkdir -p "$repo_root/.plans"
+```
+
+Outside a Git repository, skip the exclude update and create `.plans/` in the current working directory. If the local exclude file cannot be updated, stop and report the failure. Use normal file tools to write or update the plan; do not stage or commit it. After writing a new plan inside a Git repository, confirm it is ignored with `git check-ignore -q <plan-path>` and stop if it is not.
 
 The plan should be complete enough for a fresh agent to run something like:
 
