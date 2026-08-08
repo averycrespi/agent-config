@@ -78,7 +78,6 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `create-skill`            | Creating a new skill or updating an existing one                                                       |
 | `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                         |
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends      |
-| `golang`                  | Writing, modifying, debugging, planning, or reviewing idiomatic Go code                                |
 | `handoff`                 | Compacting a Pi session into a repo-local `.handoffs/` document; explicit invocation only              |
 | `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                 |
 | `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff   |
