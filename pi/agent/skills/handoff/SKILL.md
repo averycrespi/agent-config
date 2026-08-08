@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Use when explicitly asked to compact the current Pi session into a repo-local handoff document that a fresh agent can use to continue the work.
+description: Use when explicitly asked to compact the current Pi session into a local handoff document that a fresh agent can use to continue the work.
 license: See LICENSE
 disable-model-invocation: true
 ---
@@ -22,16 +22,25 @@ If the invocation includes a next-session focus, make that focus the handoff's o
 
 ## Write the handoff
 
-Create a unique Markdown file under `.handoffs/` at the active Git repository root. Obtain the path with:
+Create a unique Markdown file under `.handoffs/` at the active Git repository root. When outside a Git repository, use the current working directory instead. In a Git repository, first add the root-anchored `/.handoffs/` pattern to the repository's local Git exclude file if it is absent. Resolve that file through Git so this also works in linked worktrees; do not add the pattern to the tracked `.gitignore`. Obtain the handoff path with:
 
 ```bash
-repo_root="$(git rev-parse --show-toplevel)" &&
+if repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  exclude_path="$(git rev-parse --path-format=absolute --git-path info/exclude)" &&
+    mkdir -p "$(dirname "$exclude_path")" &&
+    touch "$exclude_path" &&
+    { grep -qxF '/.handoffs/' "$exclude_path" ||
+      printf '\n/.handoffs/\n' >> "$exclude_path"; }
+else
+  repo_root="$(pwd -P)"
+fi &&
   mkdir -p "$repo_root/.handoffs" &&
   handoff_path="$(mktemp "$repo_root/.handoffs/pi-handoff-XXXXXX.md")" &&
+  { [ -z "${exclude_path:-}" ] || git check-ignore -q "$handoff_path"; } &&
   printf '%s\n' "$handoff_path"
 ```
 
-If the current directory is not inside a Git repository, stop and report that a repo-local handoff cannot be created. Write the document to the returned absolute path with the `write` tool. Do not interpolate handoff content into a shell command, and do not stage or commit the handoff.
+Outside a Git repository, skip the exclude update and continue creating the handoff. If an applicable exclude file cannot be updated or a handoff created inside a Git repository is not ignored, stop and report the failure. Write the document to the returned absolute path with the `write` tool. Do not interpolate handoff content into a shell command, and do not stage or commit the handoff.
 
 Use this structure, omitting empty sections:
 
@@ -68,4 +77,4 @@ Apply these rules:
 
 ## Finish
 
-Read the completed document once to check that it is self-contained, concise, correctly redacted, and aligned with the requested next-session focus. Report the file's absolute path and a one-sentence summary. Note that `.handoffs/` is transient local context and must not be committed.
+Read the completed document once to check that it is self-contained, concise, correctly redacted, and aligned with the requested next-session focus. Report the file's absolute path and a one-sentence summary. Note that `.handoffs/` is transient local context and must not be committed; inside a Git repository, confirm that it was added to the local exclude file.
