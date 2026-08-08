@@ -15,7 +15,7 @@ The harness combines a simple development loop with tools that keep work scoped,
 3. **Implement** against a session-scoped objective with `goal`, using `todo` to track work in progress.
 4. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
-Isolated subagents support research and verification throughout the workflow. Each receives a self-contained task and explicit filesystem, shell, web, or broker permissions.
+Isolated subagents support research and verification throughout the workflow. Each receives a self-contained task and explicit filesystem, shell, web, or broker permissions. For isolated implementation, the explicit-only `handoff-to-worktree` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief.
 
 ### Extensions
 
