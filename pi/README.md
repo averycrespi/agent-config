@@ -22,7 +22,7 @@ Running `make stow-pi` creates symlinks from `pi/agent/` into `~/.pi/agent/`. Ed
 
 The Herdr integration has three distinct ownership boundaries:
 
-- Repository-owned skills (`herdr` and `handoff-to-worktree`) teach agents how to inspect and control Herdr sessions and manage Herdr-backed worktrees.
+- Repository-owned skills (`herdr` and `delegate`) teach agents how to inspect and control Herdr sessions and manage Herdr-backed worktrees.
 - The repository-owned `ask-user` extension emits balanced `herdr:blocked` events while an interactive question is open.
 - Herdr owns the generated `herdr-agent-state.ts` lifecycle bridge. It reports Pi session identity and `working`, `blocked`, and `idle` state to the current Herdr pane.
 
@@ -96,7 +96,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                         |
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends      |
 | `handoff`                 | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                   |
-| `handoff-to-worktree`     | Delegating a task to a new Pi agent in a newly created Herdr worktree; explicit invocation only        |
+| `delegate`                | Delegating a task to a new Pi agent in a newly created Herdr worktree; explicit invocation only        |
 | `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                 |
 | `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff   |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |

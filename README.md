@@ -15,7 +15,7 @@ The harness combines a simple development loop with tools that keep work scoped,
 3. **Implement** against a session-scoped objective with `goal`, using `todo` to track work in progress.
 4. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
-Isolated subagents support research and verification throughout the workflow. Each receives a self-contained task and explicit filesystem, shell, web, or broker permissions. For isolated implementation, the explicit-only `handoff-to-worktree` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief.
+Isolated subagents support research and verification throughout the workflow. Each receives a self-contained task and explicit filesystem, shell, web, or broker permissions. For isolated implementation, the explicit-only `delegate` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief.
 
 ### Extensions
 
@@ -30,7 +30,7 @@ See [`pi/README.md`](pi/README.md) for the complete extension and skill catalog.
 
 ### Herdr integration
 
-[Herdr](https://herdr.dev/) provides the terminal and worktree control plane used by the `herdr` and `handoff-to-worktree` skills. Herdr's Pi integration installs a local lifecycle bridge, while the repository-owned `ask_user` extension reports interactive questions through that bridge. See the [Pi Herdr integration documentation](pi/README.md#herdr-integration) for component ownership, installation, and updates.
+[Herdr](https://herdr.dev/) provides the terminal and worktree control plane used by the `herdr` and `delegate` skills. Herdr's Pi integration installs a local lifecycle bridge, while the repository-owned `ask_user` extension reports interactive questions through that bridge. See the [Pi Herdr integration documentation](pi/README.md#herdr-integration) for component ownership, installation, and updates.
 
 ### Development
 

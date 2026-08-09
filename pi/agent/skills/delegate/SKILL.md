@@ -1,12 +1,12 @@
 ---
-name: handoff-to-worktree
-description: Use when explicitly asked to hand a task to a new Pi agent in a newly created Herdr-managed Git worktree.
+name: delegate
+description: Use when explicitly asked to delegate a task to a new Pi agent running asynchronously in a newly created Herdr-managed Git worktree.
 disable-model-invocation: true
 ---
 
-# Handoff to Worktree
+# Delegate
 
-Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Keep this skill explicit-only; invoke it with `/skill:handoff-to-worktree` followed by the task to delegate.
+Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Keep this skill explicit-only; invoke it with `/skill:delegate` followed by the task to delegate.
 
 ## Preflight
 
