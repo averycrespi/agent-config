@@ -1,7 +1,7 @@
 export const meta = {
   name: "deep-research",
   description:
-    "Research a question across public web sources and return a verified cited report",
+    "Run one broad, bounded public-web research baseline and return an independently verified cited report. Include an explicit as-of date or cutoff and any must-cover sources. Use once per research question; review its coverage and limitations, then use targeted research for gaps instead of rerunning. Not for local, private, or authenticated sources.",
 };
 
 const scopeOutput = {
