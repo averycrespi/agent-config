@@ -74,6 +74,26 @@ test("done progress rows split intent stats from compact execution policy", () =
   );
 });
 
+test("queued progress rows use a dim hollow inactive glyph", () => {
+  const queuedTheme = {
+    bold: (text: string) => text,
+    fg: (color: string, text: string) => (color === "dim" ? `{${text}}` : text),
+  };
+  const lines = agentProgressLines(
+    state({
+      phase: "queued",
+      resolved: false,
+      toolUseCount: 0,
+      totalTokens: 0,
+      startedAt: Date.now(),
+      lastUpdateAt: Date.now(),
+    }) as any,
+    queuedTheme,
+  );
+  assert.match(lines[0]!, /^\{○\} docs · \d+s$/);
+  assert.equal(lines[1], "  medium:high (fs) · queued");
+});
+
 test("running progress rows keep volatile tool identity at the end", () => {
   const lines = agentProgressLines(
     state({

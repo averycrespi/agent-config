@@ -55,10 +55,11 @@ export function statsLine(
   return parts.join(" · ");
 }
 
-function statusGlyph(agent: SubagentRunState): string {
+function statusGlyph(agent: SubagentRunState, theme: any): string {
   if (agent.phase === "error") return "✗";
   if (agent.phase === "aborted") return "!";
   if (agent.resolved === true || agent.phase === "done") return "✓";
+  if (agent.phase === "queued") return theme.fg("dim", "○");
   if (agent.phase === "thinking") return "…";
   return "●";
 }
@@ -164,7 +165,7 @@ export function agentProgressLines(
     0,
     (isDone(agent) ? agent.lastUpdateAt : Date.now()) - agent.startedAt,
   );
-  const label = `${statusGlyph(agent)} ${safe(agent.intent, 160)}`;
+  const label = `${statusGlyph(agent, theme)} ${safe(agent.intent, 160)}`;
   const first = `${label}${separator(theme)}${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
   const secondary = [
     policyLabel(agent),
