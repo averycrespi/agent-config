@@ -9,7 +9,7 @@
 - `tools.ts` registers `mcp_search`, `mcp_describe`, and `mcp_call`, frames broker-originated data, handles broker errors, read-only defense-in-depth, spillover, diagnostic logs, and compact renderers.
 - `search.ts` ranks broker tools by token overlap against names and descriptions; `mcp_search` and the bash guard share this scorer.
 - `guard.ts` detects bash calls that look like `gh` or remote git operations and queues a hidden steer toward broker tools without blocking the bash call.
-- `config.ts` loads settings/env overrides and masks `authToken` through the shared config command.
+- `config.ts` loads settings/env overrides, migrates deprecated credential aliases, and masks `agentToken` through the shared config command.
 - `spillover.ts` re-exports the shared large-output spillover helper.
 
 ## Meta-tool model
@@ -26,7 +26,7 @@ Agent flow is:
 
 ## Client lifecycle and cache
 
-`BrokerClient` is long-lived within the Pi session and lazy-connects on first use. `configure()` resets the connection only when endpoint, auth token, read-only mode, or approval mode changes. `ensureConfig()` in `index.ts` reloads config per cwd and avoids repeated reconfiguration for the same cwd.
+`BrokerClient` is long-lived within the Pi session and lazy-connects on first use. `configure()` resets the connection only when endpoint, agent token, read-only mode, or approval mode changes. `ensureConfig()` in `index.ts` reloads config per cwd and avoids repeated reconfiguration for the same cwd.
 
 Tool-list behavior:
 
@@ -87,9 +87,13 @@ The broker menu in the system prompt should stay factual and short: namespaces a
 
 ## Configuration boundaries
 
-Missing endpoint or auth token should not prevent Pi startup. The meta-tools remain registered and return clear configuration errors when used. This keeps the extension safe to install on machines without broker access.
+Missing endpoint or agent token should not prevent Pi startup. The meta-tools remain registered and return clear configuration errors when used. This keeps the extension safe to install on machines without broker access.
 
-`authToken` is sensitive and must remain masked in config output. Do not write it to logs, prompt text, tool results, or diagnostic details.
+The public credential names are `agentToken` and `MCP_BROKER_AGENT_TOKEN` because this extension connects only to the broker's exact `/mcp` route. Never add or accept an admin-token setting: admin credentials belong on the host and must not enter the agent environment.
+
+Deprecated `authToken` and `MCP_BROKER_AUTH_TOKEN` aliases are migration-only inputs. Normalize aliases independently in global settings, project settings, and the environment before merging so normal source precedence is preserved. The canonical name wins when both forms occur in one source, and the config loader must report a warning without including credential values.
+
+`agentToken` and the deprecated alias are sensitive and must remain masked in config output. Do not write either value to logs, prompt text, tool results, or diagnostic details.
 
 ## Non-goals
 

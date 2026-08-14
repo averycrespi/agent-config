@@ -33,11 +33,11 @@ export function filterReadOnly(tools: BrokerTool[]): BrokerTool[] {
 }
 
 export function buildBrokerHeaders(
-  authToken: string,
+  agentToken: string,
   approvalMode: ApprovalMode,
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${authToken}`,
+    Authorization: `Bearer ${agentToken}`,
   };
   if (approvalMode === "reject") {
     headers[APPROVAL_MODE_HEADER] = approvalMode;
@@ -52,7 +52,7 @@ export class BrokerClient {
   private cachedTools: BrokerTool[] | null = null;
   private cachedProviders: string[] | null = null;
   private endpoint: string | undefined;
-  private authToken: string | undefined;
+  private agentToken: string | undefined;
   private readOnly: boolean;
   private networkTimeoutMs: number;
   private approvalTimeoutMs: number;
@@ -61,7 +61,7 @@ export class BrokerClient {
   constructor(
     opts: {
       endpoint?: string;
-      authToken?: string;
+      agentToken?: string;
       readOnly?: boolean;
       networkTimeoutMs?: number;
       approvalTimeoutMs?: number;
@@ -69,7 +69,7 @@ export class BrokerClient {
     } = {},
   ) {
     this.endpoint = opts.endpoint;
-    this.authToken = opts.authToken;
+    this.agentToken = opts.agentToken;
     this.readOnly = opts.readOnly ?? false;
     this.networkTimeoutMs = opts.networkTimeoutMs ?? DEFAULT_NETWORK_TIMEOUT_MS;
     this.approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
@@ -78,7 +78,7 @@ export class BrokerClient {
 
   configure(opts: {
     endpoint?: string;
-    authToken?: string;
+    agentToken?: string;
     readOnly?: boolean;
     approvalTimeoutMs?: number;
     approvalMode?: ApprovalMode;
@@ -87,11 +87,11 @@ export class BrokerClient {
     const nextApprovalMode = opts.approvalMode ?? "wait";
     const changed =
       this.endpoint !== opts.endpoint ||
-      this.authToken !== opts.authToken ||
+      this.agentToken !== opts.agentToken ||
       this.readOnly !== nextReadOnly ||
       this.approvalMode !== nextApprovalMode;
     this.endpoint = opts.endpoint;
-    this.authToken = opts.authToken;
+    this.agentToken = opts.agentToken;
     this.readOnly = nextReadOnly;
     this.approvalTimeoutMs = opts.approvalTimeoutMs ?? APPROVAL_TIMEOUT_MS;
     this.approvalMode = nextApprovalMode;
@@ -131,10 +131,10 @@ export class BrokerClient {
     if (this.connecting) return this.connecting;
 
     const endpoint = this.endpoint;
-    const token = this.authToken;
+    const token = this.agentToken;
     if (!endpoint || !token) {
       throw new Error(
-        "broker endpoint not configured — set endpoint/authToken or MCP_BROKER_ENDPOINT/MCP_BROKER_AUTH_TOKEN",
+        "broker endpoint not configured — set endpoint/agentToken or MCP_BROKER_ENDPOINT/MCP_BROKER_AGENT_TOKEN",
       );
     }
 

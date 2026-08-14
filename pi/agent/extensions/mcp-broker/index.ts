@@ -34,7 +34,7 @@ export default function (pi: ExtensionAPI) {
   registerConfigCommand(pi, {
     extensionName: "mcp-broker",
     loadConfig: loadMcpBrokerConfig,
-    sensitiveFields: ["authToken"],
+    sensitiveFields: ["agentToken", "authToken"],
   });
 
   // Pre-fetch the tool list on session start so the broker prompt menu

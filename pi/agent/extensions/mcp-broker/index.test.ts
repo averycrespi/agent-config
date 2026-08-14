@@ -96,7 +96,8 @@ test("buildBrokerPrompt skips tools without a namespace prefix", () => {
 
 test("extension registers lifecycle and config command handlers", async () => {
   process.env.MCP_BROKER_ENDPOINT = "https://broker.example.com";
-  process.env.MCP_BROKER_AUTH_TOKEN = "secret-token";
+  process.env.MCP_BROKER_AGENT_TOKEN = "secret-token";
+  delete process.env.MCP_BROKER_AUTH_TOKEN;
   process.env.MCP_BROKER_READONLY = "true";
   const handlers = new Map<string, (event: unknown, ctx: unknown) => unknown>();
   const commands = new Map<string, any>();
@@ -131,7 +132,7 @@ test("extension registers lifecycle and config command handlers", async () => {
 
   assert.equal(notifications[0].level, "info");
   assert.match(notifications[0].message, /mcp-broker effective config:/);
-  assert.match(notifications[0].message, /"authToken": "\*\*\*\*\*\*\*\*"/);
+  assert.match(notifications[0].message, /"agentToken": "\*\*\*\*\*\*\*\*"/);
   assert.match(notifications[0].message, /"readOnly": true/);
   assert.doesNotMatch(notifications[0].message, /secret-token/);
 });

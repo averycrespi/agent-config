@@ -22,12 +22,12 @@ If a cached broker tool list becomes stale or the connection fails while refresh
 
 ## Configuration
 
-Configure via `extension:mcp-broker` in Pi settings. Environment variables override settings when set. Use `/mcp-broker-config` to display the effective parsed config with `authToken` masked.
+Configure via `extension:mcp-broker` in Pi settings. Environment variables override settings when set. Use `/mcp-broker-config` to display the effective parsed config with `agentToken` masked.
 
 | Field               | Default  | Environment override             | Description                                                                                                     |
 | ------------------- | -------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `endpoint`          | unset    | `MCP_BROKER_ENDPOINT`            | Base URL of the broker; the extension connects to `${endpoint}/mcp`.                                            |
-| `authToken`         | unset    | `MCP_BROKER_AUTH_TOKEN`          | Bearer token for the broker's MCP endpoint.                                                                     |
+| `agentToken`        | unset    | `MCP_BROKER_AGENT_TOKEN`         | Agent bearer token for the broker's exact `/mcp` endpoint. Never provide the admin token.                       |
 | `readOnly`          | `false`  | `MCP_BROKER_READONLY`            | Set to `true` in settings or `1`/`true` in the environment to activate read-only mode; `0`/`false` disables it. |
 | `approvalMode`      | `wait`   | `MCP_BROKER_APPROVAL_MODE`       | `wait` blocks for human approval when broker policy requires it; `reject` immediately rejects those calls.      |
 | `approvalTimeoutMs` | `600000` | `MCP_BROKER_APPROVAL_TIMEOUT_MS` | Positive integer timeout, in milliseconds, for broker tool calls that may wait for human approval.              |
@@ -38,7 +38,7 @@ Example settings:
 {
   "extension:mcp-broker": {
     "endpoint": "https://broker.example.com",
-    "authToken": "<token>",
+    "agentToken": "<agent-token>",
     "readOnly": false,
     "approvalMode": "wait",
     "approvalTimeoutMs": 600000
@@ -46,7 +46,9 @@ Example settings:
 }
 ```
 
-If `endpoint`/`MCP_BROKER_ENDPOINT` or `authToken`/`MCP_BROKER_AUTH_TOKEN` is missing, the meta-tools are still registered, but any call returns a clear configuration error — Pi remains usable on machines without a broker.
+`authToken` and `MCP_BROKER_AUTH_TOKEN` remain accepted as deprecated migration aliases. `/mcp-broker-config` reports their use as a warning. If a canonical and legacy name are both set in the same settings layer or environment, `agentToken`/`MCP_BROKER_AGENT_TOKEN` wins. Remove the legacy name after migrating.
+
+If `endpoint`/`MCP_BROKER_ENDPOINT` or `agentToken`/`MCP_BROKER_AGENT_TOKEN` is missing, the meta-tools are still registered, but any call returns a clear configuration error — Pi remains usable on machines without a broker.
 
 ## Approval mode
 

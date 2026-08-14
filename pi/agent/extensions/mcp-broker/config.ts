@@ -9,7 +9,7 @@ import { APPROVAL_TIMEOUT_MS, type ApprovalMode } from "./client.ts";
 
 export type McpBrokerConfig = {
   endpoint?: string;
-  authToken?: string;
+  agentToken?: string;
   readOnly: boolean;
   approvalMode: ApprovalMode;
   approvalTimeoutMs: number;
@@ -17,7 +17,7 @@ export type McpBrokerConfig = {
 
 const DEFAULT_CONFIG: McpBrokerConfig = {
   endpoint: undefined,
-  authToken: undefined,
+  agentToken: undefined,
   readOnly: false,
   approvalMode: "wait",
   approvalTimeoutMs: APPROVAL_TIMEOUT_MS,
@@ -34,14 +34,22 @@ export async function loadMcpBrokerConfig(
   });
   const merged = mergeExtensionConfig({
     defaults: DEFAULT_CONFIG,
-    globalSettings: readExtensionSettings(globalSettings, "mcp-broker"),
-    projectSettings: readExtensionSettings(projectSettings, "mcp-broker"),
-    envSettings: readEnvSettings(),
+    globalSettings: migrateDeprecatedTokenSetting(
+      readExtensionSettings(globalSettings, "mcp-broker"),
+      "global settings",
+      warnings,
+    ),
+    projectSettings: migrateDeprecatedTokenSetting(
+      readExtensionSettings(projectSettings, "mcp-broker"),
+      "project settings",
+      warnings,
+    ),
+    envSettings: readEnvSettings(warnings),
   });
 
   return {
     endpoint: normalizeString(merged.endpoint),
-    authToken: normalizeString(merged.authToken),
+    agentToken: normalizeString(merged.agentToken),
     readOnly:
       typeof merged.readOnly === "boolean"
         ? merged.readOnly
@@ -57,14 +65,30 @@ export async function loadMcpBrokerConfig(
   };
 }
 
-export function readEnvSettings(): Partial<McpBrokerConfig> {
+export function readEnvSettings(
+  warnings: string[] = [],
+): Partial<McpBrokerConfig> {
   const settings: Partial<McpBrokerConfig> = {};
   if (process.env.MCP_BROKER_ENDPOINT !== undefined) {
     settings.endpoint = normalizeString(process.env.MCP_BROKER_ENDPOINT);
   }
-  if (process.env.MCP_BROKER_AUTH_TOKEN !== undefined) {
-    settings.authToken = normalizeString(process.env.MCP_BROKER_AUTH_TOKEN);
+
+  const hasAgentToken = process.env.MCP_BROKER_AGENT_TOKEN !== undefined;
+  const hasAuthToken = process.env.MCP_BROKER_AUTH_TOKEN !== undefined;
+  if (hasAgentToken) {
+    settings.agentToken = normalizeString(process.env.MCP_BROKER_AGENT_TOKEN);
+    if (hasAuthToken) {
+      warnings.push(
+        "Both MCP_BROKER_AGENT_TOKEN and deprecated MCP_BROKER_AUTH_TOKEN are set; using MCP_BROKER_AGENT_TOKEN.",
+      );
+    }
+  } else if (hasAuthToken) {
+    settings.agentToken = normalizeString(process.env.MCP_BROKER_AUTH_TOKEN);
+    warnings.push(
+      "MCP_BROKER_AUTH_TOKEN is deprecated; use MCP_BROKER_AGENT_TOKEN.",
+    );
   }
+
   if (process.env.MCP_BROKER_READONLY !== undefined) {
     const readOnly = parseBooleanEnv(process.env.MCP_BROKER_READONLY);
     if (readOnly !== undefined) settings.readOnly = readOnly;
@@ -84,6 +108,27 @@ export function readEnvSettings(): Partial<McpBrokerConfig> {
       settings.approvalTimeoutMs = approvalTimeoutMs;
     }
   }
+  return settings;
+}
+
+function migrateDeprecatedTokenSetting(
+  settings: Record<string, unknown>,
+  source: "global settings" | "project settings",
+  warnings: string[],
+): Record<string, unknown> {
+  if (!Object.hasOwn(settings, "authToken")) return settings;
+
+  if (Object.hasOwn(settings, "agentToken")) {
+    warnings.push(
+      `extension:mcp-broker defines both agentToken and deprecated authToken in ${source}; using agentToken.`,
+    );
+  } else {
+    settings.agentToken = settings.authToken;
+    warnings.push(
+      `extension:mcp-broker authToken in ${source} is deprecated; use agentToken.`,
+    );
+  }
+  delete settings.authToken;
   return settings;
 }
 
