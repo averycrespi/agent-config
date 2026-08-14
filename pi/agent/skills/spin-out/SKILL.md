@@ -1,12 +1,11 @@
 ---
-name: handoff-to-worktree
-description: Use when explicitly asked to hand a task to a new Pi agent in a newly created Herdr-managed Git worktree.
-disable-model-invocation: true
+name: spin-out
+description: Use only when the user explicitly asks to "spin out" work or delegate work to another agent in a new Herdr-managed Git worktree. Do not use merely because delegation might help.
 ---
 
-# Handoff to Worktree
+# Spin Out
 
-Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Keep this skill explicit-only; invoke it with `/skill:handoff-to-worktree` followed by the task to delegate.
+Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Activate only for an explicit user request to spin out or delegate work to another agent; never infer that request from task size, complexity, or the potential usefulness of parallel work.
 
 ## Preflight
 
