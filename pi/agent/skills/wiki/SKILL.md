@@ -36,6 +36,8 @@ Some wiki vaults want automatic commits after meaningful wiki operations. Follow
 - Commit after applying accepted lint recommendations.
 - Do not commit for read-only queries unless the answer is filed back into the wiki.
 - Before committing, run `git status -sb`, inspect the changed files, and stage only files that belong to the wiki operation.
+- Run the target vault's documented deterministic checks before committing. For `/Users/avery/work/agent-wiki`, run `npm run lint` from the vault root.
+- If a pre-commit hook fails, fix the reported issue and retry the commit; never bypass the hook.
 - Include raw source files or assets only when they were intentionally added for the operation.
 - Never commit secrets, credentials, `.env` files, transient app state, or unrelated user changes.
 - Use conventional commit messages such as `docs(wiki): ingest <source>` or `chore(wiki): lint <area>`.
