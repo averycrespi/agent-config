@@ -102,6 +102,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
 | `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                    |
+| `wiki`                    | Maintaining a persistent markdown wiki from immutable source documents                                 |
 
 Notes:
 
