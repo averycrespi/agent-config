@@ -137,7 +137,7 @@ The host treats sandbox RPC as untrusted. It validates required execution fields
 
 ## Rendering
 
-Collapsed tool output is always one width-truncated aggregate line; the separate call row is suppressed. Headers identify every action explicitly as `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Expanded output preserves that exact line, then adds workflow details. Runs place agents in chronological start order, with the newest at the bottom, and share the subagent two-line grammar: status, intent, duration, and tool/token counts first; then `tier:thinking`, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `shell`, `broker`, and `web`; empty sets are omitted. List and validate actions add inventory or source details. Typed errors, logs, and diagnostic paths remain available. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
+The separate call row is suppressed, and every result starts with one width-truncated header identifying `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Run output shows agent progress by default in chronological start order, with the newest at the bottom, using the shared two-line grammar: status, intent, duration, and tool/token counts first; then `tier:thinking`, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `shell`, `broker`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
 
 ## Configuration
 
@@ -150,7 +150,7 @@ Settings live under `extension:workflows`. Global, project, and valid environmen
 | `maxConcurrency`          | `4`                    | `WORKFLOWS_MAX_CONCURRENCY`            | Sandbox scheduler limit, clamped to 16.                           |
 | `maxTokensPerRun`         | `0`                    | `WORKFLOWS_MAX_TOKENS_PER_RUN`         | Observed-token limit; `0` disables.                               |
 | `maxAgentsPerRun`         | `100`                  | `WORKFLOWS_MAX_AGENTS_PER_RUN`         | Logical-call limit; `0` disables.                                 |
-| `maxVisibleSettledAgents` | `5`                    | `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` | Settled rows shown when expanded; `0` shows running only.         |
+| `maxVisibleSettledAgents` | `5`                    | `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` | Settled progress rows shown; `0` shows running agents only.       |
 | `userWorkflowsDir`        | `<agentDir>/workflows` | `WORKFLOWS_USER_WORKFLOWS_DIR`         | Saved definition directory; relative paths resolve from call cwd. |
 
 ```json

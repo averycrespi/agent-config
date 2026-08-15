@@ -90,7 +90,7 @@ Results use `## <intent>` headings followed by capability/tier/thinking metadata
 
 ## UI
 
-Collapsed output is one `spawn_agents` aggregate line with running or final counts, failures, and elapsed time. Expanded agents use two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with `tier:thinking`, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `shell`, `broker`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanded output also includes finalized diagnostic paths. Dynamic text is control-normalized, bounded, and width-aware.
+Default output shows the `spawn_agents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with `tier:thinking`, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `shell`, `broker`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
 
 ## Configuration
 

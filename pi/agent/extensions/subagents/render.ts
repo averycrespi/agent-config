@@ -226,11 +226,13 @@ export function renderAgentsResult(
       !options.isPartial,
     ),
   ];
-  if (options.expanded) {
+  if (agents.length > 0) {
     lines.push(
       "",
       ...agents.flatMap((agent) => agentProgressLines(agent, theme)),
     );
+  }
+  if (options.expanded) {
     for (const agent of agents) {
       if (agent.logFile)
         lines.push(theme.fg("muted", `Log: ${safe(agent.logFile, 240)}`));

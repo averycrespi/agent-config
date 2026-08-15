@@ -168,10 +168,13 @@ test("aggregate and per-agent separators are muted", () => {
   );
   assert.deepEqual(result.render(200), [
     "✓ spawn_agents{ · }{1 done · 0 failed · 12s}",
+    "",
+    "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
+    "  {medium:high (fs)}",
   ]);
 });
 
-test("collapsed result is one aggregate line for running and final states", () => {
+test("default result includes progress rows but excludes diagnostics", () => {
   const ctx = context();
   try {
     const partial = renderAgentsResult(
@@ -190,12 +193,13 @@ test("collapsed result is one aggregate line for running and final states", () =
       ctx,
     );
     const partialLines = partial.render(200);
-    assert.equal(partialLines.length, 1);
     assert.match(
       partialLines[0]!,
       /^spawn_agents · 1 done · 1 running · 0 failed · \d+(?:m \d+s|s)$/,
     );
-    assert.doesNotMatch(partialLines[0]!, /docs|tests/);
+    assert.ok(partialLines.some((line) => line.startsWith("✓ docs · ")));
+    assert.ok(partialLines.some((line) => line.startsWith("● tests · ")));
+    assert.doesNotMatch(partialLines.join("\n"), /Log:/);
 
     ctx.lastComponent = partial;
     const final = renderAgentsResult(
@@ -205,7 +209,7 @@ test("collapsed result is one aggregate line for running and final states", () =
           total: 2,
           failed: 1,
           agents: [
-            state(),
+            state({ logFile: "/tmp/docs.log" }),
             state({
               intent: "tests",
               phase: "error",
@@ -221,12 +225,50 @@ test("collapsed result is one aggregate line for running and final states", () =
       theme,
       ctx,
     );
-    assert.deepEqual(final.render(200), [
-      "✗ spawn_agents · 1 done · 1 failed · 12s",
-    ]);
+    const finalLines = final.render(200);
+    assert.equal(finalLines[0], "✗ spawn_agents · 1 done · 1 failed · 12s");
+    assert.ok(finalLines.some((line) => line.startsWith("✓ docs · ")));
+    assert.ok(finalLines.some((line) => line.startsWith("✗ tests · ")));
+    assert.doesNotMatch(finalLines.join("\n"), /Log: \/tmp\/docs\.log/);
   } finally {
     clearInterval(ctx.state.renderTimer as ReturnType<typeof setInterval>);
   }
+});
+
+test("expanded result preserves every default progress row in order", () => {
+  const result = {
+    content: [],
+    details: {
+      total: 2,
+      failed: 0,
+      agents: [
+        state({ logFile: "/tmp/docs.log" }),
+        state({
+          intent: "tests",
+          startedAt: 2000,
+          lastUpdateAt: 4000,
+        }),
+      ],
+    },
+  };
+  const defaultLines = renderAgentsResult(
+    result,
+    { isPartial: false, expanded: false },
+    theme,
+    context(),
+  ).render(200);
+  const expandedLines = renderAgentsResult(
+    result,
+    { isPartial: false, expanded: true },
+    theme,
+    context(),
+  ).render(200);
+
+  assert.deepEqual(expandedLines.slice(0, defaultLines.length), defaultLines);
+  assert.equal(
+    expandedLines.filter((line) => line === "Log: /tmp/docs.log").length,
+    1,
+  );
 });
 
 test("result renderer is width-aware for partial, final, and expanded states", () => {

@@ -422,7 +422,7 @@ function stopRendererTimer(context: any) {
   context.state.renderTimer = undefined;
 }
 
-test("workflow collapsed rendering is always one total line", () => {
+test("workflow default rendering shows progress and inventory without diagnostics", () => {
   const context = rendererContext();
   assert.deepEqual(
     renderWorkflowCall(
@@ -433,111 +433,140 @@ test("workflow collapsed rendering is always one total line", () => {
     [],
   );
 
-  const snapshot = workflowSnapshot();
-  const cases = [
-    {
-      label: "running",
-      result: { content: [], details: { snapshot } },
-      options: { isPartial: true },
-    },
-    {
-      label: "success",
-      result: { content: [], details: { snapshot } },
-      options: { isPartial: false },
-    },
-    {
-      label: "snapshot error",
-      result: {
-        content: [{ type: "text", text: "Error: timed out" }],
-        details: {
-          snapshot,
-          errorCode: "workflow_timeout",
-          counts: {
-            completed: 1,
-            failed: 1,
-            timedOut: 1,
-            canceled: 0,
-            outstanding: 0,
-          },
-        },
+  const snapshot = workflowSnapshot({
+    logs: [{ level: "info", message: "fetched sources", timestamp: 2000 }],
+    agents: [
+      {
+        ...workflowSnapshot().agents[0],
+        logFile: "/tmp/agent.log",
+        diagnosticWarnings: ["provider warning"],
       },
-      options: { isPartial: false },
-    },
-    {
-      label: "input error",
-      result: {
-        content: [{ type: "text", text: "Invalid workflow input: bad args" }],
-        details: { action: "run", inputError: true },
-      },
-      options: { isPartial: false },
-    },
-    {
-      label: "list",
-      result: {
-        content: [],
-        details: {
-          action: "list",
-          inventory: { storeDir: "/workflows", entries: [] },
-        },
-      },
-      options: { isPartial: false },
-    },
-    {
-      label: "validate",
-      result: {
-        content: [],
-        details: {
-          action: "validate",
-          meta: { name: "research" },
-          sourceFile: "/workflows/research.js",
-        },
-      },
-      options: { isPartial: false },
-    },
-  ];
-
-  for (const item of cases) {
+    ],
+  });
+  for (const isPartial of [true, false]) {
     const lines = renderWorkflowResult(
-      item.result,
-      item.options,
+      { content: [], details: { snapshot } },
+      { isPartial, expanded: false },
       theme,
       context,
     ).render(200);
-    if (item.options.isPartial) stopRendererTimer(context);
-    assert.equal(lines.length, 1, item.label);
+    if (isPartial) stopRendererTimer(context);
+    assert.ok(lines.some((line) => line.startsWith("✓ Search docs · ")));
+    assert.doesNotMatch(lines.join("\n"), /Logs|agent\.log|provider warning/);
   }
+
+  const errorLines = renderWorkflowResult(
+    {
+      content: [{ type: "text", text: "Error: timed out" }],
+      details: {
+        snapshot,
+        errorCode: "workflow_timeout",
+        recoveryFile: "/tmp/recovery.gz",
+      },
+    },
+    { isPartial: false, expanded: false },
+    theme,
+    context,
+  ).render(200);
+  assert.ok(errorLines.some((line) => line.startsWith("✓ Search docs · ")));
+  assert.doesNotMatch(errorLines.join("\n"), /Recovery:|recovery\.gz/);
+
+  const inputError = renderWorkflowResult(
+    {
+      content: [{ type: "text", text: "Invalid workflow input: bad args" }],
+      details: { action: "run", inputError: true },
+    },
+    { isPartial: false, expanded: false },
+    theme,
+    context,
+  ).render(200);
+  assert.equal(inputError.length, 1);
+
+  const listLines = renderWorkflowResult(
+    {
+      content: [],
+      details: {
+        action: "list",
+        inventory: {
+          storeDir: "/workflows",
+          entries: [
+            { name: "research", description: "Research", valid: true },
+            { name: "broken", diagnostic: "bad metadata", valid: false },
+          ],
+        },
+      },
+    },
+    { isPartial: false, expanded: false },
+    theme,
+    context,
+  ).render(200);
+  assert.ok(listLines.includes("✓ research — Research"));
+  assert.ok(listLines.includes("✗ broken"));
+  assert.doesNotMatch(listLines.join("\n"), /store \/workflows|bad metadata/);
+
+  const validateLines = renderWorkflowResult(
+    {
+      content: [],
+      details: {
+        action: "validate",
+        meta: { name: "research" },
+        sourceFile: "/workflows/research.js",
+      },
+    },
+    { isPartial: false, expanded: false },
+    theme,
+    context,
+  ).render(200);
+  assert.deepEqual(validateLines, ["✓ workflow validate research"]);
 });
 
-test("expanded workflows preserve the collapsed header and add details", () => {
+test("expanded workflows preserve default progress and add diagnostics", () => {
   const context = rendererContext();
+  const snapshot = workflowSnapshot({
+    logs: [{ level: "info", message: "fetched sources", timestamp: 2000 }],
+    agents: [
+      {
+        ...workflowSnapshot().agents[0],
+        logFile: "/tmp/agent.log",
+        diagnosticWarnings: ["provider warning"],
+      },
+      {
+        id: 2,
+        intent: "Audit sources",
+        capabilities: ["read-filesystem"],
+        modelTier: "medium",
+        thinking: "high",
+        status: "done",
+        startedAt: 2000,
+        finishedAt: 8000,
+      },
+    ],
+  });
   const cases = [
     {
       label: "running",
-      result: {
-        content: [],
-        details: { snapshot: workflowSnapshot() },
-      },
+      result: { content: [], details: { snapshot } },
       partial: true,
+      diagnostic: /Logs/,
     },
     {
       label: "success",
-      result: {
-        content: [],
-        details: { snapshot: workflowSnapshot() },
-      },
+      result: { content: [], details: { snapshot } },
       partial: false,
+      diagnostic: /agent\.log/,
     },
     {
       label: "error",
       result: {
         content: [{ type: "text", text: "Error: timed out" }],
         details: {
-          snapshot: workflowSnapshot(),
+          snapshot,
           errorCode: "workflow_timeout",
           recoveryFile: "/tmp/recovery.gz",
         },
       },
       partial: false,
+      diagnostic: /Recovery: \/tmp\/recovery\.gz/,
     },
     {
       label: "list",
@@ -547,11 +576,15 @@ test("expanded workflows preserve the collapsed header and add details", () => {
           action: "list",
           inventory: {
             storeDir: "/workflows",
-            entries: [{ name: "research", valid: true }],
+            entries: [
+              { name: "research", valid: true },
+              { name: "broken", diagnostic: "bad metadata", valid: false },
+            ],
           },
         },
       },
       partial: false,
+      diagnostic: /store \/workflows[\s\S]*bad metadata/,
     },
     {
       label: "validate",
@@ -564,25 +597,35 @@ test("expanded workflows preserve the collapsed header and add details", () => {
         },
       },
       partial: false,
+      diagnostic: /source \/workflows\/research\.js/,
     },
   ];
 
   for (const item of cases) {
-    const collapsed = renderWorkflowResult(
+    const defaultLines = renderWorkflowResult(
       item.result,
-      { isPartial: item.partial },
+      { isPartial: item.partial, expanded: false },
       theme,
       context,
     ).render(300);
-    const expanded = renderWorkflowResult(
+    const expandedLines = renderWorkflowResult(
       item.result,
       { isPartial: item.partial, expanded: true },
       theme,
       context,
     ).render(300);
     if (item.partial) stopRendererTimer(context);
-    assert.equal(expanded[0], collapsed[0], item.label);
-    assert.ok(expanded.length > collapsed.length, item.label);
+    assert.equal(expandedLines[0], defaultLines[0], item.label);
+    const isProgressLine = (line: string) =>
+      /^(?:✓|✗|!|●|○|…) (?:Search docs|Audit sources) · /.test(line) ||
+      /^  (?:small:medium|medium:high)/.test(line);
+    assert.deepEqual(
+      expandedLines.filter(isProgressLine),
+      defaultLines.filter(isProgressLine),
+      `${item.label} preserves complete progress rows in order`,
+    );
+    assert.match(expandedLines.join("\n"), item.diagnostic, item.label);
+    assert.doesNotMatch(defaultLines.join("\n"), item.diagnostic, item.label);
   }
 });
 
@@ -594,9 +637,10 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     context,
   );
-  assert.deepEqual(running.render(200), [
+  assert.equal(
+    running.render(200)[0],
     "workflow run research · search · 1 done · 0 running · 0 failed · 12s",
-  ]);
+  );
   stopRendererTimer(context);
 
   const success = renderWorkflowResult(
@@ -605,9 +649,10 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     context,
   );
-  assert.deepEqual(success.render(200), [
+  assert.equal(
+    success.render(200)[0],
     "✓ workflow run research · 1 done · 0 failed · 12s",
-  ]);
+  );
 
   const partialFailure = renderWorkflowResult(
     {
@@ -636,9 +681,10 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     context,
   );
-  assert.deepEqual(partialFailure.render(200), [
+  assert.equal(
+    partialFailure.render(200)[0],
     "! workflow run research · 1 done · 1 agent failed · 1 branch failed · 12s",
-  ]);
+  );
 
   const failure = renderWorkflowResult(
     {
@@ -659,9 +705,10 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     context,
   );
-  assert.deepEqual(failure.render(200), [
+  assert.equal(
+    failure.render(200)[0],
     "✗ workflow run research · workflow_timeout · 1 done · 1 failed · 1 timed out · 12s — timed out",
-  ]);
+  );
 
   const list = renderWorkflowResult(
     {
@@ -675,7 +722,7 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     rendererContext({ action: "list", name: undefined }),
   );
-  assert.deepEqual(list.render(200), ["✓ workflow list · 1 saved"]);
+  assert.equal(list.render(200)[0], "✓ workflow list · 1 saved");
 
   const validate = renderWorkflowResult(
     {

@@ -200,7 +200,11 @@ function fallbackAgentActivity(
   };
 }
 
-function agentLines(agent: WorkflowAgentState, theme: any): string[] {
+function agentLines(
+  agent: WorkflowAgentState,
+  theme: any,
+  includeDiagnostics: boolean,
+): string[] {
   const activity = agent.activity
     ? safeAgentActivity(agent.activity)
     : fallbackAgentActivity(agent);
@@ -209,6 +213,8 @@ function agentLines(agent: WorkflowAgentState, theme: any): string[] {
       ? []
       : [`timeout ${formatDuration(agent.explicitTimeoutMs)}`];
   const lines = agentProgressLines(activity, theme, { secondaryMetadata });
+  if (!includeDiagnostics) return lines;
+
   const metadata: string[] = [];
   if (agent.errorCode) metadata.push(`failure ${safeDisplay(agent.errorCode)}`);
   if (agent.logFile) metadata.push(`log ${safeDisplay(agent.logFile)}`);
@@ -239,6 +245,7 @@ function renderSnapshotDetails(
   snapshot: WorkflowSnapshot,
   theme: any,
   maxVisibleSettledAgents = DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+  includeDiagnostics = false,
 ): string[] {
   const lines: string[] = [];
   const chronologicalAgents = [...snapshot.agents].sort(
@@ -273,10 +280,16 @@ function renderSnapshotDetails(
       ].join(" · ");
       lines.push(theme.fg("dim", hiddenSummary));
     }
-    lines.push(...visibleAgents.flatMap((agent) => agentLines(agent, theme)));
+    lines.push(
+      ...visibleAgents.flatMap((agent) =>
+        agentLines(agent, theme, includeDiagnostics),
+      ),
+    );
   }
-  const logs = workflowLogLines(snapshot, theme);
-  if (logs.length > 0) lines.push("", ...logs);
+  if (includeDiagnostics) {
+    const logs = workflowLogLines(snapshot, theme);
+    if (logs.length > 0) lines.push("", ...logs);
+  }
   return lines;
 }
 
@@ -287,6 +300,7 @@ export function renderSnapshot(
     final?: boolean;
     error?: boolean;
     maxVisibleSettledAgents?: number;
+    includeDiagnostics?: boolean;
   } = {},
 ): string[] {
   return [
@@ -295,6 +309,7 @@ export function renderSnapshot(
       snapshot,
       theme,
       options.maxVisibleSettledAgents ?? DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+      options.includeDiagnostics,
     ),
   ];
 }
@@ -331,11 +346,10 @@ export function renderWorkflowResult(
     startPartialTimer(context);
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
     if (snapshot) {
-      const lines = expanded
-        ? renderSnapshot(snapshot, theme, {
-            maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
-          })
-        : [workflowSummaryLine(snapshot, theme)];
+      const lines = renderSnapshot(snapshot, theme, {
+        maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+        includeDiagnostics: expanded,
+      });
       return getTruncatedText(context.lastComponent, lines);
     }
     const input = context.args as
@@ -366,7 +380,7 @@ export function renderWorkflowResult(
       theme,
       context,
     );
-    if (!expanded || !snapshot) {
+    if (!snapshot) {
       return getTruncatedText(context.lastComponent, [summary]);
     }
 
@@ -377,6 +391,7 @@ export function renderWorkflowResult(
         theme,
         result.details?.maxVisibleSettledAgents ??
           DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
+        expanded,
       ),
     ];
     const recoveryFile = result.details?.recoveryFile
@@ -385,7 +400,7 @@ export function renderWorkflowResult(
     const persistenceWarning = result.details?.persistenceWarning
       ? safeDisplay(result.details.persistenceWarning)
       : undefined;
-    if (recoveryFile || persistenceWarning) {
+    if (expanded && (recoveryFile || persistenceWarning)) {
       lines.push("");
       if (recoveryFile) lines.push(`Recovery: ${recoveryFile}`);
       if (persistenceWarning) {
@@ -414,15 +429,20 @@ export function renderWorkflowResult(
       `${entries.length} saved`,
     ]);
     const lines = [summary];
-    if (expanded) {
+    if (expanded || entries.length > 0 || inventory?.truncated) {
+      lines.push("");
+      if (expanded) {
+        lines.push(`store ${safeDisplay(inventory?.storeDir ?? "unknown")}`);
+      }
       lines.push(
-        "",
-        `store ${safeDisplay(inventory?.storeDir ?? "unknown")}`,
         ...entries.map((entry) => {
           const name = safeDisplay(entry.name ?? entry.filename);
-          return entry.valid
-            ? `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`
-            : `✗ ${name} — ${safeDisplay(entry.diagnostic ?? "invalid")}`;
+          if (entry.valid) {
+            return `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`;
+          }
+          return expanded
+            ? `✗ ${name} — ${safeDisplay(entry.diagnostic ?? "invalid")}`
+            : `✗ ${name}`;
         }),
         ...(inventory?.truncated
           ? [`… ${safeDisplay(inventory.truncated)}`]
@@ -447,12 +467,11 @@ export function renderWorkflowResult(
 
   const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
   if (snapshot) {
-    const lines = expanded
-      ? renderSnapshot(snapshot, theme, {
-          final: true,
-          maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
-        })
-      : [workflowSummaryLine(snapshot, theme, { final: true })];
+    const lines = renderSnapshot(snapshot, theme, {
+      final: true,
+      maxVisibleSettledAgents: result.details?.maxVisibleSettledAgents,
+      includeDiagnostics: expanded,
+    });
     return getTruncatedText(context.lastComponent, lines);
   }
 
