@@ -19,8 +19,10 @@ Use this skill for concrete pre-implementation artifacts or decisions, including
 
 Route adjacent work deliberately:
 
-- Use `clarify` when the desired outcome or user-owned requirements are still fuzzy.
-- Use `plan` when no concrete approach exists yet or the task is to create one.
+- Use `clarify` when the desired outcome or correct design workflow is still unclear and no durable artifact is yet appropriate.
+- Use `architect` when system boundaries, structural trade-offs, or multi-specification decomposition must be created or revised.
+- Use `specify` when one bounded change's behavior, scope, policies, or acceptance criteria must be created or revised.
+- Use `plan` when a Ready specification needs an implementation approach.
 - Use `review` for completed code, diffs, branches, pull requests, or implementation behavior. Do not use `challenge` as a substitute for post-implementation review.
 
 Do not impersonate every domain specialist. Identify when security, infrastructure, legal, data, or other specialist review is warranted, and explain the material concern that justifies it.
@@ -131,7 +133,7 @@ When human input is required, ask one focused question at a time and recommend a
 
 ### 8. Revise only when asked
 
-Do not edit the challenged artifact by default. If revision is requested, make the smallest changes needed to address the findings or hand plan creation and repair back to `plan`. Preserve sound decisions and avoid turning a plan or design into a line-by-line implementation script.
+Do not edit the challenged artifact by default. If revision is requested, make the smallest changes needed to address the findings or return architecture, specification, or plan repair to its owning skill. Preserve sound decisions and avoid turning a plan or design into a line-by-line implementation script.
 
 ## Anti-patterns
 

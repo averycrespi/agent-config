@@ -88,8 +88,9 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | Skill                     | Use when                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows       |
+| `architect`               | Designing a system or cross-cutting feature and decomposing it into bounded specifications             |
 | `challenge`               | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation |
-| `clarify`                 | Interviewing through fuzzy requirements, scope, behavior, edge cases, and acceptance criteria          |
+| `clarify`                 | Resolving ambiguity and routing work to the appropriate design workflow without writing an artifact    |
 | `create-html-artifact`    | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools          |
 | `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace               |
 | `create-skill`            | Creating a new skill or updating an existing one                                                       |
@@ -98,15 +99,17 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `handoff`                 | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                   |
 | `spin-out`                | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask  |
 | `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                 |
-| `plan`                    | Creating research-grounded implementation plans from clarified intent for autonomous `/goal` handoff   |
+| `plan`                    | Turning one Ready specification into an implementation plan for autonomous `/goal` handoff             |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
 | `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |
+| `specify`                 | Defining one bounded feature or change as a behavioral contract with observable acceptance criteria    |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                    |
 | `wiki`                    | Maintaining a persistent markdown wiki from immutable source documents                                 |
 
 Notes:
 
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
-- Collaborative clarification lives in `clarify`; durable implementation planning lives in `plan`; `challenge` stress-tests concrete approaches before implementation; `review` evaluates completed changes; and `goal` drives execution/completion evidence.
+- `clarify` resolves ambiguity and routes work without writing a design artifact. `architect` writes high-level designs under `.design/architectures/` and decomposes them into specifications. `specify` writes one bounded behavioral contract under `.design/specs/`, and `plan` turns one Ready specification into a `.design/plans/` implementation handoff. `challenge` stress-tests concrete artifacts before implementation, `review` evaluates completed changes, and `goal` drives execution and completion evidence.
+- Hidden `.design/` files are local workflow artifacts. Promote canonical architecture decisions and user-facing contracts into the repository's tracked documentation during implementation.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

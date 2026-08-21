@@ -1,220 +1,196 @@
 ---
 name: plan
-description: Use when turning a clarified implementation request, feature idea, bugfix, refactor, workflow change, or design discussion into an execution-ready plan that a fresh coding agent can implement autonomously, especially before running /goal.
+description: Use when turning one Ready specification into an execution-ready implementation plan that a fresh coding agent can complete autonomously, especially before running /goal.
 ---
 
 # Plan
 
-Create an execution-ready plan from clarified intent and repo research. Optimize for a durable handoff artifact that another agent can pick up in a fresh session and implement autonomously until complete.
+Create an execution-ready implementation plan from exactly one Ready specification. Optimize for a durable handoff that a fresh agent can implement autonomously and verify against the specification's acceptance criteria.
 
 Do not implement the plan while using this skill. Stop after writing or updating the plan and summarizing the handoff.
 
-If the user's goal, scope, product behavior, edge-case policy, acceptance criteria, or risk tolerance is still fuzzy, use the `clarify` skill first. Do not turn user-owned decisions into silent assumptions just to produce a plan.
+If no Ready specification exists, use `specify` first. If planning reveals a missing requirement, return to `specify`; if it reveals a conflict in system boundaries or architecture invariants, return to `architect`. Do not invent upstream decisions to keep planning moving.
 
 ## Outcomes
 
 Produce a plan that:
 
-- Captures the clarified goal, constraints, acceptance criteria, chosen approach, risks, and verification path.
-- Records the material decisions needed for autonomous execution and the evidence or user input behind them.
-- Includes enough repo context, file areas, commands, and evidence expectations for a fresh engineer or `/goal` run.
+- Links to one Ready source specification and preserves its acceptance criteria as the canonical rubric.
+- Maps every acceptance criterion to implementation intent and concrete verification.
+- Captures the chosen implementation approach, constraints, risks, affected repo areas, and documentation impact.
+- Includes enough evidence and repository context for a fresh engineer or `/goal` run.
 - Avoids line-by-line implementation choreography; the implementer owns local coding choices.
-- Has no blocking open questions. If high-impact user-owned decisions remain, switch to `clarify` before finalizing.
+- Has no blocking questions and does not contradict its specification or parent architecture.
 
 ## Process
 
-### 1. Research before asking
+### 1. Validate the source specification
 
-Start by gathering evidence. Prefer answering questions through research instead of asking the user.
+Read the source specification completely. Confirm that:
 
-For non-trivial planning, spawn parallel subagents for independent read-only research that can run concurrently. Use one `spawn_agents` call containing all independent research agents instead of serial subagent calls. Skip parallel subagents only for trivial work or when the needed research is inherently sequential.
+- exactly one source path resolves under `.design/specs/`,
+- its lineage says `Status: Ready`,
+- it describes one coherent outcome,
+- its acceptance criteria have stable IDs and observable evidence,
+- it has no `TBD`, `TODO`, or blocking requirement questions, and
+- any parent architecture resolves under `.design/architectures/`, is Ready, and has its relevant invariants represented.
+
+Stop and use `specify` when requirement behavior, scope, failure policy, acceptance, or compatibility remains unresolved. Stop and use `architect` when the conflict affects system boundaries, responsibilities, trust zones, major interfaces, deployment shape, or multiple specifications.
+
+One plan consumes exactly one specification. If the source combines unrelated outcomes, repair or split the specification rather than producing several plans from it.
+
+### 2. Research before asking
+
+Gather the implementation evidence needed to plan accurately. For non-trivial work, dispatch independent read-only research branches in one parallel call when possible.
 
 Use whichever sources apply:
 
-- **Codebase:** read `AGENTS.md`, `CLAUDE.md`, `README.md`, design docs, existing `.plans/`, relevant source files, tests, configs, and nearby conventions.
-- **Subagents:** use `spawn_agents` for read-only exploration, localization, convention discovery, risk review, and external-doc research that can run in parallel. Keep subagents read-only and ask for evidence-backed findings with file paths or URLs.
-- **Web:** use `web_search` / `web_fetch` when behavior depends on current external docs, libraries, APIs, standards, or examples.
-- **Memory:** use Hindsight per `AGENTS.md` when prior preferences, repo history, recurring decisions, or external context may matter. Make Hindsight MCP calls in the main context by default; use subagents for memory only when they are explicitly configured with `mcp-broker` access and the prompt authorizes the operation.
+- **Codebase:** read repository instructions, the source specification and parent architecture, relevant source, tests, configuration, tracked documentation, and nearby conventions.
+- **Subagents:** use read-only exploration for localization, convention discovery, risk review, and external-doc research.
+- **Web:** research current APIs, libraries, standards, and examples when they constrain implementation.
+- **Memory:** use configured memory tools when prior decisions or preferences may matter.
 
-Default parallel research bundle for substantial work:
+Default research bundle for substantial work:
 
-- **Code / conventions:** locate relevant files, entry points, existing patterns, tests, docs, and likely integration points.
-- **Risk / edge cases:** identify missing requirements, ambiguous behavior, likely failure modes, security or migration concerns.
-- **External docs:** summarize current library/API constraints and cite URLs when web research matters.
+- **Code and conventions:** entry points, likely files, existing patterns, tests, and docs.
+- **Risk and edge cases:** implementation failure modes, migration hazards, security concerns, and difficult acceptance criteria.
+- **External constraints:** current library or platform behavior with cited URLs when relevant.
 
-Add, remove, or merge agents based on the task, but preserve the principle: independent research should run in parallel and return concise, evidence-backed findings.
+Do not ask questions that repository or external evidence can answer.
 
-### 2. Synthesize the design shape
+### 3. Synthesize the implementation shape
 
-Convert research into a concise internal picture:
+Determine:
 
-- What problem is being solved?
-- What behavior changes, and what stays the same?
-- Which repo areas and conventions govern the work?
-- What design choices materially affect implementation?
-- What edge cases or failure modes need explicit treatment?
-- What acceptance criteria would prove the work is done?
-- What verification commands or manual checks are realistic?
+- what behavior changes and what remains invariant,
+- which repository areas and conventions govern the work,
+- which implementation choices materially affect correctness or maintainability,
+- how each source acceptance criterion will be achieved,
+- which deterministic and manual checks can prove each criterion,
+- what documentation or migration work is required, and
+- which risks need mitigation or explicit acceptance.
 
-If the answer is already clear from evidence, do not ask the user.
+Planning may resolve local technical choices from evidence. Ask at most one focused question at a time when a material implementation trade-off genuinely depends on user preference. More than one or two upstream questions means the source specification or architecture is not Ready; return to the owning skill.
 
-### 3. Run a clarity gate
-
-Before writing the plan, classify the request:
-
-- **Clear enough to plan:** the goal, scope, user-visible behavior, material edge cases, acceptance criteria, and verification path are settled by user input or evidence.
-- **Needs a residual planning question:** one or two focused decisions remain and the answers materially affect the plan.
-- **Needs clarification interview:** several high-impact user-owned decisions remain, or the user's intent is still fuzzy enough that a plan would encode guesses.
-
-Use the `clarify` skill instead of continuing when unresolved ambiguity affects:
-
-- Product or UX behavior with multiple valid outcomes.
-- Edge-case policy, failure handling, or security/privacy posture.
-- Scope boundaries, non-goals, migration, or rollout choices.
-- Acceptance criteria or completion evidence.
-- Risk trade-offs where the best choice depends on user preference.
-- Terminology or domain conflicts where multiple sources disagree.
-
-For residual planning questions:
-
-- Ask exactly one focused question at a time and wait for the answer.
-- Provide the recommended answer first, with a brief reason.
-- Prefer `ask_user` for multiple valid options with different trade-offs.
-- If the question can be answered by exploring the codebase, web, or memory, research instead of asking.
-- If more than one or two high-impact questions emerge, stop and run the `clarify` flow before planning.
-
-Only encode an assumption when it is low-impact, reversible, non-user-visible, and safe for an implementer to rely on. Do not use assumptions for scope, UX, acceptance criteria, security posture, data semantics, or risk tolerance.
-
-Do not ask permission to continue with obvious research or mechanical plan writing. Ask only when the decision materially changes the outcome.
+Only encode an assumption when it is low-impact, reversible, non-user-visible, and safe for an implementer to rely on. Never assume requirement behavior, scope, acceptance, security posture, data semantics, architecture boundaries, or risk tolerance.
 
 ### 4. Write the durable plan
 
-Save the plan under `.plans/YYYY-MM-DD-<short-slug>.md` unless the user asks for a different path or an existing plan should be updated. Use repo-relative paths only; never include absolute local paths.
+Save new plans under `.design/plans/YYYY-MM-DD-<short-slug>.md`; update an existing plan only when it is already in that directory. Use repo-relative paths only. Do not write elsewhere. If the user requests a canonical tracked implementation document, stop and route that to a separate documentation task; promotion is outside this skill.
 
-When using `.plans/` inside a Git repository, first add the root-anchored `/.plans/` pattern to the repository's local Git exclude file if it is absent. Resolve that file through Git so this also works in linked worktrees; do not add the pattern to the tracked `.gitignore`:
+Inside a Git repository, add the root-anchored `/.design/` pattern to the repository's local Git exclude file when absent. Do not add it to tracked `.gitignore`:
 
 ```bash
 if repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   exclude_path="$(git rev-parse --path-format=absolute --git-path info/exclude)" &&
     mkdir -p "$(dirname "$exclude_path")" &&
     touch "$exclude_path" &&
-    { grep -qxF '/.plans/' "$exclude_path" ||
-      printf '\n/.plans/\n' >> "$exclude_path"; }
+    { grep -qxF '/.design/' "$exclude_path" ||
+      printf '\n/.design/\n' >> "$exclude_path"; }
 else
   repo_root="$(pwd -P)"
 fi &&
-  mkdir -p "$repo_root/.plans"
+  mkdir -p "$repo_root/.design/plans"
 ```
 
-Outside a Git repository, skip the exclude update and create `.plans/` in the current working directory. If the local exclude file cannot be updated, stop and report the failure. Use normal file tools to write or update the plan; do not stage or commit it. After writing a new plan inside a Git repository, confirm it is ignored with `git check-ignore -q <plan-path>` and stop if it is not.
+If the local exclude cannot be updated, stop and report the failure. After writing a new plan in a Git repository, verify it is ignored with `git check-ignore -q <plan-path>`.
 
-The plan should be complete enough for a fresh agent to run something like:
+There must be only one active Ready plan for a specification. When replacing a plan, link the previous path under `Supersedes` and make the replacement relationship explicit in the handoff.
 
-```text
-/goal Implement .plans/YYYY-MM-DD-<short-slug>.md. Complete only after every acceptance criterion is satisfied with concrete evidence.
-```
-
-For small mechanical work, simplify the template while preserving Goal, Acceptance Criteria, Handoff, and Verification. For substantial work, use this structure:
+For small mechanical work, simplify the template while preserving Lineage, Goal, Acceptance Criteria, Acceptance Criteria Coverage, Documentation Impact, Verification, and Handoff. For substantial work, use:
 
 ```md
 # <Short Title> Plan
 
+## Lineage
+
+- Status: Ready
+- Source specification: `.design/specs/<file>.md`
+- Parent architecture: <path or None>
+- Supersedes: <path or None>
+
 ## Goal
 
-<One or two sentences describing the intended outcome and user-visible value.>
+<One or two sentences describing the source specification's outcome.>
 
-## Background / Repo Context
+## Background and Repository Context
 
-- <Relevant repo conventions, architecture, existing patterns, and files.>
-- <Important evidence from code, docs, web, or memory. Include file paths / URLs when useful.>
+- <Relevant conventions, architecture, existing patterns, files, and evidence.>
 
 ## Acceptance Criteria
 
-- AC-1: <Observable criterion verified by a test, command, file state, or UI/API behavior.>
-- AC-2: <Observable criterion verified by a test, command, file state, or UI/API behavior.>
-- AC-3: <Observable criterion verified by a test, command, file state, or UI/API behavior.>
+- AC-1: <copy the source criterion without changing its meaning>
+- AC-2: <copy the source criterion without changing its meaning>
 
-## Non-Goals / Out of Scope
-
-- <Explicit boundary that prevents scope creep.>
-
-## Constraints
-
-- <Hard constraints, repo rules, compatibility requirements, security constraints, or user preferences.>
+## Non-Goals and Constraints
 
 ## Chosen Approach
 
-<The selected design and why it is preferred. Mention major alternatives only when the trade-off matters for future readers.>
-
 ## Design Decisions
-
-- D1: <Decision and rationale.>
-- D2: <Decision and rationale.>
 
 ## Implementation Notes
 
-- <Relevant files or areas to modify, by repo-relative path.>
-- <Important dependencies, sequencing constraints, existing patterns to copy, and gotchas.>
-- <Task groups are allowed when helpful, but avoid step-by-step handholding.>
+- <Relevant files or areas, dependencies, sequencing constraints, patterns, and gotchas.>
+
+## Acceptance Criteria Coverage
+
+| Criterion | Implementation intent      | Verification                                  |
+| --------- | -------------------------- | --------------------------------------------- |
+| AC-1      | <how the plan achieves it> | <test, command, artifact, or manual evidence> |
 
 ## Documentation Impact
 
-<State exactly which docs, READMEs, examples, changelogs, or user-facing references need updates, or state that no documentation updates are required and why.>
-
-## Testing / Verification
-
-- V1: <Command or check for AC-1, with expected result.>
-- V2: <Command or check for AC-2, with expected result.>
-- V3: <Review/documentation check.>
+## Testing and Verification
 
 ## Risks and Mitigations
 
-- <Likely failure mode and mitigation or acceptance.>
-
 ## Assumptions
 
-- <Non-blocking assumption the implementer may rely on. Do not leave unresolved questions here.>
-
 ## Handoff Summary
-
-<Concise instructions for the autonomous implementer, including the suggested `/goal` objective and completion evidence expectations.>
 ```
+
+Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained `/goal` handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
 
 Plan quality rules:
 
-- Acceptance criteria must be observable, not vibes.
-- Verification must map back to acceptance criteria.
-- Documentation impact must be a conscious decision.
-- Include enough context to survive a fresh session, but do not paste large code excerpts unless essential.
+- Every source acceptance criterion must appear in both `Acceptance Criteria` and `Acceptance Criteria Coverage`.
+- Verification must map to acceptance criteria and state expected results.
+- Documentation impact must be an explicit decision.
+- Include enough context to survive a fresh session without pasting unnecessary code.
 - Prefer implementation intent over exact diffs.
-- Mark assumptions only when they are safe, non-blocking, low-impact, reversible, and not user-visible.
-- Do not use assumptions for scope, UX, acceptance criteria, security posture, data semantics, or risk tolerance.
-- Do not leave `TBD`, `TODO`, or blocking open questions in the final plan.
-- Do not over-plan speculative features; apply YAGNI.
+- Do not leave `TBD`, `TODO`, blocking questions, or requirement inventions.
+- Apply YAGNI and avoid speculative follow-on work.
+
+Hidden `.design/` artifacts are local workflow material. The implementation must update tracked project documentation when the specification changes a canonical contract.
+
+The plan should support a handoff such as:
+
+```text
+/goal Implement .design/plans/YYYY-MM-DD-<short-slug>.md. Complete only after every acceptance criterion is satisfied with concrete evidence.
+```
 
 ### 5. Challenge before finalizing when risk is non-trivial
 
-For substantial or risky plans, run a read-only challenge pass before finalizing. If the challenge can run independently from other research, include it in the same parallel `spawn_agents` bundle; otherwise run it after the draft exists. Invoke the `challenge` skill when a concrete draft is ready for a dedicated pre-implementation stress test.
+For substantial or risky plans, use `challenge` after the draft is concrete. Stress-test:
 
-Review against:
+- source-criterion coverage,
+- conformance to the specification and parent architecture,
+- repository conventions and constraints,
+- edge cases, failure modes, migration, and security,
+- scope and documentation impact, and
+- autonomous handoff readiness.
 
-- Does every acceptance criterion have an implementation path and verification check?
-- Are repo conventions and constraints respected?
-- Are edge cases and failure modes explicit enough?
-- Is scope bounded?
-- Can a fresh `/goal` agent execute without asking the user more questions?
-- Are docs and migration impacts handled?
-
-Repair material issues before presenting the plan. Do not nitpick wording.
+Repair material findings before marking the plan Ready. Do not add implementation choreography merely to make the plan longer.
 
 ### 6. Summarize and hand off
 
-After writing the plan, give the user:
+Give the user:
 
-- Plan path.
-- One-paragraph summary of the chosen approach.
-- Key decisions made.
-- Suggested `/goal` command or objective.
-- Any residual non-blocking assumptions.
+- plan path and Ready status,
+- source specification and parent architecture,
+- chosen approach and key decisions,
+- acceptance-criterion coverage summary,
+- residual non-blocking assumptions, and
+- the suggested `/goal` command.
 
 Do not start execution unless the user explicitly asks.

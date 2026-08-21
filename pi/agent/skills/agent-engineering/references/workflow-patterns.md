@@ -42,7 +42,7 @@ What "threading AC through every phase" means concretely:
 
 Format: Gherkin (Given/When/Then) is the most common, but any structured `{id, criterion, verifies_via}` works. The `verifies_via` field is what makes the criterion testable rather than aspirational.
 
-In this repo, the Pi `plan` skill persists AC in a dedicated `## Acceptance Criteria` section of `.plans/*.md` handoff documents, and the `goal` extension requires concrete evidence before marking an objective complete.
+In this repo, the Pi `specify` skill defines AC in `.design/specs/*.md`; the `plan` skill copies them faithfully into a dedicated `## Acceptance Criteria` section of `.design/plans/*.md` handoff documents and maps each criterion to implementation intent and verification. The `goal` extension then requires concrete evidence before marking an objective complete.
 
 ## Localization
 

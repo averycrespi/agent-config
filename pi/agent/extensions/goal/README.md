@@ -49,7 +49,7 @@ Validated evidence completes the active goal immediately, freezes its usage coun
 
 ## State and persistence
 
-Goal state is scoped to Pi's session tree branch, not the git branch. The extension restores the latest valid snapshot from the active session branch on session start, resume, and tree navigation; starting a fresh Pi session in the same git branch does not restore the goal. For plan-driven work, keep the plan file as the durable artifact and use the goal as the current session's steering state.
+Goal state is scoped to Pi's session tree branch, not the git branch. The extension restores the latest valid snapshot from the active session branch on session start, resume, and tree navigation; starting a fresh Pi session in the same git branch does not restore the goal. For plan-driven work, keep the `.design/plans/` file as the durable implementation artifact and use the goal as the current session's steering state.
 
 Snapshots include goal lifecycle state and, when present, auto-run lifecycle state. Auto-run state is separate from goal status so automation can stop while the goal remains active for steering and manual continuation. Legacy snapshots remain valid; obsolete nested metadata is ignored, while an interrupted legacy completion claim is restored as paused and stops a paired running auto-run.
 
