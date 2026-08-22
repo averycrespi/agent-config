@@ -33,7 +33,7 @@
     "format:check": "prettier --check \"**/*.{ts,js,json,md,yml,yaml}\"",
     "lint": "eslint \"pi/agent/extensions/**/*.ts\" \"pi/agent/workflows/**/*.ts\"",
     "typecheck": "tsc",
-    "test": "tsx --test \"pi/agent/extensions/**/*.test.ts\" \"pi/agent/workflows/**/*.test.ts\""
+    "test": "tsx --test \"pi/agent/extensions/**/*.test.ts\" \"pi/agent/workflows/**/*.test.ts\" \"pi/agent/skills/**/*.test.js\""
   },
   "lint-staged": {
     "pi/agent/extensions/**/*.ts": [

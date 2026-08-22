@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can complete autonomously, especially before running /goal.
+description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can complete autonomously with execute-milestone.
 ---
 
 # Plan
@@ -21,7 +21,7 @@ Produce a plan that:
 - Maps every acceptance criterion to implementation intent and concrete verification.
 - Decomposes substantial work into ordered milestones, bounded behavioral task packets, and deterministic milestone gates.
 - Captures the chosen implementation approach, constraints, risks, affected repo areas, and documentation impact.
-- Includes enough evidence and repository context for a fresh engineer or milestone-scoped `/goal` run.
+- Includes enough evidence and repository context for a fresh engineer or `execute-milestone` invocation.
 - Avoids line-by-line implementation choreography; the implementer owns local coding choices.
 - Has no blocking questions and does not contradict its specification or parent architecture.
 
@@ -105,7 +105,7 @@ If the local exclude cannot be updated, stop and report the failure. After writi
 
 There must be only one active Ready plan for a specification. When replacing a plan, link the previous path under `Supersedes` and make the replacement relationship explicit in the handoff.
 
-For small mechanical work, simplify the template while preserving Lineage, Goal, Acceptance Criteria, Acceptance Criteria Coverage, Documentation Impact, Verification, and Handoff. For substantial work, use:
+For small mechanical work, simplify the template while preserving Lineage, Goal, Acceptance Criteria, Execution Milestones, Acceptance Criteria Coverage, Documentation Impact, Verification, and Handoff. Every plan still uses `### M<n>:` and globally unique `#### T<n>:` headings. Every milestone needs at least one task, a verification gate, and a checkpoint; every task needs `Scope`, `Outcome`, and `Verification`. For substantial work, use:
 
 ```md
 # <Short Title> Plan
@@ -180,7 +180,7 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 
 Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
 
-For substantial work, include `Execution Milestones` using stable `M<n>` and `T<n>` IDs. A useful default is 4–8 milestones with 2–5 tasks each, but treat those numbers as a compression target rather than a quota. Combine tasks when separating them would add handoff overhead without creating an independently testable result. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
+Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. For substantial work, a useful default is 4–8 milestones with 2–5 tasks each, but treat those numbers as a compression target rather than a quota. Combine tasks when separating them would add handoff overhead without creating an independently testable result. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
 
 Each milestone must:
 
@@ -195,6 +195,7 @@ The final milestone must run integrated verification, audit all acceptance crite
 Plan quality rules:
 
 - Every source acceptance criterion must appear in both `Acceptance Criteria` and `Acceptance Criteria Coverage`.
+- Every milestone must contain at least one complete task packet plus a verification gate and checkpoint.
 - Every acceptance criterion must have an owning milestone; cross-cutting criteria may name multiple milestones but still need one final audit owner.
 - Verification must map to acceptance criteria and state expected results.
 - Documentation impact must be an explicit decision.
@@ -206,13 +207,23 @@ Plan quality rules:
 
 Hidden `.design/` artifacts are local workflow material. The implementation must update tracked project documentation when the specification changes a canonical contract.
 
-A substantial plan should support milestone-scoped handoffs such as:
+Before reporting a plan as Ready, run the consumer-facing structural validator. Resolve `../execute-milestone/scripts/plan-run-state.js` relative to this skill directory and invoke it with an absolute helper path:
 
-```text
-/goal Execute milestone M1 from .design/plans/YYYY-MM-DD-<short-slug>.md. Complete only after every M1 task and its verification gate have concrete evidence. Report blocked or failed without claiming the whole plan is complete.
+```bash
+node <helper> validate \
+  --cwd <repo-root> \
+  --plan .design/plans/YYYY-MM-DD-<short-slug>.md
 ```
 
-Use the whole-plan form only when the plan has one bounded implementation milestone. Execute the final milestone separately to audit integrated acceptance rather than asking one long-running goal to implement and prove the entire plan at once.
+The validator must report `status: "Ready"` and the expected criteria, milestone dependencies, and task counts. Repair any failure before handoff. This deterministic check proves the plan matches the executor's structural contract; it does not replace semantic review against the source specification.
+
+A validated plan supports one-milestone handoffs such as:
+
+```text
+/skill:execute-milestone .design/plans/YYYY-MM-DD-<short-slug>.md
+```
+
+Execute the final milestone separately to audit integrated acceptance rather than asking one long-running agent to implement and prove the entire plan at once.
 
 ### 5. Challenge before finalizing when risk is non-trivial
 
@@ -239,6 +250,6 @@ Give the user:
 - milestone and task-packet summary,
 - acceptance-criterion coverage summary,
 - residual non-blocking assumptions, and
-- the suggested first-milestone `/goal` command.
+- the suggested first `execute-milestone` command.
 
 Do not start execution unless the user explicitly asks.
