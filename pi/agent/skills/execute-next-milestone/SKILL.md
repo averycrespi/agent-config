@@ -1,9 +1,9 @@
 ---
-name: execute-milestone
+name: execute-next-milestone
 description: Use when implementing one milestone from a Ready plan with durable run state, task progress, decisions, and evidence. Executes exactly one dependency-ready milestone per invocation and stops with done, blocked, or failed status.
 ---
 
-# Execute Milestone
+# Execute Next Milestone
 
 Implement exactly one dependency-ready milestone from one Ready plan. Keep the plan immutable, persist authoritative run state and evidence outside conversation history, and stop after the milestone reaches `done`, `blocked`, or `failed`.
 
@@ -26,13 +26,13 @@ The helper is `scripts/plan-run-state.js`, resolved relative to this skill direc
 Invoke with the Ready plan for both first execution and later milestones:
 
 ```text
-/skill:execute-milestone .design/plans/YYYY-MM-DD-example.md
+/skill:execute-next-milestone .design/plans/YYYY-MM-DD-example.md
 ```
 
 The helper creates a run when none exists, resumes the sole matching nonterminal run, or reports that the plan is complete. Use an explicit run path only to resolve ambiguity or perform recovery:
 
 ```text
-/skill:execute-milestone --run .design/runs/example/<run-id>
+/skill:execute-next-milestone --run .design/runs/example/<run-id>
 ```
 
 If the request identifies both a run and a milestone, verify that the milestone is exactly the helper's next dependency-ready work. Do not skip ahead.

@@ -70,7 +70,7 @@ const PLAN = `# Example Plan
 `;
 
 async function planWorkspace(plan = PLAN) {
-  const cwd = await mkdtemp(join(tmpdir(), "execute-milestone-"));
+  const cwd = await mkdtemp(join(tmpdir(), "execute-next-milestone-"));
   const planDir = join(cwd, ".design", "plans");
   await mkdir(planDir, { recursive: true });
   const planPath = join(planDir, "example.md");
@@ -154,7 +154,9 @@ test("parsePlan requires a Ready plan and rejects invalid milestone graphs", () 
 });
 
 test("validatePlan reports the consumer-facing execution contract", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "execute-milestone-validation-"));
+  const cwd = await mkdtemp(
+    join(tmpdir(), "execute-next-milestone-validation-"),
+  );
   await mkdir(join(cwd, ".design", "plans"), { recursive: true });
   await writeFile(join(cwd, ".design", "plans", "example.md"), PLAN);
 
@@ -173,8 +175,12 @@ test("validatePlan reports the consumer-facing execution contract", async () => 
 });
 
 test("validatePlan rejects a plans directory that escapes through a symlink", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "execute-milestone-workspace-"));
-  const outside = await mkdtemp(join(tmpdir(), "execute-milestone-plans-"));
+  const cwd = await mkdtemp(
+    join(tmpdir(), "execute-next-milestone-workspace-"),
+  );
+  const outside = await mkdtemp(
+    join(tmpdir(), "execute-next-milestone-plans-"),
+  );
   await mkdir(join(cwd, ".design"));
   await writeFile(join(outside, "example.md"), PLAN);
   await symlink(outside, join(cwd, ".design", "plans"));
@@ -186,8 +192,10 @@ test("validatePlan rejects a plans directory that escapes through a symlink", as
 });
 
 test("initializeRun rejects a runs directory that escapes through a symlink", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "execute-milestone-workspace-"));
-  const outside = await mkdtemp(join(tmpdir(), "execute-milestone-runs-"));
+  const cwd = await mkdtemp(
+    join(tmpdir(), "execute-next-milestone-workspace-"),
+  );
+  const outside = await mkdtemp(join(tmpdir(), "execute-next-milestone-runs-"));
   await mkdir(join(cwd, ".design", "plans"), { recursive: true });
   await writeFile(join(cwd, ".design", "plans", "example.md"), PLAN);
   await symlink(outside, join(cwd, ".design", "runs"));
@@ -204,7 +212,7 @@ test("initializeRun rejects a runs directory that escapes through a symlink", as
 
 test("readRun rejects a resumed run that escapes through a symlink", async () => {
   const { runDir } = await fixture();
-  const outside = await mkdtemp(join(tmpdir(), "execute-milestone-run-"));
+  const outside = await mkdtemp(join(tmpdir(), "execute-next-milestone-run-"));
   const movedRun = join(outside, "run-1");
   await rename(runDir, movedRun);
   await symlink(movedRun, runDir);

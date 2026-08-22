@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can complete autonomously with execute-milestone.
+description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can complete autonomously with execute-next-milestone.
 ---
 
 # Plan
@@ -21,7 +21,7 @@ Produce a plan that:
 - Maps every acceptance criterion to implementation intent and concrete verification.
 - Decomposes substantial work into ordered milestones, bounded behavioral task packets, and deterministic milestone gates.
 - Captures the chosen implementation approach, constraints, risks, affected repo areas, and documentation impact.
-- Includes enough evidence and repository context for a fresh engineer or `execute-milestone` invocation.
+- Includes enough evidence and repository context for a fresh engineer or `execute-next-milestone` invocation.
 - Avoids line-by-line implementation choreography; the implementer owns local coding choices.
 - Has no blocking questions and does not contradict its specification or parent architecture.
 
@@ -207,7 +207,7 @@ Plan quality rules:
 
 Hidden `.design/` artifacts are local workflow material. The implementation must update tracked project documentation when the specification changes a canonical contract.
 
-Before reporting a plan as Ready, run the consumer-facing structural validator. Resolve `../execute-milestone/scripts/plan-run-state.js` relative to this skill directory and invoke it with an absolute helper path:
+Before reporting a plan as Ready, run the consumer-facing structural validator. Resolve `../execute-next-milestone/scripts/plan-run-state.js` relative to this skill directory and invoke it with an absolute helper path:
 
 ```bash
 node <helper> validate \
@@ -220,7 +220,7 @@ The validator must report `status: "Ready"` and the expected criteria, milestone
 A validated plan supports one-milestone handoffs such as:
 
 ```text
-/skill:execute-milestone .design/plans/YYYY-MM-DD-<short-slug>.md
+/skill:execute-next-milestone .design/plans/YYYY-MM-DD-<short-slug>.md
 ```
 
 Execute the final milestone separately to audit integrated acceptance rather than asking one long-running agent to implement and prove the entire plan at once.
@@ -250,6 +250,6 @@ Give the user:
 - milestone and task-packet summary,
 - acceptance-criterion coverage summary,
 - residual non-blocking assumptions, and
-- the suggested first `execute-milestone` command.
+- the suggested first `execute-next-milestone` command.
 
 Do not start execution unless the user explicitly asks.
