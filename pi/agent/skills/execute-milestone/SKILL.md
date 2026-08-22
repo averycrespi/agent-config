@@ -80,7 +80,7 @@ If it returns `null`, inspect run status and report complete or blocked state. O
 
 - When that milestone is already active from an interrupted invocation, do not call `milestone-start` again. Resume `state.currentTask` when present; otherwise start the next incomplete task returned by `next`.
 
-Create a TODO list from that milestone's tasks, preserving task order and existing completion state. Do not add work from later milestones.
+Create a TODO list from that milestone's tasks, preserving task order and existing completion state. Capture the milestone and task attempt counts from `status` as this invocation's baseline; historical attempts do not consume the new invocation's repair allowance. Do not add work from later milestones.
 
 ## 3. Execute tasks sequentially
 
@@ -140,13 +140,29 @@ Do not use the decision log for narration or routine implementation details.
 
 ## 5. Handle failed checks and blockers
 
-If a focused or milestone gate fails:
+First determine whether a nonzero result is a meaningful implementation check or an invalid verification command. Treat it as an invalid command only when concrete output proves the command itself was malformed or non-representative, such as a syntax error, wrong working directory or flag, unavailable command variant, or assertion that checks the wrong behavior. When uncertain, treat it as a meaningful failure.
+
+For an invalid verification command:
+
+1. Do not record it as failed command evidence or stop the milestone.
+2. Correct the command once and rerun the same intended check.
+3. Record bounded inspection evidence explaining why the first command was invalid and what corrected command tested the intended claim.
+4. Record the corrected command result normally; inspection evidence never substitutes for a successful corrected check.
+5. Treat a failing corrected command as a meaningful check failure.
+
+Use independent bounded repair scopes:
+
+- Each task gets at most one repair attempt after its first meaningful failed check in the current invocation. A repair used by one task does not consume another task's allowance.
+- The milestone verification gate gets one separate repair attempt after all tasks are complete.
+- Any meaningful failure during a task's repair attempt, or during the milestone gate's repair attempt, exhausts that scope even when it comes from a different command.
+
+For a meaningful failed check:
 
 1. Record the failed command as evidence with its real exit code.
 2. Diagnose the failure from concrete output.
 3. Stop the milestone as `failed` before beginning a new attempt.
-4. Restart the same milestone and failed task for at most one focused repair attempt in this invocation.
-5. If the repair does not pass, leave the milestone failed and stop.
+4. If that task or milestone-gate scope still has its repair allowance, restart the milestone and failed task when applicable, apply one focused repair, and rerun the failed scope.
+5. If the scope has no allowance or the repair does not pass, leave the milestone failed and stop.
 
 ```bash
 node <helper> milestone-stop \
