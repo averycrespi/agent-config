@@ -1,11 +1,13 @@
 ---
 name: plan
-description: Use when turning one Ready specification into an execution-ready implementation plan that a fresh coding agent can complete autonomously, especially before running /goal.
+description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can complete autonomously, especially before running /goal.
 ---
 
 # Plan
 
-Create an execution-ready implementation plan from exactly one Ready specification. Optimize for a durable handoff that a fresh agent can implement autonomously and verify against the specification's acceptance criteria.
+Create one execution-ready implementation plan from exactly one Ready specification. Optimize for a durable handoff that fresh agents can execute as a sequence of bounded milestones and verify against the specification's acceptance criteria.
+
+Keep granularity inside the plan: one Ready specification still produces one active Ready plan. Do not create multiple plan files merely to make execution smaller.
 
 Do not implement the plan while using this skill. Stop after writing or updating the plan and summarizing the handoff.
 
@@ -17,8 +19,9 @@ Produce a plan that:
 
 - Links to one Ready source specification and preserves its acceptance criteria as the canonical rubric.
 - Maps every acceptance criterion to implementation intent and concrete verification.
+- Decomposes substantial work into ordered milestones, bounded behavioral task packets, and deterministic milestone gates.
 - Captures the chosen implementation approach, constraints, risks, affected repo areas, and documentation impact.
-- Includes enough evidence and repository context for a fresh engineer or `/goal` run.
+- Includes enough evidence and repository context for a fresh engineer or milestone-scoped `/goal` run.
 - Avoids line-by-line implementation choreography; the implementer owns local coding choices.
 - Has no blocking questions and does not contradict its specification or parent architecture.
 
@@ -37,7 +40,7 @@ Read the source specification completely. Confirm that:
 
 Stop and use `specify` when requirement behavior, scope, failure policy, acceptance, or compatibility remains unresolved. Stop and use `architect` when the conflict affects system boundaries, responsibilities, trust zones, major interfaces, deployment shape, or multiple specifications.
 
-One plan consumes exactly one specification. If the source combines unrelated outcomes, repair or split the specification rather than producing several plans from it.
+One plan consumes exactly one specification, and one specification produces one active Ready plan. Do not create several plans solely because implementation is large. If the source combines unrelated outcomes, repair or split the specification because its behavioral scope is incoherent, not as an execution-granularity workaround.
 
 ### 2. Research before asking
 
@@ -67,8 +70,13 @@ Determine:
 - which implementation choices materially affect correctness or maintainability,
 - how each source acceptance criterion will be achieved,
 - which deterministic and manual checks can prove each criterion,
+- how the work divides into dependency-ordered milestones that can terminate independently,
+- which bounded behavioral tasks and focused checks comprise each milestone,
+- what final integrated verification proves the complete plan,
 - what documentation or migration work is required, and
 - which risks need mitigation or explicit acceptance.
+
+Prefer the coarsest task packets that remain independently understandable, implementable, and testable. A task should deliver one coherent behavior slice, not one file, function, test case, edit, or commit. Put logical checkpoint guidance at milestone boundaries rather than requiring a commit after every task.
 
 Planning may resolve local technical choices from evidence. Ask at most one focused question at a time when a material implementation trade-off genuinely depends on user preference. More than one or two upstream questions means the source specification or architecture is not Ready; return to the owning skill.
 
@@ -132,6 +140,27 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 
 - <Relevant files or areas, dependencies, sequencing constraints, patterns, and gotchas.>
 
+## Execution Milestones
+
+### M1: <Milestone outcome>
+
+- Acceptance criteria: <AC subset>
+- Depends on: <milestone IDs or None>
+- Verification gate: <focused commands and expected results>
+- Checkpoint: <durable state or logical verified commit expected at the boundary>
+
+#### T1: <Behavioral task outcome>
+
+- Scope: <relevant areas, not an exact diff>
+- Outcome: <observable behavior or artifact>
+- Verification: <focused check>
+
+### M<N>: Integrated verification and handoff
+
+- Acceptance criteria: <all criteria>
+- Depends on: <all implementation milestones>
+- Verification gate: <full deterministic, integration, manual, and documentation checks>
+
 ## Acceptance Criteria Coverage
 
 | Criterion | Implementation intent      | Verification                                  |
@@ -149,25 +178,41 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 ## Handoff Summary
 ```
 
-Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained `/goal` handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
+Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
+
+For substantial work, include `Execution Milestones` using stable `M<n>` and `T<n>` IDs. A useful default is 4–8 milestones with 2–5 tasks each, but treat those numbers as a compression target rather than a quota. Combine tasks when separating them would add handoff overhead without creating an independently testable result. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
+
+Each milestone must:
+
+- produce one coherent intermediate outcome;
+- identify its acceptance-criterion coverage and dependencies;
+- contain bounded behavioral task packets with focused verification;
+- end in a deterministic gate and a durable checkpoint;
+- support terminal `done`, `blocked`, or `failed` reporting without implying the whole plan is complete.
+
+The final milestone must run integrated verification, audit all acceptance criteria, update required tracked documentation, and distinguish unavailable environment evidence from a pass. For small mechanical work, use one implementation milestone plus the final gate, or collapse them when the same focused checks prove the entire plan.
 
 Plan quality rules:
 
 - Every source acceptance criterion must appear in both `Acceptance Criteria` and `Acceptance Criteria Coverage`.
+- Every acceptance criterion must have an owning milestone; cross-cutting criteria may name multiple milestones but still need one final audit owner.
 - Verification must map to acceptance criteria and state expected results.
 - Documentation impact must be an explicit decision.
 - Include enough context to survive a fresh session without pasting unnecessary code.
 - Prefer implementation intent over exact diffs.
+- Avoid micro-tasks, line-by-line choreography, speculative file lists, and commit-per-task requirements.
 - Do not leave `TBD`, `TODO`, blocking questions, or requirement inventions.
 - Apply YAGNI and avoid speculative follow-on work.
 
 Hidden `.design/` artifacts are local workflow material. The implementation must update tracked project documentation when the specification changes a canonical contract.
 
-The plan should support a handoff such as:
+A substantial plan should support milestone-scoped handoffs such as:
 
 ```text
-/goal Implement .design/plans/YYYY-MM-DD-<short-slug>.md. Complete only after every acceptance criterion is satisfied with concrete evidence.
+/goal Execute milestone M1 from .design/plans/YYYY-MM-DD-<short-slug>.md. Complete only after every M1 task and its verification gate have concrete evidence. Report blocked or failed without claiming the whole plan is complete.
 ```
+
+Use the whole-plan form only when the plan has one bounded implementation milestone. Execute the final milestone separately to audit integrated acceptance rather than asking one long-running goal to implement and prove the entire plan at once.
 
 ### 5. Challenge before finalizing when risk is non-trivial
 
@@ -176,9 +221,11 @@ For substantial or risky plans, use `challenge` after the draft is concrete. Str
 - source-criterion coverage,
 - conformance to the specification and parent architecture,
 - repository conventions and constraints,
+- milestone dependency order, boundedness, and verification gates,
+- task-packet coherence without micro-task fragmentation,
 - edge cases, failure modes, migration, and security,
 - scope and documentation impact, and
-- autonomous handoff readiness.
+- autonomous milestone-handoff readiness.
 
 Repair material findings before marking the plan Ready. Do not add implementation choreography merely to make the plan longer.
 
@@ -189,8 +236,9 @@ Give the user:
 - plan path and Ready status,
 - source specification and parent architecture,
 - chosen approach and key decisions,
+- milestone and task-packet summary,
 - acceptance-criterion coverage summary,
 - residual non-blocking assumptions, and
-- the suggested `/goal` command.
+- the suggested first-milestone `/goal` command.
 
 Do not start execution unless the user explicitly asks.
