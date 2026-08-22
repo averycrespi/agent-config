@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -17,6 +17,10 @@ const ENV_NAMES = [
 
 const savedEnv = new Map<string, string | undefined>();
 for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
+
+beforeEach(() => {
+  for (const name of ENV_NAMES) delete process.env[name];
+});
 
 afterEach(async () => {
   for (const name of ENV_NAMES) {
@@ -40,6 +44,12 @@ test("readEnvSettings maps broker environment overrides", () => {
     approvalMode: "reject",
     approvalTimeoutMs: 30000,
   });
+});
+
+test("readEnvSettings ignores a blank endpoint override", () => {
+  process.env.MCP_BROKER_ENDPOINT = "   ";
+
+  assert.deepEqual(readEnvSettings(), {});
 });
 
 test("readEnvSettings accepts the deprecated auth token environment alias", () => {

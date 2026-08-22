@@ -22,7 +22,7 @@ If a cached broker tool list becomes stale or the connection fails while refresh
 
 ## Configuration
 
-Configure via `extension:mcp-broker` in Pi settings. Environment variables override settings when set. Use `/mcp-broker-config` to display the effective parsed config with `agentToken` masked.
+Configure via `extension:mcp-broker` in Pi settings. Environment variables override settings when set; a blank `MCP_BROKER_ENDPOINT` is ignored. Use `/mcp-broker-config` to display the effective parsed config with `agentToken` masked.
 
 | Field               | Default  | Environment override             | Description                                                                                                     |
 | ------------------- | -------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------- |

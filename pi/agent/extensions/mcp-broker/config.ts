@@ -70,7 +70,8 @@ export function readEnvSettings(
 ): Partial<McpBrokerConfig> {
   const settings: Partial<McpBrokerConfig> = {};
   if (process.env.MCP_BROKER_ENDPOINT !== undefined) {
-    settings.endpoint = normalizeString(process.env.MCP_BROKER_ENDPOINT);
+    const endpoint = normalizeString(process.env.MCP_BROKER_ENDPOINT);
+    if (endpoint !== undefined) settings.endpoint = endpoint;
   }
 
   const hasAgentToken = process.env.MCP_BROKER_AGENT_TOKEN !== undefined;
