@@ -150,26 +150,31 @@ For an invalid verification command:
 4. Record the corrected command result normally; inspection evidence never substitutes for a successful corrected check.
 5. Treat a failing corrected command as a meaningful check failure.
 
-Use independent bounded repair scopes:
+Use independent, progress-aware repair scopes:
 
-- Each task gets at most one repair attempt after its first meaningful failed check in the current invocation. A repair used by one task does not consume another task's allowance.
-- The milestone verification gate gets one separate repair attempt after all tasks are complete.
-- Any meaningful failure during a task's repair attempt, or during the milestone gate's repair attempt, exhausts that scope even when it comes from a different command.
+- Each task gets at most three repair rounds in the current invocation. A round diagnoses the current failure, applies one focused change, and reruns the failed check plus directly affected checks.
+- The milestone verification gate gets a separate allowance of at most three repair rounds after all tasks are complete.
+- A repair used by one task does not consume another task's or the milestone gate's allowance.
+- A different required check failing after the original check passes consumes the next round in the same scope; it does not require an immediate final stop.
+- Invalid verification-command corrections do not consume a repair round.
+
+Continue only while repair produces concrete progress. Progress means the original failure passes, the failing set shrinks, or output proves the diagnosis and exposes a different narrower failure. A changed error message alone is not progress. Stop the scope early when the same essential failure survives two consecutive repair rounds, a repaired check regresses without a concrete new diagnosis, or no falsifiable next step remains. Always stop after three repair rounds if the scope still fails.
 
 For a meaningful failed check:
 
 1. Record the failed command as evidence with its real exit code.
-2. Diagnose the failure from concrete output.
-3. Stop the milestone as `failed` before beginning a new attempt.
-4. If that task or milestone-gate scope still has its repair allowance, restart the milestone and failed task when applicable, apply one focused repair, and rerun the failed scope.
-5. If the scope has no allowance or the repair does not pass, leave the milestone failed and stop.
+2. Diagnose the failure from concrete output and compare it with the previous round in that scope.
+3. Stop the milestone as `failed` before beginning a new round.
+4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and failed task, apply one focused repair, and rerun the failed scope.
+5. If the check passes, continue the task or gate. If another required check fails, evaluate it as the next round in the same scope.
+6. If an early-stop condition applies or the third repair round does not pass the scope, leave the milestone failed and stop.
 
 ```bash
 node <helper> milestone-stop \
   --run <run-dir> \
   --milestone M1 \
   --status failed \
-  --reason "Focused integration check still fails after one repair"
+  --reason "Integration failure persisted without progress after two repair rounds"
 ```
 
 Use `blocked` instead of `failed` when progress requires unavailable environments, unresolved product or architecture decisions, external approval, credentials, or unsafe/destructive action:
