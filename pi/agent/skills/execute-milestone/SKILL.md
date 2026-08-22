@@ -23,13 +23,13 @@ The helper is `scripts/plan-run-state.js`, resolved relative to this skill direc
 
 ## Invocation
 
-Start a new run from a Ready plan:
+Invoke with the Ready plan for both first execution and later milestones:
 
 ```text
 /skill:execute-milestone .design/plans/YYYY-MM-DD-example.md
 ```
 
-Resume an existing run:
+The helper creates a run when none exists, resumes the sole matching nonterminal run, or reports that the plan is complete. Use an explicit run path only to resolve ambiguity or perform recovery:
 
 ```text
 /skill:execute-milestone --run .design/runs/example/<run-id>
@@ -45,16 +45,23 @@ If the request identifies both a run and a milestone, verify that the milestone 
 4. Confirm the plan has `Status: Ready` and read its Goal, Non-Goals and Constraints, Acceptance Criteria, Execution Milestones, relevant implementation notes, and verification guidance.
 5. Do not use subagents by default. Perform implementation in the current session with one writer. Use deterministic commands directly for checks.
 
-For a new run, create a UTC run ID and initialize state:
+For a plan invocation, atomically open its run:
 
 ```bash
-node <helper> init \
+node <helper> open \
   --cwd <repo-root> \
-  --plan .design/plans/YYYY-MM-DD-example.md \
-  --run-id YYYYMMDDTHHMMSSZ
+  --plan .design/plans/YYYY-MM-DD-example.md
 ```
 
-For a resumed run, inspect state and plan drift:
+Handle its structured `action` exactly:
+
+- `created` or `resumed`: use the returned `runDir`, `next`, milestone task summary, and attempt counts.
+- `complete`: report that the plan is complete and stop.
+- `ambiguous`: stop and ask for an explicit `--run`; never choose the newest candidate.
+- `drifted`: stop and require explicit new-run initialization or state migration; never silently abandon the old run.
+- `invalid`: stop and report the checkout-lineage or state error.
+
+For an explicit run invocation, inspect state and plan drift:
 
 ```bash
 node <helper> status --run <run-dir>
@@ -64,13 +71,13 @@ Stop if `planDrift` is true. Do not silently migrate state after the plan change
 
 ## 2. Select and start one milestone
 
-Ask the helper for the next dependency-ready work:
+Use `next` from `open` for a plan invocation. For an explicit run, ask the helper for the next dependency-ready work:
 
 ```bash
 node <helper> next --run <run-dir>
 ```
 
-If it returns `null`, inspect run status and report complete or blocked state. Otherwise inspect `state.currentMilestone` from `status`:
+If `next` is `null`, inspect run status and report complete or blocked state. Otherwise use `currentMilestone` and `currentTask` from `open`, or from `status` for an explicit run:
 
 - When no milestone is active, start exactly the milestone returned by `next`:
 
@@ -80,7 +87,7 @@ If it returns `null`, inspect run status and report complete or blocked state. O
 
 - When that milestone is already active from an interrupted invocation, do not call `milestone-start` again. Resume `state.currentTask` when present; otherwise start the next incomplete task returned by `next`.
 
-Create a TODO list from that milestone's tasks, preserving task order and existing completion state. Capture the milestone and task attempt counts from `status` as this invocation's baseline; historical attempts do not consume the new invocation's repair allowance. Do not add work from later milestones.
+Create a TODO list from that milestone's tasks, preserving task order and existing completion state. Capture the milestone and task attempt counts from `open`, or from `status` for an explicit run, as this invocation's baseline; historical attempts do not consume the new invocation's repair allowance. Do not add work from later milestones.
 
 ## 3. Execute tasks sequentially
 
@@ -243,8 +250,10 @@ The helper:
 - requires a Ready plan and parses stable `M<n>` and globally unique `T<n>` IDs;
 - validates milestone dependencies and acceptance-criterion ownership;
 - stores compact state under `.design/runs/<plan-slug>/<run-id>/`;
+- atomically creates or resolves a plan run under a recoverable per-plan lock;
+- refuses ambiguous resumable runs, plan drift, and runs whose base or completed checkpoint commits are absent from the current checkout lineage;
 - validates persisted state and derives artifact paths rather than trusting state-controlled paths;
-- applies atomic JSON writes and a recoverable per-run mutation lock with process-identity checks;
+- applies atomic JSON writes and recoverable per-plan and per-run locks with process-identity checks;
 - blocks mutations after plan fingerprint drift;
 - permits one running milestone and one running task;
 - starts only the first dependency-ready milestone in plan order;

@@ -8,6 +8,7 @@ import {
   mkdir,
   open,
   readFile,
+  readdir,
   realpath,
   rename,
   rm,
@@ -326,6 +327,23 @@ async function gitHead(cwd) {
     return stdout.trim() || null;
   } catch {
     return null;
+  }
+}
+
+async function gitIsAncestor(cwd, commit) {
+  if (!commit) return true;
+  try {
+    await execFileAsync("git", [
+      "-C",
+      cwd,
+      "merge-base",
+      "--is-ancestor",
+      commit,
+      "HEAD",
+    ]);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -781,6 +799,178 @@ async function withLock(runDir, operation) {
   }
 }
 
+function generatedRunId(now) {
+  return timestamp(now)
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+}
+
+async function openSummary(action, runDir, state) {
+  const next = await getNextWork(runDir);
+  const milestone = next ? state.milestones[next.milestoneId] : null;
+  const task = next?.taskId ? milestone.tasks[next.taskId] : null;
+  return {
+    action,
+    runDir,
+    runStatus: state.status,
+    currentMilestone: state.currentMilestone,
+    currentTask: state.currentTask,
+    next,
+    milestone: milestone
+      ? {
+          id: milestone.id,
+          title: milestone.title,
+          status: milestone.status,
+          attempts: milestone.attempts,
+          tasks: milestone.taskOrder.map((taskId) => ({
+            id: taskId,
+            title: milestone.tasks[taskId].title,
+            status: milestone.tasks[taskId].status,
+            attempts: milestone.tasks[taskId].attempts,
+            stopReason: milestone.tasks[taskId].stopReason,
+          })),
+        }
+      : null,
+    nextMilestoneStatus: milestone?.status ?? null,
+    nextMilestoneAttempts: milestone?.attempts ?? null,
+    nextTaskStatus: task?.status ?? null,
+    nextTaskAttempts: task?.attempts ?? null,
+    stopReason: task?.stopReason ?? milestone?.stopReason ?? null,
+  };
+}
+
+export async function openRun({ cwd, planPath, runId, now } = {}) {
+  const location = await assertPlanPath(cwd ?? process.cwd(), planPath);
+  const content = await readFile(location.absolutePlan, "utf8");
+  parsePlan(content);
+  const planPathKey = location.relativePlan.split("\\").join("/");
+  const planFingerprint = fingerprint(content);
+  const runsRoot = await canonicalRunsRoot(location.root, true);
+  const slugDir = join(runsRoot, safeSlug(location.relativePlan));
+  await mkdir(slugDir, { recursive: true });
+  if ((await realpath(slugDir)) !== slugDir) {
+    throw new Error(
+      "Run directory must not escape the workspace through a symlink",
+    );
+  }
+
+  const lockPath = join(slugDir, ".open.lock");
+  const lock = await acquireLock(lockPath);
+  try {
+    const entries = await readdir(slugDir, { withFileTypes: true });
+    const candidates = [];
+    for (const entry of entries.sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      if (
+        !RUN_ID.test(entry.name) ||
+        (!entry.isDirectory() && !entry.isSymbolicLink())
+      ) {
+        continue;
+      }
+      const candidateDir = join(slugDir, entry.name);
+      let state;
+      try {
+        state = await readRun(candidateDir);
+      } catch (error) {
+        throw new Error(`Cannot inspect run ${candidateDir}: ${error.message}`);
+      }
+      if (state.planPath === planPathKey) {
+        candidates.push({ runDir: candidateDir, state });
+      }
+    }
+
+    const matching = candidates.filter(
+      ({ state }) => state.planFingerprint === planFingerprint,
+    );
+    const validMatching = [];
+    const invalidMatching = [];
+    for (const candidate of matching) {
+      let reason = null;
+      if (!(await gitIsAncestor(location.root, candidate.state.baseCommit))) {
+        reason = `base commit ${candidate.state.baseCommit} is not an ancestor of HEAD`;
+      } else {
+        for (const milestoneId of candidate.state.milestoneOrder) {
+          const milestone = candidate.state.milestones[milestoneId];
+          if (
+            milestone.status === "done" &&
+            !(await gitIsAncestor(location.root, milestone.commit))
+          ) {
+            reason = `${milestoneId} checkpoint ${milestone.commit} is not an ancestor of HEAD`;
+            break;
+          }
+        }
+      }
+      if (reason) invalidMatching.push({ ...candidate, reason });
+      else validMatching.push(candidate);
+    }
+
+    const resumable = validMatching.filter(
+      ({ state }) => state.status !== "complete",
+    );
+    if (resumable.length > 1) {
+      return {
+        action: "ambiguous",
+        candidates: await Promise.all(
+          resumable.map(({ runDir: candidateDir, state }) =>
+            openSummary("candidate", candidateDir, state),
+          ),
+        ),
+      };
+    }
+    if (resumable.length === 1) {
+      const [{ runDir: candidateDir, state }] = resumable;
+      return openSummary("resumed", candidateDir, state);
+    }
+
+    const completed = validMatching.filter(
+      ({ state }) => state.status === "complete",
+    );
+    if (completed.length > 0) {
+      const { runDir: candidateDir, state } = completed.at(-1);
+      return openSummary("complete", candidateDir, state);
+    }
+
+    if (invalidMatching.length > 0) {
+      return {
+        action: "invalid",
+        candidates: invalidMatching.map(
+          ({ runDir: candidateDir, state, reason }) => ({
+            runDir: candidateDir,
+            runStatus: state.status,
+            createdAt: state.createdAt,
+            reason,
+          }),
+        ),
+      };
+    }
+
+    const drifted = candidates.filter(
+      ({ state }) => state.planFingerprint !== planFingerprint,
+    );
+    if (drifted.length > 0) {
+      return {
+        action: "drifted",
+        candidates: drifted.map(({ runDir: candidateDir, state }) => ({
+          runDir: candidateDir,
+          runStatus: state.status,
+          createdAt: state.createdAt,
+        })),
+      };
+    }
+
+    const initialized = await initializeRun({
+      cwd: location.root,
+      planPath: planPathKey,
+      runId: runId ?? generatedRunId(now),
+      now,
+    });
+    return openSummary("created", initialized.runDir, initialized.state);
+  } finally {
+    await releaseLock(lockPath, lock);
+  }
+}
+
 async function mutateRun(runDir, now, update) {
   return withLock(runDir, async (absoluteRunDir) => {
     const state = await readRun(absoluteRunDir);
@@ -1198,6 +1388,15 @@ async function cli() {
         }),
       );
       break;
+    case "open":
+      print(
+        await openRun({
+          cwd: flags.cwd ?? process.cwd(),
+          planPath: required(flags, "plan"),
+          runId: flags["run-id"],
+        }),
+      );
+      break;
     case "status": {
       const state = await readRun(required(flags, "run"));
       let planDrift = false;
@@ -1288,7 +1487,7 @@ async function cli() {
       break;
     default:
       throw new Error(
-        "Usage: plan-run-state.js <validate|init|status|next|milestone-start|task-start|evidence-add|task-complete|milestone-complete|milestone-stop|decision-add> [flags]",
+        "Usage: plan-run-state.js <validate|init|open|status|next|milestone-start|task-start|evidence-add|task-complete|milestone-complete|milestone-stop|decision-add> [flags]",
       );
   }
 }

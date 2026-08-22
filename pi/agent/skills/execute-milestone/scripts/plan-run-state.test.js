@@ -19,6 +19,7 @@ import {
   completeTask,
   getNextWork,
   initializeRun,
+  openRun,
   parsePlan,
   readRun,
   startMilestone,
@@ -68,19 +69,24 @@ const PLAN = `# Example Plan
 - Verification: npm test -- integration
 `;
 
-async function fixture(plan = PLAN) {
+async function planWorkspace(plan = PLAN) {
   const cwd = await mkdtemp(join(tmpdir(), "execute-milestone-"));
   const planDir = join(cwd, ".design", "plans");
   await mkdir(planDir, { recursive: true });
   const planPath = join(planDir, "example.md");
   await writeFile(planPath, plan);
+  return { cwd, planPath };
+}
+
+async function fixture(plan = PLAN) {
+  const workspace = await planWorkspace(plan);
   const initialized = await initializeRun({
-    cwd,
+    cwd: workspace.cwd,
     planPath: ".design/plans/example.md",
     runId: "run-1",
     now: "2026-08-22T12:00:00.000Z",
   });
-  return { cwd, planPath, ...initialized };
+  return { ...workspace, ...initialized };
 }
 
 test("parsePlan returns ordered milestones, tasks, criteria, and dependencies", () => {
@@ -222,6 +228,106 @@ test("initializeRun writes compact pending state and returns the first work item
     milestoneId: "M1",
     taskId: "T1",
   });
+});
+
+test("openRun creates the first run and resumes the sole matching run", async () => {
+  const { cwd } = await planWorkspace();
+  const created = await openRun({
+    cwd,
+    planPath: ".design/plans/example.md",
+    now: "2026-08-22T12:00:00.000Z",
+  });
+
+  assert.equal(created.action, "created");
+  assert.equal(created.runDir.split("/").at(-1), "20260822T120000Z");
+  assert.equal(created.runStatus, "pending");
+  assert.deepEqual(created.next, { milestoneId: "M1", taskId: "T1" });
+  assert.equal(created.nextMilestoneAttempts, 0);
+  assert.equal(created.nextTaskAttempts, 0);
+
+  const resumed = await openRun({
+    cwd,
+    planPath: ".design/plans/example.md",
+    runId: "unused-run-id",
+  });
+  assert.equal(resumed.action, "resumed");
+  assert.equal(resumed.runDir, created.runDir);
+  assert.deepEqual(resumed.next, { milestoneId: "M1", taskId: "T1" });
+});
+
+test("openRun reports ambiguous resumable runs without choosing one", async () => {
+  const { cwd } = await planWorkspace();
+  const first = await initializeRun({
+    cwd,
+    planPath: ".design/plans/example.md",
+    runId: "run-1",
+  });
+  const second = await initializeRun({
+    cwd,
+    planPath: ".design/plans/example.md",
+    runId: "run-2",
+  });
+
+  const opened = await openRun({ cwd, planPath: ".design/plans/example.md" });
+  assert.equal(opened.action, "ambiguous");
+  assert.deepEqual(
+    opened.candidates.map(({ runDir }) => runDir),
+    [first.runDir, second.runDir],
+  );
+});
+
+test("openRun refuses plan drift instead of silently starting another run", async () => {
+  const { cwd, planPath, runDir } = await fixture();
+  await writeFile(planPath, `${PLAN}\nChanged after initialization.\n`);
+
+  const opened = await openRun({ cwd, planPath: ".design/plans/example.md" });
+  assert.equal(opened.action, "drifted");
+  assert.deepEqual(
+    opened.candidates.map((candidate) => candidate.runDir),
+    [runDir],
+  );
+});
+
+test("openRun reports a completed run instead of creating another", async () => {
+  const { cwd, runDir } = await fixture();
+  for (const [milestoneId, taskId, criteria] of [
+    ["M1", "T1", ["AC-1"]],
+    ["M2", "T2", ["AC-2", "AC-3"]],
+  ]) {
+    await startMilestone({ runDir, milestoneId });
+    await startTask({ runDir, taskId });
+    await addEvidence({
+      runDir,
+      milestoneId,
+      taskId,
+      criteria,
+      kind: "command",
+      summary: `${taskId} passed.`,
+      command: `npm test -- ${taskId}`,
+      exitCode: 0,
+    });
+    await completeTask({ runDir, taskId });
+    await completeMilestone({ runDir, milestoneId });
+  }
+
+  const opened = await openRun({ cwd, planPath: ".design/plans/example.md" });
+  assert.equal(opened.action, "complete");
+  assert.equal(opened.runDir, runDir);
+  assert.equal(opened.runStatus, "complete");
+  assert.equal(opened.next, null);
+});
+
+test("openRun rejects a run whose base commit is absent from the checkout", async () => {
+  const { cwd, runDir } = await fixture();
+  const statePath = join(runDir, "state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  state.baseCommit = "0123456789abcdef0123456789abcdef01234567";
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+
+  const opened = await openRun({ cwd, planPath: ".design/plans/example.md" });
+  assert.equal(opened.action, "invalid");
+  assert.equal(opened.candidates[0].runDir, runDir);
+  assert.match(opened.candidates[0].reason, /base commit.*not an ancestor/);
 });
 
 test("milestone start accepts only the helper's next ready milestone", async () => {
