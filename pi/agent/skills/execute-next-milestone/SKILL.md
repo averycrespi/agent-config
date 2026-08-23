@@ -43,7 +43,7 @@ If the request identifies both a run and a milestone, verify that the milestone 
 2. Resolve the repository root and helper path.
 3. Require a clean enough workspace to distinguish this milestone's changes. Investigate existing modifications; never overwrite or absorb unrelated work.
 4. Confirm the plan has `Status: Ready` and read its Goal, Non-Goals and Constraints, Acceptance Criteria, Execution Milestones, relevant implementation notes, and verification guidance.
-5. Keep the main session as orchestrator and sole owner of run state, evidence, decisions, verification, and commits. Delegate implementation through exactly one writable subagent at a time; never batch a writable child with another agent.
+5. Keep the main session as orchestrator and sole owner of run state, evidence, decisions, task and milestone verification, and commits. Delegate implementation and repair through exactly one writable subagent at a time; never batch a writable child with another agent. Do not delegate task-level review, acceptance evaluation, or verification.
 
 For a plan invocation, atomically open its run:
 
@@ -97,10 +97,12 @@ For each task in order:
 2. Start it through the helper with that profile selection.
 3. Capture a content baseline outside the repository so the child's changes can be distinguished from pre-existing and earlier-task work, including when both touch the same file.
 4. Launch one `spawn_agents` item with `read-filesystem`, `write-filesystem`, and `exec-shell`; never include another item in that call.
-5. Inspect the returned structured handoff and actual workspace diff.
-6. Independently run the task's focused verification in the main session.
-7. Record bounded evidence mapped to the milestone's acceptance criteria.
-8. Mark the task complete only after the helper accepts its evidence.
+5. Reconcile the returned structured handoff with the isolated workspace delta.
+6. Perform supervisory verification in the main session: read the changed implementation and relevant surrounding code, then evaluate it against the task outcome, constraints, and owned acceptance criteria.
+7. Independently run the task's focused verification in the main session.
+8. Inspect compatibility, documentation, and integration impact where applicable.
+9. Record only bounded evidence established by the main session and mapped to the milestone's acceptance criteria.
+10. Mark the task complete only after the helper accepts its evidence.
 
 One plan task is one writable-agent assignment. Do not dynamically split it across multiple writers or invent untracked subtasks. If the task is too broad for one bounded child, stop as blocked and report that the Ready plan needs finer task packets rather than creating an implicit execution plan.
 
@@ -130,7 +132,9 @@ Require `output_schema` with this logical contract:
 - `decisions_needed`: array of strings;
 - `notes`: array of strings.
 
-Before dispatch, capture staged and unstaged binary diffs plus an untracked-file path/hash manifest in a secure temporary location; status output alone is insufficient. After settlement, compare the workspace against that baseline to isolate this child's delta, then compare `changed_files` with the isolated delta. Treat the handoff as a claim, not evidence. Reject protected-path or unrelated mutations, remove the temporary baseline after the task settles, and rerun relevant checks yourself. If the child reports a blocker or consequential decision, handle it through the milestone stop or decision process; do not let the child resolve it implicitly.
+Before dispatch, capture staged and unstaged binary diffs plus an untracked-file path/hash manifest in a secure temporary location; status output alone is insufficient. After settlement, compare the workspace against that baseline to isolate this child's delta, then compare `changed_files` with the isolated delta. Treat the handoff, child checks, and child summary as diagnostic claims, not acceptance evidence. A task cannot complete until the main session has read the implementation, evaluated it against the task contract, and rerun its required verification. Reject protected-path or unrelated mutations, remove the temporary baseline after the task settles, and rerun relevant checks yourself. If the child reports a blocker or consequential decision, handle it through the milestone stop or decision process; do not let the child resolve it implicitly.
+
+Do not launch a second agent to review, verify, summarize, or approve a completed task. The main session performs task-level supervisory verification; a separate reviewer never substitutes for reading the delta and running the checks.
 
 Start a task:
 
@@ -207,7 +211,7 @@ For a meaningful failed check:
 1. Record the failed command as evidence with its real exit code.
 2. Diagnose the failure from concrete output and compare it with the previous round in that scope.
 3. Stop the milestone as `failed` before beginning a new round.
-4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and independently select a profile for the narrower repair. For a task failure, restart the failed task with that profile and a new reason. For a milestone-gate failure, leave completed tasks closed and record the profile with `gate-repair-profile`. Delegate one focused repair with the concrete failure evidence and current diff, then rerun the failed scope in the main session. A repair will often be `fast` or `balanced`; use `strong` only when the remaining diagnosis independently meets its threshold, never merely to retry blindly.
+4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and independently select a profile for the narrower repair. For a task failure, restart the failed task with that profile and a new reason. For a milestone-gate failure, leave completed tasks closed and record the profile with `gate-repair-profile`. Delegate one focused repair with the concrete failure evidence and current diff. After it settles, inspect the repair delta and rerun the failed scope in the main session; do not launch a separate repair reviewer. A repair will often be `fast` or `balanced`; use `strong` only when the remaining diagnosis independently meets its threshold, never merely to retry blindly.
 5. If the check passes, continue the task or gate. If another required check fails, evaluate it as the next round in the same scope.
 6. If an early-stop condition applies or the third repair round does not pass the scope, leave the milestone failed and stop.
 
@@ -250,9 +254,10 @@ After every task is complete:
 1. Run the milestone verification gate exactly as planned.
 2. Run relevant repository-required checks.
 3. Record gate evidence covering every acceptance criterion owned by the milestone.
-4. Inspect the diff and documentation impact.
-5. Create one logical verified checkpoint commit when the milestone changed files. Stage files by name and never push.
-6. Ask the helper to complete the milestone.
+4. Inspect the integrated diff and documentation impact in the main session.
+5. Do not invoke an independent reviewer by default. When the plan, repository instructions, or user explicitly requires independent review, run it once against the integrated milestone after deterministic gates pass. The main session must evaluate any findings, repair confirmed issues through the bounded gate-repair process, and rerun affected checks.
+6. Create one logical verified checkpoint commit when the milestone changed files. Stage files by name and never push.
+7. Ask the helper to complete the milestone.
 
 Record milestone-level evidence by omitting `--task`:
 
