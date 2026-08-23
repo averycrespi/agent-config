@@ -180,7 +180,7 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 
 Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
 
-Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. For substantial work, a useful default is 4–8 milestones with 2–5 tasks each, but treat those numbers as a compression target rather than a quota. Combine tasks when separating them would add handoff overhead without creating an independently testable result. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
+Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. Default to one implementation milestone plus integrated verification. Add milestones only for real dependency boundaries, distinct subsystems, or independently verifiable outcomes. Prefer the fewest task packets that remain independently executable. Combine tasks when separating them would add handoff overhead without creating an independently testable result. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
 
 Each milestone must:
 
