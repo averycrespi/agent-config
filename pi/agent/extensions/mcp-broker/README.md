@@ -64,15 +64,19 @@ Set `readOnly: true` in settings or `MCP_BROKER_READONLY=1`/`true` in the enviro
 - **Defense-in-depth** — `mcp_call` refreshes the broker tool list before forwarding and checks the requested tool name against that filtered read-only list. Any name not in the list is rejected immediately with the error `mcp_call: tool '<name>' is not available in read-only mode`. This catches stale or injected names even when the startup cache is absent.
 - **Bash guard** — the guard's fuzzy-match suggestions are drawn from the same cached list, so it naturally surfaces only read-only tools in this mode. No extra code is required.
 
-Subagents activate read-only mode via the `env:` block in their agent frontmatter:
+Subagents activate broker read-only mode through the `read-broker` capability. The capability loads this extension and authoritatively sets both `MCP_BROKER_READONLY=1` and `MCP_BROKER_APPROVAL_MODE=reject` after inheriting the parent environment:
 
-```markdown
----
-extensions: mcp-broker
-env:
-  MCP_BROKER_READONLY: "1"
-  MCP_BROKER_APPROVAL_MODE: "reject"
----
+```json
+{
+  "agents": [
+    {
+      "intent": "Inspect broker data",
+      "prompt": "Inspect the available broker data and report evidence without making external changes.",
+      "capabilities": ["read-broker"],
+      "profile": "balanced"
+    }
+  ]
+}
 ```
 
 ## External content safety
