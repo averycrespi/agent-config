@@ -141,7 +141,6 @@ test("preflight collects policy, file, and schema errors", async () => {
     {
       ...config,
       allowedCapabilities: ["read-filesystem"],
-      allowedEffortLevels: ["low", "medium", "high"],
     },
     { ...ctx, modelRegistry: { find: () => undefined } },
   );

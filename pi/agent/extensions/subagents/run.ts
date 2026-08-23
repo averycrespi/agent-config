@@ -134,11 +134,6 @@ export function resolveSubagentRequest(
     : undefined;
   const selector = profileConfig?.model ?? "";
   const thinking = profileConfig?.thinking;
-  if (thinking && !config.allowedEffortLevels.includes(thinking)) {
-    errors.push(
-      `profile ${request.profile} effort is globally disallowed: ${thinking}`,
-    );
-  }
 
   const parsed = parseSelector(selector);
   if (profileConfig && !parsed) {

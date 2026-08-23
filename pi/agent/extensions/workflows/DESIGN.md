@@ -83,7 +83,7 @@ Exact source copies are retained for seven days. Abnormal runs may persist one v
 
 ## Configuration invariant
 
-Workflow configuration must not own profile mappings or model selectors. `WORKFLOWS_MODEL_TIER_SMALL`, `WORKFLOWS_MODEL_TIER_BIG`, `modelTierSmall`, and `modelTierBig` remain removed and diagnosed when encountered. All profile model/effort mappings and global capability/effort ceilings belong to `extension:subagents`.
+Workflow configuration must not own profile mappings or model selectors. `WORKFLOWS_MODEL_TIER_SMALL`, `WORKFLOWS_MODEL_TIER_BIG`, `modelTierSmall`, and `modelTierBig` remain removed and diagnosed when encountered. All profile model/effort mappings and the global capability ceiling belong to `extension:subagents`.
 
 ## Non-goals
 

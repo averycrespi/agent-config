@@ -66,7 +66,7 @@ Capabilities compose by deterministic catalog order. Tools and extensions are de
 }
 ```
 
-Preflight collects errors across the complete batch and launches no child when any item is invalid. It checks required text, capability names and global allowance, mutable-batch serialization, configured profiles, live model resolution, configured effort support, attachments, and output schemas. The check uses Pi's live model registry; profile names do not imply fixed models. Runtime-supported `max` effort works when globally allowed, configured for the profile, and supported by the selected model.
+Preflight collects errors across the complete batch and launches no child when any item is invalid. It checks required text, capability names and global allowance, mutable-batch serialization, configured profiles, live model resolution, configured effort support, attachments, and output schemas. The check uses Pi's live model registry; profile names do not imply fixed models. Runtime-supported `max` effort works when configured for the profile and supported by the selected model.
 
 ## Child context and environment
 
@@ -98,19 +98,20 @@ Default output shows the `spawn_agents` aggregate line followed by each agent on
 
 Settings are global/env-only under `extension:subagents`; project settings cannot widen policy. Environment values override valid global settings. Use `/subagents-config` to inspect effective parsed configuration.
 
-| Field                   | Default                      | Environment override                | Description                                                                                            |
-| ----------------------- | ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `maxConcurrency`        | `4`                          | `SUBAGENTS_MAX_CONCURRENCY`         | Shared direct-child limit, clamped to `1..16`.                                                         |
-| `profileFastModel`      | `openai-codex/gpt-5.6-luna`  | `SUBAGENTS_PROFILE_FAST_MODEL`      | Full `provider/model` selector for `fast`.                                                             |
-| `profileFastEffort`     | `high`                       | `SUBAGENTS_PROFILE_FAST_EFFORT`     | Reasoning effort coupled to `fast`.                                                                    |
-| `profileBalancedModel`  | `openai-codex/gpt-5.6-terra` | `SUBAGENTS_PROFILE_BALANCED_MODEL`  | Full selector for `balanced`.                                                                          |
-| `profileBalancedEffort` | `high`                       | `SUBAGENTS_PROFILE_BALANCED_EFFORT` | Reasoning effort coupled to `balanced`.                                                                |
-| `profileStrongModel`    | `openai-codex/gpt-5.6-sol`   | `SUBAGENTS_PROFILE_STRONG_MODEL`    | Full selector for `strong`.                                                                            |
-| `profileStrongEffort`   | `high`                       | `SUBAGENTS_PROFILE_STRONG_EFFORT`   | Reasoning effort coupled to `strong`.                                                                  |
-| `allowedCapabilities`   | all five built-ins           | `SUBAGENTS_ALLOWED_CAPABILITIES`    | Array in settings; comma-separated global ceiling in the environment.                                  |
-| `allowedEffortLevels`   | `low`, `medium`, `high`      | `SUBAGENTS_ALLOWED_EFFORT_LEVELS`   | Array in settings; comma-separated ceiling for configured profile efforts, including `max` if allowed. |
+| Field                   | Default                      | Environment override                | Description                                                           |
+| ----------------------- | ---------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| `maxConcurrency`        | `4`                          | `SUBAGENTS_MAX_CONCURRENCY`         | Shared direct-child limit, clamped to `1..16`.                        |
+| `profileFastModel`      | `openai-codex/gpt-5.6-luna`  | `SUBAGENTS_PROFILE_FAST_MODEL`      | Full `provider/model` selector for `fast`.                            |
+| `profileFastEffort`     | `high`                       | `SUBAGENTS_PROFILE_FAST_EFFORT`     | Reasoning effort coupled to `fast`.                                   |
+| `profileBalancedModel`  | `openai-codex/gpt-5.6-terra` | `SUBAGENTS_PROFILE_BALANCED_MODEL`  | Full selector for `balanced`.                                         |
+| `profileBalancedEffort` | `high`                       | `SUBAGENTS_PROFILE_BALANCED_EFFORT` | Reasoning effort coupled to `balanced`.                               |
+| `profileStrongModel`    | `openai-codex/gpt-5.6-sol`   | `SUBAGENTS_PROFILE_STRONG_MODEL`    | Full selector for `strong`.                                           |
+| `profileStrongEffort`   | `high`                       | `SUBAGENTS_PROFILE_STRONG_EFFORT`   | Reasoning effort coupled to `strong`.                                 |
+| `allowedCapabilities`   | all five built-ins           | `SUBAGENTS_ALLOWED_CAPABILITIES`    | Array in settings; comma-separated global ceiling in the environment. |
 
-The shipped profile efforts are evaluation starting points, not model-family guarantees. Change a profile's model and effort together, then compare verified task success, rework, latency, and cost; unsupported or globally disallowed combinations fail closed.
+`allowedEffortLevels`, `allowedThinkingLevels`, `SUBAGENTS_ALLOWED_EFFORT_LEVELS`, and `SUBAGENTS_ALLOWED_THINKING_LEVELS` are removed and ignored with diagnostics. Configure effort directly on each profile; the selected model's runtime-supported effort levels remain authoritative.
+
+The shipped profile efforts are evaluation starting points, not model-family guarantees. Change a profile's model and effort together, then compare verified task success, rework, latency, and cost; combinations unsupported by the selected model fail closed.
 
 ```json
 {
@@ -128,8 +129,7 @@ The shipped profile efforts are evaluation starting points, not model-family gua
       "exec-shell",
       "read-broker",
       "read-web"
-    ],
-    "allowedEffortLevels": ["low", "medium", "high"]
+    ]
   }
 }
 ```

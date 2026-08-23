@@ -115,7 +115,7 @@ All model calls receive only `read-filesystem`; no review branch gets shell, web
 
 ## Model and capability policy
 
-`profile` accepts only `fast`, `balanced`, or `strong`. Profile model/effort pairs and capability ceilings come exclusively from `extension:subagents`; workflows have no profile overrides or fallback to parent/named definitions. Unknown, globally disallowed, unresolved, or model-unsupported values fail closed through `runSubagent()`.
+`profile` accepts only `fast`, `balanced`, or `strong`. Profile model/effort pairs and the capability ceiling come exclusively from `extension:subagents`; workflows have no profile overrides or fallback to parent/named definitions. Unknown profiles, globally disallowed capabilities, unresolved models, and model-unsupported efforts fail closed through `runSubagent()`.
 
 The sandbox receives capability and profile names, never full model selectors, effort values, or process authority. `capabilities: []` still loads normal Pi project context files by design, while child skills/templates remain disabled.
 

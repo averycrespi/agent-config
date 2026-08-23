@@ -38,7 +38,7 @@ interface RunSubagentRequest {
 }
 ```
 
-Every invocation loads central `extension:subagents` policy, resolves the requested profile to a configured model selector and effort, looks the model up in the trusted live registry, verifies configured effort against the global ceiling and Pi's runtime-supported levels, expands fixed capabilities, and only then starts a child. Invalid requests return a failed `SpawnOutcome` without launching.
+Every invocation loads central `extension:subagents` policy, resolves the requested profile to a configured model selector and effort, looks the model up in the trusted live registry, verifies the configured effort against Pi's runtime-supported levels, expands fixed capabilities, and only then starts a child. Invalid requests return a failed `SpawnOutcome` without launching.
 
 Authority fields are deliberately absent: callers cannot provide raw tools, extensions, exact models, effort, environment, system prompts, session/recursion controls, skills/templates, context-file behavior, roles, or caller-defined profiles. `capabilities: []` is valid. Structured output automatically composes its own tool/extension contract.
 

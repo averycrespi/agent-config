@@ -5,7 +5,7 @@
 ## Architecture
 
 - `types.ts` owns the five capability names, three profiles, runtime-compatible effort values mapped to Pi thinking levels, the model-facing schema, and intent-first activity state.
-- `config.ts` owns global/env-only concurrency, profile model/effort pairs, capability and effort ceilings, and `/subagents-config`.
+- `config.ts` owns global/env-only concurrency, profile model/effort pairs, the capability ceiling, and `/subagents-config`.
 - `capabilities.ts` is the fixed dependency-complete grant catalog and deterministic union resolver.
 - `run.ts` is the policy boundary. It validates sanitized requests against config and Pi's live model registry, then translates them to an internal process invocation.
 - `spawn.ts` is internal process machinery: CLI construction, extension resolution, recursion, environment inheritance, JSONL parsing, structured output, cancellation, spillover, and retained diagnostics.
@@ -23,13 +23,12 @@ Resolution is fail-closed:
 
 1. Load global/env-only `extension:subagents` configuration.
 2. Validate non-empty intent/prompt and explicit capability/profile fields.
-3. Reject unknown or globally disallowed capabilities and profiles.
+3. Reject unknown profiles and unknown or globally disallowed capabilities.
 4. Map the profile to one configured `provider/model` selector and effort.
-5. Reject configured effort outside the global ceiling.
-6. Resolve that selector through the supplied live Pi model registry.
-7. Call Pi's runtime `getSupportedThinkingLevels()` for the selected model and reject unsupported configured effort without clamping.
-8. Expand capabilities in fixed catalog order, deduplicating tools/extensions.
-9. Build the internal spawn invocation.
+5. Resolve that selector through the supplied live Pi model registry.
+6. Call Pi's runtime `getSupportedThinkingLevels()` for the selected model and reject unsupported configured effort without clamping.
+7. Expand capabilities in fixed catalog order, deduplicating tools/extensions.
+8. Build the internal spawn invocation.
 
 The local compatibility union includes `max` even though the repository's development dependency types predate it. Runtime validation remains authoritative, so the installed Pi runtime may allow `max` when both configuration and the selected model support it.
 

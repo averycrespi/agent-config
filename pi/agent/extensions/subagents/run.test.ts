@@ -108,7 +108,6 @@ test("resolver honors runtime-supported max across the development type gap", ()
     {
       ...config,
       profileBalancedEffort: "max",
-      allowedEffortLevels: ["max"],
     },
   );
   assert.deepEqual(result.errors, []);

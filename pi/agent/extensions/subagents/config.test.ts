@@ -43,14 +43,10 @@ test("config exposes centralized policy defaults", () => {
     "read-broker",
     "read-web",
   ]);
-  assert.deepEqual(DEFAULT_SUBAGENTS_CONFIG.allowedEffortLevels, [
-    "low",
-    "medium",
-    "high",
-  ]);
+  assert.equal("allowedEffortLevels" in DEFAULT_SUBAGENTS_CONFIG, false);
 });
 
-test("global config normalizes selectors and allowlists", () => {
+test("global config normalizes selectors and capability allowlist", () => {
   assert.deepEqual(
     normalizeSubagentsConfig(
       {
@@ -62,7 +58,6 @@ test("global config normalizes selectors and allowlists", () => {
         profileStrongModel: "p/s",
         profileStrongEffort: "max",
         allowedCapabilities: ["read-web", "read-web", "write-filesystem"],
-        allowedEffortLevels: ["max", "high", "max"],
       },
       {},
     ),
@@ -75,7 +70,6 @@ test("global config normalizes selectors and allowlists", () => {
       profileStrongModel: "p/s",
       profileStrongEffort: "max",
       allowedCapabilities: ["read-web", "write-filesystem"],
-      allowedEffortLevels: ["max", "high"],
     },
   );
 });
@@ -93,7 +87,6 @@ test("every field has an environment override", () => {
         SUBAGENTS_PROFILE_STRONG_MODEL: "env/s",
         SUBAGENTS_PROFILE_STRONG_EFFORT: "max",
         SUBAGENTS_ALLOWED_CAPABILITIES: "read-broker,write-filesystem",
-        SUBAGENTS_ALLOWED_EFFORT_LEVELS: "low,max",
       },
     ),
     {
@@ -105,8 +98,33 @@ test("every field has an environment override", () => {
       profileStrongModel: "env/s",
       profileStrongEffort: "max",
       allowedCapabilities: ["read-broker", "write-filesystem"],
-      allowedEffortLevels: ["low", "max"],
     },
+  );
+});
+
+test("removed effort allowlists are ignored and diagnosed", () => {
+  const warnings: string[] = [];
+  const value = normalizeSubagentsConfig(
+    {
+      allowedEffortLevels: ["low"],
+      allowedThinkingLevels: ["medium"],
+    },
+    {
+      SUBAGENTS_ALLOWED_EFFORT_LEVELS: "high",
+      SUBAGENTS_ALLOWED_THINKING_LEVELS: "max",
+    },
+    warnings,
+  );
+  assert.equal("allowedEffortLevels" in value, false);
+  assert.match(warnings.join("\n"), /allowedEffortLevels was removed/);
+  assert.match(warnings.join("\n"), /allowedThinkingLevels was removed/);
+  assert.match(
+    warnings.join("\n"),
+    /SUBAGENTS_ALLOWED_EFFORT_LEVELS was removed/,
+  );
+  assert.match(
+    warnings.join("\n"),
+    /SUBAGENTS_ALLOWED_THINKING_LEVELS was removed/,
   );
 });
 
@@ -118,27 +136,19 @@ test("legacy tier selectors migrate as deprecated profile model fallbacks", () =
       modelTierMedium: "legacy/balanced",
       profileStrongModel: "new/strong",
       modelTierLarge: "legacy/strong",
-      allowedThinkingLevels: ["medium", "high"],
     },
     {
       SUBAGENTS_MODEL_TIER_MEDIUM: "env/balanced",
-      SUBAGENTS_ALLOWED_THINKING_LEVELS: "high,max",
     },
     warnings,
   );
   assert.equal(value.profileFastModel, "legacy/fast");
   assert.equal(value.profileBalancedModel, "env/balanced");
   assert.equal(value.profileStrongModel, "new/strong");
-  assert.deepEqual(value.allowedEffortLevels, ["high", "max"]);
   assert.match(warnings.join("\n"), /modelTierSmall is deprecated/);
   assert.match(
     warnings.join("\n"),
     /SUBAGENTS_MODEL_TIER_MEDIUM is deprecated/,
-  );
-  assert.match(warnings.join("\n"), /allowedThinkingLevels is deprecated/);
-  assert.match(
-    warnings.join("\n"),
-    /SUBAGENTS_ALLOWED_THINKING_LEVELS is deprecated/,
   );
 });
 
@@ -150,14 +160,12 @@ test("invalid values warn and preserve valid fallback policy", () => {
       profileBalancedModel: "invalid",
       profileStrongEffort: "ultra",
       allowedCapabilities: ["write"],
-      allowedEffortLevels: ["ultra"],
     },
     {
       SUBAGENTS_MAX_CONCURRENCY: "99",
       SUBAGENTS_PROFILE_STRONG_MODEL: "bad",
       SUBAGENTS_PROFILE_FAST_EFFORT: "ultra",
       SUBAGENTS_ALLOWED_CAPABILITIES: "unknown",
-      SUBAGENTS_ALLOWED_EFFORT_LEVELS: "ultra",
     },
     warnings,
   );
@@ -174,13 +182,8 @@ test("invalid values warn and preserve valid fallback policy", () => {
     value.allowedCapabilities,
     DEFAULT_SUBAGENTS_CONFIG.allowedCapabilities,
   );
-  assert.deepEqual(
-    value.allowedEffortLevels,
-    DEFAULT_SUBAGENTS_CONFIG.allowedEffortLevels,
-  );
   assert.match(warnings.join("\n"), /invalid global profileBalancedModel/);
   assert.match(warnings.join("\n"), /invalid global profileStrongEffort/);
-  assert.match(warnings.join("\n"), /SUBAGENTS_ALLOWED_EFFORT_LEVELS/);
 });
 
 test("project settings cannot widen global subagent policy", async () => {
@@ -245,7 +248,7 @@ test("subagents config command reports effective global policy", async () => {
     });
     assert.match(messages[0]!, /"profileBalancedModel": "p\/m"/);
     assert.match(messages[0]!, /"allowedCapabilities"/);
-    assert.match(messages[0]!, /"allowedEffortLevels"/);
+    assert.doesNotMatch(messages[0]!, /"allowedEffortLevels"/);
   } finally {
     if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = originalAgentDir;

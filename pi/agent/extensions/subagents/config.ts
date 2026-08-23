@@ -26,7 +26,6 @@ export type SubagentsConfig = {
   profileStrongModel: string;
   profileStrongEffort: ThinkingLevel;
   allowedCapabilities: Capability[];
-  allowedEffortLevels: ThinkingLevel[];
 };
 
 export const DEFAULT_SUBAGENTS_CONFIG: SubagentsConfig = {
@@ -38,7 +37,6 @@ export const DEFAULT_SUBAGENTS_CONFIG: SubagentsConfig = {
   profileStrongModel: "openai-codex/gpt-5.6-sol",
   profileStrongEffort: "high",
   allowedCapabilities: [...CAPABILITIES],
-  allowedEffortLevels: ["low", "medium", "high"],
 };
 
 const EXTENSION_NAME = "subagents";
@@ -51,7 +49,6 @@ const ENV = {
   profileStrongModel: "SUBAGENTS_PROFILE_STRONG_MODEL",
   profileStrongEffort: "SUBAGENTS_PROFILE_STRONG_EFFORT",
   allowedCapabilities: "SUBAGENTS_ALLOWED_CAPABILITIES",
-  allowedEffortLevels: "SUBAGENTS_ALLOWED_EFFORT_LEVELS",
 } as const;
 
 type PlainObject = Record<string, unknown>;
@@ -180,30 +177,15 @@ export function normalizeSubagentsConfig(
     );
   }
 
-  if (globalSettings.allowedThinkingLevels !== undefined) {
-    warnings.push(
-      "allowedThinkingLevels is deprecated; use allowedEffortLevels under extension:subagents.",
-    );
-    if (globalSettings.allowedEffortLevels === undefined) {
-      const legacy = parseAllowedList(
-        globalSettings.allowedThinkingLevels,
-        THINKING_LEVELS,
+  for (const field of [
+    "allowedEffortLevels",
+    "allowedThinkingLevels",
+  ] as const) {
+    if (globalSettings[field] !== undefined) {
+      warnings.push(
+        `${field} was removed; configure effort directly on each subagent profile.`,
       );
-      if (legacy) normalizedGlobal.allowedEffortLevels = legacy;
-      else warnings.push("Ignoring invalid global allowedThinkingLevels.");
     }
-  }
-
-  const globalEffort = parseAllowedList(
-    globalSettings.allowedEffortLevels,
-    THINKING_LEVELS,
-  );
-  if (globalEffort) {
-    normalizedGlobal.allowedEffortLevels = globalEffort;
-  } else if (globalSettings.allowedEffortLevels !== undefined) {
-    warnings.push(
-      "Ignoring invalid global allowedEffortLevels; using default.",
-    );
   }
 
   const normalizedEnv: PlainObject = {};
@@ -267,25 +249,15 @@ export function normalizeSubagentsConfig(
     warnings.push(`Ignoring invalid ${ENV.allowedCapabilities}.`);
   }
 
-  const legacyEffortEnv = env.SUBAGENTS_ALLOWED_THINKING_LEVELS;
-  if (legacyEffortEnv?.trim()) {
-    warnings.push(
-      `SUBAGENTS_ALLOWED_THINKING_LEVELS is deprecated; use ${ENV.allowedEffortLevels}.`,
-    );
-    if (!env[ENV.allowedEffortLevels]?.trim()) {
-      const legacy = parseAllowedList(legacyEffortEnv, THINKING_LEVELS);
-      if (legacy) normalizedEnv.allowedEffortLevels = legacy;
-      else warnings.push("Ignoring invalid SUBAGENTS_ALLOWED_THINKING_LEVELS.");
+  for (const envName of [
+    "SUBAGENTS_ALLOWED_EFFORT_LEVELS",
+    "SUBAGENTS_ALLOWED_THINKING_LEVELS",
+  ] as const) {
+    if (env[envName]?.trim()) {
+      warnings.push(
+        `${envName} was removed; configure effort directly on each subagent profile.`,
+      );
     }
-  }
-
-  const envEffort = parseAllowedList(
-    env[ENV.allowedEffortLevels],
-    THINKING_LEVELS,
-  );
-  if (envEffort) normalizedEnv.allowedEffortLevels = envEffort;
-  else if (env[ENV.allowedEffortLevels]?.trim()) {
-    warnings.push(`Ignoring invalid ${ENV.allowedEffortLevels}.`);
   }
 
   return mergeExtensionConfig({
