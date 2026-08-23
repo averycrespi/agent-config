@@ -103,6 +103,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `plan`                    | Turning one Ready specification into one milestone-structured autonomous implementation plan           |
 | `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
 | `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |
+| `simplify`                | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes   |
 | `specify`                 | Defining one bounded feature or change as a behavioral contract with observable acceptance criteria    |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                    |
 | `wiki`                    | Maintaining a persistent markdown wiki from immutable source documents                                 |
@@ -110,7 +111,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 Notes:
 
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
-- `clarify` resolves ambiguity and routes work without writing a design artifact. `architect` writes high-level designs under `.design/architectures/` and decomposes them into specifications. `specify` writes one bounded behavioral contract under `.design/specs/`, and `plan` turns one Ready specification into a milestone-structured `.design/plans/` handoff. `execute-next-milestone` implements exactly one dependency-ready milestone while persisting authoritative run state and evidence; invoking it with the same plan creates the first run or resumes its sole matching run. `challenge` stress-tests concrete artifacts before implementation, `review` evaluates completed changes, and `goal` provides durable session steering outside plan execution.
+- `clarify` resolves ambiguity and routes work without writing a design artifact. `architect` writes high-level designs under `.design/architectures/` and decomposes them into specifications. `specify` writes one bounded behavioral contract under `.design/specs/`, and `plan` turns one Ready specification into a milestone-structured `.design/plans/` handoff. `execute-next-milestone` implements exactly one dependency-ready milestone while persisting authoritative run state and evidence; invoking it with the same plan creates the first run or resumes its sole matching run. `challenge` stress-tests material failure risks, the explicit-only `simplify` skill tests for unnecessary complexity, `review` evaluates completed changes, and `goal` provides durable session steering outside plan execution.
 - Hidden `.design/` files are local workflow artifacts. Promote canonical architecture decisions and user-facing contracts into the repository's tracked documentation during implementation.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

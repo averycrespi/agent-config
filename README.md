@@ -1,6 +1,6 @@
 # Agent Config
 
-My personal [Pi](https://pi.dev/) setup for software development. It adds a structured workflow for clarifying intent, designing systems, specifying bounded changes, planning and challenging implementation, executing milestone plans with durable evidence, steering ad hoc work with session goals, and independently reviewing the result.
+My personal [Pi](https://pi.dev/) setup for software development. It adds a structured workflow for clarifying intent, designing systems, specifying bounded changes, planning, simplifying, and challenging implementation, executing milestone plans with durable evidence, steering ad hoc work with session goals, and independently reviewing the result.
 
 The repository contains the skills, extensions, prompts, and saved workflows that power that setup. Custom extensions are written in TypeScript and maintained with tests and documentation.
 
@@ -12,7 +12,7 @@ The harness combines a simple development loop with tools that keep work scoped,
 
 1. **Clarify and route** ambiguous requests with `clarify` when the right design artifact is not yet clear.
 2. **Design and specify** broad systems with `architect`, then turn each outcome—or one smaller standalone change—into a Ready specification with `specify`.
-3. **Plan and challenge** one specification with `plan` and, for substantial work, `challenge`.
+3. **Plan and stress-test** one specification with `plan`, the explicit-only `simplify` skill for unnecessary complexity, and `challenge` for substantial risks.
 4. **Implement** the next dependency-ready plan milestone with `execute-next-milestone`, which persists run state, task progress, decisions, and acceptance evidence; use `goal` for session-scoped steering outside plan execution.
 5. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
