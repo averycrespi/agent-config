@@ -6,7 +6,7 @@ A three-phase loop that most serious Claude Code / AI coding workflows have conv
 
 1. **Plan** — Turn a fuzzy request into an explicit artifact: a spec, design doc, or task list. Often preceded by a Socratic brainstorming step to pin down requirements.
 2. **Execute** — Work the plan task-by-task with one writer at a time, using fresh subagent contexts, worktrees, or sessions while the orchestrator retains durable state and verification authority.
-3. **Review** — Validate the output against the plan and against quality bars (correctness, security, style). Often layered: per-task review during execution, then a holistic pass before merge.
+3. **Review** — Validate the output against the plan and against quality bars (correctness, security, style). The orchestrator verifies each delegated task directly; independent review is most useful as a holistic risk-appropriate pass before merge rather than an automatic reviewer chain after every task.
 
 ## The convergence
 
@@ -15,7 +15,7 @@ Independently developed workflows all landed in roughly the same place:
 - **[Superpowers](https://github.com/obra/superpowers)** (Jesse Vincent) — brainstorm → plan → isolated-worktree execution → two-stage review (spec, then code quality). Test-first is mandatory.
 - **[spec-kit](https://github.com/github/spec-kit)** (GitHub) — constitution → specify → plan → tasks → implement → validate. Agent-agnostic; upstream "constitution" encodes project principles.
 - **[GSD](https://crtlaltclaude.com/)** — questionnaire-driven setup → research → planning → roadmap execution → checkpoint verification.
-- **My own skills** (`clarify` → `architect` / `specify` → `plan` → `challenge` → `execute-next-milestone` → `review`) — clarification and routing; optional high-level architecture decomposed into bounded specifications; acceptance-criteria-driven planning and challenge; one dependency-ready milestone executed through sequential profile-routed task workers with durable evidence; then independent review.
+- **My own skills** (`clarify` → `architect` / `specify` → `plan` → `challenge` → `execute-plan` / `execute-next-milestone` → `review`) — clarification and routing; optional high-level architecture decomposed into bounded specifications; acceptance-criteria-driven planning and challenge; direct one-milestone execution or goal-driven full-plan continuation through sequential profile-routed task workers with durable evidence; then risk-appropriate independent review.
 
 ## Why it works
 

@@ -29,7 +29,8 @@ export type AutoRunStopReason =
   | "turn_budget"
   | "time_budget"
   | "provider_error"
-  | "aborted";
+  | "aborted"
+  | "agent_yield";
 
 export interface GoalAutoRunState {
   status: AutoRunStatus;
@@ -37,6 +38,7 @@ export interface GoalAutoRunState {
   updatedAt: number;
   continuationTurns: number;
   stopReason?: AutoRunStopReason;
+  stopDetail?: string;
   lastContinuationAt?: number;
 }
 
@@ -56,7 +58,7 @@ export interface GoalStore {
   complete(evidence: string, maxChars: number): Goal | undefined;
   recordAssistantUsage(totalTokens?: number): Goal | undefined;
   startAutoRun(): GoalAutoRunState;
-  stopAutoRun(reason: AutoRunStopReason): GoalAutoRunState;
+  stopAutoRun(reason: AutoRunStopReason, detail?: string): GoalAutoRunState;
   recordAutoRunContinuation(): GoalAutoRunState;
   clear(): void;
   subscribe(listener: (state: GoalState) => void): () => void;
@@ -138,7 +140,8 @@ export function isAutoRunStopReason(
     value === "turn_budget" ||
     value === "time_budget" ||
     value === "provider_error" ||
-    value === "aborted"
+    value === "aborted" ||
+    value === "agent_yield"
   );
 }
 
@@ -300,13 +303,17 @@ export function createGoalStore(
       return cloneAutoRun(autoRun)!;
     },
 
-    stopAutoRun(reason) {
+    stopAutoRun(reason, detail) {
       const timestamp = now();
+      const { stopDetail: _stopDetail, ...currentAutoRun } = autoRun ?? {
+        continuationTurns: 0,
+      };
       autoRun = {
-        ...(autoRun ?? { continuationTurns: 0 }),
+        ...currentAutoRun,
         status: "stopped",
         updatedAt: timestamp,
         stopReason: reason,
+        ...(reason === "agent_yield" && detail ? { stopDetail: detail } : {}),
       };
       notify();
       return cloneAutoRun(autoRun)!;
@@ -424,7 +431,10 @@ function parseGoal(value: unknown): Goal | undefined {
   };
 }
 
-function parseAutoRun(value: unknown): GoalAutoRunState | undefined {
+function parseAutoRun(
+  value: unknown,
+  stopDetailMaxChars: number,
+): GoalAutoRunState | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as Record<string, unknown>;
@@ -455,8 +465,25 @@ function parseAutoRun(value: unknown): GoalAutoRunState | undefined {
   if (stopReason !== undefined && !isAutoRunStopReason(stopReason)) {
     return undefined;
   }
+  if (
+    candidate.stopDetail !== undefined &&
+    (typeof candidate.stopDetail !== "string" || stopReason !== "agent_yield")
+  ) {
+    return undefined;
+  }
+  if (
+    stopReason === "agent_yield" &&
+    (typeof candidate.stopDetail !== "string" ||
+      candidate.stopDetail.trim().length === 0)
+  ) {
+    return undefined;
+  }
+  const stopDetail =
+    stopReason === "agent_yield" && typeof candidate.stopDetail === "string"
+      ? candidate.stopDetail.trim().slice(0, stopDetailMaxChars)
+      : undefined;
   return {
-    status: candidate.status,
+    status: stopReason === "agent_yield" ? "stopped" : candidate.status,
     updatedAt: candidate.updatedAt,
     continuationTurns: Math.max(0, candidate.continuationTurns),
     ...(typeof candidate.startedAt === "number"
@@ -466,6 +493,7 @@ function parseAutoRun(value: unknown): GoalAutoRunState | undefined {
       ? { lastContinuationAt: candidate.lastContinuationAt }
       : {}),
     ...(isAutoRunStopReason(stopReason) ? { stopReason } : {}),
+    ...(stopDetail ? { stopDetail } : {}),
   };
 }
 
@@ -491,13 +519,18 @@ function hasValidInterruptedLegacyReview(value: unknown): boolean {
   );
 }
 
-export function parsePersistedGoalState(value: unknown): GoalState | undefined {
+export function parsePersistedGoalState(
+  value: unknown,
+  stopDetailMaxChars = 4000,
+): GoalState | undefined {
   if (!value || typeof value !== "object") return undefined;
+  if (!Number.isInteger(stopDetailMaxChars) || stopDetailMaxChars < 1)
+    return undefined;
   const candidate = value as { goal?: unknown; autoRun?: unknown };
   let goal =
     candidate.goal === undefined ? undefined : parseGoal(candidate.goal);
   if (candidate.goal !== undefined && !goal) return undefined;
-  let autoRun = parseAutoRun(candidate.autoRun);
+  let autoRun = parseAutoRun(candidate.autoRun, stopDetailMaxChars);
   if (candidate.autoRun !== undefined && !autoRun) return undefined;
 
   if (goal && hasValidInterruptedLegacyReview(candidate.goal)) {
@@ -550,13 +583,26 @@ export function getAutoRunElapsedMs(
     : Math.max(0, now() - autoRun.startedAt);
 }
 
+const CONTROL_SEQUENCES =
+  /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)?|.)|[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f-\u009f]/g;
+
+function safeSingleLine(value: string): string {
+  return value
+    .replace(CONTROL_SEQUENCES, "")
+    .replace(/\s*[\r\n]+\s*/g, " ")
+    .trim();
+}
+
 export function formatAutoRunLine(autoRun: GoalAutoRunState): string {
   if (autoRun.status === "running") {
     const turnLabel = autoRun.continuationTurns === 1 ? "turn" : "turns";
     return `Auto-run: running · ${autoRun.continuationTurns} continuation ${turnLabel}`;
   }
   if (autoRun.status === "stopped") {
-    return `Auto-run: stopped${autoRun.stopReason ? ` · ${autoRun.stopReason}` : ""}`;
+    const detail = autoRun.stopDetail
+      ? safeSingleLine(autoRun.stopDetail)
+      : undefined;
+    return `Auto-run: stopped${autoRun.stopReason ? ` · ${autoRun.stopReason}` : ""}${detail ? ` · ${detail}` : ""}`;
   }
   return "Auto-run: idle";
 }

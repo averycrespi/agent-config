@@ -84,6 +84,43 @@ test("/goal-config displays effective config", async () => {
   assert.equal(pi.commands.has("goal-approve"), false);
 });
 
+test("goal tool uses effective runtime evidence cap", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 5,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal").handler("Bounded yield", ctx);
+
+  const result = await pi.tools
+    .get("goal")
+    .execute(
+      "call-1",
+      { action: "yield", reason: "123456" },
+      undefined,
+      undefined,
+      {},
+    );
+
+  assert.match(result.content[0].text, /at most 5 characters/);
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "running");
+});
+
 test("commands mutate goal state and persist snapshots", async () => {
   const pi = makePi();
   const ctx = makeCtx();
@@ -170,6 +207,67 @@ test("restore scans branch snapshots and before_agent_start injects only active 
   assert.match(result.systemPrompt, /TODOs are done/i);
   assert.match(result.systemPrompt, /commit/i);
   assert.match(result.systemPrompt, /Stage files by name/i);
+});
+
+test("restore accepts unified and legacy goal tool result snapshots", async () => {
+  const pi = makePi();
+  const branch = [
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "goal_update",
+        details: {
+          goal: {
+            id: "legacy",
+            objective: "Legacy objective",
+            status: "active",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      },
+    },
+    {
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolName: "goal",
+        details: {
+          goal: {
+            id: "unified",
+            objective: "Unified objective",
+            status: "active",
+            createdAt: 2,
+            updatedAt: 2,
+          },
+        },
+      },
+    },
+  ];
+  const ctx = makeCtx(branch);
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal-show").handler("", ctx);
+
+  assert.match(ctx.notifications.at(-1)?.msg, /Unified objective/);
 });
 
 test("active goal prompt keeps auto-run bounds qualitative", async () => {
@@ -342,6 +440,8 @@ test("/goal sets active goal, starts auto-run, and sends kickoff", async () => {
   assert.equal(pi.sentMessages.length, 1);
   assert.match(String(pi.sentMessages[0].content), /Finish auto-run/);
   assert.match(String(pi.sentMessages[0].content), /at most 100 characters/);
+  assert.match(String(pi.sentMessages[0].content), /goal\(action="complete"/);
+  assert.match(String(pi.sentMessages[0].content), /goal\(action="yield"/);
   assert.equal(pi.entries.at(-1)?.type, "goal-state");
 });
 
@@ -412,6 +512,56 @@ test("/goal-renew restarts auto-run for the current active goal", async () => {
   assert.equal((pi.entries.at(-1)?.data as any).autoRun.continuationTurns, 0);
   assert.equal(pi.sentMessages.length, 3);
   assert.deepEqual(pi.sentMessages.at(-1)?.options, { deliverAs: "followUp" });
+});
+
+test("agent yield stops continuation and goal renew resumes it", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal").handler("Yield safely", ctx);
+
+  await pi.tools
+    .get("goal")
+    .execute(
+      "call-1",
+      { action: "yield", reason: "Need user approval" },
+      undefined,
+      undefined,
+      {},
+    );
+  await pi.handlers.get("agent_end")({}, ctx);
+
+  assert.equal(pi.sentMessages.length, 1);
+  assert.equal((pi.entries.at(-1)?.data as any).goal.status, "active");
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "stopped");
+  assert.equal(
+    (pi.entries.at(-1)?.data as any).autoRun.stopReason,
+    "agent_yield",
+  );
+
+  await pi.commands.get("goal-renew").handler("", ctx);
+
+  assert.equal(pi.sentMessages.length, 2);
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.status, "running");
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.stopReason, undefined);
+  assert.equal((pi.entries.at(-1)?.data as any).autoRun.stopDetail, undefined);
 });
 
 test("/goal-renew requires an active goal and enabled auto-run", async () => {

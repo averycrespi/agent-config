@@ -105,6 +105,19 @@ test("appends disabled auto-run reasons to the usage line", () => {
     autoRunMaxContinuations: 10,
     autoRunMaxActiveMinutes: 60,
   });
+  const yielded = renderGoalWidgetLines(goalWithUsage, 120, undefined, {
+    showUsage: true,
+    autoRun: {
+      status: "stopped",
+      updatedAt: 1,
+      continuationTurns: 0,
+      stopReason: "agent_yield",
+      stopDetail: "Need approval",
+    },
+    autoRunEnabled: true,
+    autoRunMaxContinuations: 10,
+    autoRunMaxActiveMinutes: 60,
+  });
   const paused = renderGoalWidgetLines(
     { ...goalWithUsage, status: "paused" },
     120,
@@ -121,6 +134,8 @@ test("appends disabled auto-run reasons to the usage line", () => {
   assert.match(configDisabled[1], /auto-run disabled \(config\)/);
   assert.match(stopped[1], /auto-run disabled \(continuation budget\)/);
   assert.match(aborted[1], /auto-run disabled \(aborted\)/);
+  assert.match(yielded[1], /auto-run disabled \(agent yielded\)/);
+  assert.doesNotMatch(yielded[1], /Need approval/);
   assert.match(paused[1], /auto-run disabled \(goal paused\)/);
 });
 

@@ -154,6 +154,96 @@ test("persisted goal state parser accepts auto-run snapshots", () => {
 
   assert.equal(parsed?.autoRun?.status, "stopped");
   assert.equal(parsed?.autoRun?.stopReason, "turn_budget");
+  assert.equal(parsed?.autoRun?.stopDetail, undefined);
+});
+
+test("agent yield remains active, persists detail, and renews cleanly", () => {
+  const store = createGoalStore(() => 4);
+  store.setGoal("Wait for credentials", 100);
+  store.startAutoRun();
+  store.stopAutoRun("agent_yield", "Credentials are unavailable");
+
+  assert.equal(store.getGoal()?.status, "active");
+  assert.deepEqual(store.getAutoRun(), {
+    status: "stopped",
+    startedAt: 4,
+    updatedAt: 4,
+    continuationTurns: 0,
+    stopReason: "agent_yield",
+    stopDetail: "Credentials are unavailable",
+  });
+  assert.match(
+    formatGoalState(store.getState()),
+    /agent_yield · Credentials are unavailable/,
+  );
+
+  store.startAutoRun();
+  assert.equal(store.getAutoRun()?.status, "running");
+  assert.equal(store.getAutoRun()?.stopReason, undefined);
+  assert.equal(store.getAutoRun()?.stopDetail, undefined);
+});
+
+test("agent yield detail is terminal-safe in formatted state", () => {
+  const store = createGoalStore(() => 4);
+  store.setGoal("Wait safely", 100);
+  store.startAutoRun();
+  store.stopAutoRun("agent_yield", "Need\n\u001b[31mapproval");
+
+  const formatted = formatGoalState(store.getState());
+  assert.equal(formatted.split("\n").length, 2);
+  assert.doesNotMatch(formatted, /\u001b/);
+  assert.match(formatted, /Need approval/);
+});
+
+test("persisted parser safely normalizes agent yield invariants", () => {
+  const runningYield = parsePersistedGoalState({
+    autoRun: {
+      status: "running",
+      updatedAt: 3,
+      continuationTurns: 1,
+      stopReason: "agent_yield",
+      stopDetail: "Need approval",
+    },
+  });
+  const oversizedYield = parsePersistedGoalState(
+    {
+      autoRun: {
+        status: "stopped",
+        updatedAt: 3,
+        continuationTurns: 1,
+        stopReason: "agent_yield",
+        stopDetail: "123456",
+      },
+    },
+    5,
+  );
+
+  assert.equal(runningYield?.autoRun?.status, "stopped");
+  assert.equal(runningYield?.autoRun?.stopReason, "agent_yield");
+  assert.equal(oversizedYield?.autoRun?.stopDetail, "12345");
+});
+
+test("persisted parser restores agent yield details", () => {
+  const parsed = parsePersistedGoalState({
+    goal: {
+      id: "goal-yield",
+      objective: "Wait safely",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 2,
+    },
+    autoRun: {
+      status: "stopped",
+      updatedAt: 3,
+      continuationTurns: 1,
+      stopReason: "agent_yield",
+      stopDetail: "Need user approval",
+    },
+  });
+
+  assert.equal(parsed?.goal?.status, "active");
+  assert.equal(parsed?.autoRun?.stopReason, "agent_yield");
+  assert.equal(parsed?.autoRun?.stopDetail, "Need user approval");
 });
 
 test("persisted goal state parser accepts aborted auto-run snapshots", () => {

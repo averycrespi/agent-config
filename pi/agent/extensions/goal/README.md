@@ -30,22 +30,25 @@ After each `agent_end`, the extension schedules one follow-up user message when:
 
 Provider errors are evaluated only after Pi reports that the agent has settled, so Pi's built-in retries and compaction recovery can run first. A successful retry clears the pending error and auto-run continues. If the provider error remains when the agent settles, auto-run stops. An aborted assistant stops auto-run immediately rather than being treated as a retryable provider failure.
 
-The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, aborted, left with a provider error after settlement, or a continuation/time bound is exhausted. These stop conditions do not change goal status; the goal remains `active`, and auto-run records a reason such as `turn_budget`, `time_budget`, `provider_error`, or `aborted`.
+The loop stops when the goal is completed, paused, cleared, interrupted by user input, disabled by configuration, aborted, left with a provider error after settlement, yielded by the agent, or a continuation/time bound is exhausted. Yielding and operational stop conditions do not complete the goal; the goal remains `active`, and auto-run records a reason such as `agent_yield`, `turn_budget`, `time_budget`, `provider_error`, or `aborted`. Agent yields also retain a bounded reason for `/goal-show` and tool output.
 
 Use `/goal-renew` to start or restart auto-run for the current active goal without changing the objective. Renewal creates a fresh auto-run session: it resets the continuation count and auto-run time budget, but it does not reset goal usage counters such as active goal time, tokens, or assistant turns.
 
-While auto-run is running, the extension blocks `ask_user` tool calls when that tool is available. Headless continuation cannot answer interactive prompts, so agents should choose the safest reversible default, continue with documented assumptions, or stop and report a blocker instead. This guard is only applied at tool-call time and does not require the `ask_user` tool to be loaded.
+While auto-run is running, the extension blocks `ask_user` tool calls when that tool is available. Headless continuation cannot answer interactive prompts, so agents should choose the safest reversible default, continue with documented assumptions, or call `goal` with `action: "yield"` when progress requires intervention. This guard is only applied at tool-call time and does not require the `ask_user` tool to be loaded.
 
-## Agent tools
+## Agent tool
 
-The extension registers two tools:
+The extension registers one `goal` tool with three actions:
 
-- `goal_get` reads the current goal state without mutation.
-- `goal_update` can only mark the current goal `complete` and requires non-empty completion evidence bounded by `evidenceMaxChars`.
+| Action     | Parameters | Behavior                                                                                       |
+| ---------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `get`      | None       | Read the current goal and auto-run state without mutation.                                     |
+| `complete` | `evidence` | Complete the active goal with concise audited evidence bounded by `evidenceMaxChars`.          |
+| `yield`    | `reason`   | Stop auto-run with a bounded reason while leaving the goal active for user-controlled renewal. |
 
-Completion is intentionally conservative. Agents should call `goal_update` only after mapping every explicit requirement in the objective to concrete evidence from files, command output, tests, UI state, or other real artifacts. The tool schema, prompt snippet, and prompt guidelines tell agents to keep evidence concise and at most `evidenceMaxChars`; evidence should summarize logs/results and cite artifacts rather than paste raw output. TODO completion, tests passing, implementation effort, a plausible final answer, or context pressure are not sufficient by themselves.
+Completion is intentionally conservative. Agents should use `complete` only after mapping every explicit requirement in the objective to concrete evidence from files, command output, tests, UI state, or other real artifacts. The config-aware injected prompt and runtime validation enforce the effective `evidenceMaxChars` limit; the registration-time tool schema deliberately omits a numeric maximum so it cannot disagree with configuration loaded at session start. Evidence should summarize logs/results and cite artifacts rather than paste raw output. TODO completion, tests passing, implementation effort, a plausible final answer, or context pressure are not sufficient by themselves.
 
-Validated evidence completes the active goal immediately, freezes its usage counters, and stops a running auto-run with `goal_complete`.
+Validated evidence completes the active goal immediately, freezes its usage counters, and stops a running auto-run with `goal_complete`. Yielding is not completion: it leaves the goal active, stops auto-run with `agent_yield`, persists the reason, and requires the user to invoke `/goal-renew` before automation continues. The agent cannot renew its own continuation budget.
 
 ## State and persistence
 
@@ -58,7 +61,7 @@ When `showUsage` is enabled, snapshots also include observational usage counters
 Snapshots are persisted through:
 
 - custom `goal-state` entries for command-driven and auto-run mutations
-- tool result details for `goal_update`
+- tool result details for the unified `goal` tool, with legacy `goal_update` results still accepted during restoration
 
 There is at most one goal per active branch.
 
@@ -70,11 +73,17 @@ When the current goal is active and `injectActiveGoal` is enabled, each agent tu
 - a reminder to continue unless paused, blocked, or complete
 - checkpoint commit guidance when `checkpointCommits` is enabled
 - a completion audit checklist
-- the configured `evidenceMaxChars` cap for concise `goal_update` evidence
+- the configured `evidenceMaxChars` cap for concise completion evidence and yield reasons
 - a warning that proxy signals are insufficient completion evidence
 - a qualitative reminder that configured continuation/time bounds apply when auto-run is running
 
 No goal context is injected when the goal is paused, complete, absent, or injection is disabled. When checkpoint guidance is enabled, the agent is told to create git commits at logical verified checkpoints, stage files by name, and never push unless explicitly asked.
+
+## Goal-driven plan execution
+
+The `execute-plan` skill can use goal auto-run as a bounded continuation layer for one Ready plan. It executes or resumes at most one milestone per agent turn through `execute-next-milestone`. Goal state never replaces plan run state: `.design/runs/.../state.json` remains authoritative for milestone progression, and the goal completes only after the helper reports the whole run `complete` and the agent audits its evidence. Blocked, failed, drifted, ambiguous, or invalid execution yields control without completing the goal.
+
+Start with an objective that explicitly names the Ready plan and `execute-plan`. If a blocked or failed run yields, resolve the reported condition and use `/goal-renew`; the coordinator treats that fresh zero-continuation auto-run as user authorization for one bounded recovery attempt. If auto-run yields again or exhausts a budget, control returns to the user again. A fresh Pi session requires a new explicit goal but resumes the repository-durable plan run.
 
 ## Widget
 

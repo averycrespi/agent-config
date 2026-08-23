@@ -56,6 +56,8 @@ function formatStopReason(reason: AutoRunStopReason): string {
       return "provider error";
     case "aborted":
       return "aborted";
+    case "agent_yield":
+      return "agent yielded";
   }
 }
 

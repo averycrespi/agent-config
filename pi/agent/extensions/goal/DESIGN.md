@@ -6,7 +6,7 @@
 
 - `index.ts` wires commands, lifecycle event handlers, prompt injection, auto-run continuation, widget updates, compaction, and branch restoration.
 - `state.ts` owns the goal and auto-run state machines, validation/parsing of persisted snapshots, legacy normalization, usage accounting helpers, and text formatting.
-- `tools.ts` registers `goal_get` and `goal_update`, persists completed state, and keeps completion evidence conservative.
+- `tools.ts` registers the unified `goal` tool, validates its `get`, `complete`, and `yield` actions atomically, persists mutations, and keeps completion evidence conservative.
 - `config.ts` loads and validates user-facing settings from Pi settings plus environment overrides.
 - `render.ts` renders the sticky goal widget as pure width-aware lines.
 - `*.test.ts` files cover config parsing, state transitions, rendering, tools, and extension behavior.
@@ -18,7 +18,7 @@ The extension uses in-memory state during a Pi process, then reconstructs branch
 There is at most one goal per active branch. The top-level state has two independent parts:
 
 - `goal`: objective, lifecycle status, timestamps, completion evidence, and optional usage counters.
-- `autoRun`: in-session automation lifecycle, continuation count, timestamps, and stop reason.
+- `autoRun`: in-session automation lifecycle, continuation count, timestamps, stop reason, and optional bounded detail for an agent yield.
 
 Goal statuses are `active`, `paused`, and `complete`. Auto-run statuses are `idle`, `running`, and `stopped`. Keep these separate: auto-run can stop because a budget is exhausted or user input arrives while the goal remains active for manual continuation.
 
@@ -29,9 +29,9 @@ State transitions should go through `createGoalStore()` rather than being assemb
 Goal state is persisted into the Pi session branch, not a standalone database:
 
 - command and auto-run mutations append custom `goal-state` entries when `pi.appendEntry` is available;
-- `goal_update` returns the full state in tool result `details`, which is also used as a restoration source.
+- mutating `goal` tool actions return the full state in tool result `details`, which is also used as a restoration source.
 
-`restoreFromBranch()` scans the current branch in order and keeps the latest valid snapshot from either custom entries or `goal_update` tool results. Invalid snapshots are ignored through `parsePersistedGoalState()`. Unknown extra fields from older snapshots are ignored. For compatibility, an interrupted legacy completion claim is normalized to a paused goal and stops a paired running auto-run with `goal_paused`; obsolete legacy stop reasons are also normalized to `goal_paused`.
+`restoreFromBranch()` scans the current branch in order and keeps the latest valid snapshot from either custom entries, unified `goal` tool results, or legacy `goal_update` tool results. Invalid snapshots are ignored through `parsePersistedGoalState()`. An `agent_yield` snapshot requires non-empty detail; restoration normalizes it to stopped automation and truncates detail to the effective configured bound before the continuation scheduler can observe it. Unknown extra fields from older snapshots are ignored. For compatibility, an interrupted legacy completion claim is normalized to a paused goal and stops a paired running auto-run with `goal_paused`; obsolete legacy stop reasons are also normalized to `goal_paused`.
 
 Because state is scoped to the Pi session tree branch rather than the git branch, navigation can legitimately restore a different goal or no goal, and a fresh Pi session in the same git branch starts without that prior goal. Do not introduce project-global or git-branch-global goal state without redesigning this assumption.
 
@@ -50,25 +50,25 @@ After each `agent_end`, the extension schedules one follow-up only when all gate
 
 `agent_end` occurs before Pi decides whether to retry a failed provider request. The extension therefore remembers provider errors without stopping auto-run, clears the pending error when a later attempt succeeds, and stops only if the error remains at `agent_settled`. Aborted assistant runs stop immediately because they commonly represent explicit cancellation rather than a transient provider failure.
 
-User input stops auto-run unless the input source is `extension`, which prevents the extension's own follow-up messages from stopping the loop. Budget exhaustion, settled provider errors, and aborts stop auto-run but do not mark the goal failed or complete.
+User input stops auto-run unless the input source is `extension`, which prevents the extension's own follow-up messages from stopping the loop. Budget exhaustion, settled provider errors, aborts, and `goal(action="yield")` stop auto-run but do not mark the goal failed or complete. Yield is the agent's explicit transfer of control: it records `agent_yield` plus a bounded reason, leaves the goal active, and can only resume through the user-controlled `/goal-renew` command.
 
 ## Prompt steering and completion rule
 
 When `injectActiveGoal` is enabled and the goal is active, `before_agent_start` appends goal steering to the system prompt. The objective is explicitly framed as user-provided data, not higher-priority instructions. The injected text reminds the agent to continue focused progress and to complete only after an evidence audit. Auto-run steering says configured continuation/time bounds apply but does not expose exact remaining values; deterministic state still enforces those limits without creating context-pressure signals for the model.
 
-`goal_update` intentionally supports only `status: "complete"`. Completion requires non-empty bounded evidence. The schema advertises the configured `evidenceMaxChars` cap, and agent-facing guidance tells the model to summarize logs/results instead of pasting raw output. Every explicit requirement in the objective should map to concrete artifacts such as files, command output, tests, UI state, or other observed evidence. TODO completion, effort, passing tests alone, or context pressure are not sufficient.
+The unified `goal` tool intentionally exposes only `get`, `complete`, and `yield`. Completion requires non-empty bounded evidence. Yield requires a non-empty bounded reason and stops only automation; it cannot complete, pause, renew, replace, or clear the goal. Runtime validation and restoration use the effective `evidenceMaxChars` cap for both fields; the registration-time schema omits a numeric maximum because configuration loads later at session start. Agent-facing injected guidance carries the effective limit and tells the model to summarize instead of pasting raw output. Every explicit requirement in the objective should map to concrete artifacts such as files, command output, tests, UI state, or other observed evidence. TODO completion, effort, passing tests alone, or context pressure are not sufficient.
 
-Once evidence validates, `goal_update` completes the goal synchronously, freezes active usage, stops a running auto-run with `goal_complete`, appends one state snapshot, and returns that same state in tool result details.
+Once evidence validates, `complete` completes the goal synchronously, freezes active usage, stops a running auto-run with `goal_complete`, appends one state snapshot, and returns that same state in tool result details. A valid yield stops a running auto-run with `agent_yield`, appends one snapshot, and returns the still-active goal. Yield against already-stopped automation is idempotent and does not append another snapshot.
 
 Preserve this conservative completion design. Adding automatic completion or an evidence-free path would weaken the extension's main purpose.
 
 ## Commands, tools, and UI
 
-Commands are the user control plane: set, show, pause, resume, renew, clear, and config inspection. Agent tools are narrower: read current goal state and mark it complete with evidence.
+Commands are the user control plane: set, show, pause, resume, renew, clear, and config inspection. The agent tool is narrower: read current state, complete with evidence, or yield autonomous control. Renewal remains user-only so the agent cannot bypass continuation budgets.
 
 The widget is informational only. It shows status, truncated objective, usage, and auto-run state. Completion evidence stays in `/goal-show` and tool results rather than the fixed-size widget.
 
-While auto-run is running, `tool_call` blocks `ask_user`. Headless continuation cannot answer interactive prompts; the agent should choose a safe reversible default, document assumptions, or stop and report a blocker.
+While auto-run is running, `tool_call` blocks `ask_user`. Headless continuation cannot answer interactive prompts; the agent should choose a safe reversible default, document assumptions, or yield when progress requires intervention.
 
 ## Usage counters
 
@@ -86,9 +86,13 @@ When enabled, the extension provides a custom `session_before_compact` summary c
 
 Because extension-provided compaction can replace Pi's default compaction result, do not assume default file/change tracking survives compaction when this feature is enabled.
 
+## Plan execution boundary
+
+`execute-plan` may use goal auto-run as a liveness layer across milestone-sized agent turns, but the extension does not parse plans or infer execution progress. The Ready plan and `.design/runs/.../state.json` remain authoritative. `execute-next-milestone` owns implementation and verification for one milestone, and only helper-reported whole-run completion can authorize the coordinator's final goal audit. Do not duplicate milestone or acceptance state inside goal snapshots.
+
 ## Security and boundaries
 
-The goal objective and completion evidence are untrusted data. Prompt injection protections in steering text keep objectives below system/developer instructions. Do not move raw objectives into higher-priority instruction channels.
+The goal objective, completion evidence, and yield reason are untrusted data. Prompt injection protections in steering text keep objectives below system/developer instructions, and formatted yield details strip terminal control sequences and line breaks. Do not move raw objectives into higher-priority instruction channels.
 
 The extension should not push, commit, or edit files itself. Checkpoint commit guidance is only model-visible guidance. Actual git operations remain agent/user actions governed by normal repository rules.
 

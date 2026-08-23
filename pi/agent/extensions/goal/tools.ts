@@ -5,22 +5,38 @@ import {
   normalizeBoundedText,
   type GoalStore,
 } from "./state.ts";
+
 export const STATE_ENTRY_TYPE = "goal-state";
 
-function createGoalUpdateParamsSchema(evidenceMaxChars: number) {
+const GOAL_ACTIONS = ["get", "complete", "yield"] as const;
+type GoalAction = (typeof GOAL_ACTIONS)[number];
+type GoalParams = {
+  action?: unknown;
+  evidence?: unknown;
+  reason?: unknown;
+};
+
+function createGoalParamsSchema() {
   return Type.Object({
-    status: Type.String({
-      enum: ["complete"],
-      description: "Only 'complete' is accepted.",
+    action: Type.String({
+      enum: [...GOAL_ACTIONS],
+      description:
+        "Action to perform: get state, complete with evidence, or yield autonomous control without completing.",
     }),
-    evidence: Type.String({
-      maxLength: evidenceMaxChars,
-      description: `Concise concrete evidence that every explicit goal requirement is satisfied. Must be at most ${evidenceMaxChars} characters; summarize logs/results instead of pasting raw output.`,
-    }),
+    evidence: Type.Optional(
+      Type.String({
+        description:
+          "Required only for complete. Concise concrete evidence covering every explicit goal requirement within the effective configured limit.",
+      }),
+    ),
+    reason: Type.Optional(
+      Type.String({
+        description:
+          "Required only for yield. Concise reason autonomous progress must stop within the effective configured limit.",
+      }),
+    ),
   });
 }
-
-type GoalUpdateParams = { status: string; evidence: string };
 
 function textResult(text: string, store: GoalStore) {
   return {
@@ -29,8 +45,8 @@ function textResult(text: string, store: GoalStore) {
   };
 }
 
-function errorResult(message: string, store: GoalStore) {
-  return textResult(`Error: ${message}`, store);
+function errorResult(messages: string[], store: GoalStore) {
+  return textResult(`Error: ${messages.join(" ")}`, store);
 }
 
 function appendState(pi: ExtensionAPI, store: GoalStore): void {
@@ -38,6 +54,64 @@ function appendState(pi: ExtensionAPI, store: GoalStore): void {
   if (typeof appendEntry === "function") {
     appendEntry.call(pi, STATE_ENTRY_TYPE, store.getState());
   }
+}
+
+function normalizeField(
+  value: unknown,
+  maxChars: number,
+  label: string,
+  errors: string[],
+): string | undefined {
+  try {
+    return normalizeBoundedText(value, maxChars, label);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+}
+
+function validateParams(
+  params: GoalParams,
+  maxChars: number,
+): {
+  action?: GoalAction;
+  evidence?: string;
+  reason?: string;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  const action = GOAL_ACTIONS.includes(params.action as GoalAction)
+    ? (params.action as GoalAction)
+    : undefined;
+  if (!action) {
+    errors.push(`action must be one of: ${GOAL_ACTIONS.join(", ")}.`);
+    return { errors };
+  }
+
+  if (action === "get") {
+    if (params.evidence !== undefined)
+      errors.push("evidence is not accepted for get.");
+    if (params.reason !== undefined)
+      errors.push("reason is not accepted for get.");
+    return { action, errors };
+  }
+
+  if (action === "complete") {
+    const evidence = normalizeField(
+      params.evidence,
+      maxChars,
+      "evidence",
+      errors,
+    );
+    if (params.reason !== undefined)
+      errors.push("reason is not accepted for complete.");
+    return { action, evidence, errors };
+  }
+
+  const reason = normalizeField(params.reason, maxChars, "reason", errors);
+  if (params.evidence !== undefined)
+    errors.push("evidence is not accepted for yield.");
+  return { action, reason, errors };
 }
 
 export function registerGoalTools(
@@ -49,69 +123,76 @@ export function registerGoalTools(
   },
 ): void {
   pi.registerTool({
-    name: "goal_get",
-    label: "Goal: get",
-    description: "Read the current session-scoped goal state.",
-    promptSnippet: "Read the current durable goal, if any.",
+    name: "goal",
+    label: "Goal",
+    description:
+      "Read the active goal, complete it with audited evidence, or yield autonomous control without completing it.",
+    promptSnippet:
+      "Use goal to inspect the durable objective, complete it with concrete evidence, or yield when autonomous progress cannot safely continue.",
     promptGuidelines: [
-      "Use goal_get when you need to check the current durable objective.",
-      "Do not treat TODO completion as proof that the goal is complete.",
+      "Use action=get when you need to inspect the current durable objective or auto-run state.",
+      "Use action=complete only after auditing concrete artifacts, files, command output, tests, UI state, or other real evidence.",
+      "Map every explicit goal requirement to concrete evidence before completing it.",
+      "Keep completion evidence and yield reasons concise and within the effective configured limit; summarize commands/results instead of pasting full logs.",
+      "Use action=yield when autonomous progress is blocked, unsafe, or requires user intervention. Yielding stops auto-run but leaves the goal active for /goal-renew.",
+      "Do not complete merely because TODOs are done, tests pass, effort was substantial, context is low, or you are stopping.",
     ],
-    parameters: Type.Object({}),
-    async execute() {
-      return textResult(
-        formatGoalState(store.getState(), { showUsage: options.showUsage }),
-        store,
-      );
-    },
-  });
-
-  pi.registerTool({
-    name: "goal_update",
-    label: "Goal: update",
-    description: `Mark the current goal complete with concise evidence, up to ${options.evidenceMaxChars} characters.`,
-    promptSnippet: `Mark the current goal complete only after auditing concise concrete evidence. Keep evidence at most ${options.evidenceMaxChars} characters.`,
-    promptGuidelines: [
-      "Use goal_update only after auditing concrete artifacts, files, command output, tests, UI state, or other real evidence.",
-      "Map every explicit goal requirement to concrete evidence before marking complete.",
-      `Keep evidence concise and at most ${options.evidenceMaxChars} characters; summarize commands/results and cite artifacts instead of pasting full logs.`,
-      "Do not mark complete merely because TODOs are done, tests pass, effort was substantial, context is low, or you are stopping.",
-      "If evidence is incomplete, continue working or report the blocker instead.",
-    ],
-    parameters: createGoalUpdateParamsSchema(options.evidenceMaxChars),
+    parameters: createGoalParamsSchema(),
     async execute(_toolCallId, rawParams) {
-      const params = rawParams as GoalUpdateParams;
-      if (params.status !== "complete") {
-        return errorResult('status must be "complete".', store);
+      const params =
+        rawParams && typeof rawParams === "object"
+          ? (rawParams as GoalParams)
+          : {};
+      const validated = validateParams(params, options.evidenceMaxChars);
+      if (validated.errors.length > 0) {
+        return errorResult(validated.errors, store);
       }
-      const goal = store.getGoal();
-      if (!goal) return errorResult("no goal is set.", store);
-      if (goal.status === "paused") {
-        return errorResult(
-          "goal is paused; resume it before completing.",
-          store,
-        );
-      }
-      if (goal.status === "complete") {
+
+      if (validated.action === "get") {
         return textResult(
           formatGoalState(store.getState(), { showUsage: options.showUsage }),
           store,
         );
       }
-      let evidence: string;
-      try {
-        evidence = normalizeBoundedText(
-          params.evidence,
-          options.evidenceMaxChars,
-          "evidence",
-        );
-      } catch (error) {
-        return errorResult(
-          error instanceof Error ? error.message : String(error),
+
+      const goal = store.getGoal();
+      if (!goal) return errorResult(["no goal is set."], store);
+
+      if (validated.action === "complete") {
+        if (goal.status === "paused") {
+          return errorResult(
+            ["goal is paused; resume it before completing."],
+            store,
+          );
+        }
+        if (goal.status === "complete") {
+          return textResult(
+            formatGoalState(store.getState(), { showUsage: options.showUsage }),
+            store,
+          );
+        }
+        store.complete(validated.evidence!, options.evidenceMaxChars);
+        appendState(pi, store);
+        return textResult(
+          formatGoalState(store.getState(), { showUsage: options.showUsage }),
           store,
         );
       }
-      store.complete(evidence, options.evidenceMaxChars);
+
+      if (goal.status !== "active") {
+        return errorResult(
+          [`goal is ${goal.status}; only an active goal can yield.`],
+          store,
+        );
+      }
+      if (store.getAutoRun()?.status !== "running") {
+        return textResult(
+          `Auto-run is already stopped.\n${formatGoalState(store.getState(), { showUsage: options.showUsage })}`,
+          store,
+        );
+      }
+
+      store.stopAutoRun("agent_yield", validated.reason!);
       appendState(pi, store);
       return textResult(
         formatGoalState(store.getState(), { showUsage: options.showUsage }),

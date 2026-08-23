@@ -220,13 +220,13 @@ node <helper> validate \
 
 The validator must report `status: "Ready"` and the expected criteria, milestone dependencies, and task counts. Repair any failure before handoff. This deterministic check proves the plan matches the executor's structural contract; it does not replace semantic review against the source specification.
 
-A validated plan supports one-milestone handoffs such as:
+A validated plan supports a direct one-milestone handoff:
 
 ```text
 /skill:execute-next-milestone .design/plans/YYYY-MM-DD-<short-slug>.md
 ```
 
-Execute the final milestone separately to audit integrated acceptance rather than asking one long-running agent to implement and prove the entire plan at once.
+For bounded goal-driven execution across all milestones, use an active goal that explicitly names the plan and `execute-plan`. The coordinator still executes at most one milestone per agent turn; it never asks one unbounded turn to implement and prove the entire plan.
 
 ### 5. Challenge before finalizing when risk is non-trivial
 
@@ -253,6 +253,6 @@ Give the user:
 - milestone and task-packet summary,
 - acceptance-criterion coverage summary,
 - residual non-blocking assumptions, and
-- the suggested first `execute-next-milestone` command.
+- the suggested direct `execute-next-milestone` command and, when autonomous full-plan continuation is relevant, the corresponding `execute-plan` goal invocation.
 
 Do not start execution unless the user explicitly asks.

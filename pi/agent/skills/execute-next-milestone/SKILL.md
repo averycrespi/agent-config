@@ -1,13 +1,13 @@
 ---
 name: execute-next-milestone
-description: Use when implementing one milestone from a Ready plan with durable run state, task progress, decisions, and evidence. Executes exactly one dependency-ready milestone per invocation and stops with done, blocked, or failed status.
+description: Use when implementing exactly one dependency-ready milestone from a Ready plan, directly or as one execute-plan agent turn, with durable run state, task progress, decisions, and evidence. Never use it to execute multiple milestones in one turn.
 ---
 
 # Execute Next Milestone
 
-Implement exactly one dependency-ready milestone from one Ready plan. Keep the plan immutable, persist authoritative run state and evidence outside conversation history, and stop after the milestone reaches `done`, `blocked`, or `failed`.
+Implement exactly one dependency-ready milestone from one Ready plan. This is the bounded executor for a direct milestone request and for one agent turn coordinated by `execute-plan`. Keep the plan immutable, persist authoritative run state and evidence outside conversation history, and stop after the selected milestone reaches `done`, `blocked`, or `failed`.
 
-Do not use `goal` auto-run for this workflow. Do not continue into another milestone in the same invocation.
+Treat one Pi agent turn as one invocation budget. Never start or continue into a second milestone in the same turn. In goal-driven execution, `execute-plan` owns cross-turn continuation and whole-plan goal completion.
 
 ## Core contract
 
@@ -18,6 +18,8 @@ Do not use `goal` auto-run for this workflow. Do not continue into another miles
 - Git commits are durable milestone checkpoints, not proof by themselves.
 - TODOs are tactical aids only and never replace run state.
 - The deterministic helper owns every state mutation. Never edit run artifacts manually.
+- In goal-driven execution, helper run state and plan-drift status are authoritative over conversation claims, TODOs, commits, child output, and goal status.
+- A completed milestone does not authorize goal completion. Only helper run status `complete` can pass the coordinator's whole-plan completion gate.
 
 The helper is `scripts/plan-run-state.js`, resolved relative to this skill directory. Invoke it with `node` and an absolute helper path.
 
@@ -294,6 +296,8 @@ Stop after this milestone. Report:
 - the next dependency-ready milestone from `next`, without starting it.
 
 Do not claim the whole plan is complete unless the helper reports run status `complete`. Do not launch the next milestone automatically.
+
+When invoked by `execute-plan`, treat this report as the milestone handoff back to the coordinator. The coordinator may inspect final run status and complete or yield the goal in the same turn, but it must not start another milestone. On a blocked or failed milestone, it must yield rather than automatically open a new execution attempt.
 
 ## Helper guarantees and limits
 
