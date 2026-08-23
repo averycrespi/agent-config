@@ -93,8 +93,8 @@ Create a TODO list from that milestone's tasks, preserving task order and existi
 
 For each task in order:
 
-1. Start it through the helper.
-2. Read enough repository context to construct a self-contained task packet and choose a profile.
+1. Read enough repository context to construct a self-contained task packet, select a profile, and write a brief task-specific profile reason.
+2. Start it through the helper with that profile selection.
 3. Capture a content baseline outside the repository so the child's changes can be distinguished from pre-existing and earlier-task work, including when both touch the same file.
 4. Launch one `spawn_agents` item with `read-filesystem`, `write-filesystem`, and `exec-shell`; never include another item in that call.
 5. Inspect the returned structured handoff and actual workspace diff.
@@ -102,13 +102,15 @@ For each task in order:
 7. Record bounded evidence mapped to the milestone's acceptance criteria.
 8. Mark the task complete only after the helper accepts its evidence.
 
+One plan task is one writable-agent assignment. Do not dynamically split it across multiple writers or invent untracked subtasks. If the task is too broad for one bounded child, stop as blocked and report that the Ready plan needs finer task packets rather than creating an implicit execution plan.
+
 Choose the profile from task characteristics, never from assumed model identities:
 
-- `fast`: localized, well-specified, mechanically verifiable work with limited coupling.
-- `balanced`: nontrivial but bounded implementation across related files or concerns.
-- `strong`: difficult, self-contained work involving subtle state, concurrency, compatibility, security, or similarly demanding reasoning.
+- `balanced` is the default for bounded implementation across related files or concerns.
+- `fast` is for localized, well-specified, mechanically verifiable work with limited coupling.
+- `strong` is exceptional. Use it only when the bounded task has multiple interacting high-risk reasoning constraints that materially exceed `balanced`, not merely because its scope mentions security, concurrency, compatibility, migrations, fault tests, or a large acceptance criterion.
 
-Do not use `strong` as a substitute for unresolved product or architecture decisions, missing user context, or unsafe authority. Block and escalate those conditions instead. Do not expose configured model names or reasoning levels in the task packet.
+The profile reason must state the concrete task characteristics that distinguish the selection from the default; do not restate the profile definition. Do not use `strong` as a substitute for an oversized task, unresolved product or architecture decisions, missing user context, or unsafe authority. Block and escalate those conditions instead. Do not expose configured model names or reasoning levels in the task packet.
 
 This initial writer path is trusted-local, not sandboxed: `write-filesystem` is not workspace-root restricted, and `exec-shell` inherits the parent environment and can perform external actions. If repository content, available credentials, or task inputs make that authority unsafe, stop as blocked instead of delegating. Prompt restrictions are not an enforcement boundary.
 
@@ -133,7 +135,11 @@ Before dispatch, capture staged and unstaged binary diffs plus an untracked-file
 Start a task:
 
 ```bash
-node <helper> task-start --run <run-dir> --task T1
+node <helper> task-start \
+  --run <run-dir> \
+  --task T1 \
+  --profile balanced \
+  --profile-reason "Bounded implementation across the state and repository seams"
 ```
 
 Record successful command evidence:
@@ -188,8 +194,8 @@ For an invalid verification command:
 
 Use independent, progress-aware repair scopes:
 
-- Each task gets at most three repair rounds in the current invocation. A round diagnoses the current failure, delegates one focused repair to exactly one writable child, and reruns the failed check plus directly affected checks in the main session.
-- The milestone verification gate gets a separate allowance of at most three repair rounds after all tasks are complete.
+- Each task gets at most three repair rounds in the current invocation. A round diagnoses the current failure, independently reclassifies the focused repair, records the new selection when restarting the task, delegates it to exactly one writable child, and reruns the failed check plus directly affected checks in the main session.
+- The milestone verification gate gets a separate allowance of at most three repair rounds after all tasks are complete. Its repairs do not reopen completed tasks; record each gate-repair profile on the running milestone before delegation.
 - A repair used by one task does not consume another task's or the milestone gate's allowance.
 - A different required check failing after the original check passes consumes the next round in the same scope; it does not require an immediate final stop.
 - Invalid verification-command corrections do not consume a repair round.
@@ -201,9 +207,21 @@ For a meaningful failed check:
 1. Record the failed command as evidence with its real exit code.
 2. Diagnose the failure from concrete output and compare it with the previous round in that scope.
 3. Stop the milestone as `failed` before beginning a new round.
-4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and failed task, delegate one focused repair with the concrete failure evidence and current diff, and rerun the failed scope in the main session. Keep the same profile unless evidence shows the task was materially misclassified; never escalate merely to retry blindly.
+4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and independently select a profile for the narrower repair. For a task failure, restart the failed task with that profile and a new reason. For a milestone-gate failure, leave completed tasks closed and record the profile with `gate-repair-profile`. Delegate one focused repair with the concrete failure evidence and current diff, then rerun the failed scope in the main session. A repair will often be `fast` or `balanced`; use `strong` only when the remaining diagnosis independently meets its threshold, never merely to retry blindly.
 5. If the check passes, continue the task or gate. If another required check fails, evaluate it as the next round in the same scope.
 6. If an early-stop condition applies or the third repair round does not pass the scope, leave the milestone failed and stop.
+
+Record a milestone-gate repair after restarting the milestone:
+
+```bash
+node <helper> gate-repair-profile \
+  --run <run-dir> \
+  --milestone M1 \
+  --profile balanced \
+  --profile-reason "Focused integration repair across two related seams"
+```
+
+Stop a failed scope:
 
 ```bash
 node <helper> milestone-stop \
@@ -290,6 +308,7 @@ The helper:
 - requires evidence for every milestone criterion before completion;
 - bounds evidence fields and entries;
 - records decisions append-only;
+- records bounded profile selection history and rationale for every newly started task attempt and milestone-gate repair;
 - records but never executes evidence command strings.
 
 It does not launch agents, run checks, create commits, resolve plan changes, or decide whether evidence is semantically sufficient. Those remain execution responsibilities, with deterministic command results taking precedence over model claims. It assumes a cooperative local filesystem and does not defend against a hostile process racing validated workspace paths.

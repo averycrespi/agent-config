@@ -76,7 +76,9 @@ Determine:
 - what documentation or migration work is required, and
 - which risks need mitigation or explicit acceptance.
 
-Prefer the coarsest task packets that remain independently understandable, implementable, and testable. A task should deliver one coherent behavior slice, not one file, function, test case, edit, or commit. Put logical checkpoint guidance at milestone boundaries rather than requiring a commit after every task.
+Treat one task packet as the unit of sequential writable delegation. Size it so one fresh coding agent can implement and verify one coherent behavior slice without having to subdivide the work, coordinate another writer, or carry several independent test matrices at once. Split work when a packet combines separable outcomes, crosses ownership seams that have distinct verification, or would require a broad subsystem-sized prompt or diff. Keep tightly coupled changes together when separating them would force interface decisions across handoffs. A task is not one file, function, test case, edit, or commit, and the executor must not dynamically decompose an oversized task among multiple writers. Put logical checkpoint guidance at milestone boundaries rather than requiring a commit after every task.
+
+Describe task characteristics and risks precisely enough for the executor to select a routing profile at runtime. Do not recommend `fast`, `balanced`, `strong`, model names, or reasoning effort in the immutable plan; those are execution policy and may change independently of implementation intent.
 
 Planning may resolve local technical choices from evidence. Ask at most one focused question at a time when a material implementation trade-off genuinely depends on user preference. More than one or two upstream questions means the source specification or architecture is not Ready; return to the owning skill.
 
@@ -180,7 +182,7 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 
 Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
 
-Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. Default to one implementation milestone plus integrated verification. Add milestones only for real dependency boundaries, distinct subsystems, or independently verifiable outcomes. Prefer the fewest task packets that remain independently executable. Combine tasks when separating them would add handoff overhead without creating an independently testable result. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
+Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. Default to one implementation milestone plus integrated verification. Add milestones only for real dependency boundaries, distinct subsystems, or independently verifiable outcomes. Use enough task packets that each remains a bounded single-agent behavior slice. Combine tasks when separating them would add handoff overhead without creating an independently testable result; split tasks when they contain multiple outcomes, independently verifiable ownership seams, or several major implementation concerns. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
 
 Each milestone must:
 
@@ -201,7 +203,8 @@ Plan quality rules:
 - Documentation impact must be an explicit decision.
 - Include enough context to survive a fresh session without pasting unnecessary code.
 - Prefer implementation intent over exact diffs.
-- Avoid micro-tasks, line-by-line choreography, speculative file lists, and commit-per-task requirements.
+- Avoid both subsystem-sized task packets and micro-tasks, line-by-line choreography, speculative file lists, and commit-per-task requirements.
+- Keep profile recommendations, model names, and reasoning effort out of plans.
 - Do not leave `TBD`, `TODO`, blocking questions, or requirement inventions.
 - Apply YAGNI and avoid speculative follow-on work.
 
@@ -233,7 +236,7 @@ For substantial or risky plans, use `challenge` after the draft is concrete. Str
 - conformance to the specification and parent architecture,
 - repository conventions and constraints,
 - milestone dependency order, boundedness, and verification gates,
-- task-packet coherence without micro-task fragmentation,
+- task-packet coherence as one bounded writable-agent assignment without subsystem-sized scope or micro-task fragmentation,
 - edge cases, failure modes, migration, and security,
 - scope and documentation impact, and
 - autonomous milestone-handoff readiness.
