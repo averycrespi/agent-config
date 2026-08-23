@@ -175,16 +175,16 @@ function phase(name) {
 async function agent(prompt, options = {}) {
   if (typeof prompt !== "string" || !prompt.trim()) throw new Error("agent prompt must be a non-empty string");
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("agent options must be an object");
-  const allowed = new Set(["intent", "capabilities", "modelTier", "thinking", "output", "retries", "timeoutMs"]);
+  const allowed = new Set(["intent", "capabilities", "profile", "output", "retries", "timeoutMs"]);
   for (const key of Object.keys(options)) {
     if (!allowed.has(key)) throw new Error("agent option " + key + " is not allowed");
   }
   if (typeof options.intent !== "string" || !options.intent.trim()) throw new Error("agent intent must be a non-empty string");
   if (!Array.isArray(options.capabilities) || options.capabilities.some((value) => typeof value !== "string")) throw new Error("agent capabilities must be an explicit string array");
-  if (typeof options.modelTier !== "string" || !options.modelTier.trim()) throw new Error("agent modelTier must be a non-empty string");
-  if (typeof options.thinking !== "string" || !options.thinking.trim()) throw new Error("agent thinking must be a non-empty string");
+  if (options.capabilities.some((value) => value === "write-filesystem" || value === "exec-shell")) throw new Error("mutable capabilities are not allowed in read-mostly workflows");
+  if (typeof options.profile !== "string" || !options.profile.trim()) throw new Error("agent profile must be a non-empty string");
   const requestId = nextRequestId++;
-  const message = { type: "agent", requestId, prompt, intent: options.intent, capabilities: options.capabilities, modelTier: options.modelTier, thinking: options.thinking, output: options.output, retries: options.retries, timeoutMs: options.timeoutMs };
+  const message = { type: "agent", requestId, prompt, intent: options.intent, capabilities: options.capabilities, profile: options.profile, output: options.output, retries: options.retries, timeoutMs: options.timeoutMs };
   structuredClone(message);
   const response = new Promise((resolve, reject) => pending.set(requestId, { resolve, reject }));
   try {
@@ -211,7 +211,7 @@ const verifierOutput = {
 async function verify(claim, options = {}) {
   if (typeof claim !== "string" || !claim.trim()) throw new Error("verify claim must be a non-empty string");
   if (options == null || typeof options !== "object" || Array.isArray(options)) throw new Error("verify options must be an object");
-  const allowed = new Set(["intent", "context", "capabilities", "modelTier", "thinking", "retries", "timeoutMs"]);
+  const allowed = new Set(["intent", "context", "capabilities", "profile", "retries", "timeoutMs"]);
   for (const key of Object.keys(options)) {
     if (!allowed.has(key)) throw new Error("verify option " + key + " is not allowed");
   }
@@ -221,8 +221,7 @@ async function verify(claim, options = {}) {
     {
       intent: options.intent,
       capabilities: options.capabilities,
-      modelTier: options.modelTier,
-      thinking: options.thinking,
+      profile: options.profile,
       output: verifierOutput,
       retries: options.retries,
       timeoutMs: options.timeoutMs,

@@ -22,11 +22,13 @@ Brief description of each:
 | localize    | AC + repo state        | Ranked file list + entry points                               | Largest single contributor on top SWE-bench scaffolds. Read-only, parallelizable.           |
 | plan        | AC + localization      | 1–15 outline-level tasks                                      | Plan = intent, not diff. The implementer owns code-level details.                           |
 | plan-repair | Plan + repo state + AC | Revised plan or "plan is good"                                | One bounded revision allowed. Catches plan/repo drift before it becomes implementer thrash. |
-| implement   | One task + AC + plan   | Code changes (commit)                                         | Sequential per task. Fresh subagent each. Sticky completion — no edge out of `done`.        |
+| implement   | One task + AC + plan   | Scoped workspace diff and structured handoff                  | Sequential per task. Fresh writer each; orchestrator verifies and checkpoints.              |
 | validate    | All commits            | Pass/fail of deterministic gates (tests, types, lints, build) | Cheap, fast, infallible-on-true-pass.                                                       |
 | review      | All commits + AC       | Per-criterion verdicts + any findings                         | Multiple reviewers, diverse lenses, ideally cross-family. Read-only.                        |
 | fix         | Review findings        | Code changes                                                  | 2-round cap. Sticky completion.                                                             |
 | emit-report | Everything             | Structured JSON + human-readable summary                      | Always emits. No unbounded verify→implement loopback.                                       |
+
+A sequential writer in one checkout is safe only when the orchestrator starts one bounded task, launches exactly one writable child, inspects the actual diff, reruns deterministic checks, records authoritative evidence, and owns the commit. Do not batch a writer with readers or other writers; use isolated worktrees only for genuinely independent parallel implementation.
 
 ## Acceptance criteria as the canonical rubric
 

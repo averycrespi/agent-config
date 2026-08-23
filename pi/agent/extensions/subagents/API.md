@@ -12,12 +12,11 @@ import {
 import type {
   Capability,
   LiveModelRegistry,
-  ModelTier,
+  Profile,
   RunSubagentRequest,
   SpawnOutcome,
   StructuredOutputSpec,
   SubagentRunState,
-  ThinkingLevel,
 } from "../subagents/api.ts";
 ```
 
@@ -28,8 +27,7 @@ interface RunSubagentRequest {
   intent: string;
   prompt: string;
   capabilities: Capability[];
-  modelTier: "small" | "medium" | "large";
-  thinking: ThinkingLevel;
+  profile: "fast" | "balanced" | "strong";
   files?: string[];
   output?: StructuredOutputSpec;
   cwd: string;
@@ -40,9 +38,9 @@ interface RunSubagentRequest {
 }
 ```
 
-Every invocation loads central `extension:subagents` policy, resolves the requested tier to a full model selector, looks it up in the trusted live registry, verifies thinking against Pi's runtime-supported levels, expands fixed capabilities, and only then starts a child. Invalid requests return a failed `SpawnOutcome` without launching.
+Every invocation loads central `extension:subagents` policy, resolves the requested profile to a configured model selector and effort, looks the model up in the trusted live registry, verifies configured effort against the global ceiling and Pi's runtime-supported levels, expands fixed capabilities, and only then starts a child. Invalid requests return a failed `SpawnOutcome` without launching.
 
-Authority fields are deliberately absent: callers cannot provide raw tools, extensions, exact models, environment, system prompts, session/recursion controls, skills/templates, context-file behavior, roles, or presets. `capabilities: []` is valid. Structured output automatically composes its own tool/extension contract.
+Authority fields are deliberately absent: callers cannot provide raw tools, extensions, exact models, effort, environment, system prompts, session/recursion controls, skills/templates, context-file behavior, roles, or caller-defined profiles. `capabilities: []` is valid. Structured output automatically composes its own tool/extension contract.
 
 The trusted registry dependency is narrow:
 
@@ -52,15 +50,20 @@ interface LiveModelRegistry {
 }
 ```
 
-Callers should pass `ctx.modelRegistry` from the current Pi extension execution context. Do not synthesize model objects or infer support from tier names.
+Callers should pass `ctx.modelRegistry` from the current Pi extension execution context. Do not synthesize model objects or infer support from profile names.
 
 ### Capabilities
 
 ```ts
-type Capability = "read-filesystem" | "exec-shell" | "read-broker" | "read-web";
+type Capability =
+  | "read-filesystem"
+  | "write-filesystem"
+  | "exec-shell"
+  | "read-broker"
+  | "read-web";
 ```
 
-The effective grants and global ceilings are documented in [README.md](./README.md). `exec-shell` is mutable authority. Child processes inherit the parent environment.
+The effective grants and global ceilings are documented in [README.md](./README.md). `write-filesystem` and `exec-shell` are mutable authority. Direct model-facing batches serialize mutable calls to one child, but curated API callers must impose any stricter caller-specific coordination policy. Child processes inherit the parent environment.
 
 ### `SpawnOutcome`
 
@@ -90,7 +93,7 @@ Canonical failure formatter including primary process/provider/structured diagno
 
 ### `createSubagentActivityTracker(options)`
 
-Creates the shared event-driven tracker. Feed child events through `handleEvent()` and always call `finish()` so UI state settles. `SubagentRunState` uses intent as identity and can carry capabilities, model tier, thinking, status, timings, tool/token counts, terminal errors, and log paths.
+Creates the shared event-driven tracker. Feed child events through `handleEvent()` and always call `finish()` so UI state settles. `SubagentRunState` uses intent as identity and can carry capabilities, profile, status, timings, tool/token counts, terminal errors, and log paths.
 
 Tool arguments are not a display contract and should not be copied into renderable state. Consumers must preserve control-safe, bounded, width-aware rendering.
 

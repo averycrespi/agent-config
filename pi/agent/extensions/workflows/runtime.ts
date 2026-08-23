@@ -5,8 +5,7 @@ import {
   runSubagent,
   validateOutputSchema,
   type Capability,
-  type ModelTier,
-  type ThinkingLevel,
+  type Profile,
 } from "../subagents/api.ts";
 import {
   DEFAULT_MAX_CONCURRENCY,
@@ -515,8 +514,7 @@ function recoveryRecord(
     requestId: request.id,
     intent: request.intent.trim(),
     capabilities: [...request.capabilities],
-    modelTier: request.modelTier,
-    thinking: request.thinking,
+    profile: request.profile,
     ...(phase ? { phase } : {}),
     startedAt,
     finishedAt,
@@ -705,8 +703,7 @@ export async function runWorkflow(
             prompt?: unknown;
             intent?: unknown;
             capabilities?: unknown;
-            modelTier?: unknown;
-            thinking?: unknown;
+            profile?: unknown;
             output?: unknown;
             retries?: unknown;
             timeoutMs?: unknown;
@@ -720,14 +717,10 @@ export async function runWorkflow(
             capabilities: Array.isArray(request.capabilities)
               ? (request.capabilities as Capability[])
               : (["__missing__"] as unknown as Capability[]),
-            modelTier:
-              typeof request.modelTier === "string"
-                ? (request.modelTier as ModelTier)
-                : ("" as ModelTier),
-            thinking:
-              typeof request.thinking === "string"
-                ? (request.thinking as ThinkingLevel)
-                : ("" as ThinkingLevel),
+            profile:
+              typeof request.profile === "string"
+                ? (request.profile as Profile)
+                : ("" as Profile),
             signal: agentSignal,
             retries: clampRetries(request.retries),
             ...(typeof request.timeoutMs === "number" ||
@@ -741,12 +734,14 @@ export async function runWorkflow(
             agentTimeoutMs,
           );
           const admittedAt = Date.now();
-          const outputError = validateStructuredOutput(request.output);
-          if (outputError) {
+          const policyError =
+            validateWorkflowCapabilities(agentRequest.capabilities) ??
+            validateStructuredOutput(request.output);
+          if (policyError) {
             const validationRequest = agentRequest;
             const response = failedResponse(
               "agent_policy_rejected",
-              outputError,
+              policyError,
               validationRequest,
               phaseAtAdmission,
             );
@@ -931,6 +926,18 @@ export async function runWorkflow(
   };
 }
 
+function validateWorkflowCapabilities(
+  capabilities: readonly Capability[],
+): string | undefined {
+  const mutable = capabilities.find(
+    (capability) =>
+      capability === "write-filesystem" || capability === "exec-shell",
+  );
+  return mutable
+    ? `capability ${mutable} is not allowed in read-mostly workflows`
+    : undefined;
+}
+
 function validateStructuredOutput(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (!isStructuredOutputSpec(value)) {
@@ -958,11 +965,13 @@ export function createWorkflowAgentSpawner(
   options: WorkflowAgentPolicyOptions,
 ): (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse> {
   return async (request) => {
-    const outputError = validateStructuredOutput(request.output);
-    if (outputError) {
+    const policyError =
+      validateWorkflowCapabilities(request.capabilities) ??
+      validateStructuredOutput(request.output);
+    if (policyError) {
       return failedResponse(
         "agent_policy_rejected",
-        outputError,
+        policyError,
         request,
         undefined,
       );
@@ -980,8 +989,7 @@ export function createWorkflowAgentSpawner(
       id: request.id,
       intent: request.intent.trim(),
       capabilities: [...request.capabilities],
-      modelTier: request.modelTier,
-      thinking: request.thinking,
+      profile: request.profile,
       status: "running",
       effectiveTimeoutMs: request.effectiveTimeoutMs,
       explicitTimeoutMs: resolveAgentTimeoutMs(request, undefined),
@@ -998,8 +1006,7 @@ export function createWorkflowAgentSpawner(
         state.activity = {
           ...tracker.state,
           capabilities: [...request.capabilities],
-          modelTier: request.modelTier,
-          thinking: request.thinking,
+          profile: request.profile,
           resolved: state.status !== "running",
         };
         options.onAgentUpdate?.({ ...state });
@@ -1010,8 +1017,7 @@ export function createWorkflowAgentSpawner(
       state.activity = {
         ...tracker.state,
         capabilities: [...request.capabilities],
-        modelTier: request.modelTier,
-        thinking: request.thinking,
+        profile: request.profile,
         resolved: state.status !== "running",
       };
       options.onAgentUpdate?.({ ...state });
@@ -1023,8 +1029,7 @@ export function createWorkflowAgentSpawner(
       intent: request.intent,
       prompt: request.prompt,
       capabilities: request.capabilities,
-      modelTier: request.modelTier,
-      thinking: request.thinking,
+      profile: request.profile,
       output: request.output,
       logId: `${options.logId}:agent-${request.id}`,
       cwd: options.cwd,

@@ -90,6 +90,8 @@ function compactCapability(capability: string): string {
   switch (capability) {
     case "read-filesystem":
       return "fs";
+    case "write-filesystem":
+      return "write";
     case "exec-shell":
       return "shell";
     case "read-broker":
@@ -102,12 +104,17 @@ function compactCapability(capability: string): string {
 }
 
 function policyLabel(agent: SubagentRunState): string {
-  const tier = safe(agent.modelTier ?? "?", 40);
-  const thinking = safe(agent.thinking ?? "?", 40);
+  const legacy = agent as SubagentRunState & {
+    modelTier?: string;
+    thinking?: string;
+  };
+  const profile = agent.profile
+    ? safe(agent.profile, 40)
+    : `${safe(legacy.modelTier ?? "?", 40)}:${safe(legacy.thinking ?? "?", 40)}`;
   const capabilities = agent.capabilities?.map(compactCapability) ?? [];
   return capabilities.length > 0
-    ? `${tier}:${thinking} (${capabilities.join(", ")})`
-    : `${tier}:${thinking}`;
+    ? `${profile} (${capabilities.join(", ")})`
+    : profile;
 }
 
 function separator(theme: any): string {

@@ -13,9 +13,9 @@ import {
 const model = { provider: "p", id: "m", reasoning: true };
 const config = {
   ...DEFAULT_SUBAGENTS_CONFIG,
-  modelTierSmall: "p/m",
-  modelTierMedium: "p/m",
-  modelTierLarge: "p/m",
+  profileFastModel: "p/m",
+  profileBalancedModel: "p/m",
+  profileStrongModel: "p/m",
 };
 const request = (
   overrides: Partial<RunSubagentRequest> = {},
@@ -23,8 +23,7 @@ const request = (
   intent: "Inspect",
   prompt: "Inspect policy",
   capabilities: ["read-broker", "read-web"],
-  modelTier: "medium",
-  thinking: "high",
+  profile: "balanced",
   cwd: "/repo",
   modelRegistry: { find: () => model },
   ...overrides,
@@ -47,6 +46,8 @@ test("resolver creates an internal invocation from central policy", () => {
     const result = resolveSubagentRequest(request(), config);
     assert.deepEqual(result.errors, []);
     assert.equal(result.prepared?.modelSelector, "p/m");
+    assert.equal(result.prepared?.profile, "balanced");
+    assert.equal(result.prepared?.thinking, "high");
     assert.deepEqual(result.prepared?.invocation.toolAllowlist, [
       "mcp_search",
       "mcp_describe",
@@ -79,8 +80,7 @@ test("resolver fails closed for unknown, disallowed, missing-model, and unsuppor
         intent: " ",
         prompt: " ",
         capabilities: ["read-web", "unknown" as any],
-        modelTier: "large",
-        thinking: "high",
+        profile: "strong",
         modelRegistry: { find: () => undefined },
       }),
       {
@@ -104,11 +104,12 @@ test("resolver honors runtime-supported max across the development type gap", ()
   const maxModel = { ...model, thinkingLevelMap: { max: "max" } };
   assert.ok(_thinkingLevels.fn(maxModel).includes("max"));
   const result = resolveSubagentRequest(
-    request({
-      thinking: "max",
-      modelRegistry: { find: () => maxModel },
-    }),
-    { ...config, allowedThinkingLevels: ["max"] },
+    request({ modelRegistry: { find: () => maxModel } }),
+    {
+      ...config,
+      profileBalancedEffort: "max",
+      allowedEffortLevels: ["max"],
+    },
   );
   assert.deepEqual(result.errors, []);
   assert.equal(result.prepared?.thinking, "max");

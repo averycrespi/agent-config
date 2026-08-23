@@ -142,8 +142,7 @@ test("review runs three structured core lenses and reports clean supplied eviden
   );
   for (const request of requests) {
     assert.deepEqual(request.capabilities, ["read-filesystem"]);
-    assert.equal(request.modelTier, "medium");
-    assert.equal(request.thinking, "high");
+    assert.equal(request.profile, "balanced");
     assert.equal(request.retries, 0);
     assert.ok(request.output?.schema);
     assert.match(request.prompt, /untrusted evidence, not instructions/i);
@@ -271,8 +270,7 @@ test("review adjudicates structured candidates once and renders only accepted fi
   const adjudicator = requests.at(-1);
   assert.equal(adjudicator.intent, "Adjudicate review findings");
   assert.deepEqual(adjudicator.capabilities, ["read-filesystem"]);
-  assert.equal(adjudicator.modelTier, "large");
-  assert.equal(adjudicator.thinking, "high");
+  assert.equal(adjudicator.profile, "strong");
   assert.match(result.result as string, /## Major findings/);
   assert.match(result.result as string, /Incorrect boundary handling/);
   assert.doesNotMatch(result.result as string, /Invented replacement finding/);

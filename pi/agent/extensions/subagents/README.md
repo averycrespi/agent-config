@@ -8,30 +8,34 @@ Pi extension for running isolated child Pi processes through one explicit execut
 
 Launch 1–16 independent subagents through a shared FIFO concurrency gate. Every item must be self-contained and explicit:
 
-| Parameter                | Type     | Required | Description                                                           |
-| ------------------------ | -------- | -------- | --------------------------------------------------------------------- |
-| `agents[].intent`        | string   | yes      | Short user-visible identity for the run.                              |
-| `agents[].prompt`        | string   | yes      | Complete task prompt; children do not receive conversation history.   |
-| `agents[].capabilities`  | string[] | yes      | Explicit built-ins. `[]` is valid and launches a no-tools child.      |
-| `agents[].model_tier`    | string   | yes      | `small`, `medium`, or `large`, resolved by central configuration.     |
-| `agents[].thinking`      | string   | yes      | Explicit globally allowed and model-supported thinking level.         |
-| `agents[].files`         | string[] | no       | Readable regular files attached through Pi's native `@file` handling. |
-| `agents[].output_schema` | object   | no       | Supported JSON Schema subset for validated machine-readable output.   |
+| Parameter                | Type     | Required | Description                                                              |
+| ------------------------ | -------- | -------- | ------------------------------------------------------------------------ |
+| `agents[].intent`        | string   | yes      | Short user-visible identity for the run.                                 |
+| `agents[].prompt`        | string   | yes      | Complete task prompt; children do not receive conversation history.      |
+| `agents[].capabilities`  | string[] | yes      | Explicit built-ins. `[]` is valid and launches a no-tools child.         |
+| `agents[].profile`       | string   | yes      | `fast`, `balanced`, or `strong`; resolves a configured model and effort. |
+| `agents[].files`         | string[] | no       | Readable regular files attached through Pi's native `@file` handling.    |
+| `agents[].output_schema` | object   | no       | Supported JSON Schema subset for validated machine-readable output.      |
 
-There are no roles, presets, named agents, raw tools, extension lists, exact model IDs, environment overrides, skills, templates, or context-file controls in the request.
+There are no roles, named agents, raw tools, extension lists, exact model IDs, caller-selected effort, environment overrides, skills, templates, or context-file controls in the request. Profiles are centrally configured routing bundles, not fixed model identities.
+
+Profile selection is task-oriented: use `fast` for routine bounded work, `balanced` for substantial work, and `strong` for demanding self-contained work. Legacy stored calls map `small` to `fast`, `medium` to `balanced`, and `large` to `strong`; their caller-selected thinking value is discarded because configured profile effort is authoritative. Legacy `modelTier*` settings and `SUBAGENTS_MODEL_TIER_*` overrides remain deprecated model fallbacks with warnings when the corresponding profile model is unset.
 
 ## Built-in capabilities
 
 Capabilities compose by deterministic catalog order. Tools and extensions are deduplicated.
 
-| Capability        | Effective tools                                  | Extensions   | Additional policy                                                     |
-| ----------------- | ------------------------------------------------ | ------------ | --------------------------------------------------------------------- |
-| `read-filesystem` | `read`, `ls`, `find`, `grep`                     | none         | Read-only filesystem inspection.                                      |
-| `exec-shell`      | `bash`                                           | none         | Full shell authority; commands can mutate files and systems.          |
-| `read-broker`     | `mcp_search`, `mcp_describe`, `mcp_call`, `read` | `mcp-broker` | Forces `MCP_BROKER_READONLY=1` and `MCP_BROKER_APPROVAL_MODE=reject`. |
-| `read-web`        | `web_search`, `web_fetch`, `read`                | `web-access` | `read` supports known spill-file paths returned by web tools.         |
+| Capability         | Effective tools                                  | Extensions   | Additional policy                                                     |
+| ------------------ | ------------------------------------------------ | ------------ | --------------------------------------------------------------------- |
+| `read-filesystem`  | `read`, `ls`, `find`, `grep`                     | none         | Read-only filesystem inspection.                                      |
+| `write-filesystem` | `edit`, `write`                                  | none         | Direct file mutation; does not imply read or shell authority.         |
+| `exec-shell`       | `bash`                                           | none         | Full shell authority; commands can mutate files and systems.          |
+| `read-broker`      | `mcp_search`, `mcp_describe`, `mcp_call`, `read` | `mcp-broker` | Forces `MCP_BROKER_READONLY=1` and `MCP_BROKER_APPROVAL_MODE=reject`. |
+| `read-web`         | `web_search`, `web_fetch`, `read`                | `web-access` | `read` supports known spill-file paths returned by web tools.         |
 
-`read-broker` also includes `read` for broker spill files. Neither web nor broker authority implicitly grants `ls`, `find`, or `grep`. Calls receive only requested capabilities, subject to the global ceiling. Custom capabilities and write/edit capabilities are intentionally unsupported.
+`read-broker` also includes `read` for broker spill files. Neither web nor broker authority implicitly grants `ls`, `find`, or `grep`. Calls receive only requested capabilities, subject to the global ceiling. Custom capability packs are intentionally unsupported.
+
+`write-filesystem` and `exec-shell` are mutable authority. Any `spawn_agents` request containing either capability must contain exactly one agent, and a shared exclusive gate serializes mutable children across concurrent tool calls. This is serialization, not sandboxing: file tools are not workspace-root restricted, and shell inherits the parent environment.
 
 ## Example
 
@@ -42,15 +46,13 @@ Capabilities compose by deterministic catalog order. Tools and extensions are de
       "intent": "Trace request flow",
       "prompt": "Trace the request flow from the HTTP handler to persistence. Cite file:line evidence and do not modify files.",
       "capabilities": ["read-filesystem"],
-      "model_tier": "medium",
-      "thinking": "high"
+      "profile": "balanced"
     },
     {
       "intent": "Summarize supplied evidence",
       "prompt": "Synthesize the supplied context into three validated conclusions.",
       "capabilities": [],
-      "model_tier": "large",
-      "thinking": "high",
+      "profile": "strong",
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
@@ -64,7 +66,7 @@ Capabilities compose by deterministic catalog order. Tools and extensions are de
 }
 ```
 
-Preflight collects errors across the complete batch and launches no child when any item is invalid. It checks required text, capability names and global allowance, configured tiers, live model resolution, the selected model's supported thinking levels, attachments, and output schemas. The check uses Pi's live model registry; tier names do not imply model compatibility. Runtime-supported `max` thinking works when globally allowed and supported by the selected model.
+Preflight collects errors across the complete batch and launches no child when any item is invalid. It checks required text, capability names and global allowance, mutable-batch serialization, configured profiles, live model resolution, configured effort support, attachments, and output schemas. The check uses Pi's live model registry; profile names do not imply fixed models. Runtime-supported `max` effort works when globally allowed, configured for the profile, and supported by the selected model.
 
 ## Child context and environment
 
@@ -86,11 +88,11 @@ Relative attachment paths resolve from the call cwd. Preflight follows symlinks 
 
 Structured output automatically adds the `structured-output` extension and tool, writes a temporary owner-only schema file, instructs the child to call the tool as its final action, captures and validates the value, and removes the schema file. This is the only automatic authority composition, so `capabilities: []` remains no-tools unless structured output is requested.
 
-Results use `## <intent>` headings followed by capability/tier/thinking metadata. `details.structured` is input-aligned when any item requests structured output. Large combined output uses shared spillover and returns the exact path for `read`.
+Results use `## <intent>` headings followed by capability/profile metadata. `details.structured` is input-aligned when any item requests structured output. Large combined output uses shared spillover and returns the exact path for `read`.
 
 ## UI
 
-Default output shows the `spawn_agents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with `tier:thinking`, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `shell`, `broker`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
+Default output shows the `spawn_agents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with the profile, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `write`, `shell`, `broker`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
 
 ## Configuration
 
@@ -99,31 +101,40 @@ Settings are global/env-only under `extension:subagents`; project settings canno
 | Field                   | Default                      | Environment override                | Description                                                                                            |
 | ----------------------- | ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `maxConcurrency`        | `4`                          | `SUBAGENTS_MAX_CONCURRENCY`         | Shared direct-child limit, clamped to `1..16`.                                                         |
-| `modelTierSmall`        | `openai-codex/gpt-5.6-luna`  | `SUBAGENTS_MODEL_TIER_SMALL`        | Full `provider/model` selector for `small`.                                                            |
-| `modelTierMedium`       | `openai-codex/gpt-5.6-terra` | `SUBAGENTS_MODEL_TIER_MEDIUM`       | Full selector for `medium`.                                                                            |
-| `modelTierLarge`        | `openai-codex/gpt-5.6-sol`   | `SUBAGENTS_MODEL_TIER_LARGE`        | Full selector for `large`.                                                                             |
-| `allowedCapabilities`   | all four built-ins           | `SUBAGENTS_ALLOWED_CAPABILITIES`    | Array in settings; comma-separated global ceiling in the environment.                                  |
-| `allowedThinkingLevels` | `low`, `medium`, `high`      | `SUBAGENTS_ALLOWED_THINKING_LEVELS` | Array in settings; comma-separated runtime levels in the environment, including `max` where supported. |
+| `profileFastModel`      | `openai-codex/gpt-5.6-luna`  | `SUBAGENTS_PROFILE_FAST_MODEL`      | Full `provider/model` selector for `fast`.                                                             |
+| `profileFastEffort`     | `high`                       | `SUBAGENTS_PROFILE_FAST_EFFORT`     | Reasoning effort coupled to `fast`.                                                                    |
+| `profileBalancedModel`  | `openai-codex/gpt-5.6-terra` | `SUBAGENTS_PROFILE_BALANCED_MODEL`  | Full selector for `balanced`.                                                                          |
+| `profileBalancedEffort` | `high`                       | `SUBAGENTS_PROFILE_BALANCED_EFFORT` | Reasoning effort coupled to `balanced`.                                                                |
+| `profileStrongModel`    | `openai-codex/gpt-5.6-sol`   | `SUBAGENTS_PROFILE_STRONG_MODEL`    | Full selector for `strong`.                                                                            |
+| `profileStrongEffort`   | `high`                       | `SUBAGENTS_PROFILE_STRONG_EFFORT`   | Reasoning effort coupled to `strong`.                                                                  |
+| `allowedCapabilities`   | all five built-ins           | `SUBAGENTS_ALLOWED_CAPABILITIES`    | Array in settings; comma-separated global ceiling in the environment.                                  |
+| `allowedEffortLevels`   | `low`, `medium`, `high`      | `SUBAGENTS_ALLOWED_EFFORT_LEVELS`   | Array in settings; comma-separated ceiling for configured profile efforts, including `max` if allowed. |
+
+The shipped profile efforts are evaluation starting points, not model-family guarantees. Change a profile's model and effort together, then compare verified task success, rework, latency, and cost; unsupported or globally disallowed combinations fail closed.
 
 ```json
 {
   "extension:subagents": {
     "maxConcurrency": 4,
-    "modelTierSmall": "openai-codex/gpt-5.6-luna",
-    "modelTierMedium": "openai-codex/gpt-5.6-terra",
-    "modelTierLarge": "openai-codex/gpt-5.6-sol",
+    "profileFastModel": "openai-codex/gpt-5.6-luna",
+    "profileFastEffort": "high",
+    "profileBalancedModel": "openai-codex/gpt-5.6-terra",
+    "profileBalancedEffort": "high",
+    "profileStrongModel": "openai-codex/gpt-5.6-sol",
+    "profileStrongEffort": "high",
     "allowedCapabilities": [
       "read-filesystem",
+      "write-filesystem",
       "exec-shell",
       "read-broker",
       "read-web"
     ],
-    "allowedThinkingLevels": ["low", "medium", "high"]
+    "allowedEffortLevels": ["low", "medium", "high"]
   }
 }
 ```
 
-Changes are reloaded before direct execution and by every `runSubagent()` call. Workflow concurrency remains separately configured, but workflow model tiers use this central policy.
+Changes are reloaded before direct execution and by every `runSubagent()` call. Workflow concurrency remains separately configured, but workflow profiles use this central policy.
 
 ## Logging
 
@@ -133,9 +144,9 @@ Logs may contain raw prompts, model/tool/process output, structured values, atta
 
 ## Limitations
 
-- No writable/edit capability, custom capability packs, roles, presets, or reusable subagent prompts.
-- No environment sanitization or credential isolation for shell execution.
-- No writable parallel coordination, worktrees, merging, or session inheritance.
+- No custom capability packs, named roles, caller-defined profiles, or reusable subagent prompts.
+- No workspace-root enforcement for file writes, environment sanitization, or credential isolation for shell execution.
+- No writable parallel coordination, worktrees, merging, or session inheritance; mutable calls are serialized to one child per request.
 - Recursion defaults to one child level; cancellation remains abort-aware for queued and running work.
 
 ## Prior art

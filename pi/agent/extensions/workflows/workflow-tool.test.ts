@@ -87,8 +87,7 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
   for (const term of [
     "intent",
     "capabilities",
-    "modelTier",
-    "thinking",
+    "profile",
     "verify",
     "report",
     "budget",
@@ -140,7 +139,7 @@ test("tool validates a saved or inline workflow without execution", async () => 
   const h = harness();
   registerWorkflowTool(h.pi as any);
   const script = `export const meta = { name: "validated", description: "test" };
-export async function run() { if (false) await agent("unused", { intent: "unused", capabilities: [], modelTier: "medium", thinking: "high" }); return "ok"; }`;
+export async function run() { if (false) await agent("unused", { intent: "unused", capabilities: [], profile: "balanced" }); return "ok"; }`;
   const result = await h.tool.execute(
     "call",
     { action: "validate", script },
@@ -168,8 +167,7 @@ export async function run() {
   return await agent("inspect", {
     intent: "inspect files",
     capabilities: ["read-filesystem"],
-    modelTier: "medium",
-    thinking: "high"
+    profile: "balanced"
   });
 }`;
     const result = await h.tool.execute(
@@ -184,8 +182,8 @@ export async function run() {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].intent, "inspect files");
     assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
-    assert.equal(calls[0].modelTier, "medium");
-    assert.equal(calls[0].thinking, "high");
+    assert.equal(calls[0].profile, "balanced");
+    assert.equal("thinking" in calls[0], false);
     assert.equal(calls[0].modelRegistry, registry);
     assert.equal("agent" in calls[0], false);
     assert.ok(updates.length > 0);
@@ -200,7 +198,7 @@ test("tool surfaces config warnings and removed settings diagnostics", async () 
     h.pi as any,
     async (_cwd: string, warnings: string[] = []) => {
       warnings.push(
-        "modelTierSmall was removed; configure model tiers under extension:subagents.",
+        "modelTierSmall was removed; configure profiles under extension:subagents.",
       );
       return DEFAULT_WORKFLOW_CONFIG;
     },
@@ -210,7 +208,7 @@ test("tool surfaces config warnings and removed settings diagnostics", async () 
     {
       action: "run",
       script: `export const meta = { name: "warning", description: "warning" };
-export async function run() { if (false) await agent("unused", { intent: "unused", capabilities: [], modelTier: "medium", thinking: "high" }); return "ok"; }`,
+export async function run() { if (false) await agent("unused", { intent: "unused", capabilities: [], profile: "balanced" }); return "ok"; }`,
     },
     undefined,
     undefined,
@@ -218,7 +216,7 @@ export async function run() { if (false) await agent("unused", { intent: "unused
   );
   assert.deepEqual(h.notifications, [
     [
-      "modelTierSmall was removed; configure model tiers under extension:subagents.",
+      "modelTierSmall was removed; configure profiles under extension:subagents.",
       "warning",
     ],
   ]);
@@ -245,7 +243,7 @@ test("tool preserves structured failures and recovery artifacts", async () => {
         action: "run",
         script: `export const meta = { name: "failure", description: "failure" };
 export async function run() {
-  return await agent("fail", { intent: "fail safely", capabilities: [], modelTier: "medium", thinking: "high" });
+  return await agent("fail", { intent: "fail safely", capabilities: [], profile: "balanced" });
 }`,
       },
       undefined,
@@ -271,8 +269,7 @@ test("snapshot rendering is intent-first and metadata-rich", () => {
         id: 1,
         intent: "Search docs",
         capabilities: ["read-web"],
-        modelTier: "small",
-        thinking: "medium",
+        profile: "fast",
         status: "done",
         startedAt: 1000,
         finishedAt: 2000,
@@ -286,7 +283,7 @@ test("snapshot rendering is intent-first and metadata-rich", () => {
   };
   const lines = renderSnapshot(snapshot, theme, { final: true });
   assert.ok(lines.includes("✓ Search docs · 1s"));
-  assert.ok(lines.includes("  small:medium (web)"));
+  assert.ok(lines.includes("  fast (web)"));
   assert.ok(
     lines.every(
       (line) => !line.includes("explorer") && !line.includes("reviewer"),
@@ -305,8 +302,7 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
         id: 3,
         intent: "Newest running",
         capabilities: [],
-        modelTier: "small",
-        thinking: "low",
+        profile: "fast",
         status: "running",
         startedAt: 3000,
       },
@@ -314,8 +310,7 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
         id: 1,
         intent: "Oldest done",
         capabilities: [],
-        modelTier: "small",
-        thinking: "low",
+        profile: "fast",
         status: "done",
         startedAt: 1000,
         finishedAt: 1500,
@@ -324,8 +319,7 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
         id: 2,
         intent: "Middle failed",
         capabilities: [],
-        modelTier: "small",
-        thinking: "low",
+        profile: "fast",
         status: "error",
         errorMessage: "failed",
         startedAt: 2000,
@@ -363,8 +357,7 @@ test("workflow widget title uses a concise failed count", () => {
         id: 1,
         intent: "Running",
         capabilities: [],
-        modelTier: "small",
-        thinking: "low",
+        profile: "fast",
         status: "running",
         startedAt: 1000,
       },
@@ -392,8 +385,7 @@ function workflowSnapshot(overrides: Record<string, unknown> = {}) {
         id: 1,
         intent: "Search docs",
         capabilities: ["read-web"],
-        modelTier: "small",
-        thinking: "medium",
+        profile: "fast",
         status: "done",
         startedAt: 1000,
         finishedAt: 13000,
@@ -534,8 +526,7 @@ test("expanded workflows preserve default progress and add diagnostics", () => {
         id: 2,
         intent: "Audit sources",
         capabilities: ["read-filesystem"],
-        modelTier: "medium",
-        thinking: "high",
+        profile: "balanced",
         status: "done",
         startedAt: 2000,
         finishedAt: 8000,
@@ -618,7 +609,7 @@ test("expanded workflows preserve default progress and add diagnostics", () => {
     assert.equal(expandedLines[0], defaultLines[0], item.label);
     const isProgressLine = (line: string) =>
       /^(?:✓|✗|!|●|○|…) (?:Search docs|Audit sources) · /.test(line) ||
-      /^  (?:small:medium|medium:high)/.test(line);
+      /^  (?:fast|balanced)/.test(line);
     assert.deepEqual(
       expandedLines.filter(isProgressLine),
       defaultLines.filter(isProgressLine),
@@ -665,8 +656,7 @@ test("workflow summaries use explicit action grammar", () => {
               id: 2,
               intent: "Audit",
               capabilities: [],
-              modelTier: "medium",
-              thinking: "high",
+              profile: "balanced",
               status: "error",
               startedAt: 2000,
               finishedAt: 3000,
@@ -746,8 +736,7 @@ test("workflow agent rows keep timeout before the volatile tool", () => {
         activity: {
           intent: "Search docs",
           capabilities: ["read-web"],
-          modelTier: "small",
-          thinking: "medium",
+          profile: "fast",
           phase: "web_fetch",
           activeTool: "web_fetch",
           recentEvents: [],
@@ -767,8 +756,8 @@ test("workflow agent rows keep timeout before the volatile tool", () => {
     /^● Search docs · \d+s · 3 tool uses · 7\.2k tokens$/,
   );
   assert.equal(
-    lines.find((line) => line.startsWith("  small:medium")),
-    "  small:medium (web) · timeout 30s · web_fetch",
+    lines.find((line) => line.startsWith("  fast")),
+    "  fast (web) · timeout 30s · web_fetch",
   );
 });
 
@@ -789,7 +778,7 @@ test("workflow headers and fallback agent rows mute every separator", () => {
     "✓ [*workflow*] run research{ · }{1 done · 0 failed · 12s}",
     "",
     "✓ Search docs{ · }{12s}",
-    "  {small:medium (web)}",
+    "  {fast (web)}",
   ]);
 });
 
@@ -825,8 +814,7 @@ test("workflow renderers truncate controls and narrow widths", () => {
         {
           ...workflowSnapshot().agents[0],
           capabilities: ["read-web\x1b[2J\nspoof"],
-          modelTier: "small\nspoof",
-          thinking: "medium\x1b[2J",
+          profile: "fast\nspoof\x1b[2J",
         },
       ],
     }),

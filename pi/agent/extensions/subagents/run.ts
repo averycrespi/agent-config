@@ -11,10 +11,9 @@ import {
 import { resolveExtensionAllowlist } from "./utils.ts";
 import {
   CAPABILITIES,
-  MODEL_TIERS,
-  THINKING_LEVELS,
+  PROFILES,
   type Capability,
-  type ModelTier,
+  type Profile,
   type ThinkingLevel,
 } from "./types.ts";
 
@@ -26,8 +25,7 @@ export interface RunSubagentRequest {
   intent: string;
   prompt: string;
   capabilities: Capability[];
-  modelTier: ModelTier;
-  thinking: ThinkingLevel;
+  profile: Profile;
   files?: string[];
   output?: StructuredOutputSpec;
   cwd: string;
@@ -41,7 +39,7 @@ export interface PreparedSubagent {
   invocation: SpawnInvocation;
   modelSelector: string;
   capabilities: Capability[];
-  modelTier: ModelTier;
+  profile: Profile;
   thinking: ThinkingLevel;
 }
 
@@ -73,10 +71,26 @@ export const _thinkingLevels = {
   },
 };
 
-function selectorForTier(config: SubagentsConfig, tier: ModelTier): string {
-  if (tier === "small") return config.modelTierSmall;
-  if (tier === "medium") return config.modelTierMedium;
-  return config.modelTierLarge;
+function configForProfile(
+  config: SubagentsConfig,
+  profile: Profile,
+): { model: string; thinking: ThinkingLevel } {
+  if (profile === "fast") {
+    return {
+      model: config.profileFastModel,
+      thinking: config.profileFastEffort,
+    };
+  }
+  if (profile === "balanced") {
+    return {
+      model: config.profileBalancedModel,
+      thinking: config.profileBalancedEffort,
+    };
+  }
+  return {
+    model: config.profileStrongModel,
+    thinking: config.profileStrongEffort,
+  };
 }
 
 function parseSelector(selector: string): [string, string] | undefined {
@@ -111,20 +125,25 @@ export function resolveSubagentRequest(
     }
   }
 
-  if (!MODEL_TIERS.includes(request.modelTier)) {
-    errors.push(`modelTier must be one of: ${MODEL_TIERS.join(", ")}`);
-  }
-  if (!THINKING_LEVELS.includes(request.thinking)) {
-    errors.push(`thinking must be one of: ${THINKING_LEVELS.join(", ")}`);
-  } else if (!config.allowedThinkingLevels.includes(request.thinking)) {
-    errors.push(`thinking level is globally disallowed: ${request.thinking}`);
+  if (!PROFILES.includes(request.profile)) {
+    errors.push(`profile must be one of: ${PROFILES.join(", ")}`);
   }
 
-  const selector = MODEL_TIERS.includes(request.modelTier)
-    ? selectorForTier(config, request.modelTier)
-    : "";
+  const profileConfig = PROFILES.includes(request.profile)
+    ? configForProfile(config, request.profile)
+    : undefined;
+  const selector = profileConfig?.model ?? "";
+  const thinking = profileConfig?.thinking;
+  if (thinking && !config.allowedEffortLevels.includes(thinking)) {
+    errors.push(
+      `profile ${request.profile} effort is globally disallowed: ${thinking}`,
+    );
+  }
+
   const parsed = parseSelector(selector);
-  if (!parsed) errors.push(`model tier ${request.modelTier} is not configured`);
+  if (profileConfig && !parsed) {
+    errors.push(`profile ${request.profile} model is not configured`);
+  }
 
   const model = parsed
     ? request.modelRegistry?.find?.(parsed[0], parsed[1])
@@ -132,17 +151,13 @@ export function resolveSubagentRequest(
   if (parsed && !model) {
     errors.push(`configured model could not be resolved: ${selector}`);
   }
-  if (
-    model &&
-    THINKING_LEVELS.includes(request.thinking) &&
-    !_thinkingLevels.fn(model).includes(request.thinking)
-  ) {
+  if (model && thinking && !_thinkingLevels.fn(model).includes(thinking)) {
     errors.push(
-      `thinking level ${request.thinking} is not supported by model ${selector}`,
+      `configured effort ${thinking} is not supported by model ${selector}`,
     );
   }
 
-  if (errors.length > 0 || !parsed || !model) {
+  if (errors.length > 0 || !parsed || !model || !thinking) {
     return { errors, warnings: [] };
   }
 
@@ -154,15 +169,15 @@ export function resolveSubagentRequest(
     prepared: {
       modelSelector: selector,
       capabilities,
-      modelTier: request.modelTier,
-      thinking: request.thinking,
+      profile: request.profile,
+      thinking,
       invocation: {
         prompt,
         toolAllowlist: grants.tools,
         extensionAllowlist: grants.extensions,
         files: request.files,
         model: selector,
-        thinking: request.thinking,
+        thinking,
         inheritSession: "none",
         output: request.output,
         logId: request.logId,

@@ -284,8 +284,7 @@ export async function run() {
     {
       intent: "Scope research",
       capabilities: [],
-      modelTier: "large",
-      thinking: "high",
+      profile: "strong",
       output: scopeOutput,
     },
   );
@@ -315,8 +314,7 @@ export async function run() {
           {
             intent: `Search ${facet.name}`,
             capabilities: ["read-web"],
-            modelTier: "small",
-            thinking: "medium",
+            profile: "fast",
             output: searchOutput,
             retries: 1,
           },
@@ -374,8 +372,7 @@ export async function run() {
           {
             intent: `Extract source ${index + 1}`,
             capabilities: ["read-web"],
-            modelTier: "large",
-            thinking: "high",
+            profile: "strong",
             output: extractionOutput,
             retries: 1,
           },
@@ -437,8 +434,7 @@ export async function run() {
           {
             intent: `Verify claims ${round}`,
             capabilities: ["read-web"],
-            modelTier: "large",
-            thinking: "high",
+            profile: "strong",
             output: verificationOutput,
           },
         ),
@@ -547,8 +543,7 @@ export async function run() {
     {
       intent: "Synthesize report",
       capabilities: [],
-      modelTier: "large",
-      thinking: "high",
+      profile: "strong",
       output: reportOutput,
     },
   );
@@ -562,8 +557,7 @@ export async function run() {
     {
       intent: "Audit report",
       capabilities: [],
-      modelTier: "large",
-      thinking: "high",
+      profile: "strong",
       context: {
         report: draft.report,
         research: reportContext,
@@ -581,8 +575,7 @@ export async function run() {
     {
       intent: "Repair report",
       capabilities: [],
-      modelTier: "large",
-      thinking: "high",
+      profile: "strong",
       output: reportOutput,
     },
   );
@@ -596,8 +589,7 @@ export async function run() {
     {
       intent: "Audit repaired report",
       capabilities: [],
-      modelTier: "large",
-      thinking: "high",
+      profile: "strong",
       context: {
         report: repaired.report,
         research: reportContext,

@@ -65,7 +65,7 @@ Untreated judges commonly exhibit these. Listed in rough order of severity for v
 
 Judges are ~50% more likely to pass output from their own model family on objective rubrics. On subjective rubrics, the skew is worse. Reference: [Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996) — quantifies SPB on objective IFEval rubrics and subjective HealthBench (10-point skew).
 
-Mitigation: **never use the same model for implement and verify if avoidable**. Route implementer through GPT-5.x, reviewer through Claude (or vice versa). The Pi `subagents` extension supports per-subagent provider/model selection. In Claude Code CLI and the Claude Agent SDK, `AgentDefinition.model` / subagent model settings should be treated as Claude-family selection unless current primary docs and environment configuration prove otherwise; use an external orchestrator, broker/MCP bridge, or separate process for true cross-family review.
+Mitigation: **never use the same model for implement and verify if avoidable**. Route implementer through GPT-5.x, reviewer through Claude (or vice versa). The Pi `subagents` extension supports per-subagent selection through centrally configured profiles; cross-family independence exists only when those profiles map to different provider families. In Claude Code CLI and the Claude Agent SDK, `AgentDefinition.model` / subagent model settings should be treated as Claude-family selection unless current primary docs and environment configuration prove otherwise; use an external orchestrator, broker/MCP bridge, or separate process for true cross-family review.
 
 Caveat: rubric biases can transfer across judge families. Reference: [Rubrics as an Attack Surface: Stealthy Preference Drift](https://arxiv.org/abs/2602.13576) — learned rubric biases transfer across judge models. Cross-model is a strong mitigation, not a complete one.
 
@@ -95,7 +95,7 @@ Mitigation: reviewer prompt says "do not give credit for citations or appeals to
 
 The cheapest single-action mitigation against self-preference bias.
 
-Pattern: route implementer through one provider, reviewer through another. On Pi, the `subagents` extension supports per-subagent provider/model selection. In Claude Code CLI and the Claude Agent SDK, ordinary `.claude/agents/` / `AgentDefinition` reviewers should be treated as Claude-family unless current primary docs and environment configuration prove otherwise; use an external orchestrator, broker/MCP bridge, or separate process to route review to a non-Claude model.
+Pattern: route implementer through one provider, reviewer through another. On Pi, the `subagents` extension supports per-subagent selection through centrally configured profiles; map implementation and review profiles to different provider families when independence matters. In Claude Code CLI and the Claude Agent SDK, ordinary `.claude/agents/` / `AgentDefinition` reviewers should be treated as Claude-family unless current primary docs and environment configuration prove otherwise; use an external orchestrator, broker/MCP bridge, or separate process to route review to a non-Claude model.
 
 Cost: minimal when the deployment already has both providers wired in; otherwise it adds integration and credential-management complexity.
 

@@ -16,8 +16,7 @@ const theme = {
 const state = (overrides: Record<string, unknown> = {}) => ({
   intent: "docs",
   capabilities: ["read-filesystem"],
-  modelTier: "medium",
-  thinking: "high",
+  profile: "balanced",
   phase: "done",
   recentEvents: [],
   toolUseCount: 2,
@@ -52,7 +51,7 @@ test("statsLine includes only nonzero counters and duration", () => {
 test("done progress rows split intent stats from compact execution policy", () => {
   assert.deepEqual(agentProgressLines(state() as any, theme), [
     "✓ docs · 12s · 2 tool uses · 4.1k tokens",
-    "  medium:high (fs)",
+    "  balanced (fs)",
   ]);
 
   assert.deepEqual(
@@ -60,6 +59,7 @@ test("done progress rows split intent stats from compact execution policy", () =
       state({
         capabilities: [
           "read-filesystem",
+          "write-filesystem",
           "exec-shell",
           "read-broker",
           "read-web",
@@ -69,7 +69,7 @@ test("done progress rows split intent stats from compact execution policy", () =
     ),
     [
       "✓ docs · 12s · 2 tool uses · 4.1k tokens",
-      "  medium:high (fs, shell, broker, web)",
+      "  balanced (fs, write, shell, broker, web)",
     ],
   );
 });
@@ -91,7 +91,7 @@ test("queued progress rows use a dim hollow inactive glyph", () => {
     queuedTheme,
   );
   assert.match(lines[0]!, /^\{○\} docs · \d+s$/);
-  assert.equal(lines[1], "  medium:high (fs) · queued");
+  assert.equal(lines[1], "  balanced (fs) · queued");
 });
 
 test("running progress rows keep volatile tool identity at the end", () => {
@@ -99,8 +99,7 @@ test("running progress rows keep volatile tool identity at the end", () => {
     state({
       intent: "tests",
       capabilities: ["read-web"],
-      modelTier: "small",
-      thinking: "medium",
+      profile: "fast",
       phase: "web_fetch",
       resolved: false,
       recentEvents: [{ kind: "tool", text: "web_fetch" }],
@@ -112,7 +111,7 @@ test("running progress rows keep volatile tool identity at the end", () => {
     theme,
   );
   assert.match(lines[0]!, /^● tests · \d+s · 1 tool use$/);
-  assert.equal(lines[1], "  small:medium (web) · web_fetch");
+  assert.equal(lines[1], "  fast (web) · web_fetch");
 });
 
 test("failure rows omit empty capabilities and keep retained logs hidden", () => {
@@ -132,7 +131,7 @@ test("failure rows omit empty capabilities and keep retained logs hidden", () =>
   );
   assert.deepEqual(lines, [
     "✗ security · 1s",
-    "  medium:high · Error: subagent failed",
+    "  balanced · Error: subagent failed",
   ]);
   assert.doesNotMatch(lines.join("\n"), /Log:/);
 });
@@ -154,7 +153,7 @@ test("aggregate and per-agent separators are muted", () => {
 
   assert.deepEqual(agentProgressLines(state() as any, markerTheme), [
     "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
-    "  {medium:high (fs)}",
+    "  {balanced (fs)}",
   ]);
 
   const result = renderAgentsResult(
@@ -170,7 +169,7 @@ test("aggregate and per-agent separators are muted", () => {
     "✓ spawn_agents{ · }{1 done · 0 failed · 12s}",
     "",
     "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
-    "  {medium:high (fs)}",
+    "  {balanced (fs)}",
   ]);
 });
 
@@ -294,9 +293,7 @@ test("result renderer is width-aware for partial, final, and expanded states", (
     assert.ok(
       partialLines.some((line: string) => line.startsWith("✓ docs · ")),
     );
-    assert.ok(
-      partialLines.some((line: string) => line === "  medium:high (fs)"),
-    );
+    assert.ok(partialLines.some((line: string) => line === "  balanced (fs)"));
     ctx.lastComponent = partial;
     const final = renderAgentsResult(
       {

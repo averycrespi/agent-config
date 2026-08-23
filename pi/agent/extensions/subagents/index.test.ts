@@ -8,6 +8,7 @@ import {
   buildDelegationGuidance,
   buildPolicyDescription,
   createSubagentsConfigReloader,
+  prepareSpawnAgentsArguments,
   runParallelSpawn,
   validateSpawnAgentSpecs,
 } from "./index.ts";
@@ -18,9 +19,9 @@ import { buildSpawnAgentsParams, type SpawnAgentItem } from "./types.ts";
 
 const config: SubagentsConfig = {
   ...DEFAULT_SUBAGENTS_CONFIG,
-  modelTierSmall: "test/model",
-  modelTierMedium: "test/model",
-  modelTierLarge: "test/model",
+  profileFastModel: "test/model",
+  profileBalancedModel: "test/model",
+  profileStrongModel: "test/model",
 };
 const model = {
   provider: "test",
@@ -41,8 +42,7 @@ const valid = (overrides: Partial<SpawnAgentItem> = {}): SpawnAgentItem => ({
   intent: "Inspect policy",
   prompt: "Inspect the repository policy.",
   capabilities: ["read-filesystem"],
-  model_tier: "medium",
-  thinking: "high",
+  profile: "balanced",
   ...overrides,
 });
 
@@ -69,6 +69,8 @@ test("direct schema rejects raw and legacy request fields", () => {
     "tools",
     "extensions",
     "model",
+    "model_tier",
+    "thinking",
     "env",
     "skills",
     "templates",
@@ -77,14 +79,44 @@ test("direct schema rejects raw and legacy request fields", () => {
   }
 });
 
+test("legacy direct calls migrate tier names to configured profiles", () => {
+  assert.deepEqual(
+    prepareSpawnAgentsArguments({
+      agents: [
+        {
+          intent: "old",
+          prompt: "old prompt",
+          capabilities: [],
+          model_tier: "small",
+          thinking: "xhigh",
+        },
+      ],
+    }),
+    {
+      agents: [
+        {
+          intent: "old",
+          prompt: "old prompt",
+          capabilities: [],
+          profile: "fast",
+        },
+      ],
+    },
+  );
+});
+
 test("delegation guidance documents explicit policy without named agents", () => {
   const guidance = buildDelegationGuidance(config);
   assert.match(guidance, /capabilities: \[\] is valid/);
-  assert.match(guidance, /small=test\/model/);
-  assert.match(guidance, /medium=test\/model/);
+  assert.match(guidance, /fast, balanced, strong/);
   assert.match(guidance, /read-filesystem/);
-  assert.doesNotMatch(guidance, /agent definition|explorer|reviewer/);
-  assert.match(buildPolicyDescription(config), /large=test\/model/);
+  assert.match(guidance, /write-filesystem/);
+  assert.doesNotMatch(
+    guidance,
+    /test\/model|agent definition|explorer|reviewer/,
+  );
+  assert.match(buildPolicyDescription(config), /fast, balanced, strong/);
+  assert.doesNotMatch(buildPolicyDescription(config), /test\/model/);
 });
 
 test("preflight accepts explicit empty capabilities", async () => {
@@ -101,8 +133,7 @@ test("preflight collects policy, file, and schema errors", async () => {
         intent: " ",
         prompt: " ",
         capabilities: ["read-web", "unknown" as any],
-        model_tier: "missing" as any,
-        thinking: "max",
+        profile: "missing" as any,
         files: ["", "missing.txt"],
         output_schema: { type: "wat" },
       }),
@@ -110,7 +141,7 @@ test("preflight collects policy, file, and schema errors", async () => {
     {
       ...config,
       allowedCapabilities: ["read-filesystem"],
-      allowedThinkingLevels: ["low", "medium", "high"],
+      allowedEffortLevels: ["low", "medium", "high"],
     },
     { ...ctx, modelRegistry: { find: () => undefined } },
   );
@@ -119,11 +150,25 @@ test("preflight collects policy, file, and schema errors", async () => {
   assert.match(joined, /prompt is required/);
   assert.match(joined, /globally disallowed/);
   assert.match(joined, /unknown capability/);
-  assert.match(joined, /modelTier must be one of/);
-  assert.match(joined, /thinking level is globally disallowed/);
+  assert.match(joined, /profile must be one of/);
   assert.match(joined, /files\[0\]/);
   assert.match(joined, /files\[1\]/);
   assert.match(joined, /output_schema/);
+});
+
+test("preflight requires mutable capabilities to run as a single agent", async () => {
+  const errors = await validateSpawnAgentSpecs(
+    [
+      valid({ capabilities: ["read-filesystem", "write-filesystem"] }),
+      valid({ intent: "Concurrent reader" }),
+    ],
+    config,
+    ctx,
+  );
+  assert.match(
+    errors.join("\n"),
+    /mutable capabilities require exactly one agent/,
+  );
 });
 
 test("preflight validates readable regular file attachments", async () => {
@@ -140,6 +185,45 @@ test("preflight validates readable regular file attachments", async () => {
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("separate mutable spawn calls share an exclusive gate", async () => {
+  let active = 0;
+  let maximum = 0;
+  mock.method(_runSubagent, "fn", async () => {
+    active += 1;
+    maximum = Math.max(maximum, active);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    active -= 1;
+    return okOutcome();
+  });
+  try {
+    const directGate = createConcurrencyGate(2);
+    const mutableGate = createConcurrencyGate(1);
+    await Promise.all([
+      runParallelSpawn(
+        [valid({ capabilities: ["write-filesystem"] })],
+        config,
+        ctx,
+        "write-a",
+        undefined,
+        directGate,
+        mutableGate,
+      ),
+      runParallelSpawn(
+        [valid({ capabilities: ["exec-shell"] })],
+        config,
+        ctx,
+        "write-b",
+        undefined,
+        directGate,
+        mutableGate,
+      ),
+    ]);
+    assert.equal(maximum, 1);
+  } finally {
+    mock.restoreAll();
   }
 });
 
@@ -223,7 +307,7 @@ test("parallel spawn forwards sanitized requests and returns intent-first metada
       valid({
         intent: "No-tools synthesis",
         capabilities: [],
-        model_tier: "large",
+        profile: "strong",
       }),
     ];
     const result = await runParallelSpawn(
@@ -236,19 +320,19 @@ test("parallel spawn forwards sanitized requests and returns intent-first metada
     );
     assert.equal(calls.length, 2);
     assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
-    assert.equal(calls[0].modelTier, "medium");
-    assert.equal(calls[0].thinking, "high");
+    assert.equal(calls[0].profile, "balanced");
+    assert.equal("thinking" in calls[0], false);
     assert.equal("agent" in calls[0], false);
     assert.equal("model" in calls[0], false);
     assert.deepEqual(calls[1].capabilities, []);
     assert.match(result.content[0]!.text, /^## Filesystem audit/m);
-    assert.match(result.content[0]!.text, /no capabilities · large\/high/);
+    assert.match(result.content[0]!.text, /no capabilities · strong/);
     assert.equal(result.details.allOk, true);
     const agents = result.details.agents as any[];
     assert.equal(agents[0].intent, "Filesystem audit");
     assert.deepEqual(agents[0].capabilities, ["read-filesystem"]);
-    assert.equal(agents[0].modelTier, "medium");
-    assert.equal(agents[0].thinking, "high");
+    assert.equal(agents[0].profile, "balanced");
+    assert.equal("thinking" in agents[0], false);
     assert.ok(updates.length >= 2);
   } finally {
     mock.restoreAll();

@@ -186,8 +186,7 @@ function fallbackAgentActivity(
   return {
     intent: agent.intent,
     capabilities: agent.capabilities,
-    modelTier: agent.modelTier,
-    thinking: agent.thinking,
+    profile: agent.profile,
     phase: agent.status === "running" ? "starting" : agent.status,
     recentEvents: [],
     toolUseCount: 0,

@@ -164,7 +164,7 @@ export function readEnvSettings(
   ]) {
     if (env[environment] !== undefined) {
       warnings.push(
-        `${environment} was removed; configure model tiers under extension:subagents.`,
+        `${environment} was removed; configure profiles under extension:subagents.`,
       );
     }
   }
@@ -179,7 +179,7 @@ export function normalizeWorkflowConfig(
   for (const field of ["modelTierSmall", "modelTierBig"]) {
     if (value[field] !== undefined) {
       warnings.push(
-        `${field} was removed; configure model tiers under extension:subagents.`,
+        `${field} was removed; configure profiles under extension:subagents.`,
       );
     }
   }

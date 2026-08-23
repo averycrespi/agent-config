@@ -3,12 +3,13 @@ import { Type } from "typebox";
 
 export const CAPABILITIES = [
   "read-filesystem",
+  "write-filesystem",
   "exec-shell",
   "read-broker",
   "read-web",
 ] as const;
 
-export const MODEL_TIERS = ["small", "medium", "large"] as const;
+export const PROFILES = ["fast", "balanced", "strong"] as const;
 export const THINKING_LEVELS = [
   "off",
   "minimal",
@@ -25,10 +26,12 @@ export const MAX_CONCURRENCY_CEILING = 16;
 export const MAX_AGENTS_PER_CALL = 16;
 
 export type Capability = (typeof CAPABILITIES)[number];
-export type ModelTier = (typeof MODEL_TIERS)[number];
+export type Profile = (typeof PROFILES)[number];
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export type EffectiveTool =
   | "read"
+  | "edit"
+  | "write"
   | "bash"
   | "ls"
   | "find"
@@ -45,8 +48,7 @@ export interface SpawnAgentItem {
   intent: string;
   prompt: string;
   capabilities: Capability[];
-  model_tier: ModelTier;
-  thinking: ThinkingLevel;
+  profile: Profile;
   files?: string[];
   output_schema?: Record<string, unknown>;
 }
@@ -63,8 +65,7 @@ export interface SubagentEvent {
 export interface SubagentRunState {
   intent: string;
   capabilities?: Capability[];
-  modelTier?: ModelTier;
-  thinking?: ThinkingLevel;
+  profile?: Profile;
   phase: SubagentPhase;
   activeTool?: string;
   currentCommand?: string;
@@ -99,11 +100,8 @@ export function buildSpawnAgentsParams(policyDescription: string) {
               description:
                 "Explicit built-in capabilities. An empty array launches a no-tools child.",
             }),
-            model_tier: StringEnum(MODEL_TIERS, {
+            profile: StringEnum(PROFILES, {
               description: policyDescription,
-            }),
-            thinking: StringEnum(THINKING_LEVELS, {
-              description: "Explicit configured thinking level for this item",
             }),
             files: Type.Optional(
               Type.Array(Type.String(), {
@@ -120,7 +118,11 @@ export function buildSpawnAgentsParams(policyDescription: string) {
           },
           { additionalProperties: false },
         ),
-        { minItems: 1, description: "Subagents to run in parallel" },
+        {
+          minItems: 1,
+          description:
+            "Subagents to launch. Mutable capabilities require exactly one item.",
+        },
       ),
     },
     { additionalProperties: false },

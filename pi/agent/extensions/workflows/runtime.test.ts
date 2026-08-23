@@ -9,7 +9,7 @@ import {
 } from "./runtime.ts";
 import type { WorkflowAgentRequest } from "./types.ts";
 
-const POLICY = `intent: "test run", capabilities: [], modelTier: "medium", thinking: "high"`;
+const POLICY = `intent: "test run", capabilities: [], profile: "balanced"`;
 const registry = { find: () => ({ provider: "p", id: "m", reasoning: true }) };
 
 function script(body: string) {
@@ -25,8 +25,7 @@ function request(
     prompt: "inspect",
     intent: "inspect repository",
     capabilities: ["read-filesystem"],
-    modelTier: "medium",
-    thinking: "high",
+    profile: "balanced",
     ...overrides,
   };
 }
@@ -74,12 +73,11 @@ test("runtime preserves args, phases, logs, bounded parallelism, and pipeline or
   assert.equal(maximum, 2);
 });
 
-test("agent requires explicit intent, capabilities, tier, and thinking", async () => {
+test("agent requires explicit intent, capabilities, and profile", async () => {
   for (const options of [
-    `capabilities: [], modelTier: "medium", thinking: "high"`,
-    `intent: "x", modelTier: "medium", thinking: "high"`,
-    `intent: "x", capabilities: [], thinking: "high"`,
-    `intent: "x", capabilities: [], modelTier: "medium"`,
+    `capabilities: [], profile: "balanced"`,
+    `intent: "x", profile: "balanced"`,
+    `intent: "x", capabilities: []`,
   ]) {
     await assert.rejects(
       runWorkflow(
@@ -91,7 +89,7 @@ test("agent requires explicit intent, capabilities, tier, and thinking", async (
           spawnAgent: async () => ({ ok: true, text: "unexpected" }),
         },
       ),
-      /agent (intent|capabilities|modelTier|thinking)/,
+      /agent (intent|capabilities|profile)/,
     );
   }
 });
@@ -116,8 +114,7 @@ test("verify requires the same explicit execution policy and remains a strict ve
       return await verify("The tests pass", {
         intent: "verify tests",
         capabilities: ["read-filesystem"],
-        modelTier: "large",
-        thinking: "high",
+        profile: "strong",
         context: { suite: "unit" },
         retries: 1,
         timeoutMs: 1234,
@@ -139,8 +136,8 @@ test("verify requires the same explicit execution policy and remains a strict ve
   assert.deepEqual(result.result, { ok: true, reasons: ["unit evidence"] });
   assert.equal(calls[0].intent, "verify tests");
   assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
-  assert.equal(calls[0].modelTier, "large");
-  assert.equal(calls[0].thinking, "high");
+  assert.equal(calls[0].profile, "strong");
+  assert.equal("thinking" in calls[0], false);
   assert.equal(calls[0].retries, 1);
   assert.equal(calls[0].timeoutMs, 1234);
   assert.deepEqual(calls[0].output.schema.required, ["confirmed", "reasons"]);
@@ -158,8 +155,7 @@ test("runtime forwards structured output values and preserves explicit policy", 
       return await agent("find auth files", {
         intent: "find auth",
         capabilities: ["read-filesystem"],
-        modelTier: "medium",
-        thinking: "high",
+        profile: "balanced",
         output: { schema: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "string" } } } } },
       });
     }`),
@@ -179,8 +175,8 @@ test("runtime forwards structured output values and preserves explicit policy", 
   assert.deepEqual(result.result, { files: ["src/auth.ts"] });
   assert.equal(calls[0].intent, "find auth");
   assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
-  assert.equal(calls[0].modelTier, "medium");
-  assert.equal(calls[0].thinking, "high");
+  assert.equal(calls[0].profile, "balanced");
+  assert.equal("thinking" in calls[0], false);
 });
 
 test("unsupported structured schemas fail before spawn", async () => {
@@ -318,6 +314,30 @@ test("ledger run cap denies later calls without invoking the spawner", async () 
   }
 });
 
+test("workflow spawner rejects mutable capabilities before subagent launch", async () => {
+  let calls = 0;
+  mock.method(_runSubagent, "fn", async () => {
+    calls += 1;
+    return successfulOutcome();
+  });
+  try {
+    const spawn = createWorkflowAgentSpawner({
+      cwd: "/repo",
+      logId: "workflow",
+      modelRegistry: registry,
+    });
+    for (const capability of ["write-filesystem", "exec-shell"] as const) {
+      const response = await spawn(request({ capabilities: [capability] }));
+      assert.equal(response.ok, false);
+      assert.equal(response.errorCode, "agent_policy_rejected");
+      assert.match(response.error!, /not allowed in read-mostly workflows/);
+    }
+    assert.equal(calls, 0);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
 test("workflow spawner calls sanitized API and publishes intent-first metadata", async () => {
   const calls: any[] = [];
   const updates: any[] = [];
@@ -347,7 +367,7 @@ test("workflow spawner calls sanitized API and publishes intent-first metadata",
     const response = await spawn(
       request({
         capabilities: ["read-web"],
-        modelTier: "large",
+        profile: "strong",
         output: { schema: { type: "object" } },
       }),
     );
@@ -355,15 +375,15 @@ test("workflow spawner calls sanitized API and publishes intent-first metadata",
     assert.deepEqual(response.value, { answer: 42 });
     assert.equal(calls[0].intent, "inspect repository");
     assert.deepEqual(calls[0].capabilities, ["read-web"]);
-    assert.equal(calls[0].modelTier, "large");
-    assert.equal(calls[0].thinking, "high");
+    assert.equal(calls[0].profile, "strong");
+    assert.equal("thinking" in calls[0], false);
     assert.equal(calls[0].modelRegistry, registry);
     assert.equal("agent" in calls[0], false);
     assert.equal("model" in calls[0], false);
     const latest = updates.at(-1);
     assert.equal(latest.intent, "inspect repository");
     assert.deepEqual(latest.capabilities, ["read-web"]);
-    assert.equal(latest.activity.modelTier, "large");
+    assert.equal(latest.activity.profile, "strong");
     assert.equal(latest.activity.totalTokens, 7);
   } finally {
     mock.restoreAll();

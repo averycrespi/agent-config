@@ -43,7 +43,7 @@ If the request identifies both a run and a milestone, verify that the milestone 
 2. Resolve the repository root and helper path.
 3. Require a clean enough workspace to distinguish this milestone's changes. Investigate existing modifications; never overwrite or absorb unrelated work.
 4. Confirm the plan has `Status: Ready` and read its Goal, Non-Goals and Constraints, Acceptance Criteria, Execution Milestones, relevant implementation notes, and verification guidance.
-5. Do not use subagents by default. Perform implementation in the current session with one writer. Use deterministic commands directly for checks.
+5. Keep the main session as orchestrator and sole owner of run state, evidence, decisions, verification, and commits. Delegate implementation through exactly one writable subagent at a time; never batch a writable child with another agent.
 
 For a plan invocation, atomically open its run:
 
@@ -94,12 +94,41 @@ Create a TODO list from that milestone's tasks, preserving task order and existi
 For each task in order:
 
 1. Start it through the helper.
-2. Read only the repository context needed for its scope, outcome, and verification.
-3. Apply test-driven development when the task changes meaningful logic.
-4. Implement the task without expanding acceptance scope.
-5. Run its focused verification.
-6. Record bounded evidence mapped to the milestone's acceptance criteria.
-7. Mark the task complete only after the helper accepts its evidence.
+2. Read enough repository context to construct a self-contained task packet and choose a profile.
+3. Capture a content baseline outside the repository so the child's changes can be distinguished from pre-existing and earlier-task work, including when both touch the same file.
+4. Launch one `spawn_agents` item with `read-filesystem`, `write-filesystem`, and `exec-shell`; never include another item in that call.
+5. Inspect the returned structured handoff and actual workspace diff.
+6. Independently run the task's focused verification in the main session.
+7. Record bounded evidence mapped to the milestone's acceptance criteria.
+8. Mark the task complete only after the helper accepts its evidence.
+
+Choose the profile from task characteristics, never from assumed model identities:
+
+- `fast`: localized, well-specified, mechanically verifiable work with limited coupling.
+- `balanced`: nontrivial but bounded implementation across related files or concerns.
+- `strong`: difficult, self-contained work involving subtle state, concurrency, compatibility, security, or similarly demanding reasoning.
+
+Do not use `strong` as a substitute for unresolved product or architecture decisions, missing user context, or unsafe authority. Block and escalate those conditions instead. Do not expose configured model names or reasoning levels in the task packet.
+
+This initial writer path is trusted-local, not sandboxed: `write-filesystem` is not workspace-root restricted, and `exec-shell` inherits the parent environment and can perform external actions. If repository content, available credentials, or task inputs make that authority unsafe, stop as blocked instead of delegating. Prompt restrictions are not an enforcement boundary.
+
+The child prompt must include the plan path, milestone and task IDs, task scope and outcome, owned acceptance criteria, relevant constraints and decisions, required verification, and stop conditions. It must also state:
+
+- implement exactly this task and do not gold-plate;
+- use test-driven development for meaningful logic;
+- do not modify `.design/plans/`, `.design/runs/`, `.git/`, or unrelated existing changes;
+- do not invoke `plan-run-state.js`, mutate run state, record evidence or decisions, commit, push, merge, or perform external writes;
+- stop and report `blocked` rather than inventing a consequential decision or expanding scope.
+
+Require `output_schema` with this logical contract:
+
+- `status`: `done`, `blocked`, or `failed`;
+- `changed_files`: array of repository-relative paths;
+- `checks`: array of objects containing `command`, `exit_code`, and bounded `summary`;
+- `decisions_needed`: array of strings;
+- `notes`: array of strings.
+
+Before dispatch, capture staged and unstaged binary diffs plus an untracked-file path/hash manifest in a secure temporary location; status output alone is insufficient. After settlement, compare the workspace against that baseline to isolate this child's delta, then compare `changed_files` with the isolated delta. Treat the handoff as a claim, not evidence. Reject protected-path or unrelated mutations, remove the temporary baseline after the task settles, and rerun relevant checks yourself. If the child reports a blocker or consequential decision, handle it through the milestone stop or decision process; do not let the child resolve it implicitly.
 
 Start a task:
 
@@ -159,7 +188,7 @@ For an invalid verification command:
 
 Use independent, progress-aware repair scopes:
 
-- Each task gets at most three repair rounds in the current invocation. A round diagnoses the current failure, applies one focused change, and reruns the failed check plus directly affected checks.
+- Each task gets at most three repair rounds in the current invocation. A round diagnoses the current failure, delegates one focused repair to exactly one writable child, and reruns the failed check plus directly affected checks in the main session.
 - The milestone verification gate gets a separate allowance of at most three repair rounds after all tasks are complete.
 - A repair used by one task does not consume another task's or the milestone gate's allowance.
 - A different required check failing after the original check passes consumes the next round in the same scope; it does not require an immediate final stop.
@@ -172,7 +201,7 @@ For a meaningful failed check:
 1. Record the failed command as evidence with its real exit code.
 2. Diagnose the failure from concrete output and compare it with the previous round in that scope.
 3. Stop the milestone as `failed` before beginning a new round.
-4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and failed task, apply one focused repair, and rerun the failed scope.
+4. If the scope still has allowance and the prior round made progress when applicable, restart the milestone and failed task, delegate one focused repair with the concrete failure evidence and current diff, and rerun the failed scope in the main session. Keep the same profile unless evidence shows the task was materially misclassified; never escalate merely to retry blindly.
 5. If the check passes, continue the task or gate. If another required check fails, evaluate it as the next round in the same scope.
 6. If an early-stop condition applies or the third repair round does not pass the scope, leave the milestone failed and stop.
 

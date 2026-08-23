@@ -1,11 +1,10 @@
 import type {
   Capability,
   LiveModelRegistry,
-  ModelTier,
+  Profile,
   SpawnOutcome,
   StructuredOutputSpec,
   SubagentRunState,
-  ThinkingLevel,
 } from "../subagents/api.ts";
 
 export const DEFAULT_MAX_CONCURRENCY = 4;
@@ -62,8 +61,7 @@ export interface WorkflowRecoveryRecord {
   requestId: number;
   intent: string;
   capabilities: Capability[];
-  modelTier: ModelTier;
-  thinking: ThinkingLevel;
+  profile: Profile;
   phase?: string;
   startedAt: number;
   finishedAt: number;
@@ -103,8 +101,7 @@ export interface WorkflowAgentState {
   id: number;
   intent: string;
   capabilities: Capability[];
-  modelTier: ModelTier;
-  thinking: ThinkingLevel;
+  profile: Profile;
   status: "running" | "done" | "error" | "aborted";
   resultPreview?: string;
   errorMessage?: string;
@@ -181,8 +178,7 @@ export interface WorkflowAgentRequest {
   prompt: string;
   intent: string;
   capabilities: Capability[];
-  modelTier: ModelTier;
-  thinking: ThinkingLevel;
+  profile: Profile;
   output?: StructuredOutputSpec;
   retries?: number;
   timeoutMs?: number;

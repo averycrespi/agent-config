@@ -13,10 +13,10 @@ The harness combines a simple development loop with tools that keep work scoped,
 1. **Clarify and route** ambiguous requests with `clarify` when the right design artifact is not yet clear.
 2. **Design and specify** broad systems with `architect`, then turn each outcome—or one smaller standalone change—into a Ready specification with `specify`.
 3. **Plan and stress-test** one specification with `plan`, the explicit-only `simplify` skill for unnecessary complexity, and `challenge` for substantial risks.
-4. **Implement** the next dependency-ready plan milestone with `execute-next-milestone`, which persists run state, task progress, decisions, and acceptance evidence; use `goal` for session-scoped steering outside plan execution.
+4. **Implement** the next dependency-ready plan milestone with `execute-next-milestone`, which orchestrates one profile-routed writable child at a time while retaining run state, verification, decisions, evidence, and commits in the main session; use `goal` for session-scoped steering outside plan execution.
 5. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
-Isolated subagents support research and verification throughout the workflow. Each receives a self-contained task and explicit filesystem, shell, web, or broker permissions. For isolated implementation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief, but only when the user explicitly asks to spin out or delegate work.
+Isolated subagents support research, verification, and bounded sequential implementation. Each receives a self-contained task, a centrally configured `fast`, `balanced`, or `strong` profile, and explicit filesystem, shell, web, or broker permissions. `execute-next-milestone` may delegate one in-place implementation task at a time; for explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
 
 ### Extensions
 

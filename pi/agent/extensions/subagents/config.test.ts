@@ -22,24 +22,28 @@ for (const value of [1, 4, 16]) {
 test("config exposes centralized policy defaults", () => {
   assert.deepEqual(normalizeSubagentsConfig({}, {}), DEFAULT_SUBAGENTS_CONFIG);
   assert.equal(
-    DEFAULT_SUBAGENTS_CONFIG.modelTierSmall,
+    DEFAULT_SUBAGENTS_CONFIG.profileFastModel,
     "openai-codex/gpt-5.6-luna",
   );
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileFastEffort, "high");
   assert.equal(
-    DEFAULT_SUBAGENTS_CONFIG.modelTierMedium,
+    DEFAULT_SUBAGENTS_CONFIG.profileBalancedModel,
     "openai-codex/gpt-5.6-terra",
   );
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "high");
   assert.equal(
-    DEFAULT_SUBAGENTS_CONFIG.modelTierLarge,
+    DEFAULT_SUBAGENTS_CONFIG.profileStrongModel,
     "openai-codex/gpt-5.6-sol",
   );
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileStrongEffort, "high");
   assert.deepEqual(DEFAULT_SUBAGENTS_CONFIG.allowedCapabilities, [
     "read-filesystem",
+    "write-filesystem",
     "exec-shell",
     "read-broker",
     "read-web",
   ]);
-  assert.deepEqual(DEFAULT_SUBAGENTS_CONFIG.allowedThinkingLevels, [
+  assert.deepEqual(DEFAULT_SUBAGENTS_CONFIG.allowedEffortLevels, [
     "low",
     "medium",
     "high",
@@ -51,21 +55,27 @@ test("global config normalizes selectors and allowlists", () => {
     normalizeSubagentsConfig(
       {
         maxConcurrency: 8,
-        modelTierSmall: "p/s",
-        modelTierMedium: "p/m",
-        modelTierLarge: "p/l",
-        allowedCapabilities: ["read-web", "read-web", "read-filesystem"],
-        allowedThinkingLevels: ["max", "high", "max"],
+        profileFastModel: "p/f",
+        profileFastEffort: "low",
+        profileBalancedModel: "p/b",
+        profileBalancedEffort: "medium",
+        profileStrongModel: "p/s",
+        profileStrongEffort: "max",
+        allowedCapabilities: ["read-web", "read-web", "write-filesystem"],
+        allowedEffortLevels: ["max", "high", "max"],
       },
       {},
     ),
     {
       maxConcurrency: 8,
-      modelTierSmall: "p/s",
-      modelTierMedium: "p/m",
-      modelTierLarge: "p/l",
-      allowedCapabilities: ["read-web", "read-filesystem"],
-      allowedThinkingLevels: ["max", "high"],
+      profileFastModel: "p/f",
+      profileFastEffort: "low",
+      profileBalancedModel: "p/b",
+      profileBalancedEffort: "medium",
+      profileStrongModel: "p/s",
+      profileStrongEffort: "max",
+      allowedCapabilities: ["read-web", "write-filesystem"],
+      allowedEffortLevels: ["max", "high"],
     },
   );
 });
@@ -76,21 +86,59 @@ test("every field has an environment override", () => {
       { maxConcurrency: 2 },
       {
         SUBAGENTS_MAX_CONCURRENCY: "7",
-        SUBAGENTS_MODEL_TIER_SMALL: "env/s",
-        SUBAGENTS_MODEL_TIER_MEDIUM: "env/m",
-        SUBAGENTS_MODEL_TIER_LARGE: "env/l",
-        SUBAGENTS_ALLOWED_CAPABILITIES: "read-broker,read-web",
-        SUBAGENTS_ALLOWED_THINKING_LEVELS: "low,max",
+        SUBAGENTS_PROFILE_FAST_MODEL: "env/f",
+        SUBAGENTS_PROFILE_FAST_EFFORT: "low",
+        SUBAGENTS_PROFILE_BALANCED_MODEL: "env/b",
+        SUBAGENTS_PROFILE_BALANCED_EFFORT: "medium",
+        SUBAGENTS_PROFILE_STRONG_MODEL: "env/s",
+        SUBAGENTS_PROFILE_STRONG_EFFORT: "max",
+        SUBAGENTS_ALLOWED_CAPABILITIES: "read-broker,write-filesystem",
+        SUBAGENTS_ALLOWED_EFFORT_LEVELS: "low,max",
       },
     ),
     {
       maxConcurrency: 7,
-      modelTierSmall: "env/s",
-      modelTierMedium: "env/m",
-      modelTierLarge: "env/l",
-      allowedCapabilities: ["read-broker", "read-web"],
-      allowedThinkingLevels: ["low", "max"],
+      profileFastModel: "env/f",
+      profileFastEffort: "low",
+      profileBalancedModel: "env/b",
+      profileBalancedEffort: "medium",
+      profileStrongModel: "env/s",
+      profileStrongEffort: "max",
+      allowedCapabilities: ["read-broker", "write-filesystem"],
+      allowedEffortLevels: ["low", "max"],
     },
+  );
+});
+
+test("legacy tier selectors migrate as deprecated profile model fallbacks", () => {
+  const warnings: string[] = [];
+  const value = normalizeSubagentsConfig(
+    {
+      modelTierSmall: "legacy/fast",
+      modelTierMedium: "legacy/balanced",
+      profileStrongModel: "new/strong",
+      modelTierLarge: "legacy/strong",
+      allowedThinkingLevels: ["medium", "high"],
+    },
+    {
+      SUBAGENTS_MODEL_TIER_MEDIUM: "env/balanced",
+      SUBAGENTS_ALLOWED_THINKING_LEVELS: "high,max",
+    },
+    warnings,
+  );
+  assert.equal(value.profileFastModel, "legacy/fast");
+  assert.equal(value.profileBalancedModel, "env/balanced");
+  assert.equal(value.profileStrongModel, "new/strong");
+  assert.deepEqual(value.allowedEffortLevels, ["high", "max"]);
+  assert.match(warnings.join("\n"), /modelTierSmall is deprecated/);
+  assert.match(
+    warnings.join("\n"),
+    /SUBAGENTS_MODEL_TIER_MEDIUM is deprecated/,
+  );
+  assert.match(warnings.join("\n"), /allowedThinkingLevels is deprecated/);
+  assert.match(
+    warnings.join("\n"),
+    /SUBAGENTS_ALLOWED_THINKING_LEVELS is deprecated/,
   );
 });
 
@@ -99,30 +147,40 @@ test("invalid values warn and preserve valid fallback policy", () => {
   const value = normalizeSubagentsConfig(
     {
       maxConcurrency: "many",
-      modelTierMedium: "invalid",
+      profileBalancedModel: "invalid",
+      profileStrongEffort: "ultra",
       allowedCapabilities: ["write"],
-      allowedThinkingLevels: ["ultra"],
+      allowedEffortLevels: ["ultra"],
     },
     {
       SUBAGENTS_MAX_CONCURRENCY: "99",
-      SUBAGENTS_MODEL_TIER_LARGE: "bad",
+      SUBAGENTS_PROFILE_STRONG_MODEL: "bad",
+      SUBAGENTS_PROFILE_FAST_EFFORT: "ultra",
       SUBAGENTS_ALLOWED_CAPABILITIES: "unknown",
-      SUBAGENTS_ALLOWED_THINKING_LEVELS: "ultra",
+      SUBAGENTS_ALLOWED_EFFORT_LEVELS: "ultra",
     },
     warnings,
   );
   assert.equal(value.maxConcurrency, 16);
-  assert.equal(value.modelTierMedium, DEFAULT_SUBAGENTS_CONFIG.modelTierMedium);
+  assert.equal(
+    value.profileBalancedModel,
+    DEFAULT_SUBAGENTS_CONFIG.profileBalancedModel,
+  );
+  assert.equal(
+    value.profileStrongEffort,
+    DEFAULT_SUBAGENTS_CONFIG.profileStrongEffort,
+  );
   assert.deepEqual(
     value.allowedCapabilities,
     DEFAULT_SUBAGENTS_CONFIG.allowedCapabilities,
   );
   assert.deepEqual(
-    value.allowedThinkingLevels,
-    DEFAULT_SUBAGENTS_CONFIG.allowedThinkingLevels,
+    value.allowedEffortLevels,
+    DEFAULT_SUBAGENTS_CONFIG.allowedEffortLevels,
   );
-  assert.match(warnings.join("\n"), /invalid global modelTierMedium/);
-  assert.match(warnings.join("\n"), /SUBAGENTS_ALLOWED_THINKING_LEVELS/);
+  assert.match(warnings.join("\n"), /invalid global profileBalancedModel/);
+  assert.match(warnings.join("\n"), /invalid global profileStrongEffort/);
+  assert.match(warnings.join("\n"), /SUBAGENTS_ALLOWED_EFFORT_LEVELS/);
 });
 
 test("project settings cannot widen global subagent policy", async () => {
@@ -138,7 +196,7 @@ test("project settings cannot widen global subagent policy", async () => {
         "extension:subagents": {
           maxConcurrency: 6,
           allowedCapabilities: ["read-filesystem"],
-          modelTierMedium: "global/model",
+          profileBalancedModel: "global/model",
         },
       }),
     );
@@ -148,14 +206,14 @@ test("project settings cannot widen global subagent policy", async () => {
         "extension:subagents": {
           maxConcurrency: 16,
           allowedCapabilities: ["exec-shell"],
-          modelTierMedium: "project/model",
+          profileBalancedModel: "project/model",
         },
       }),
     );
     const loaded = await loadSubagentsConfig(cwd, [], { agentDir, env: {} });
     assert.equal(loaded.maxConcurrency, 6);
     assert.deepEqual(loaded.allowedCapabilities, ["read-filesystem"]);
-    assert.equal(loaded.modelTierMedium, "global/model");
+    assert.equal(loaded.profileBalancedModel, "global/model");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -171,7 +229,9 @@ test("subagents config command reports effective global policy", async () => {
     await mkdir(agentDir, { recursive: true });
     await writeFile(
       join(agentDir, "settings.json"),
-      JSON.stringify({ "extension:subagents": { modelTierMedium: "p/m" } }),
+      JSON.stringify({
+        "extension:subagents": { profileBalancedModel: "p/m" },
+      }),
     );
     process.env.PI_CODING_AGENT_DIR = agentDir;
     registerSubagentsConfigCommand({
@@ -183,9 +243,9 @@ test("subagents config command reports effective global policy", async () => {
       cwd: root,
       ui: { notify: (message: string) => messages.push(message) },
     });
-    assert.match(messages[0]!, /"modelTierMedium": "p\/m"/);
+    assert.match(messages[0]!, /"profileBalancedModel": "p\/m"/);
     assert.match(messages[0]!, /"allowedCapabilities"/);
-    assert.match(messages[0]!, /"allowedThinkingLevels"/);
+    assert.match(messages[0]!, /"allowedEffortLevels"/);
   } finally {
     if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = originalAgentDir;

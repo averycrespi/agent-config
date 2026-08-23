@@ -19,30 +19,39 @@ import {
 
 export type SubagentsConfig = {
   maxConcurrency: number;
-  modelTierSmall: string;
-  modelTierMedium: string;
-  modelTierLarge: string;
+  profileFastModel: string;
+  profileFastEffort: ThinkingLevel;
+  profileBalancedModel: string;
+  profileBalancedEffort: ThinkingLevel;
+  profileStrongModel: string;
+  profileStrongEffort: ThinkingLevel;
   allowedCapabilities: Capability[];
-  allowedThinkingLevels: ThinkingLevel[];
+  allowedEffortLevels: ThinkingLevel[];
 };
 
 export const DEFAULT_SUBAGENTS_CONFIG: SubagentsConfig = {
   maxConcurrency: DEFAULT_MAX_CONCURRENCY,
-  modelTierSmall: "openai-codex/gpt-5.6-luna",
-  modelTierMedium: "openai-codex/gpt-5.6-terra",
-  modelTierLarge: "openai-codex/gpt-5.6-sol",
+  profileFastModel: "openai-codex/gpt-5.6-luna",
+  profileFastEffort: "high",
+  profileBalancedModel: "openai-codex/gpt-5.6-terra",
+  profileBalancedEffort: "high",
+  profileStrongModel: "openai-codex/gpt-5.6-sol",
+  profileStrongEffort: "high",
   allowedCapabilities: [...CAPABILITIES],
-  allowedThinkingLevels: ["low", "medium", "high"],
+  allowedEffortLevels: ["low", "medium", "high"],
 };
 
 const EXTENSION_NAME = "subagents";
 const ENV = {
   maxConcurrency: "SUBAGENTS_MAX_CONCURRENCY",
-  modelTierSmall: "SUBAGENTS_MODEL_TIER_SMALL",
-  modelTierMedium: "SUBAGENTS_MODEL_TIER_MEDIUM",
-  modelTierLarge: "SUBAGENTS_MODEL_TIER_LARGE",
+  profileFastModel: "SUBAGENTS_PROFILE_FAST_MODEL",
+  profileFastEffort: "SUBAGENTS_PROFILE_FAST_EFFORT",
+  profileBalancedModel: "SUBAGENTS_PROFILE_BALANCED_MODEL",
+  profileBalancedEffort: "SUBAGENTS_PROFILE_BALANCED_EFFORT",
+  profileStrongModel: "SUBAGENTS_PROFILE_STRONG_MODEL",
+  profileStrongEffort: "SUBAGENTS_PROFILE_STRONG_EFFORT",
   allowedCapabilities: "SUBAGENTS_ALLOWED_CAPABILITIES",
-  allowedThinkingLevels: "SUBAGENTS_ALLOWED_THINKING_LEVELS",
+  allowedEffortLevels: "SUBAGENTS_ALLOWED_EFFORT_LEVELS",
 } as const;
 
 type PlainObject = Record<string, unknown>;
@@ -116,14 +125,45 @@ export function normalizeSubagentsConfig(
     warnings.push("Ignoring invalid global maxConcurrency; using default.");
   }
 
+  for (const [legacyField, profileField] of [
+    ["modelTierSmall", "profileFastModel"],
+    ["modelTierMedium", "profileBalancedModel"],
+    ["modelTierLarge", "profileStrongModel"],
+  ] as const) {
+    if (globalSettings[legacyField] === undefined) continue;
+    warnings.push(
+      `${legacyField} is deprecated; use ${profileField} under extension:subagents.`,
+    );
+    if (globalSettings[profileField] !== undefined) continue;
+    const value = parseModelSelector(globalSettings[legacyField]);
+    if (value) normalizedGlobal[profileField] = value;
+    else warnings.push(`Ignoring invalid global ${legacyField}.`);
+  }
+
   for (const field of [
-    "modelTierSmall",
-    "modelTierMedium",
-    "modelTierLarge",
+    "profileFastModel",
+    "profileBalancedModel",
+    "profileStrongModel",
   ] as const) {
     const value = parseModelSelector(globalSettings[field]);
     if (value) normalizedGlobal[field] = value;
     else if (globalSettings[field] !== undefined) {
+      warnings.push(`Ignoring invalid global ${field}; using fallback.`);
+    }
+  }
+
+  for (const field of [
+    "profileFastEffort",
+    "profileBalancedEffort",
+    "profileStrongEffort",
+  ] as const) {
+    const value = globalSettings[field];
+    if (
+      typeof value === "string" &&
+      THINKING_LEVELS.includes(value as ThinkingLevel)
+    ) {
+      normalizedGlobal[field] = value;
+    } else if (value !== undefined) {
       warnings.push(`Ignoring invalid global ${field}; using fallback.`);
     }
   }
@@ -140,15 +180,29 @@ export function normalizeSubagentsConfig(
     );
   }
 
-  const globalThinking = parseAllowedList(
-    globalSettings.allowedThinkingLevels,
+  if (globalSettings.allowedThinkingLevels !== undefined) {
+    warnings.push(
+      "allowedThinkingLevels is deprecated; use allowedEffortLevels under extension:subagents.",
+    );
+    if (globalSettings.allowedEffortLevels === undefined) {
+      const legacy = parseAllowedList(
+        globalSettings.allowedThinkingLevels,
+        THINKING_LEVELS,
+      );
+      if (legacy) normalizedGlobal.allowedEffortLevels = legacy;
+      else warnings.push("Ignoring invalid global allowedThinkingLevels.");
+    }
+  }
+
+  const globalEffort = parseAllowedList(
+    globalSettings.allowedEffortLevels,
     THINKING_LEVELS,
   );
-  if (globalThinking) {
-    normalizedGlobal.allowedThinkingLevels = globalThinking;
-  } else if (globalSettings.allowedThinkingLevels !== undefined) {
+  if (globalEffort) {
+    normalizedGlobal.allowedEffortLevels = globalEffort;
+  } else if (globalSettings.allowedEffortLevels !== undefined) {
     warnings.push(
-      "Ignoring invalid global allowedThinkingLevels; using default.",
+      "Ignoring invalid global allowedEffortLevels; using default.",
     );
   }
 
@@ -164,16 +218,44 @@ export function normalizeSubagentsConfig(
     warnings.push(`Ignoring invalid ${ENV.maxConcurrency}.`);
   }
 
+  for (const [legacyEnv, profileField] of [
+    ["SUBAGENTS_MODEL_TIER_SMALL", "profileFastModel"],
+    ["SUBAGENTS_MODEL_TIER_MEDIUM", "profileBalancedModel"],
+    ["SUBAGENTS_MODEL_TIER_LARGE", "profileStrongModel"],
+  ] as const) {
+    const raw = env[legacyEnv];
+    if (!raw?.trim()) continue;
+    warnings.push(`${legacyEnv} is deprecated; use ${ENV[profileField]}.`);
+    if (env[ENV[profileField]]?.trim()) continue;
+    const value = parseModelSelector(raw);
+    if (value) normalizedEnv[profileField] = value;
+    else warnings.push(`Ignoring invalid ${legacyEnv}.`);
+  }
+
   for (const field of [
-    "modelTierSmall",
-    "modelTierMedium",
-    "modelTierLarge",
+    "profileFastModel",
+    "profileBalancedModel",
+    "profileStrongModel",
   ] as const) {
     const envName = ENV[field];
     const raw = env[envName];
     const value = parseModelSelector(raw);
     if (value) normalizedEnv[field] = value;
     else if (raw?.trim()) warnings.push(`Ignoring invalid ${envName}.`);
+  }
+
+  for (const field of [
+    "profileFastEffort",
+    "profileBalancedEffort",
+    "profileStrongEffort",
+  ] as const) {
+    const envName = ENV[field];
+    const raw = env[envName];
+    if (raw && THINKING_LEVELS.includes(raw as ThinkingLevel)) {
+      normalizedEnv[field] = raw;
+    } else if (raw?.trim()) {
+      warnings.push(`Ignoring invalid ${envName}.`);
+    }
   }
 
   const envCapabilities = parseAllowedList(
@@ -185,13 +267,25 @@ export function normalizeSubagentsConfig(
     warnings.push(`Ignoring invalid ${ENV.allowedCapabilities}.`);
   }
 
-  const envThinking = parseAllowedList(
-    env[ENV.allowedThinkingLevels],
+  const legacyEffortEnv = env.SUBAGENTS_ALLOWED_THINKING_LEVELS;
+  if (legacyEffortEnv?.trim()) {
+    warnings.push(
+      `SUBAGENTS_ALLOWED_THINKING_LEVELS is deprecated; use ${ENV.allowedEffortLevels}.`,
+    );
+    if (!env[ENV.allowedEffortLevels]?.trim()) {
+      const legacy = parseAllowedList(legacyEffortEnv, THINKING_LEVELS);
+      if (legacy) normalizedEnv.allowedEffortLevels = legacy;
+      else warnings.push("Ignoring invalid SUBAGENTS_ALLOWED_THINKING_LEVELS.");
+    }
+  }
+
+  const envEffort = parseAllowedList(
+    env[ENV.allowedEffortLevels],
     THINKING_LEVELS,
   );
-  if (envThinking) normalizedEnv.allowedThinkingLevels = envThinking;
-  else if (env[ENV.allowedThinkingLevels]?.trim()) {
-    warnings.push(`Ignoring invalid ${ENV.allowedThinkingLevels}.`);
+  if (envEffort) normalizedEnv.allowedEffortLevels = envEffort;
+  else if (env[ENV.allowedEffortLevels]?.trim()) {
+    warnings.push(`Ignoring invalid ${ENV.allowedEffortLevels}.`);
   }
 
   return mergeExtensionConfig({

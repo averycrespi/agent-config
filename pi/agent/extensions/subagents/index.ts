@@ -28,8 +28,7 @@ import {
   CAPABILITIES,
   DEFAULT_MAX_CONCURRENCY,
   MAX_AGENTS_PER_CALL,
-  MODEL_TIERS,
-  THINKING_LEVELS,
+  PROFILES,
   type SpawnAgentItem,
   type SpawnAgentsParams,
   type SubagentRunState,
@@ -61,28 +60,57 @@ export function normalizeIntent(intent: string): string {
   return trimmed;
 }
 
-export function buildPolicyDescription(config: SubagentsConfig): string {
-  return `Required configured model tier. small=${config.modelTierSmall}; medium=${config.modelTierMedium}; large=${config.modelTierLarge}.`;
+export function prepareSpawnAgentsArguments(args: unknown): any {
+  if (!args || typeof args !== "object") return args;
+  const input = args as { agents?: unknown[] };
+  if (!Array.isArray(input.agents)) return args;
+  let changed = false;
+  const agents = input.agents.map((agent) => {
+    if (!agent || typeof agent !== "object") return agent;
+    const record = agent as Record<string, unknown>;
+    const legacyTier = record.model_tier;
+    const hasLegacyFields =
+      legacyTier !== undefined || record.thinking !== undefined;
+    if (!hasLegacyFields) return agent;
+    changed = true;
+    const { model_tier: _modelTier, thinking: _thinking, ...current } = record;
+    if (current.profile !== undefined) return current;
+    const profile =
+      legacyTier === "small"
+        ? "fast"
+        : legacyTier === "medium"
+          ? "balanced"
+          : legacyTier === "large"
+            ? "strong"
+            : undefined;
+    return profile ? { ...current, profile } : current;
+  });
+  return changed ? { ...(args as Record<string, unknown>), agents } : args;
+}
+
+export function buildPolicyDescription(_config: SubagentsConfig): string {
+  return `Required configured profile: ${PROFILES.join(", ")}.`;
 }
 
 export function buildDelegationGuidance(config: SubagentsConfig): string {
   return `\n\n## Subagent delegation
-Use spawn_agents proactively for read-mostly work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion.
+Use spawn_agents proactively for read-mostly work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion. Use writable delegation only when an explicit execution workflow defines one writer, bounded scope, orchestrator-owned state, and independent verification.
 
 Delegate when:
 - localizing unfamiliar code, tracing control/data flow, or reading more than a few files
 - checking external docs, remote metadata, issues, PRs, releases, or web sources
 - reviewing a plan, diff, branch, PR, or design against explicit criteria
 - distilling noisy logs, traces, metrics, query results, or large command output
-- splitting independent questions that can run concurrently
+- implementing one bounded task inside an explicit sequential execution workflow
+- splitting independent read-only questions that can run concurrently
 
 Do not delegate when:
-- the task requires editing files or coordinating overlapping workspace changes
+- multiple agents would write to the same checkout concurrently
 - a deterministic command, test, typecheck, lint, or focused search would answer faster
 - the subagent would need unstated conversation context or user-owned decisions
-- the work is tightly sequential or delegation would mostly duplicate effort
+- delegation would mostly duplicate effort
 
-Pass independent agents in one spawn_agents call; at most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities, model_tier, and thinking. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Allowed thinking levels: ${config.allowedThinkingLevels.join(", ") || "none"}. Configured tiers: small=${config.modelTierSmall}; medium=${config.modelTierMedium}; large=${config.modelTierLarge}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema for validated machine-readable results.`;
+Profiles describe routing policy, not fixed model identities: fast for routine bounded work, balanced for substantial work, and strong for demanding self-contained work. Pass independent read-only agents in one spawn_agents call; writable agents must run one at a time. At most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema for validated machine-readable results.`;
 }
 
 function toRunRequest(
@@ -95,8 +123,7 @@ function toRunRequest(
     intent: spec.intent,
     prompt: spec.prompt,
     capabilities: spec.capabilities,
-    modelTier: spec.model_tier,
-    thinking: spec.thinking,
+    profile: spec.profile,
     files: spec.files,
     output:
       spec.output_schema !== undefined
@@ -119,6 +146,19 @@ export async function validateSpawnAgentSpecs(
   if (specs.length > MAX_AGENTS_PER_CALL) {
     errors.push(
       `agents must contain at most ${MAX_AGENTS_PER_CALL} agents (received ${specs.length})`,
+    );
+  }
+  if (
+    specs.length > 1 &&
+    specs.some((spec) =>
+      spec.capabilities?.some(
+        (capability) =>
+          capability === "write-filesystem" || capability === "exec-shell",
+      ),
+    )
+  ) {
+    errors.push(
+      "mutable capabilities require exactly one agent per spawn_agents call",
     );
   }
 
@@ -211,8 +251,7 @@ async function runSpawn(
 
   Object.assign(tracker.state, {
     capabilities: [...spec.capabilities],
-    modelTier: spec.model_tier,
-    thinking: spec.thinking,
+    profile: spec.profile,
   });
 
   const result = await _runSubagent.fn(
@@ -278,6 +317,7 @@ export async function runParallelSpawn(
   toolCallId: string,
   onUpdate: OnUpdate | undefined,
   gate: ConcurrencyGate,
+  mutableGate?: ConcurrencyGate,
 ): Promise<{
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
@@ -292,11 +332,16 @@ export async function runParallelSpawn(
     };
   }
 
+  const mutable = specs.some((spec) =>
+    spec.capabilities.some(
+      (capability) =>
+        capability === "write-filesystem" || capability === "exec-shell",
+    ),
+  );
   const states: SubagentRunState[] = specs.map((spec) => ({
     intent: spec.intent.trim(),
     capabilities: [...spec.capabilities],
-    modelTier: spec.model_tier,
-    thinking: spec.thinking,
+    profile: spec.profile,
     phase: "queued",
     recentEvents: [],
     toolUseCount: 0,
@@ -336,8 +381,18 @@ export async function runParallelSpawn(
 
   const results = await Promise.all(
     specs.map(async (spec, i) => {
+      const releaseMutable =
+        mutable && mutableGate
+          ? await mutableGate.acquire(ctx.signal)
+          : undefined;
+      if (mutable && mutableGate && !releaseMutable) {
+        return cancelledBeforeLaunch(i);
+      }
       const release = await gate.acquire(ctx.signal);
-      if (!release) return cancelledBeforeLaunch(i);
+      if (!release) {
+        releaseMutable?.();
+        return cancelledBeforeLaunch(i);
+      }
       try {
         if (ctx.signal?.aborted) return cancelledBeforeLaunch(i);
         const result = await runSpawn(
@@ -362,6 +417,7 @@ export async function runParallelSpawn(
         return result;
       } finally {
         release();
+        releaseMutable?.();
       }
     }),
   );
@@ -388,7 +444,7 @@ export async function runParallelSpawn(
 
   const parts = results.map((result, i) => {
     const spec = specs[i]!;
-    const policy = `${spec.capabilities.join(", ") || "no capabilities"} · ${spec.model_tier}/${spec.thinking}`;
+    const policy = `${spec.capabilities.join(", ") || "no capabilities"} · ${spec.profile}`;
     return `## ${spec.intent.trim()}\n\n_${policy}_\n\n${result.content[0]?.text ?? ""}`;
   });
   const spilled = await spillSubagentOutput(
@@ -429,6 +485,7 @@ export function createSubagentsConfigReloader(
 
 export default function (pi: ExtensionAPI) {
   const directGate = createConcurrencyGate(DEFAULT_MAX_CONCURRENCY);
+  const mutableGate = createConcurrencyGate(1);
   const reloadConfig = createSubagentsConfigReloader(directGate);
   registerSubagentsConfigCommand(pi);
 
@@ -443,10 +500,11 @@ export default function (pi: ExtensionAPI) {
     name: "spawn_agents",
     label: "Spawn Agents",
     description:
-      "Launch multiple independent subagents with explicit capabilities, model tier, and thinking. Results are combined after all settle.",
+      "Launch one or more independent subagents with explicit capabilities and a configured profile. Mutable calls are serialized; results are combined after all settle.",
     parameters: buildSpawnAgentsParams(
-      `Required model tier: ${MODEL_TIERS.join(", ")}.`,
+      `Required profile: ${PROFILES.join(", ")}.`,
     ),
+    prepareArguments: prepareSpawnAgentsArguments,
     async execute(
       toolCallId,
       params: SpawnAgentsParams,
@@ -472,6 +530,7 @@ export default function (pi: ExtensionAPI) {
         toolCallId,
         onUpdate,
         directGate,
+        mutableGate,
       );
     },
     renderCall(args, theme, context) {
@@ -483,4 +542,4 @@ export default function (pi: ExtensionAPI) {
   });
 }
 
-export { MODEL_TIERS, THINKING_LEVELS };
+export { PROFILES };

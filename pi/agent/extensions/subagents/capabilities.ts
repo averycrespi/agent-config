@@ -17,6 +17,9 @@ export const CAPABILITY_GRANTS: Readonly<Record<Capability, CapabilityGrant>> =
     "read-filesystem": {
       tools: ["read", "ls", "find", "grep"],
     },
+    "write-filesystem": {
+      tools: ["edit", "write"],
+    },
     "exec-shell": {
       tools: ["bash"],
     },

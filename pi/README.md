@@ -49,7 +49,7 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
 | `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
 | `structured-output` | Schema-backed final output tool, no-op unless configured                                                |
-| `subagents`         | Explicit capability/tier/thinking policy and isolated child dispatch                                    |
+| `subagents`         | Profile-routed isolated child dispatch with explicit read, write, shell, broker, and web capabilities   |
 | `todo`              | Session-persisted TODO tool with a sticky widget                                                        |
 | `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                |
 | `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows |
@@ -64,7 +64,7 @@ See [AGENTS.md](../AGENTS.md) for repo-specific authoring guidance.
 
 ## Saved Workflows
 
-JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, centrally resolved subagent capabilities/model tiers/thinking, concurrency, budgets, and validation as inline workflows. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
+JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, centrally resolved subagent capabilities/profiles, concurrency, budgets, and validation as inline workflows. Saved workflows reject mutable filesystem and shell capabilities; writable delegation belongs to explicit execution skills such as `execute-next-milestone`. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
 
 | Workflow        | Purpose                                                                                         |
 | --------------- | ----------------------------------------------------------------------------------------------- |
@@ -85,33 +85,33 @@ Markdown snippets invoked with `/name` in Pi, where `name` is the filename witho
 
 Markdown skill packages that load on demand via progressive disclosure — only the `name` and `description` are pre-registered; the body of `SKILL.md` and any bundled `references/` files load only when the skill activates.
 
-| Skill                     | Use when                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows       |
-| `architect`               | Designing a system or cross-cutting feature and decomposing it into bounded specifications             |
-| `challenge`               | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation |
-| `clarify`                 | Resolving ambiguity and routing work to the appropriate design workflow without writing an artifact    |
-| `create-html-artifact`    | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools          |
-| `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace               |
-| `create-skill`            | Creating a new skill or updating an existing one                                                       |
-| `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                         |
-| `execute-next-milestone`  | Executing the next Ready-plan milestone with durable run state, decisions, task progress, and evidence |
-| `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends      |
-| `handoff`                 | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                   |
-| `spin-out`                | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask  |
-| `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                 |
-| `plan`                    | Turning one Ready specification into one milestone-structured autonomous implementation plan           |
-| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
-| `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |
-| `simplify`                | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes   |
-| `specify`                 | Defining one bounded feature or change as a behavioral contract with observable acceptance criteria    |
-| `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                    |
-| `wiki`                    | Maintaining a persistent markdown wiki from immutable source documents                                 |
+| Skill                     | Use when                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows               |
+| `architect`               | Designing a system or cross-cutting feature and decomposing it into bounded specifications                     |
+| `challenge`               | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation         |
+| `clarify`                 | Resolving ambiguity and routing work to the appropriate design workflow without writing an artifact            |
+| `create-html-artifact`    | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools                  |
+| `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace                       |
+| `create-skill`            | Creating a new skill or updating an existing one                                                               |
+| `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                                 |
+| `execute-next-milestone`  | Orchestrating one sequential writable child per task while retaining durable state, verification, and evidence |
+| `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends              |
+| `handoff`                 | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                           |
+| `spin-out`                | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask          |
+| `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                         |
+| `plan`                    | Turning one Ready specification into one milestone-structured autonomous implementation plan                   |
+| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                                   |
+| `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings                |
+| `simplify`                | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes           |
+| `specify`                 | Defining one bounded feature or change as a behavioral contract with observable acceptance criteria            |
+| `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                            |
+| `wiki`                    | Maintaining a persistent markdown wiki from immutable source documents                                         |
 
 Notes:
 
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
-- `clarify` resolves ambiguity and routes work without writing a design artifact. `architect` writes high-level designs under `.design/architectures/` and decomposes them into specifications. `specify` writes one bounded behavioral contract under `.design/specs/`, and `plan` turns one Ready specification into a milestone-structured `.design/plans/` handoff. `execute-next-milestone` implements exactly one dependency-ready milestone while persisting authoritative run state and evidence; invoking it with the same plan creates the first run or resumes its sole matching run. `challenge` stress-tests material failure risks, the explicit-only `simplify` skill tests for unnecessary complexity, `review` evaluates completed changes, and `goal` provides durable session steering outside plan execution.
+- `clarify` resolves ambiguity and routes work without writing a design artifact. `architect` writes high-level designs under `.design/architectures/` and decomposes them into specifications. `specify` writes one bounded behavioral contract under `.design/specs/`, and `plan` turns one Ready specification into a milestone-structured `.design/plans/` handoff. `execute-next-milestone` implements exactly one dependency-ready milestone through sequential profile-routed task workers while the main session persists authoritative run state, verification, decisions, evidence, and commits; invoking it with the same plan creates the first run or resumes its sole matching run. `challenge` stress-tests material failure risks, the explicit-only `simplify` skill tests for unnecessary complexity, `review` evaluates completed changes, and `goal` provides durable session steering outside plan execution.
 - Hidden `.design/` files are local workflow artifacts. Promote canonical architecture decisions and user-facing contracts into the repository's tracked documentation during implementation.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

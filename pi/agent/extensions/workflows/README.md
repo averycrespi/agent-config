@@ -30,16 +30,14 @@ export async function run() {
         agent(`Audit the repository for ${topic} issues.`, {
           intent: `Audit ${topic}`,
           capabilities: ["read-filesystem"],
-          modelTier: "medium",
-          thinking: "high",
+          profile: "balanced",
         }),
     ),
   );
   const verdict = await verify("These findings are evidence-backed", {
     intent: "Verify findings",
     capabilities: ["read-filesystem"],
-    modelTier: "large",
-    thinking: "high",
+    profile: "strong",
     context: findings,
   });
   return await report(findings, { gate: () => verdict });
@@ -50,7 +48,7 @@ export async function run() {
 
 | Global                              | Contract                                                                                                                                                                                     |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent(prompt, options)`            | Requires non-empty `intent`, explicit `capabilities` (including `[]`), `modelTier`, and `thinking`. Optional `output`, `retries`, and `timeoutMs`.                                           |
+| `agent(prompt, options)`            | Requires non-empty `intent`, explicit read-only `capabilities` (including `[]`), and `profile`. Optional `output`, `retries`, and `timeoutMs`.                                               |
 | `verify(claim, options)`            | Requires the same explicit execution fields plus optional `context`, retries, and timeout. Uses a fixed strict verdict schema and resolves `{ ok, reasons }`; it is not a reviewer identity. |
 | `report(value, { gate })`           | Returns the original value only for `true` or `{ ok: true }`; otherwise throws `workflow_report_rejected`.                                                                                   |
 | `parallel(thunks, options?)`        | Bounded, input-ordered fan-out. Failed branches are logged and become `null`.                                                                                                                |
@@ -60,7 +58,7 @@ export async function run() {
 | `budget`                            | Frozen advisory token/run mirror; host enforcement is authoritative.                                                                                                                         |
 | `args` / `cwd`                      | Tool arguments and call cwd.                                                                                                                                                                 |
 
-Workflow options cannot name agents, select exact models, raw tools/extensions/environment, or rely on hidden defaults. The host routes every request through the subagents extension's centralized capability/tier/thinking policy and live model registry.
+Workflow options cannot name agents, select exact models or effort, request raw tools/extensions/environment, or rely on hidden defaults. The host routes every request through the subagents extension's centralized capability/profile policy and live model registry.
 
 Retries are clamped to 0–2. A valid positive `timeoutMs` shorter than the configured default applies to every retry attempt for that logical call. Structured output uses `{ output: { schema } }` and resolves to the validated value.
 
@@ -80,9 +78,9 @@ Inventory rejects unsafe names, symlinks, non-regular/unreadable/oversized files
 
 The shipped workflow accepts a non-empty question and uses exact routing:
 
-- scope, synthesis, audit, and one repair: `[]`, large tier, high thinking;
-- public-web search: `read-web`, small tier, medium thinking, one retry;
-- extraction and three claim-verification ballots: `read-web`, large tier, high thinking; extraction retries once.
+- scope, synthesis, audit, and one repair: `[]`, `strong` profile;
+- public-web search: `read-web`, `fast` profile, one retry;
+- extraction and three claim-verification ballots: `read-web`, `strong` profile; extraction retries once.
 
 It scopes up to five facets, extracts up to twelve public HTTPS sources, requires two verification votes plus authoritative/primary evidence or reputable independent secondary publishers, then audits the final cited report. One repair is allowed; a second failed audit rejects the report. Remote content is untrusted data. No branch receives broker, shell, or filesystem-discovery capability from the workflow.
 
@@ -111,15 +109,15 @@ The shipped review workflow accepts a caller-prepared evidence package. Target d
 
 Target `kind` is one of `working-tree`, `branch`, `commit-range`, `pull-request`, `document`, or `other`. Check status is `passed`, `failed`, or `not-run`. Optional lenses are `architecture` and `performance`; risk tags `architecture`, `migration`, `multi-module`, or `public-api` add architecture, while `concurrency`, `database`, `hot-path`, or `performance` add performance.
 
-Three core medium/high reviewers cover behavior, assurance, and maintainability in parallel. They return strict evidence-backed finding batches. Exact duplicates are grouped before one large/high adjudicator confirms, rejects, or sends each immutable group for human judgment. The workflow validates that every exact group is dispositioned once without splitting, combining, rewriting, or inventing findings, and falls back to an incomplete human-review report if adjudication fails semantically or operationally. Final Markdown is rendered deterministically; it never claims merge readiness. Failed or missing checks, reviewer failures, model-reported gaps, and unresolved candidates remain visible.
+Three core `balanced` reviewers cover behavior, assurance, and maintainability in parallel. They return strict evidence-backed finding batches. Exact duplicates are grouped before one `strong` adjudicator confirms, rejects, or sends each immutable group for human judgment. The workflow validates that every exact group is dispositioned once without splitting, combining, rewriting, or inventing findings, and falls back to an incomplete human-review report if adjudication fails semantically or operationally. Final Markdown is rendered deterministically; it never claims merge readiness. Failed or missing checks, reviewer failures, model-reported gaps, and unresolved candidates remain visible.
 
 All model calls receive only `read-filesystem`; no review branch gets shell, web, broker, or mutation authority. Repository artifacts, diffs, comments, and prior model output are treated as untrusted evidence. The workflow does not fix findings or loop back into implementation; rerun it against a newly prepared revision after repairs.
 
 ## Model and capability policy
 
-`modelTier` accepts only `small`, `medium`, or `large`. Selectors and allowed thinking/capabilities come exclusively from `extension:subagents`; workflows have no model-tier settings or fallback to parent/named definitions. Unknown, globally disallowed, unresolved, or model-unsupported values fail closed through `runSubagent()`.
+`profile` accepts only `fast`, `balanced`, or `strong`. Profile model/effort pairs and capability ceilings come exclusively from `extension:subagents`; workflows have no profile overrides or fallback to parent/named definitions. Unknown, globally disallowed, unresolved, or model-unsupported values fail closed through `runSubagent()`.
 
-The sandbox receives capability names and tier/thinking strings, never full model selectors or process authority. `capabilities: []` still loads normal Pi project context files by design, while child skills/templates remain disabled.
+The sandbox receives capability and profile names, never full model selectors, effort values, or process authority. `capabilities: []` still loads normal Pi project context files by design, while child skills/templates remain disabled.
 
 ## Verification, retries, and budgets
 
@@ -133,11 +131,11 @@ Failures preserve distinct codes for policy, provider/schema, structured output,
 
 Scripts reject imports, `require`, filesystem/network/process/global/buffer/worker/timer APIs, clocks, randomness, performance counters, and cryptography. Execution uses a separate Node child with an empty environment, permission mode, no filesystem/network/child-process grants, and string code generation disabled. The extension fails closed when required Node flags are unavailable.
 
-The host treats sandbox RPC as untrusted. It validates required execution fields and output schemas, controls retries/timeouts/budgets, and passes only sanitized requests to `runSubagent()`. Workflow JavaScript cannot mutate the parent workspace directly, but a deliberately requested `exec-shell` capability can mutate through its subagent and should not be used for read-mostly workflows.
+The host treats sandbox RPC as untrusted. It validates required execution fields and output schemas, controls retries/timeouts/budgets, and passes only sanitized requests to `runSubagent()`. Both sandbox validation and host admission reject `write-filesystem` and `exec-shell`; workflow children may use only `read-filesystem`, `read-broker`, `read-web`, or no tools.
 
 ## Rendering
 
-The separate call row is suppressed, and every result starts with one width-truncated header identifying `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Run output shows agent progress by default in chronological start order, with the newest at the bottom, using the shared two-line grammar: status, intent, duration, and tool/token counts first; then `tier:thinking`, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `shell`, `broker`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
+The separate call row is suppressed, and every result starts with one width-truncated header identifying `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Run output shows agent progress by default in chronological start order, with the newest at the bottom, using the shared two-line grammar: status, intent, duration, and tool/token counts first; then profile, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `broker`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
 
 ## Configuration
 
@@ -167,7 +165,7 @@ Settings live under `extension:workflows`. Global, project, and valid environmen
 }
 ```
 
-The removed workflow model-tier fields and environment variables are ignored with diagnostics; configure all three tiers under `extension:subagents`.
+The removed workflow model-tier fields and environment variables remain ignored with diagnostics. Configure profiles under `extension:subagents`.
 
 ## Logging and retained output
 
@@ -181,13 +179,13 @@ Recovery files share the subagent diagnostic pool's seven-day lazy retention and
 
 - No project workflow stores, workflow mutation actions, nested workflows, background manager, or arbitrary script paths.
 - No writable coordination, worktrees, parallel implementation, session inheritance, resume/replay, successful-run journal, or response cache.
-- No arbitrary model IDs, workflow-local tier maps, named-agent compatibility, hidden defaults, or generic quality framework beyond `verify()`/`report()`.
+- No arbitrary model IDs, workflow-local profile maps, named-agent compatibility, hidden defaults, or generic quality framework beyond `verify()`/`report()`.
 
 ## Troubleshooting
 
 - `workflow must call agent() or verify()`: add a direct syntactic call.
-- `agent intent/capabilities/modelTier/thinking...`: provide every required execution field explicitly.
-- `agent_policy_rejected`: inspect `/subagents-config` for capability, tier, model, or thinking policy.
+- `agent intent/capabilities/profile...`: provide every required execution field explicitly.
+- `agent_policy_rejected`: inspect `/subagents-config` for capability, profile, model, or configured-effort policy.
 - `workflow_missing_result`: return a value; use `null` for an intentional empty result.
 - Saved workflow invalid/unknown: inspect `workflow list`, `/workflows-list`, and strict filename/metadata identity.
 - Retry only transient read-only calls; policy, cap, budget, timeout, cancellation, and permanent schema failures are not retry classes.

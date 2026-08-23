@@ -14,7 +14,7 @@
 
 - For nontrivial tasks, identify acceptance criteria before implementing. Treat plans as intent and constraints, not literal diffs to apply blindly.
 - Prefer validated machine-readable outputs for automation and workflow boundaries. Avoid relying on free-text completion markers when a schema or structured format is available.
-- Use subagents for independent read-only exploration, retrieval, review, or verification when isolation or parallelism materially helps. Avoid parallel writes or overlapping edits; sequence implementation work in the main thread.
+- Use subagents primarily for independent read-only exploration, retrieval, review, or verification when isolation or parallelism materially helps. Delegate writes only through an explicit execution workflow that defines bounded scope, one writer at a time, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never run overlapping writable agents in one checkout.
 - Run deterministic checks such as typecheck, lint, tests, or focused scripts before dispatching LLM reviewers when practical. Pass them first or report their failures and gaps in the reviewer brief.
 - Keep verification and fix loops bounded. If deterministic checks or reviewer feedback repeat without meaningful progress, stop and report known issues with the evidence gathered.
 

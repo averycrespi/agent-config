@@ -633,8 +633,7 @@ export async function run() {
         agent(reviewPrompt(lens, input), {
           intent: `Review ${lens.name}`,
           capabilities: ["read-filesystem"],
-          modelTier: "medium",
-          thinking: "high",
+          profile: "balanced",
           output: findingBatchOutput,
         }),
     ),
@@ -694,8 +693,7 @@ export async function run() {
         agent(adjudicationPrompt(input, groupedCandidates), {
           intent: "Adjudicate review findings",
           capabilities: ["read-filesystem"],
-          modelTier: "large",
-          thinking: "high",
+          profile: "strong",
           output: adjudicationOutput,
         }),
     ]);

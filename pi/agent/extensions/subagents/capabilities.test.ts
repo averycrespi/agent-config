@@ -4,6 +4,7 @@ import { CAPABILITY_GRANTS, resolveCapabilities } from "./capabilities.ts";
 
 const cases = [
   ["read-filesystem", ["read", "ls", "find", "grep"], [], {}],
+  ["write-filesystem", ["edit", "write"], [], {}],
   ["exec-shell", ["bash"], [], {}],
   [
     "read-broker",

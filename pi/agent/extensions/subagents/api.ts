@@ -5,7 +5,7 @@ export type {
   StructuredOutputResult,
   StructuredOutputSpec,
 } from "./spawn.ts";
-export type { Capability, ModelTier, ThinkingLevel } from "./types.ts";
+export type { Capability, Profile } from "./types.ts";
 
 export { createSubagentActivityTracker } from "./activity.ts";
 export { validateOutputSchema } from "./schema.ts";
