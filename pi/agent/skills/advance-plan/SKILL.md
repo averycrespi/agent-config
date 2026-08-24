@@ -23,7 +23,7 @@ This skill is goal-agnostic. It does not read, complete, yield, renew, or otherw
 - Git commits are durable milestone checkpoints, not proof by themselves.
 - TODOs are tactical aids only and never replace run state.
 - The deterministic helper owns every run-state mutation. Never edit run artifacts manually.
-- Conversation claims, TODOs, commits, and child output never override helper state.
+- Conversation claims, TODOs, commits, and subagent output never override helper state.
 
 The helper is `scripts/plan-run-state.js`, resolved relative to this skill directory. Invoke it with `node` and an absolute helper path.
 
@@ -49,7 +49,7 @@ If the request identifies a task or milestone, verify it matches the helper's re
 2. Resolve the repository root and helper path.
 3. Require a clean enough workspace to distinguish this step's changes. Investigate existing modifications; never overwrite or absorb unrelated work.
 4. Confirm the plan has `Status: Ready` and read its Goal, Non-Goals and Constraints, Acceptance Criteria, Execution Milestones, relevant implementation notes, and verification guidance.
-5. Keep the main session as orchestrator and sole owner of run state, evidence, decisions, verification, and commits. Delegate implementation or repair through exactly one writable subagent at a time. Do not delegate task-level review, acceptance evaluation, or verification.
+5. Keep the main session as the sole writer and owner of implementation, run state, evidence, decisions, verification, and commits. Do not delegate implementation, repair, task-level review, acceptance evaluation, or verification. Use read-only subagents only for bounded research or diagnosis when isolation materially helps.
 
 For a plan invocation, atomically open its run:
 
@@ -87,10 +87,10 @@ Always inspect `currentMilestone`, `currentTask`, and `next` before selecting wo
 
 The helper returns `next.step: "task"` or `next.step: "gate"` so this choice does not depend on conversation memory.
 
-When resuming after an interrupted agent turn, inspect the current workspace and recorded evidence before acting. Do not blindly repeat delegation or side effects:
+When resuming after an interrupted agent turn, inspect the current workspace and recorded evidence before acting. Do not blindly repeat research or side effects:
 
 - If implementation exists but verification was interrupted, inspect it and rerun verification.
-- If implementation is partial, give one writer a resume packet describing the observed state; baseline only its new delta.
+- If implementation is partial, inspect the observed state and resume it directly in the main session.
 - If task completion was already recorded, follow the helper's next step rather than repeating the task.
 - If a gate commit exists but milestone completion was interrupted, verify the commit and evidence before recording completion; do not create a duplicate checkpoint.
 
@@ -104,103 +104,27 @@ If no milestone is active, start the returned milestone:
 node <helper> milestone-start --run <run-dir> --milestone M1
 ```
 
-If the returned task is not already running, select a profile with a brief task-specific reason and start it:
+If the returned task is not already running, start it:
 
 ```bash
 node <helper> task-start \
   --run <run-dir> \
-  --task T1 \
-  --profile balanced \
-  --profile-reason "Bounded implementation across the state and repository seams"
+  --task T1
 ```
 
 Use the task attempt count at invocation start as the repair baseline. Historical attempts do not consume this invocation's repair allowance.
 
-### Profile selection
+### Main-session execution
 
-Choose from task characteristics, never assumed model identities:
+Treat one plan task as one tracked implementation scope. Implement it directly in the main session without writable delegation or untracked subtasks. If it is too broad for one bounded invocation, stop as blocked and report that the Ready plan needs finer task packets.
 
-- `balanced` is the default for bounded implementation across related files or concerns.
-- `fast` is for localized, well-specified, mechanically verifiable work with limited coupling.
-- `strong` is exceptional: use it only for multiple interacting high-risk reasoning constraints that materially exceed `balanced`.
+Before editing, inspect relevant source, tests, documentation, and the current staged, unstaged, and untracked workspace state. Preserve unrelated work and never modify `.design/plans/`, `.design/runs/`, `.git/`, or other protected workflow state except through the helper. Use test-driven development for meaningful logic and make only changes required by the task contract.
 
-The reason must identify the concrete characteristics distinguishing the selection from the default. Do not use `strong` to compensate for an oversized task, unresolved decisions, missing context, or unsafe authority. Block those conditions instead. Do not expose configured model names or reasoning levels in the task packet.
+Use read-only subagents only when bounded research or diagnosis would materially reduce main-session context or provide useful isolation. Their output is advisory: inspect cited artifacts directly before relying on it. Never delegate implementation, repair, verification, acceptance evaluation, run-state mutation, evidence, decisions, commits, or external writes.
 
-### One-writer execution
+Resolve consequential implementation choices from the plan, repository evidence, or user authority and record them when required. Stop as blocked rather than inventing a decision, expanding scope, using unsafe authority, or proceeding without required credentials or environment access.
 
-One plan task is one tracked implementation scope. Launch one initial writer; launch another only for a bounded repair round after concrete verification failure. Do not split the task into parallel writers or invent untracked subtasks. If it is too broad for one bounded child, stop as blocked and report that the Ready plan needs finer task packets.
-
-The writer path is trusted-local, not sandboxed: `write-filesystem` is not workspace-root restricted, and `exec-shell` inherits the parent environment. Stop as blocked if repository content, credentials, or inputs make that authority unsafe.
-
-Before dispatch, capture staged and unstaged binary diffs plus an untracked-file path/hash manifest in a secure temporary location. Status output alone is insufficient. Launch exactly one `spawn_agents` item with `read-filesystem`, `write-filesystem`, and `exec-shell`.
-
-The child packet must include the plan path, milestone and task IDs, task scope and outcome, owned acceptance criteria, relevant constraints and decisions, required verification, and stop conditions. It must say:
-
-- implement exactly this task and do not gold-plate;
-- use test-driven development for meaningful logic;
-- do not modify `.design/plans/`, `.design/runs/`, `.git/`, or unrelated changes;
-- do not invoke the helper, mutate run state, record evidence or decisions, commit, push, merge, or perform external writes;
-- stop as `blocked` rather than inventing a consequential decision or expanding scope.
-
-Pass an explicit `output_schema` to `spawn_agents`; do not accept a prose fallback:
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "status": { "type": "string", "enum": ["done", "blocked", "failed"] },
-    "changed_files": {
-      "type": "array",
-      "description": "At most 100 repository-relative paths, each at most 500 characters.",
-      "items": { "type": "string" }
-    },
-    "checks": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "command": { "type": "string" },
-          "exit_code": { "type": "integer" },
-          "summary": { "type": "string" }
-        },
-        "required": ["command", "exit_code", "summary"],
-        "additionalProperties": false
-      },
-      "description": "At most 50 checks; commands at most 1000 characters and summaries at most 2000 characters."
-    },
-    "decisions_needed": {
-      "type": "array",
-      "description": "At most 50 strings, each at most 1000 characters.",
-      "items": { "type": "string" }
-    },
-    "notes": {
-      "type": "array",
-      "description": "At most 50 strings, each at most 1000 characters.",
-      "items": { "type": "string" }
-    }
-  },
-  "required": [
-    "status",
-    "changed_files",
-    "checks",
-    "decisions_needed",
-    "notes"
-  ],
-  "additionalProperties": false
-}
-```
-
-After settlement, enforce the caps stated in the schema descriptions before using the result; treat any over-bound result as invalid structured output. Compare the workspace with the baseline and reconcile the child's `changed_files`. Treat the handoff and child checks as diagnostic claims, not evidence. Reject protected-path or unrelated mutations and remove the temporary baseline.
-
-Handle the validated child status before task completion:
-
-- Missing or invalid structured output enters the failed-step path; never infer success from prose.
-- A `blocked` result must be confirmed from the workspace, then stop the milestone as `blocked` with the concrete reason.
-- A `failed` result enters the bounded failure and repair process below.
-- Resolve every `decisions_needed` item from existing plan or user authority and record consequential rulings. If any remains unresolved, stop as `blocked`.
-- Only `done` with no unresolved decision proceeds to main-session verification.
-
-The main session must read the implementation, evaluate it against the task contract, and rerun focused verification. Do not launch another agent to review, verify, summarize, or approve the task.
+After implementation, inspect the complete task delta, reject unrelated or protected-path changes, evaluate the result against the task contract, and run focused verification in the main session. A meaningful failure enters the bounded repair process below; passing checks proceed to evidence recording.
 
 ### Evidence and completion
 
@@ -220,7 +144,7 @@ node <helper> evidence-add \
 
 Other evidence kinds are `artifact`, `inspection`, and `manual`. Use `--path` for relevant repository artifacts. Never paste raw logs, secrets, large diffs, or command output into evidence. Expected red-phase test failures are not acceptance evidence.
 
-Mark the task complete only after supervisory verification passes:
+Mark the task complete only after main-session verification passes:
 
 ```bash
 node <helper> task-complete --run <run-dir> --task T1
@@ -289,7 +213,6 @@ The current step gets at most three repair rounds in this invocation:
 
 - A task step repairs only its running task.
 - A gate step repairs only the integrated milestone gate and never reopens completed tasks.
-- Reclassify each repair independently; do not inherit the original profile automatically.
 - Invalid-command corrections do not consume a round.
 - Continue only when the original failure passes, the failing set shrinks, or output proves the diagnosis and exposes a narrower failure.
 - Stop early when the same essential failure survives two consecutive rounds, a repaired check regresses without a new diagnosis, or no falsifiable next step remains.
@@ -304,17 +227,7 @@ node <helper> milestone-stop \
   --reason "Focused verification failed"
 ```
 
-If allowance remains, restart the same milestone. For a task step, restart the same task with a newly selected profile. For a gate step, record the repair selection before delegating:
-
-```bash
-node <helper> gate-repair-profile \
-  --run <run-dir> \
-  --milestone M1 \
-  --profile balanced \
-  --profile-reason "Focused integration repair across two related seams"
-```
-
-Delegate one focused repair, inspect its isolated delta, and rerun affected checks in the main session. Never launch a separate repair reviewer. Leave the milestone failed if bounds are exhausted.
+If allowance remains, restart the same milestone and, for a task step, restart the same task. Diagnose and implement one focused repair directly in the main session, inspect the resulting delta, and rerun affected checks. Read-only subagents may assist bounded diagnosis but never write or approve the repair. Leave the milestone failed if bounds are exhausted.
 
 Use `blocked` instead when progress requires an unavailable environment, unresolved product or architecture decision, external approval, credentials, or unsafe/destructive action:
 
@@ -364,7 +277,7 @@ The helper:
 - starts only the first dependency-ready milestone in plan order;
 - requires current-attempt evidence before task completion;
 - requires criterion evidence before milestone completion;
-- bounds evidence and profile history;
+- bounds evidence and validates legacy profile histories when resuming older runs;
 - records decisions append-only;
 - records but never executes evidence command strings.
 

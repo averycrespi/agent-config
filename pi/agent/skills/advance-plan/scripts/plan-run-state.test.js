@@ -22,7 +22,6 @@ import {
   openRun,
   parsePlan,
   readRun,
-  recordGateRepairProfile,
   startMilestone,
   startTask,
   stopMilestone,
@@ -90,12 +89,8 @@ async function fixture(plan = PLAN) {
   return { ...workspace, ...initialized };
 }
 
-function startBalancedTask(options) {
-  return startTask({
-    ...options,
-    profile: "balanced",
-    profileReason: "Default bounded implementation task.",
-  });
+function startPlanTask(options) {
+  return startTask(options);
 }
 
 test("parsePlan returns ordered milestones, tasks, criteria, and dependencies", () => {
@@ -313,7 +308,7 @@ test("openRun reports a completed run instead of creating another", async () => 
     ["M2", "T2", ["AC-2", "AC-3"]],
   ]) {
     await startMilestone({ runDir, milestoneId });
-    await startBalancedTask({ runDir, taskId });
+    await startPlanTask({ runDir, taskId });
     await addEvidence({
       runDir,
       milestoneId,
@@ -362,7 +357,7 @@ test("milestone start accepts only the helper's next ready milestone", async () 
 test("next work explicitly distinguishes resumable tasks from milestone gates", async () => {
   const { runDir } = await fixture();
   await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
+  await startPlanTask({ runDir, taskId: "T1" });
 
   assert.deepEqual(await getNextWork(runDir), {
     step: "task",
@@ -392,7 +387,7 @@ test("next work explicitly distinguishes resumable tasks from milestone gates", 
 test("openRun exposes a stopped gate and supports reactivation", async () => {
   const { cwd, runDir } = await fixture();
   await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
+  await startPlanTask({ runDir, taskId: "T1" });
   await addEvidence({
     runDir,
     milestoneId: "M1",
@@ -441,129 +436,57 @@ test("openRun exposes a stopped gate and supports reactivation", async () => {
   });
 });
 
-test("task start records bounded profile selection history", async () => {
+test("task start requires no writer profile and records no profile metadata", async () => {
   const { runDir } = await fixture();
+  let state = await readRun(runDir);
+  assert.equal(state.milestones.M1.gateRepairProfileHistory, undefined);
+  assert.equal(state.milestones.M1.tasks.T1.profileHistory, undefined);
+
   await startMilestone({ runDir, milestoneId: "M1" });
-
-  await assert.rejects(
-    startTask({
-      runDir,
-      taskId: "T1",
-      profile: "large",
-      profileReason: "The task looks difficult.",
-    }),
-    /profile must be one of: fast, balanced, strong/,
-  );
-  await assert.rejects(
-    startTask({
-      runDir,
-      taskId: "T1",
-      profile: "balanced",
-      profileReason: " ",
-    }),
-    /profile reason must not be empty/,
-  );
-
   await startTask({
     runDir,
     taskId: "T1",
-    profile: "balanced",
-    profileReason: "Default bounded implementation across related state files.",
     now: "2026-08-22T12:02:00.000Z",
   });
-  let state = await readRun(runDir);
-  assert.deepEqual(state.milestones.M1.tasks.T1.profileHistory, [
-    {
-      attempt: 1,
-      profile: "balanced",
-      reason: "Default bounded implementation across related state files.",
-      selectedAt: "2026-08-22T12:02:00.000Z",
-    },
-  ]);
 
-  await stopMilestone({
-    runDir,
-    milestoneId: "M1",
-    status: "failed",
-    reason: "Focused verification failed.",
-  });
-  await startMilestone({ runDir, milestoneId: "M1" });
-  await startTask({
-    runDir,
-    taskId: "T1",
-    profile: "fast",
-    profileReason: "Repair is localized and mechanically verifiable.",
-    now: "2026-08-22T12:03:00.000Z",
-  });
   state = await readRun(runDir);
-  assert.deepEqual(state.milestones.M1.tasks.T1.profileHistory.at(-1), {
-    attempt: 2,
-    profile: "fast",
-    reason: "Repair is localized and mechanically verifiable.",
-    selectedAt: "2026-08-22T12:03:00.000Z",
-  });
+  assert.equal(state.milestones.M1.tasks.T1.status, "running");
+  assert.equal(state.milestones.M1.tasks.T1.attempts, 1);
+  assert.equal(state.milestones.M1.tasks.T1.profileHistory, undefined);
 });
 
-test("milestone gate repairs record an independently selected profile", async () => {
-  const { runDir } = await fixture();
-  await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
-  await addEvidence({
-    runDir,
-    milestoneId: "M1",
-    taskId: "T1",
-    criteria: ["AC-1"],
-    kind: "command",
-    summary: "Task verification passed.",
-    command: "npm test -- state",
-    exitCode: 0,
-  });
-  await completeTask({ runDir, taskId: "T1" });
-  await stopMilestone({
-    runDir,
-    milestoneId: "M1",
-    status: "failed",
-    reason: "Milestone gate failed.",
-  });
-  await startMilestone({ runDir, milestoneId: "M1" });
-
-  await recordGateRepairProfile({
-    runDir,
-    milestoneId: "M1",
-    profile: "strong",
-    profileReason:
-      "Repair spans interacting recovery and concurrency invariants.",
-    now: "2026-08-22T12:10:00.000Z",
-  });
-  const state = await readRun(runDir);
-  assert.deepEqual(state.milestones.M1.gateRepairProfileHistory, [
-    {
-      round: 1,
-      milestoneAttempt: 2,
-      profile: "strong",
-      reason: "Repair spans interacting recovery and concurrency invariants.",
-      selectedAt: "2026-08-22T12:10:00.000Z",
-    },
-  ]);
-});
-
-test("pre-profile run state remains readable and gains history on task start", async () => {
+test("legacy profile metadata remains readable and is not extended", async () => {
   const { runDir } = await fixture();
   const statePath = join(runDir, "state.json");
   const state = JSON.parse(await readFile(statePath, "utf8"));
-  delete state.milestones.M1.tasks.T1.profileHistory;
+  state.milestones.M1.attempts = 1;
+  state.milestones.M1.gateRepairProfileHistory = [
+    {
+      round: 1,
+      milestoneAttempt: 1,
+      profile: "strong",
+      reason: "Legacy gate repair selection.",
+      selectedAt: "2026-08-22T12:01:00.000Z",
+    },
+  ];
+  state.milestones.M1.tasks.T1.attempts = 1;
+  state.milestones.M1.tasks.T1.profileHistory = [
+    {
+      attempt: 1,
+      profile: "balanced",
+      reason: "Legacy task selection.",
+      selectedAt: "2026-08-22T12:01:00.000Z",
+    },
+  ];
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 
-  assert.equal(
-    (await readRun(runDir)).milestones.M1.tasks.T1.profileHistory,
-    undefined,
-  );
   await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
-  assert.equal(
-    (await readRun(runDir)).milestones.M1.tasks.T1.profileHistory[0].profile,
-    "balanced",
-  );
+  await startTask({ runDir, taskId: "T1" });
+
+  const restored = await readRun(runDir);
+  assert.equal(restored.milestones.M1.gateRepairProfileHistory.length, 1);
+  assert.equal(restored.milestones.M1.tasks.T1.profileHistory.length, 1);
+  assert.equal(restored.milestones.M1.tasks.T1.attempts, 2);
 });
 
 test("a milestone completes only with completed tasks and criterion evidence", async () => {
@@ -583,7 +506,7 @@ test("a milestone completes only with completed tasks and criterion evidence", a
     milestoneId: "M1",
     now: "2026-08-22T12:01:00.000Z",
   });
-  await startBalancedTask({
+  await startPlanTask({
     runDir,
     taskId: "T1",
     now: "2026-08-22T12:02:00.000Z",
@@ -639,7 +562,7 @@ test("a milestone completes only with completed tasks and criterion evidence", a
 test("failed command evidence prevents task completion in the current attempt", async () => {
   const { runDir } = await fixture();
   await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
+  await startPlanTask({ runDir, taskId: "T1" });
   await addEvidence({
     runDir,
     milestoneId: "M1",
@@ -660,7 +583,7 @@ test("failed command evidence prevents task completion in the current attempt", 
 test("blocked work can resume without losing prior evidence or attempt history", async () => {
   const { runDir } = await fixture();
   await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
+  await startPlanTask({ runDir, taskId: "T1" });
   await addEvidence({
     runDir,
     milestoneId: "M1",
@@ -683,7 +606,7 @@ test("blocked work can resume without losing prior evidence or attempt history",
   assert.equal(state.milestones.M1.tasks.T1.status, "blocked");
 
   await startMilestone({ runDir, milestoneId: "M1" });
-  await startBalancedTask({ runDir, taskId: "T1" });
+  await startPlanTask({ runDir, taskId: "T1" });
   state = await readRun(runDir);
   assert.equal(state.milestones.M1.attempts, 2);
   assert.equal(state.milestones.M1.tasks.T1.attempts, 2);

@@ -13,7 +13,7 @@ The harness combines a simple development loop with tools that keep work scoped,
 1. **Clarify and route** ambiguous requests with `clarify` when the right design artifact is not yet clear.
 2. **Design and specify** broad systems with `architect`, then turn each outcome—or one smaller standalone change—into a Ready specification with `specify`.
 3. **Plan and stress-test** one specification with `plan`, the explicit-only `simplify` skill for unnecessary complexity, and `challenge` for substantial risks.
-4. **Implement** one bounded, resumable plan step with `advance-plan`: either one profile-routed task or one milestone gate, while the main session retains run state, verification, decisions, evidence, and commits. For autonomous execution, use the minimal `/goal` invocation emitted by `plan` to call `advance-plan` once per turn.
+4. **Implement** one bounded, resumable plan step with `advance-plan`: either one main-session task or one milestone gate, while the main session owns implementation, run state, verification, decisions, evidence, and commits. For autonomous execution, use the minimal `/goal` invocation emitted by `plan` to call `advance-plan` once per turn.
 5. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
 ### Choosing an orchestration primitive
@@ -32,7 +32,7 @@ Use a **workflow** when the control graph should live in code rather than be imp
 
 Use a **goal** when progress is adaptive but can be made and audited one turn at a time. Goals keep the main agent moving toward an objective until it completes, yields, is interrupted, or reaches a configured bound. A goal supplies continuation and steering; it does not replace a durable plan or prescribe a fixed phase graph.
 
-These primitives compose. A goal-driven plan may advance one step per turn, delegate a bounded task to a subagent, and use a workflow for independent review. The outer goal owns continuation, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
+These primitives compose. A goal-driven plan may advance one main-session implementation step per turn and use read-only subagents or workflows for bounded research, diagnosis, or explicitly required review. The outer goal owns continuation, the main session owns workspace mutation and plan evidence, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
 
 For explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
 

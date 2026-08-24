@@ -31,7 +31,7 @@ const TASK_ID = /^T\d+$/;
 const CRITERION_ID = /^AC-[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const EVIDENCE_KINDS = new Set(["command", "artifact", "inspection", "manual"]);
-const PROFILES = new Set(["fast", "balanced", "strong"]);
+const LEGACY_PROFILES = new Set(["fast", "balanced", "strong"]);
 const STOP_STATUSES = new Set(["blocked", "failed"]);
 const RUN_STATUSES = new Set([
   "pending",
@@ -466,7 +466,6 @@ function milestoneState(milestone) {
     dependencies: milestone.dependencies,
     verificationGate: milestone.verificationGate,
     checkpoint: milestone.checkpoint,
-    gateRepairProfileHistory: [],
     taskOrder: milestone.tasks.map((task) => task.id),
     tasks: Object.fromEntries(
       milestone.tasks.map((task) => [
@@ -479,7 +478,6 @@ function milestoneState(milestone) {
           verification: task.verification,
           status: "pending",
           attempts: 0,
-          profileHistory: [],
           startedAt: null,
           completedAt: null,
           stopReason: null,
@@ -604,7 +602,7 @@ function validateState(state) {
           !Number.isInteger(selection.milestoneAttempt) ||
           selection.milestoneAttempt < 1 ||
           selection.milestoneAttempt > milestone.attempts ||
-          !PROFILES.has(selection.profile) ||
+          !LEGACY_PROFILES.has(selection.profile) ||
           typeof selection.reason !== "string" ||
           !selection.reason.trim() ||
           selection.reason.length > 500 ||
@@ -666,7 +664,7 @@ function validateState(state) {
             !Number.isInteger(selection.attempt) ||
             selection.attempt <= previousAttempt ||
             selection.attempt > task.attempts ||
-            !PROFILES.has(selection.profile) ||
+            !LEGACY_PROFILES.has(selection.profile) ||
             typeof selection.reason !== "string" ||
             !selection.reason.trim() ||
             selection.reason.length > 500 ||
@@ -1134,18 +1132,8 @@ export async function startMilestone({ runDir, milestoneId, now }) {
   });
 }
 
-export async function startTask({
-  runDir,
-  taskId,
-  profile,
-  profileReason,
-  now,
-}) {
-  if (!PROFILES.has(profile)) {
-    throw new Error("profile must be one of: fast, balanced, strong");
-  }
-  const reason = compactText(profileReason, "profile reason", 500);
-  const selectedAt = timestamp(now);
+export async function startTask({ runDir, taskId, now }) {
+  const startedAt = timestamp(now);
   return mutateRun(runDir, now, (state) => {
     if (!state.currentMilestone) throw new Error("No milestone is running");
     if (state.currentTask)
@@ -1168,61 +1156,10 @@ export async function startTask({
     }
     task.status = "running";
     task.attempts += 1;
-    task.profileHistory ??= [];
-    if (task.profileHistory.length >= 100) {
-      throw new Error(`${taskId} profile history is limited to 100 entries`);
-    }
-    task.profileHistory.push({
-      attempt: task.attempts,
-      profile,
-      reason,
-      selectedAt,
-    });
-    task.startedAt = selectedAt;
+    task.startedAt = startedAt;
     task.completedAt = null;
     task.stopReason = null;
     state.currentTask = taskId;
-  });
-}
-
-export async function recordGateRepairProfile({
-  runDir,
-  milestoneId,
-  profile,
-  profileReason,
-  now,
-}) {
-  if (!PROFILES.has(profile)) {
-    throw new Error("profile must be one of: fast, balanced, strong");
-  }
-  const reason = compactText(profileReason, "profile reason", 500);
-  const selectedAt = timestamp(now);
-  return mutateRun(runDir, now, (state) => {
-    if (state.currentMilestone !== milestoneId || state.currentTask !== null) {
-      throw new Error(`${milestoneId} is not ready for a gate repair`);
-    }
-    const milestone = requireMilestone(state, milestoneId);
-    const incompleteTasks = milestone.taskOrder.filter(
-      (taskId) => milestone.tasks[taskId].status !== "done",
-    );
-    if (incompleteTasks.length > 0) {
-      throw new Error(
-        `${milestoneId} gate repair requires completed tasks: ${incompleteTasks.join(", ")}`,
-      );
-    }
-    milestone.gateRepairProfileHistory ??= [];
-    if (milestone.gateRepairProfileHistory.length >= 100) {
-      throw new Error(
-        `${milestoneId} gate repair profile history is limited to 100 entries`,
-      );
-    }
-    milestone.gateRepairProfileHistory.push({
-      round: milestone.gateRepairProfileHistory.length + 1,
-      milestoneAttempt: milestone.attempts,
-      profile,
-      reason,
-      selectedAt,
-    });
   });
 }
 
@@ -1559,18 +1496,6 @@ async function cli() {
         await startTask({
           runDir: required(flags, "run"),
           taskId: required(flags, "task"),
-          profile: required(flags, "profile"),
-          profileReason: required(flags, "profile-reason"),
-        }),
-      );
-      break;
-    case "gate-repair-profile":
-      print(
-        await recordGateRepairProfile({
-          runDir: required(flags, "run"),
-          milestoneId: required(flags, "milestone"),
-          profile: required(flags, "profile"),
-          profileReason: required(flags, "profile-reason"),
         }),
       );
       break;
@@ -1632,7 +1557,7 @@ async function cli() {
       break;
     default:
       throw new Error(
-        "Usage: plan-run-state.js <validate|init|open|status|next|milestone-start|task-start|gate-repair-profile|evidence-add|task-complete|milestone-complete|milestone-stop|decision-add> [flags]",
+        "Usage: plan-run-state.js <validate|init|open|status|next|milestone-start|task-start|evidence-add|task-complete|milestone-complete|milestone-stop|decision-add> [flags]",
       );
   }
 }
