@@ -16,7 +16,25 @@ The harness combines a simple development loop with tools that keep work scoped,
 4. **Implement** one bounded, resumable plan step with `advance-plan`: either one profile-routed task or one milestone gate, while the main session retains run state, verification, decisions, evidence, and commits. For autonomous execution, use the minimal `/goal` invocation emitted by `plan` to call `advance-plan` once per turn.
 5. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
-Isolated subagents support research, verification, and bounded sequential implementation. Each receives a self-contained task, a centrally configured `fast`, `balanced`, or `strong` profile, and explicit filesystem, shell, web, or broker permissions. `advance-plan` may delegate one in-place implementation task at a time; for explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
+### Choosing an orchestration primitive
+
+The harness provides three complementary orchestration primitives. Choose based on what needs to be isolated or controlled:
+
+| Primitive     | Use it when                                                                                                                                   | What it provides                                                                                                                                           |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Subagents** | A task benefits from a fresh perspective, a different model or reasoning effort, isolation from the main context, or independent parallelism. | A one-shot child session with a self-contained prompt, explicit capabilities, and a centrally configured `fast`, `balanced`, or `strong` profile.          |
+| **Workflows** | The orchestration is predictable and reusable—especially for fan-out/fan-in research, review, verification, or audit patterns.                | Deterministic JavaScript control flow around bounded subagent calls, including parallelism, pipelines, structured output, verification gates, and budgets. |
+| **Goals**     | Work must advance incrementally across agent turns, and each next action may depend on what the previous turn discovered or completed.        | A session-scoped objective with bounded continuation, lifecycle controls, and evidence-backed completion.                                                  |
+
+Use a **subagent** when the primary need is another isolated reasoning context. Children start cold, so tasks must be self-contained. Read-only exploration and review are the default use cases; mutable delegation is kept sequential and explicitly bounded.
+
+Use a **workflow** when the control graph should live in code rather than be improvised by the model. Workflows are best when decomposition, concurrency, synthesis, and termination can be defined in advance. In this configuration they are read-mostly and are not a mechanism for parallel workspace mutation or open-ended execution.
+
+Use a **goal** when progress is adaptive but can be made and audited one turn at a time. Goals keep the main agent moving toward an objective until it completes, yields, is interrupted, or reaches a configured bound. A goal supplies continuation and steering; it does not replace a durable plan or prescribe a fixed phase graph.
+
+These primitives compose. A goal-driven plan may advance one step per turn, delegate a bounded task to a subagent, and use a workflow for independent review. The outer goal owns continuation, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
+
+For explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
 
 ### Extensions
 
