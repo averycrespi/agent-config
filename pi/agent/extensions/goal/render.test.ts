@@ -73,6 +73,20 @@ test("appends running auto-run details to the usage line", () => {
   );
 });
 
+test("formats millions of tokens with an uppercase M", () => {
+  const lines = renderGoalWidgetLines(
+    {
+      ...goalWithUsage,
+      usage: { ...goalWithUsage.usage!, totalTokens: 1_000_000 },
+    },
+    80,
+    undefined,
+    { showUsage: true },
+  );
+
+  assert.match(lines[1]!, /· 1M tokens ·/);
+});
+
 test("appends disabled auto-run reasons to the usage line", () => {
   const configDisabled = renderGoalWidgetLines(goalWithUsage, 120, undefined, {
     showUsage: true,
