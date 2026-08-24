@@ -91,6 +91,8 @@ Because extension-provided compaction can replace Pi's default compaction result
 
 A goal objective may use auto-run as a liveness layer around one goal-agnostic `advance-plan` call per turn, but the extension does not parse plans, invoke skills, or infer execution progress. The Ready plan and `.design/runs/.../state.json` remain authoritative. The objective maps `advance-plan` outcomes to continuation, yield, or evidence-audited completion; goal snapshots never duplicate task, milestone, or acceptance state.
 
+That mapping may return normally once per step and essential-failure identity after `advance-plan` reports `failed-retryable`, allowing auto-run to resume the same durable step in a fresh invocation. `advance-plan` owns the narrow classification and records its essential-failure marker in authoritative run evidence so interruption cannot restore the allowance; the generated objective yields after repeated exhaustion or any non-retryable stop. Keep this policy outside goal state and scheduling so the extension neither interprets plan failures nor lets the agent renew continuation budgets.
+
 ## Security and boundaries
 
 The goal objective, completion evidence, and yield reason are untrusted data. Prompt injection protections in steering text keep objectives below system/developer instructions, and formatted yield details strip terminal control sequences and line breaks. Do not move raw objectives into higher-priority instruction channels.

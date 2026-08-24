@@ -223,10 +223,10 @@ A validated plan supports one direct bounded advancement:
 For autonomous execution across the whole plan, provide this minimal goal invocation with the concrete plan path:
 
 ```text
-/goal Execute the Ready plan at .design/plans/YYYY-MM-DD-<short-slug>.md to completion. On each agent turn, invoke advance-plan exactly once for this plan. If it reports progressed, return normally so auto-run can continue. If it reports blocked, failed, drifted, ambiguous, or invalid, yield with the reported reason. Complete the goal only after advance-plan reports whole-plan completion and you audit the final evidence.
+/goal Execute the Ready plan at .design/plans/YYYY-MM-DD-<short-slug>.md to completion. On each agent turn, invoke advance-plan exactly once for this plan. If it reports progressed or failed-retryable, return normally so auto-run can continue; failed-retryable grants that run-recorded step and essential failure one resumed invocation. If it reports blocked, failed, drifted, ambiguous, or invalid, call goal(action="yield", reason=...) with the reported reason. Complete the goal only after advance-plan reports whole-plan completion and you audit the final evidence.
 ```
 
-`advance-plan` remains goal-agnostic: it makes one resumable task-or-gate step and reports an outcome. The goal objective owns the mapping from that outcome to continuation, yield, or completion.
+`advance-plan` remains goal-agnostic: it makes one resumable task-or-gate step and reports an outcome. The goal objective owns the mapping from that outcome to continuation, yield, or completion. `failed-retryable` is narrowly reserved for a first full repair-allowance exhaustion with demonstrated progress and a falsifiable next repair; `advance-plan` reports ordinary `failed` after the same essential failure exhausts the caller-granted resumed invocation, and it never classifies blocked or unsafe work as retryable.
 
 ### 5. Challenge before finalizing when risk is non-trivial
 

@@ -83,6 +83,8 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 The `plan` skill emits an optional goal objective that names a Ready plan and invokes the goal-agnostic `advance-plan` skill exactly once per agent turn. `advance-plan` reports whether it progressed, stopped, or completed; the objective maps that outcome to normal continuation, `yield`, or an evidence-audited `complete` action.
 
+A narrowly classified `failed-retryable` outcome also returns normally so auto-run invokes the same durable step once more for that essential failure. It applies only after the first full repair-allowance exhaustion for that failure when demonstrated progress leaves a falsifiable next repair. A repeated exhaustion of the same failure, an early non-progress stop, or any blocked, unsafe, drifted, ambiguous, or invalid condition yields immediately. Demonstrated progress that exposes a materially different essential failure starts a new bounded failure identity. The objective owns this policy; the goal extension does not parse plan state or grant additional continuation budgets.
+
 Goal state never duplicates plan progress: `.design/runs/.../state.json` remains authoritative, including after an interrupted turn or a fresh Pi session. Resolve a yielded condition before `/goal-renew`; the next bounded advancement resumes the helper-reported task or milestone gate.
 
 ## Widget

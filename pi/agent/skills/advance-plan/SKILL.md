@@ -74,6 +74,8 @@ node <helper> status --run <run-dir>
 node <helper> next --run <run-dir>
 ```
 
+Before restarting a failed milestone, inspect its returned `stopReason` and recorded evidence for the current step. A reason or evidence summary beginning with `retryable repair exhaustion [<essential-failure>]` marks a caller-granted resumed invocation. Restarting clears the active stop reason, but evidence remains authoritative across interruption; compare the latest marker only with a later exhaustion for the same step and essential failure.
+
 Stop on plan drift. Do not silently migrate state after the plan changes.
 
 ### Interrupted-step rule
@@ -227,6 +229,16 @@ The current step gets at most three repair rounds in this invocation:
 - Continue only when the original failure passes, the failing set shrinks, or output proves the diagnosis and exposes a narrower failure.
 - Stop early when the same essential failure survives two consecutive rounds, a repaired check regresses without a new diagnosis, or no falsifiable next step remains.
 
+Classify repair exhaustion as `failed-retryable` only when all three rounds were consumed, every continuation condition above held through the final round, and one focused falsifiable repair remains. Identify the essential failure with a concise stable description such as the failing check plus failure mode; do not use a generic phrase like `tests failed`.
+
+Before stopping the milestone, compare that identity with prior retryable-exhaustion markers for the current step:
+
+- With no matching prior marker, record the final failed command with summary `retryable repair exhaustion [<essential-failure>]: <concise next repair>`, stop the milestone with the same reason, and report `failed-retryable`.
+- If prior evidence names the same step and essential failure, stop it with an ordinary failed reason and report `failed`; that failure's one resumed invocation has been consumed.
+- If the essential failure materially changed after demonstrated progress, it is a new failure identity and may receive its own single caller-granted resume.
+
+Early-stop conditions, unavailable intervention, an unsafe next action, and exhaustion without a falsifiable repair are never `failed-retryable`.
+
 For a meaningful failure, record the failed command with its real exit code, diagnose it, and stop the milestone as `failed` before another round:
 
 ```bash
@@ -264,13 +276,14 @@ Report exactly one outcome:
 
 - `progressed`: this task or gate completed and another step remains;
 - `blocked`: the current step needs user or environment intervention;
-- `failed`: bounded repair ended without a passing step;
+- `failed-retryable`: all three repair rounds were consumed with demonstrated progress and one falsifiable repair remains, and the same essential failure has not already received a resumed invocation;
+- `failed`: bounded repair ended without a passing step and is not eligible for another automatic invocation;
 - `drifted`, `ambiguous`, or `invalid`: preflight cannot select safe work;
 - `complete`: helper run status is `complete` and no step remains.
 
 Include the plan and run paths, step and status, focused verification summary, evidence coverage, task or gate-repair checkpoint when present, blockers or known issues, and the helper-reported next step. Do not claim whole-plan completion unless helper status is `complete`.
 
-Return control to the caller. Do not invoke another plan step recursively and do not call goal tools.
+Return control to the caller. Do not invoke another plan step recursively and do not call goal tools. A caller may invoke the same durable step once more after `failed-retryable`; all other non-progress outcomes require its normal stop policy.
 
 ## Helper guarantees and limits
 
