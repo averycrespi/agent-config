@@ -1,6 +1,6 @@
 # Agent Config
 
-My personal [Pi](https://pi.dev/) setup for software development. It adds a structured workflow for clarifying intent, designing systems, specifying bounded changes, planning, simplifying, and challenging implementation, executing milestone plans with durable evidence, optionally driving full plans through bounded session goals, and independently reviewing the result.
+My personal [Pi](https://pi.dev/) setup for software development. It adds a structured workflow for clarifying intent, designing systems, specifying bounded changes, planning, simplifying, and challenging implementation, advancing plans through resumable tasks and milestone gates with durable evidence, optionally driving full plans through bounded session goals, and independently reviewing the result.
 
 The repository contains the skills, extensions, prompts, and saved workflows that power that setup. Custom extensions are written in TypeScript and maintained with tests and documentation.
 
@@ -13,10 +13,10 @@ The harness combines a simple development loop with tools that keep work scoped,
 1. **Clarify and route** ambiguous requests with `clarify` when the right design artifact is not yet clear.
 2. **Design and specify** broad systems with `architect`, then turn each outcome—or one smaller standalone change—into a Ready specification with `specify`.
 3. **Plan and stress-test** one specification with `plan`, the explicit-only `simplify` skill for unnecessary complexity, and `challenge` for substantial risks.
-4. **Implement** one dependency-ready plan milestone with `execute-next-milestone`, which orchestrates one profile-routed writable child at a time while retaining run state, verification, decisions, evidence, and commits in the main session. Use `execute-plan` under an active `goal` to advance an entire Ready plan across bounded one-milestone agent turns.
+4. **Implement** one bounded, resumable plan step with `advance-plan`: either one profile-routed task or one milestone gate, while the main session retains run state, verification, decisions, evidence, and commits. For autonomous execution, use the minimal `/goal` invocation emitted by `plan` to call `advance-plan` once per turn.
 5. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
-Isolated subagents support research, verification, and bounded sequential implementation. Each receives a self-contained task, a centrally configured `fast`, `balanced`, or `strong` profile, and explicit filesystem, shell, web, or broker permissions. `execute-next-milestone` may delegate one in-place implementation task at a time; for explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
+Isolated subagents support research, verification, and bounded sequential implementation. Each receives a self-contained task, a centrally configured `fast`, `balanced`, or `strong` profile, and explicit filesystem, shell, web, or broker permissions. `advance-plan` may delegate one in-place implementation task at a time; for explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
 
 ### Extensions
 

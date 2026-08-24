@@ -88,7 +88,7 @@ Because extension-provided compaction can replace Pi's default compaction result
 
 ## Plan execution boundary
 
-`execute-plan` may use goal auto-run as a liveness layer across milestone-sized agent turns, but the extension does not parse plans or infer execution progress. The Ready plan and `.design/runs/.../state.json` remain authoritative. `execute-next-milestone` owns implementation and verification for one milestone, and only helper-reported whole-run completion can authorize the coordinator's final goal audit. Do not duplicate milestone or acceptance state inside goal snapshots.
+A goal objective may use auto-run as a liveness layer around one goal-agnostic `advance-plan` call per turn, but the extension does not parse plans, invoke skills, or infer execution progress. The Ready plan and `.design/runs/.../state.json` remain authoritative. The objective maps `advance-plan` outcomes to continuation, yield, or evidence-audited completion; goal snapshots never duplicate task, milestone, or acceptance state.
 
 ## Security and boundaries
 

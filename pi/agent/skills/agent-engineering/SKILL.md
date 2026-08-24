@@ -125,4 +125,4 @@ References cite primary sources where possible. When a claim has a known caveat 
 
 ## Local context
 
-In this repo, `pi/agent/extensions/goal/` is the live example of durable objective steering and conservative completion evidence, while `pi/agent/extensions/subagents/` provides profile-routed delegation with explicit read, write, shell, broker, and web capabilities. `execute-next-milestone` is the constrained sequential-writer integration, and `execute-plan` composes it with bounded goal continuation while plan run state remains authoritative.
+In this repo, `pi/agent/extensions/goal/` is the live example of durable objective steering and conservative completion evidence, while `pi/agent/extensions/subagents/` provides profile-routed delegation with explicit read, write, shell, broker, and web capabilities. `advance-plan` is the goal-agnostic sequential-writer integration: each invocation resumes or executes one task, or settles one milestone gate, while durable plan state remains authoritative. A minimal goal objective can compose that bounded primitive across turns.

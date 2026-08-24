@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can complete autonomously with execute-next-milestone.
+description: Use when turning one Ready specification into one execution-ready implementation plan with bounded milestones and task packets that fresh coding agents can advance one resumable step at a time with advance-plan.
 ---
 
 # Plan
@@ -21,7 +21,7 @@ Produce a plan that:
 - Maps every acceptance criterion to implementation intent and concrete verification.
 - Decomposes substantial work into ordered milestones, bounded behavioral task packets, and deterministic milestone gates.
 - Captures the chosen implementation approach, constraints, risks, affected repo areas, and documentation impact.
-- Includes enough evidence and repository context for a fresh engineer or `execute-next-milestone` invocation.
+- Includes enough evidence and repository context for a fresh engineer or `advance-plan` invocation.
 - Avoids line-by-line implementation choreography; the implementer owns local coding choices.
 - Has no blocking questions and does not contradict its specification or parent architecture.
 
@@ -210,7 +210,7 @@ Plan quality rules:
 
 Hidden `.design/` artifacts are local workflow material. The implementation must update tracked project documentation when the specification changes a canonical contract.
 
-Before reporting a plan as Ready, run the consumer-facing structural validator. Resolve `../execute-next-milestone/scripts/plan-run-state.js` relative to this skill directory and invoke it with an absolute helper path:
+Before reporting a plan as Ready, run the consumer-facing structural validator. Resolve `../advance-plan/scripts/plan-run-state.js` relative to this skill directory and invoke it with an absolute helper path:
 
 ```bash
 node <helper> validate \
@@ -220,13 +220,19 @@ node <helper> validate \
 
 The validator must report `status: "Ready"` and the expected criteria, milestone dependencies, and task counts. Repair any failure before handoff. This deterministic check proves the plan matches the executor's structural contract; it does not replace semantic review against the source specification.
 
-A validated plan supports a direct one-milestone handoff:
+A validated plan supports one direct bounded advancement:
 
 ```text
-/skill:execute-next-milestone .design/plans/YYYY-MM-DD-<short-slug>.md
+/skill:advance-plan .design/plans/YYYY-MM-DD-<short-slug>.md
 ```
 
-For bounded goal-driven execution across all milestones, use an active goal that explicitly names the plan and `execute-plan`. The coordinator still executes at most one milestone per agent turn; it never asks one unbounded turn to implement and prove the entire plan.
+For autonomous execution across the whole plan, provide this minimal goal invocation with the concrete plan path:
+
+```text
+/goal Execute the Ready plan at .design/plans/YYYY-MM-DD-<short-slug>.md to completion. On each agent turn, invoke advance-plan exactly once for this plan. If it reports progressed, return normally so auto-run can continue. If it reports blocked, failed, drifted, ambiguous, or invalid, yield with the reported reason. Complete the goal only after advance-plan reports whole-plan completion and you audit the final evidence.
+```
+
+`advance-plan` remains goal-agnostic: it makes one resumable task-or-gate step and reports an outcome. The goal objective owns the mapping from that outcome to continuation, yield, or completion.
 
 ### 5. Challenge before finalizing when risk is non-trivial
 
@@ -253,6 +259,6 @@ Give the user:
 - milestone and task-packet summary,
 - acceptance-criterion coverage summary,
 - residual non-blocking assumptions, and
-- the suggested direct `execute-next-milestone` command and, when autonomous full-plan continuation is relevant, the corresponding `execute-plan` goal invocation.
+- the suggested direct `advance-plan` command and, when autonomous full-plan continuation is relevant, the minimal `/goal` invocation above.
 
 Do not start execution unless the user explicitly asks.

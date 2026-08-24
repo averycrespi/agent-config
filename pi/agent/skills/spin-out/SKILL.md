@@ -7,7 +7,7 @@ description: Use only when the user explicitly asks to "spin out" work or delega
 
 Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Activate only for an explicit user request to spin out or delegate work to another agent; never infer that request from task size, complexity, or the potential usefulness of parallel work.
 
-This is distinct from `execute-next-milestone`, which may use one sequential profile-routed child to edit the current checkout while the main session retains state, verification, and commit authority. Use `spin-out` only for the explicit worktree-based delegation contract described here.
+This is distinct from `advance-plan`, which may use one sequential profile-routed child to edit the current checkout while the main session retains state, verification, and commit authority. Use `spin-out` only for the explicit worktree-based delegation contract described here.
 
 ## Preflight
 

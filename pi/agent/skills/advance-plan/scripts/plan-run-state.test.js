@@ -71,7 +71,7 @@ const PLAN = `# Example Plan
 `;
 
 async function planWorkspace(plan = PLAN) {
-  const cwd = await mkdtemp(join(tmpdir(), "execute-next-milestone-"));
+  const cwd = await mkdtemp(join(tmpdir(), "advance-plan-"));
   const planDir = join(cwd, ".design", "plans");
   await mkdir(planDir, { recursive: true });
   const planPath = join(planDir, "example.md");
@@ -163,9 +163,7 @@ test("parsePlan requires a Ready plan and rejects invalid milestone graphs", () 
 });
 
 test("validatePlan reports the consumer-facing execution contract", async () => {
-  const cwd = await mkdtemp(
-    join(tmpdir(), "execute-next-milestone-validation-"),
-  );
+  const cwd = await mkdtemp(join(tmpdir(), "advance-plan-validation-"));
   await mkdir(join(cwd, ".design", "plans"), { recursive: true });
   await writeFile(join(cwd, ".design", "plans", "example.md"), PLAN);
 
@@ -184,12 +182,8 @@ test("validatePlan reports the consumer-facing execution contract", async () => 
 });
 
 test("validatePlan rejects a plans directory that escapes through a symlink", async () => {
-  const cwd = await mkdtemp(
-    join(tmpdir(), "execute-next-milestone-workspace-"),
-  );
-  const outside = await mkdtemp(
-    join(tmpdir(), "execute-next-milestone-plans-"),
-  );
+  const cwd = await mkdtemp(join(tmpdir(), "advance-plan-workspace-"));
+  const outside = await mkdtemp(join(tmpdir(), "advance-plan-plans-"));
   await mkdir(join(cwd, ".design"));
   await writeFile(join(outside, "example.md"), PLAN);
   await symlink(outside, join(cwd, ".design", "plans"));
@@ -201,10 +195,8 @@ test("validatePlan rejects a plans directory that escapes through a symlink", as
 });
 
 test("initializeRun rejects a runs directory that escapes through a symlink", async () => {
-  const cwd = await mkdtemp(
-    join(tmpdir(), "execute-next-milestone-workspace-"),
-  );
-  const outside = await mkdtemp(join(tmpdir(), "execute-next-milestone-runs-"));
+  const cwd = await mkdtemp(join(tmpdir(), "advance-plan-workspace-"));
+  const outside = await mkdtemp(join(tmpdir(), "advance-plan-runs-"));
   await mkdir(join(cwd, ".design", "plans"), { recursive: true });
   await writeFile(join(cwd, ".design", "plans", "example.md"), PLAN);
   await symlink(outside, join(cwd, ".design", "runs"));
@@ -221,7 +213,7 @@ test("initializeRun rejects a runs directory that escapes through a symlink", as
 
 test("readRun rejects a resumed run that escapes through a symlink", async () => {
   const { runDir } = await fixture();
-  const outside = await mkdtemp(join(tmpdir(), "execute-next-milestone-run-"));
+  const outside = await mkdtemp(join(tmpdir(), "advance-plan-run-"));
   const movedRun = join(outside, "run-1");
   await rename(runDir, movedRun);
   await symlink(movedRun, runDir);
@@ -242,6 +234,7 @@ test("initializeRun writes compact pending state and returns the first work item
   assert.deepEqual(Object.keys(state.milestones), ["M1", "M2"]);
   assert.equal(state.milestones.M1.tasks.T1.status, "pending");
   assert.deepEqual(await getNextWork(runDir), {
+    step: "task",
     milestoneId: "M1",
     taskId: "T1",
   });
@@ -258,7 +251,11 @@ test("openRun creates the first run and resumes the sole matching run", async ()
   assert.equal(created.action, "created");
   assert.equal(created.runDir.split("/").at(-1), "20260822T120000Z");
   assert.equal(created.runStatus, "pending");
-  assert.deepEqual(created.next, { milestoneId: "M1", taskId: "T1" });
+  assert.deepEqual(created.next, {
+    step: "task",
+    milestoneId: "M1",
+    taskId: "T1",
+  });
   assert.equal(created.nextMilestoneAttempts, 0);
   assert.equal(created.nextTaskAttempts, 0);
 
@@ -269,7 +266,11 @@ test("openRun creates the first run and resumes the sole matching run", async ()
   });
   assert.equal(resumed.action, "resumed");
   assert.equal(resumed.runDir, created.runDir);
-  assert.deepEqual(resumed.next, { milestoneId: "M1", taskId: "T1" });
+  assert.deepEqual(resumed.next, {
+    step: "task",
+    milestoneId: "M1",
+    taskId: "T1",
+  });
 });
 
 test("openRun reports ambiguous resumable runs without choosing one", async () => {
@@ -356,6 +357,88 @@ test("milestone start accepts only the helper's next ready milestone", async () 
     startMilestone({ runDir, milestoneId: "M2" }),
     /M2 is not next; expected M1/,
   );
+});
+
+test("next work explicitly distinguishes resumable tasks from milestone gates", async () => {
+  const { runDir } = await fixture();
+  await startMilestone({ runDir, milestoneId: "M1" });
+  await startBalancedTask({ runDir, taskId: "T1" });
+
+  assert.deepEqual(await getNextWork(runDir), {
+    step: "task",
+    milestoneId: "M1",
+    taskId: "T1",
+  });
+
+  await addEvidence({
+    runDir,
+    milestoneId: "M1",
+    taskId: "T1",
+    criteria: ["AC-1"],
+    kind: "command",
+    summary: "Task verification passed.",
+    command: "npm test -- state",
+    exitCode: 0,
+  });
+  await completeTask({ runDir, taskId: "T1" });
+
+  assert.deepEqual(await getNextWork(runDir), {
+    step: "gate",
+    milestoneId: "M1",
+    taskId: null,
+  });
+});
+
+test("openRun exposes a stopped gate and supports reactivation", async () => {
+  const { cwd, runDir } = await fixture();
+  await startMilestone({ runDir, milestoneId: "M1" });
+  await startBalancedTask({ runDir, taskId: "T1" });
+  await addEvidence({
+    runDir,
+    milestoneId: "M1",
+    taskId: "T1",
+    criteria: ["AC-1"],
+    kind: "command",
+    summary: "Task verification passed.",
+    command: "npm test -- state",
+    exitCode: 0,
+  });
+  await completeTask({ runDir, taskId: "T1" });
+  await stopMilestone({
+    runDir,
+    milestoneId: "M1",
+    status: "blocked",
+    reason: "Gate environment is temporarily unavailable.",
+  });
+
+  const opened = await openRun({
+    cwd,
+    planPath: ".design/plans/example.md",
+  });
+  assert.equal(opened.action, "resumed");
+  assert.equal(opened.runStatus, "blocked");
+  assert.deepEqual(opened.next, {
+    step: "gate",
+    milestoneId: "M1",
+    taskId: null,
+  });
+
+  await startMilestone({ runDir, milestoneId: "M1" });
+  await addEvidence({
+    runDir,
+    milestoneId: "M1",
+    criteria: ["AC-1"],
+    kind: "command",
+    summary: "Recovered milestone gate passed.",
+    command: "npm test -- foundation",
+    exitCode: 0,
+  });
+  await completeMilestone({ runDir, milestoneId: "M1" });
+  assert.deepEqual(await getNextWork(runDir), {
+    step: "task",
+    milestoneId: "M2",
+    taskId: "T2",
+  });
 });
 
 test("task start records bounded profile selection history", async () => {
@@ -541,6 +624,7 @@ test("a milestone completes only with completed tasks and criterion evidence", a
   assert.equal(completed.milestones.M1.tasks.T1.status, "done");
   assert.equal(completed.currentMilestone, null);
   assert.deepEqual(await getNextWork(runDir), {
+    step: "task",
     milestoneId: "M2",
     taskId: "T2",
   });

@@ -81,9 +81,9 @@ No goal context is injected when the goal is paused, complete, absent, or inject
 
 ## Goal-driven plan execution
 
-The `execute-plan` skill can use goal auto-run as a bounded continuation layer for one Ready plan. It executes or resumes at most one milestone per agent turn through `execute-next-milestone`. Goal state never replaces plan run state: `.design/runs/.../state.json` remains authoritative for milestone progression, and the goal completes only after the helper reports the whole run `complete` and the agent audits its evidence. Blocked, failed, drifted, ambiguous, or invalid execution yields control without completing the goal.
+The `plan` skill emits an optional goal objective that names a Ready plan and invokes the goal-agnostic `advance-plan` skill exactly once per agent turn. `advance-plan` reports whether it progressed, stopped, or completed; the objective maps that outcome to normal continuation, `yield`, or an evidence-audited `complete` action.
 
-Start with an objective that explicitly names the Ready plan and `execute-plan`. If a blocked or failed run yields, resolve the reported condition and use `/goal-renew`; the coordinator treats that fresh zero-continuation auto-run as user authorization for one bounded recovery attempt. If auto-run yields again or exhausts a budget, control returns to the user again. A fresh Pi session requires a new explicit goal but resumes the repository-durable plan run.
+Goal state never duplicates plan progress: `.design/runs/.../state.json` remains authoritative, including after an interrupted turn or a fresh Pi session. Resolve a yielded condition before `/goal-renew`; the next bounded advancement resumes the helper-reported task or milestone gate.
 
 ## Widget
 

@@ -1086,12 +1086,18 @@ export async function getNextWork(runDir) {
   if (state.currentMilestone) {
     const milestone = state.milestones[state.currentMilestone];
     if (state.currentTask) {
-      return { milestoneId: milestone.id, taskId: state.currentTask };
+      return {
+        step: "task",
+        milestoneId: milestone.id,
+        taskId: state.currentTask,
+      };
     }
     const taskId = milestone.taskOrder.find(
       (id) => milestone.tasks[id].status !== "done",
     );
-    return { milestoneId: milestone.id, taskId: taskId ?? null };
+    return taskId
+      ? { step: "task", milestoneId: milestone.id, taskId }
+      : { step: "gate", milestoneId: milestone.id, taskId: null };
   }
 
   const milestone = nextReadyMilestone(state);
@@ -1099,7 +1105,9 @@ export async function getNextWork(runDir) {
   const taskId = milestone.taskOrder.find(
     (id) => milestone.tasks[id].status !== "done",
   );
-  return { milestoneId: milestone.id, taskId: taskId ?? null };
+  return taskId
+    ? { step: "task", milestoneId: milestone.id, taskId }
+    : { step: "gate", milestoneId: milestone.id, taskId: null };
 }
 
 export async function startMilestone({ runDir, milestoneId, now }) {
