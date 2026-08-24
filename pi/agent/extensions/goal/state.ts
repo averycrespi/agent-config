@@ -57,6 +57,7 @@ export interface GoalStore {
   resume(): Goal | undefined;
   complete(evidence: string, maxChars: number): Goal | undefined;
   recordAssistantUsage(totalTokens?: number): Goal | undefined;
+  recordTokenUsage(totalTokens?: number): Goal | undefined;
   startAutoRun(): GoalAutoRunState;
   stopAutoRun(reason: AutoRunStopReason, detail?: string): GoalAutoRunState;
   recordAutoRunContinuation(): GoalAutoRunState;
@@ -285,6 +286,29 @@ export function createGoalStore(
               ? totalTokens
               : 0),
           turns: usage.turns + 1,
+        },
+      };
+      notify();
+      return cloneGoal(goal, now);
+    },
+
+    recordTokenUsage(totalTokens) {
+      if (
+        !goal ||
+        goal.status !== "active" ||
+        typeof totalTokens !== "number" ||
+        totalTokens <= 0
+      ) {
+        return undefined;
+      }
+      const timestamp = now();
+      const usage = goal.usage ?? defaultUsage(timestamp, true);
+      goal = {
+        ...goal,
+        updatedAt: timestamp,
+        usage: {
+          ...usage,
+          totalTokens: usage.totalTokens + totalTokens,
         },
       };
       notify();

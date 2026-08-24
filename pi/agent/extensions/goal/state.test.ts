@@ -316,6 +316,17 @@ test("goal store tracks active elapsed time and assistant token usage", () => {
   assert.equal(store.getGoal()?.usage?.activeElapsedMs, 5000);
 });
 
+test("goal store adds nested tokens without incrementing assistant turns", () => {
+  const store = createGoalStore(() => 1000);
+
+  store.setGoal("Measure nested usage", 100);
+  store.recordAssistantUsage(120);
+  store.recordTokenUsage(80);
+
+  assert.equal(store.getGoal()?.usage?.turns, 1);
+  assert.equal(store.getGoal()?.usage?.totalTokens, 200);
+});
+
 test("legacy persisted goal snapshots default usage counters", () => {
   const parsed = parsePersistedGoalState({
     goal: {

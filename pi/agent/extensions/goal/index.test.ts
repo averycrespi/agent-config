@@ -412,6 +412,42 @@ test("message_end records usage for active goals", async () => {
   assert.match(ctx.notifications.at(-1)?.msg, /1 turn/);
 });
 
+test("tool_result adds nested model tokens without adding a turn", async () => {
+  const pi = makePi();
+  const ctx = makeCtx();
+  createGoalExtension({
+    loadConfig: async () => ({
+      config: {
+        injectActiveGoal: true,
+        showWidget: false,
+        objectiveMaxChars: 100,
+        evidenceMaxChars: 100,
+        compactSummaryEnabled: true,
+        checkpointCommits: true,
+        showUsage: true,
+        autoRunEnabled: true,
+        autoRunMaxContinuations: 10,
+        autoRunMaxActiveMinutes: 60,
+      },
+      warnings: [],
+    }),
+  })(pi);
+  await pi.handlers.get("session_start")({}, ctx);
+  await pi.commands.get("goal-set").handler("Track nested usage", ctx);
+
+  await pi.handlers.get("message_end")({
+    message: { role: "assistant", usage: { totalTokens: 250 } },
+  });
+  await pi.handlers.get("tool_result")({
+    toolName: "spawn_agents",
+    usage: { totalTokens: 400 },
+  });
+  await pi.commands.get("goal-show").handler("", ctx);
+
+  assert.match(ctx.notifications.at(-1)?.msg, /650 tokens/);
+  assert.match(ctx.notifications.at(-1)?.msg, /1 turn/);
+});
+
 test("/goal sets active goal, starts auto-run, and sends kickoff", async () => {
   const pi = makePi();
   const ctx = makeCtx();

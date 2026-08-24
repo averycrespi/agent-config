@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Usage } from "@earendil-works/pi-ai";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -42,6 +43,65 @@ type OnUpdate = (event: {
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
 }) => void;
+
+type SpawnRunResult = {
+  content: { type: "text"; text: string }[];
+  details: Record<string, unknown>;
+  usage?: Usage;
+};
+
+function assistantUsageFromEvent(event: unknown): Usage | undefined {
+  if (!event || typeof event !== "object") return undefined;
+  const record = event as Record<string, unknown>;
+  if (record.type !== "message_end") return undefined;
+  const message = record.message as
+    | { role?: unknown; usage?: Partial<Usage> }
+    | undefined;
+  const usage = message?.usage;
+  if (message?.role !== "assistant" || !usage || !usage.cost) return undefined;
+  const required = [
+    usage.input,
+    usage.output,
+    usage.cacheRead,
+    usage.cacheWrite,
+    usage.totalTokens,
+    usage.cost.input,
+    usage.cost.output,
+    usage.cost.cacheRead,
+    usage.cost.cacheWrite,
+    usage.cost.total,
+  ];
+  if (required.some((value) => typeof value !== "number")) return undefined;
+  return usage as Usage;
+}
+
+function combineUsage(current: Usage | undefined, next: Usage): Usage {
+  if (!current) return { ...next, cost: { ...next.cost } };
+  const cacheWrite1h =
+    current.cacheWrite1h !== undefined || next.cacheWrite1h !== undefined
+      ? (current.cacheWrite1h ?? 0) + (next.cacheWrite1h ?? 0)
+      : undefined;
+  const reasoning =
+    current.reasoning !== undefined || next.reasoning !== undefined
+      ? (current.reasoning ?? 0) + (next.reasoning ?? 0)
+      : undefined;
+  return {
+    input: current.input + next.input,
+    output: current.output + next.output,
+    cacheRead: current.cacheRead + next.cacheRead,
+    cacheWrite: current.cacheWrite + next.cacheWrite,
+    ...(cacheWrite1h !== undefined ? { cacheWrite1h } : {}),
+    ...(reasoning !== undefined ? { reasoning } : {}),
+    totalTokens: current.totalTokens + next.totalTokens,
+    cost: {
+      input: current.cost.input + next.cost.input,
+      output: current.cost.output + next.cost.output,
+      cacheRead: current.cost.cacheRead + next.cost.cacheRead,
+      cacheWrite: current.cost.cacheWrite + next.cost.cacheWrite,
+      total: current.cost.total + next.cost.total,
+    },
+  };
+}
 
 type SpawnCtx = {
   cwd: string;
@@ -229,10 +289,7 @@ async function runSpawn(
   ctx: SpawnCtx,
   toolCallId: string,
   onUpdate?: OnUpdate,
-): Promise<{
-  content: { type: "text"; text: string }[];
-  details: Record<string, unknown>;
-}> {
+): Promise<SpawnRunResult> {
   const intent = normalizeIntent(spec.intent);
   const tracker: SubagentActivityTracker = createSubagentActivityTracker({
     toolCallId,
@@ -254,8 +311,13 @@ async function runSpawn(
     profile: spec.profile,
   });
 
+  let usage: Usage | undefined;
   const result = await _runSubagent.fn(
-    toRunRequest(spec, ctx, toolCallId, (event) => tracker.handleEvent(event)),
+    toRunRequest(spec, ctx, toolCallId, (event) => {
+      const eventUsage = assistantUsageFromEvent(event);
+      if (eventUsage) usage = combineUsage(usage, eventUsage);
+      tracker.handleEvent(event);
+    }),
   );
   tracker.finish(result);
   const diagnosticWarning = result.diagnosticWarnings?.length
@@ -279,6 +341,7 @@ async function runSpawn(
         diagnosticWarnings: result.diagnosticWarnings,
         activity: tracker.state,
       },
+      ...(usage ? { usage } : {}),
     };
   }
 
@@ -295,6 +358,7 @@ async function runSpawn(
         diagnosticWarnings: result.diagnosticWarnings,
         activity: tracker.state,
       },
+      ...(usage ? { usage } : {}),
     };
   }
 
@@ -307,6 +371,7 @@ async function runSpawn(
       diagnosticWarnings: result.diagnosticWarnings,
       activity: tracker.state,
     },
+    ...(usage ? { usage } : {}),
   };
 }
 
@@ -318,10 +383,7 @@ export async function runParallelSpawn(
   onUpdate: OnUpdate | undefined,
   gate: ConcurrencyGate,
   mutableGate?: ConcurrencyGate,
-): Promise<{
-  content: { type: "text"; text: string }[];
-  details: Record<string, unknown>;
-}> {
+): Promise<SpawnRunResult> {
   const validationErrors = await validateSpawnAgentSpecs(specs, config, ctx);
   if (validationErrors.length > 0) {
     return {
@@ -358,7 +420,7 @@ export async function runParallelSpawn(
   }
   emitCombined();
 
-  function cancelledBeforeLaunch(i: number) {
+  function cancelledBeforeLaunch(i: number): SpawnRunResult {
     const errorMessage = "Subagent cancelled before launch";
     states[i] = {
       ...states[i],
@@ -423,6 +485,11 @@ export async function runParallelSpawn(
   );
 
   const failed = results.filter((result) => result.details.ok === false).length;
+  const usage = results.reduce<Usage | undefined>(
+    (combined, result) =>
+      result.usage ? combineUsage(combined, result.usage) : combined,
+    undefined,
+  );
   const structured = specs.some((spec) => spec.output_schema !== undefined)
     ? results.map((result, index) => {
         if (specs[index]!.output_schema === undefined)
@@ -462,6 +529,7 @@ export async function runParallelSpawn(
       ...(structured ? { structured } : {}),
       ...spilled.details,
     },
+    ...(usage ? { usage } : {}),
   };
 }
 

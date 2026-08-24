@@ -434,6 +434,13 @@ export function createGoalExtension(options: GoalExtensionOptions = {}) {
       return undefined;
     });
 
+    pi.on("tool_result", async (event: any) => {
+      if (store.recordTokenUsage(event.usage?.totalTokens)) {
+        appendState(pi, store.getState());
+      }
+      return undefined;
+    });
+
     pi.on("agent_end", async (event: { messages?: unknown }, ctx) => {
       const failure = getAssistantFailure(event.messages);
       if (failure?.reason === "error") {

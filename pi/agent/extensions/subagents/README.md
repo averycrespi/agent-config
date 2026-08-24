@@ -88,7 +88,7 @@ Relative attachment paths resolve from the call cwd. Preflight follows symlinks 
 
 Structured output automatically adds the `structured-output` extension and tool, writes a temporary owner-only schema file, instructs the child to call the tool as its final action, captures and validates the value, and removes the schema file. This is the only automatic authority composition, so `capabilities: []` remains no-tools unless structured output is requested.
 
-Results use `## <intent>` headings followed by capability/profile metadata. `details.structured` is input-aligned when any item requests structured output. Large combined output uses shared spillover and returns the exact path for `read`.
+Results use `## <intent>` headings followed by capability/profile metadata. `details.structured` is input-aligned when any item requests structured output. The final tool result returns the combined child model `usage`, including usage consumed by failed or aborted children when Pi reported it, so Pi session totals and usage-aware extensions can include delegated work. Large combined output uses shared spillover and returns the exact path for `read`.
 
 ## UI
 

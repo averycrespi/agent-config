@@ -50,7 +50,7 @@ Keep `spawn.ts` import-local to this directory; colocated engine tests may impor
 
 `spawn_agents` preflights every item before gate acquisition. Errors are collected across required fields, policy, live model resolution/compatibility, attachments, and schemas. Any error launches zero children.
 
-Valid read-only items retain input order while independently acquiring the shared abort-aware FIFO gate. Mutable requests contain exactly one item. Each launch creates an activity tracker, calls the sanitized API, settles structured/prose output, records diagnostics, releases capacity exactly once, and participates in ordered fan-in. Combined output is intent-first and may spill through the shared helper.
+Valid read-only items retain input order while independently acquiring the shared abort-aware FIFO gate. Mutable requests contain exactly one item. Each launch creates an activity tracker, calls the sanitized API, settles structured/prose output, records diagnostics, releases capacity exactly once, and participates in ordered fan-in. Assistant usage events are accumulated per child and combined across the batch, including reported usage from failed or aborted children. The final `spawn_agents` tool result exposes that aggregate through Pi's top-level `usage` contract so session accounting and other extensions observe delegated model work. Combined output is intent-first and may spill through the shared helper.
 
 Config reloads carry an invocation generation so an older asynchronous read cannot overwrite a newer direct concurrency limit. Project settings are excluded because overlapping calls from different cwd values share one host policy.
 

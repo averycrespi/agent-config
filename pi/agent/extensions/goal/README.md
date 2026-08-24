@@ -56,7 +56,7 @@ Goal state is scoped to Pi's session tree branch, not the git branch. The extens
 
 Snapshots include goal lifecycle state and, when present, auto-run lifecycle state. Auto-run state is separate from goal status so automation can stop while the goal remains active for steering and manual continuation. Legacy snapshots remain valid; obsolete nested metadata is ignored, while an interrupted legacy completion claim is restored as paused and stops a paired running auto-run.
 
-When `showUsage` is enabled, snapshots also include observational usage counters: active elapsed time, assistant turns, and best-effort total tokens reported by Pi message usage events. Active elapsed time counts only while the goal is active; pausing stops the timer, resuming starts it again, and completion freezes it.
+When `showUsage` is enabled, snapshots also include observational usage counters: active elapsed time, assistant turns, and best-effort total tokens reported by Pi assistant messages and nested-model tool results. This includes delegated `spawn_agents` usage because that tool reports its combined child usage through Pi's tool-result contract. Nested tool usage increases the token total without increasing the parent assistant-turn count. Active elapsed time counts only while the goal is active; pausing stops the timer, resuming starts it again, and completion freezes it.
 
 Snapshots are persisted through:
 

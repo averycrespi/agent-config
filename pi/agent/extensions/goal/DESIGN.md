@@ -76,7 +76,8 @@ Usage counters are observational, not enforcement mechanisms:
 
 - active elapsed time accrues only while the goal is active;
 - assistant turns are counted from assistant `message_end` events;
-- token totals are best-effort sums from assistant usage events.
+- token totals are best-effort sums from assistant usage events and nested-model `tool_result` usage, including delegated `spawn_agents` work;
+- nested tool usage changes tokens only, not the parent assistant-turn count.
 
 Auto-run budgets use auto-run state, not the total goal usage counters. Renewing auto-run resets continuation/time budget for automation but not overall goal usage.
 

@@ -338,6 +338,70 @@ test("parallel spawn forwards sanitized requests and returns intent-first metada
   }
 });
 
+test("parallel spawn returns combined nested model usage including failed children", async () => {
+  mock.method(_runSubagent, "fn", async (request: any) => {
+    request.onEvent?.({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: {
+          input: 10,
+          output: 5,
+          cacheRead: 2,
+          cacheWrite: 1,
+          cacheWrite1h: 1,
+          reasoning: 3,
+          totalTokens: 18,
+          cost: {
+            input: 0.1,
+            output: 0.2,
+            cacheRead: 0.03,
+            cacheWrite: 0.04,
+            total: 0.37,
+          },
+        },
+      },
+    });
+    return request.intent === "Second"
+      ? {
+          ...okOutcome(),
+          ok: false,
+          exitCode: 1,
+          errorMessage: "child failed after model usage",
+        }
+      : okOutcome();
+  });
+  try {
+    const result = await runParallelSpawn(
+      [valid({ intent: "First" }), valid({ intent: "Second" })],
+      config,
+      ctx,
+      "call",
+      undefined,
+      createConcurrencyGate(2),
+    );
+
+    assert.deepEqual((result as any).usage, {
+      input: 20,
+      output: 10,
+      cacheRead: 4,
+      cacheWrite: 2,
+      cacheWrite1h: 2,
+      reasoning: 6,
+      totalTokens: 36,
+      cost: {
+        input: 0.2,
+        output: 0.4,
+        cacheRead: 0.06,
+        cacheWrite: 0.08,
+        total: 0.74,
+      },
+    });
+  } finally {
+    mock.restoreAll();
+  }
+});
+
 test("parallel spawn preserves structured output contract", async () => {
   mock.method(_runSubagent, "fn", async () => ({
     ...okOutcome("prose"),
