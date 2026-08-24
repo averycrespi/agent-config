@@ -20,7 +20,7 @@ This skill is goal-agnostic. It does not read, complete, yield, renew, or otherw
 - `state.json` is authoritative for run, milestone, and task status.
 - `evidence/<milestone>.json` is authoritative for acceptance evidence.
 - `decisions.jsonl` records consequential implementation rulings.
-- Git commits are durable milestone checkpoints, not proof by themselves.
+- Git commits are durable task and gate-repair checkpoints, not proof by themselves.
 - Use TODOs to expose tactical progress for every task or gate that proceeds past preflight, but never let them replace run state.
 - The deterministic helper owns every run-state mutation. Never edit run artifacts manually.
 - Conversation claims, TODOs, commits, and subagent output never override helper state.
@@ -91,8 +91,9 @@ When resuming after an interrupted agent turn, inspect the current workspace and
 
 - If implementation exists but verification was interrupted, inspect it and rerun verification.
 - If implementation is partial, inspect the observed state and resume it directly in the main session.
+- If a task checkpoint commit exists but task completion was interrupted, verify the commit and evidence before recording completion; do not create a duplicate checkpoint.
 - If task completion was already recorded, follow the helper's next step rather than repeating the task.
-- If a gate commit exists but milestone completion was interrupted, verify the commit and evidence before recording completion; do not create a duplicate checkpoint.
+- If a gate-repair commit exists but milestone completion was interrupted, verify the commit and evidence before recording completion; do not create a duplicate checkpoint.
 
 ### Tactical TODO visibility
 
@@ -152,13 +153,15 @@ node <helper> evidence-add \
 
 Other evidence kinds are `artifact`, `inspection`, and `manual`. Use `--path` for relevant repository artifacts. Never paste raw logs, secrets, large diffs, or command output into evidence. Expected red-phase test failures are not acceptance evidence.
 
-Mark the task complete only after main-session verification passes:
+After recording evidence, create one logical verified checkpoint commit for the completed task when it changed files. Inspect the staged diff, stage only task-owned files by name, follow repository commit-message policy, and never include run artifacts, unrelated changes, or likely secrets. Never create an empty commit and never push. If a commit hook fails, diagnose and repair the task within the bounded repair process; never bypass the hook or mark the task complete without the required checkpoint.
+
+Mark the task complete only after main-session verification has passed and, when files changed, the required task checkpoint commit has succeeded:
 
 ```bash
 node <helper> task-complete --run <run-dir> --task T1
 ```
 
-Then stop. Report whether the helper's next step is another task or the milestone gate, but do not begin it.
+Then stop. Report the task checkpoint when present and whether the helper's next step is another task or the milestone gate, but do not begin it.
 
 ## 3. Settle one milestone gate
 
@@ -173,9 +176,9 @@ node <helper> milestone-start --run <run-dir> --milestone M1
 1. Run the milestone verification gate exactly as planned.
 2. Run relevant repository-required checks.
 3. Record gate evidence covering every criterion owned by the milestone.
-4. Inspect the integrated diff and documentation impact in the main session.
+4. Inspect the integrated milestone diff and documentation impact in the main session, including all task checkpoint commits since the milestone began.
 5. Do not invoke an independent reviewer by default. When the plan, repository instructions, or user explicitly requires one, run it once against the integrated milestone after deterministic gates pass. Evaluate findings and repair confirmed issues through the bounded gate-repair process.
-6. Create one logical verified checkpoint commit when the milestone changed files. Stage files by name and never push.
+6. If gate verification or repair changed files after the task checkpoints, create one logical verified gate-repair commit. Inspect the staged diff, stage only gate-owned files by name, and never create an empty commit or push. Do not create a ceremonial milestone commit when the gate changed no files.
 7. Ask the helper to complete the milestone.
 
 Record milestone-level evidence by omitting `--task`:
@@ -266,7 +269,7 @@ Report exactly one outcome:
 - `drifted`, `ambiguous`, or `invalid`: preflight cannot select safe work;
 - `complete`: helper run status is `complete` and no step remains.
 
-Include the plan and run paths, step and status, focused verification summary, evidence coverage, checkpoint when present, blockers or known issues, and the helper-reported next step. Do not claim whole-plan completion unless helper status is `complete`.
+Include the plan and run paths, step and status, focused verification summary, evidence coverage, task or gate-repair checkpoint when present, blockers or known issues, and the helper-reported next step. Do not claim whole-plan completion unless helper status is `complete`.
 
 Return control to the caller. Do not invoke another plan step recursively and do not call goal tools.
 

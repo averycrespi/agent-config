@@ -76,7 +76,7 @@ Determine:
 - what documentation or migration work is required, and
 - which risks need mitigation or explicit acceptance.
 
-Treat one task packet as the unit of bounded main-session implementation. Size it so one `advance-plan` invocation can implement and verify one coherent behavior slice without subdividing the work, coordinating another writer, or carrying several independent test matrices at once. Split work when a packet combines separable outcomes, crosses ownership seams that have distinct verification, or would require a broad subsystem-sized context or diff. Keep tightly coupled changes together when separating them would force interface decisions across task boundaries. A task is not one file, function, test case, edit, or commit, and the executor must not dynamically decompose an oversized task into untracked implementation scopes. Put logical checkpoint guidance at milestone boundaries rather than requiring a commit after every task.
+Treat one task packet as the unit of bounded main-session implementation. Size it so one `advance-plan` invocation can implement and verify one coherent behavior slice without subdividing the work, coordinating another writer, or carrying several independent test matrices at once. Split work when a packet combines separable outcomes, crosses ownership seams that have distinct verification, or would require a broad subsystem-sized context or diff. Keep tightly coupled changes together when separating them would force interface decisions across task boundaries. A task is not one file, function, test case, or edit, and must be sized by coherent behavior rather than commit mechanics. The executor creates one verified checkpoint commit for each task that changes files and must not dynamically decompose an oversized task into untracked implementation scopes. Keep milestone checkpoint guidance focused on integrated gate verification and any gate-repair changes.
 
 Describe task constraints, risks, repository context, and focused verification precisely enough for the main session to implement it without a writable handoff or invented decisions. Do not recommend model names or reasoning effort in the immutable plan; execution policy may change independently of implementation intent.
 
@@ -203,7 +203,7 @@ Plan quality rules:
 - Documentation impact must be an explicit decision.
 - Include enough context to survive a fresh session without pasting unnecessary code.
 - Prefer implementation intent over exact diffs.
-- Avoid both subsystem-sized task packets and micro-tasks, line-by-line choreography, speculative file lists, and commit-per-task requirements.
+- Avoid subsystem-sized task packets, commit-shaped micro-tasks, line-by-line choreography, and speculative file lists; task checkpoint commits are execution policy owned by `advance-plan`.
 - Keep model names and reasoning effort out of plans.
 - Do not leave `TBD`, `TODO`, blocking questions, or requirement inventions.
 - Apply YAGNI and avoid speculative follow-on work.
