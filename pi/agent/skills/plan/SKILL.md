@@ -86,7 +86,7 @@ Only encode an assumption when it is low-impact, reversible, non-user-visible, a
 
 ### 4. Write the durable plan
 
-Save new plans under `.design/plans/YYYY-MM-DD-<short-slug>.md`; update an existing plan only when it is already in that directory. Use repo-relative paths only. Do not write elsewhere. If the user requests a canonical tracked implementation document, stop and route that to a separate documentation task; promotion is outside this skill.
+Save new plans under `.design/plans/YYYY-MM-DD-<short-slug>.md`. Before its first run opens, a plan may be updated in place when it is already in that directory. After any run has opened for a plan, treat that path as immutable: write revisions to a new plan path and name the prior path under `Supersedes`. Use repo-relative paths only. Do not write elsewhere. If the user requests a canonical tracked implementation document, stop and route that to a separate documentation task; promotion is outside this skill.
 
 Inside a Git repository, add the root-anchored `/.design/` pattern to the repository's local Git exclude file when absent. Do not add it to tracked `.gitignore`:
 
@@ -105,7 +105,7 @@ fi &&
 
 If the local exclude cannot be updated, stop and report the failure. After writing a new plan in a Git repository, verify it is ignored with `git check-ignore -q <plan-path>`.
 
-There must be only one active Ready plan for a specification. When replacing a plan, link the previous path under `Supersedes` and make the replacement relationship explicit in the handoff.
+There must be only one active Ready plan for a specification. A Ready plan is active when no newer Ready plan names it under `Supersedes`. When replacing a plan, use a new path, link the prior path under `Supersedes`, and make the replacement relationship explicit in the handoff. Never change an executing plan merely to mark it superseded.
 
 For small mechanical work, simplify the template while preserving Lineage, Goal, Acceptance Criteria, Execution Milestones, Acceptance Criteria Coverage, Documentation Impact, Verification, and Handoff. Every plan still uses `### M<n>:` and globally unique `#### T<n>:` headings. Every milestone needs at least one task, a verification gate, and a checkpoint; every task needs `Scope`, `Outcome`, and `Verification`. For substantial work, use:
 
@@ -146,9 +146,9 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 
 ### M1: <Milestone outcome>
 
-- Acceptance criteria: <AC subset>
+- Acceptance criteria: <AC subset; all ACs when this is the final milestone>
 - Depends on: <milestone IDs or None>
-- Verification gate: <focused commands and expected results>
+- Verification gate: <focused commands and expected results; full integrated checks for the final milestone>
 - Checkpoint: <durable state or logical verified commit expected at the boundary>
 
 #### T1: <Behavioral task outcome>
@@ -156,12 +156,6 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 - Scope: <relevant areas, not an exact diff>
 - Outcome: <observable behavior or artifact>
 - Verification: <focused check>
-
-### M<N>: Integrated verification and handoff
-
-- Acceptance criteria: <all criteria>
-- Depends on: <all implementation milestones>
-- Verification gate: <full deterministic, integration, manual, and documentation checks>
 
 ## Acceptance Criteria Coverage
 
@@ -182,7 +176,7 @@ For small mechanical work, simplify the template while preserving Lineage, Goal,
 
 Copy acceptance criteria faithfully from the source specification so the plan remains a self-contained handoff. If implementation research proves a criterion incorrect or unverifiable, repair the specification instead of silently rewriting it in the plan.
 
-Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. Default to one implementation milestone plus integrated verification. Add milestones only for real dependency boundaries, distinct subsystems, or independently verifiable outcomes. Use enough task packets that each remains a bounded main-session behavior slice. Combine tasks when separating them would add transition overhead without creating an independently testable result; split tasks when they contain multiple outcomes, independently verifiable ownership seams, or several major implementation concerns. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
+Every plan must include `Execution Milestones` using stable `M<n>` and globally unique `T<n>` IDs. List milestones in execution order and allow dependencies to reference only earlier milestones. Default to one implementation milestone whose gate also performs integrated verification. Add milestones only for real dependency boundaries, distinct subsystems, or independently verifiable outcomes. Use enough task packets that each remains a bounded main-session behavior slice. Combine tasks when separating them would add transition overhead without creating an independently testable result; split tasks when they contain multiple outcomes, independently verifiable ownership seams, or several major implementation concerns. Split a milestone when it spans unrelated subsystems, cannot name one bounded verification gate, or would require an agent to repeatedly choose among several major workstreams.
 
 Each milestone must:
 
@@ -192,7 +186,7 @@ Each milestone must:
 - end in a deterministic gate and a durable checkpoint;
 - support terminal `done`, `blocked`, or `failed` reporting without implying the whole plan is complete.
 
-The final milestone must run integrated verification, audit all acceptance criteria, update required tracked documentation, and distinguish unavailable environment evidence from a pass. For small mechanical work, use one implementation milestone plus the final gate, or collapse them when the same focused checks prove the entire plan.
+The final implementation milestone must own all acceptance criteria for the final audit. Its tasks must include any remaining implementation or tracked documentation work, and its gate must run integrated verification and distinguish unavailable environment evidence from a pass. Do not create a taskless final milestone or a task whose only outcome is rerunning the gate. For small mechanical work, use one milestone whose focused gate also proves the complete plan.
 
 Plan quality rules:
 
@@ -218,7 +212,7 @@ node <helper> validate \
   --plan .design/plans/YYYY-MM-DD-<short-slug>.md
 ```
 
-The validator must report `status: "Ready"` and the expected criteria, milestone dependencies, and task counts. Repair any failure before handoff. This deterministic check proves the plan matches the executor's structural contract; it does not replace semantic review against the source specification.
+The validator must report `status: "Ready"` and the expected criteria, milestone dependencies, and task counts. It also requires the final milestone to own every acceptance criterion for its integrated audit. Repair any failure before handoff. This deterministic check proves the plan matches the executor's structural contract; it does not replace semantic review against the source specification.
 
 A validated plan supports one direct bounded advancement:
 

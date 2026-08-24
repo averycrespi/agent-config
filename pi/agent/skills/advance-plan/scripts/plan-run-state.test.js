@@ -57,7 +57,7 @@ const PLAN = `# Example Plan
 
 ### M2: Integration
 
-- Acceptance criteria: AC-2, AC-3
+- Acceptance criteria: AC-1, AC-2, AC-3
 - Depends on: M1
 - Verification gate: npm test passes
 - Checkpoint: Commit the integrated behavior.
@@ -114,7 +114,7 @@ test("parsePlan returns ordered milestones, tasks, criteria, and dependencies", 
       {
         id: "M2",
         title: "Integration",
-        criteria: ["AC-2", "AC-3"],
+        criteria: ["AC-1", "AC-2", "AC-3"],
         dependencies: ["M1"],
       },
     ],
@@ -144,8 +144,11 @@ test("parsePlan requires a Ready plan and rejects invalid milestone graphs", () 
   const missingDependency = PLAN.replace("Depends on: M1", "Depends on: M9");
   assert.throws(() => parsePlan(missingDependency), /unknown milestone M9/);
 
-  const cycle = PLAN.replace("Depends on: None", "Depends on: M2");
-  assert.throws(() => parsePlan(cycle), /dependency cycle/);
+  const outOfOrder = PLAN.replace("Depends on: None", "Depends on: M2");
+  assert.throws(
+    () => parsePlan(outOfOrder),
+    /M1 depends on later milestone M2/,
+  );
 
   const noCheckpoint = PLAN.replace(
     "- Checkpoint: Commit the verified foundation.\n",
@@ -155,6 +158,15 @@ test("parsePlan requires a Ready plan and rejects invalid milestone graphs", () 
 
   const noTasks = PLAN.replace(/#### T1:[\s\S]*?(?=\n### M2:)/, "");
   assert.throws(() => parsePlan(noTasks), /M1 has no tasks/);
+
+  const incompleteFinalAudit = PLAN.replace(
+    "Acceptance criteria: AC-1, AC-2, AC-3",
+    "Acceptance criteria: AC-2, AC-3",
+  );
+  assert.throws(
+    () => parsePlan(incompleteFinalAudit),
+    /M2 final audit is missing acceptance criteria: AC-1/,
+  );
 });
 
 test("validatePlan reports the consumer-facing execution contract", async () => {
@@ -299,13 +311,21 @@ test("openRun refuses plan drift instead of silently starting another run", asyn
     opened.candidates.map((candidate) => candidate.runDir),
     [runDir],
   );
+  await assert.rejects(
+    initializeRun({
+      cwd,
+      planPath: ".design/plans/example.md",
+      runId: "run-2",
+    }),
+    /new superseding plan path/,
+  );
 });
 
 test("openRun reports a completed run instead of creating another", async () => {
   const { cwd, runDir } = await fixture();
   for (const [milestoneId, taskId, criteria] of [
     ["M1", "T1", ["AC-1"]],
-    ["M2", "T2", ["AC-2", "AC-3"]],
+    ["M2", "T2", ["AC-1", "AC-2", "AC-3"]],
   ]) {
     await startMilestone({ runDir, milestoneId });
     await startPlanTask({ runDir, taskId });
@@ -313,13 +333,22 @@ test("openRun reports a completed run instead of creating another", async () => 
       runDir,
       milestoneId,
       taskId,
-      criteria,
+      criteria: [],
       kind: "command",
       summary: `${taskId} passed.`,
       command: `npm test -- ${taskId}`,
       exitCode: 0,
     });
     await completeTask({ runDir, taskId });
+    await addEvidence({
+      runDir,
+      milestoneId,
+      criteria,
+      kind: "command",
+      summary: `${milestoneId} gate passed.`,
+      command: `npm test -- ${milestoneId}`,
+      exitCode: 0,
+    });
     await completeMilestone({ runDir, milestoneId });
   }
 
@@ -489,7 +518,7 @@ test("legacy profile metadata remains readable and is not extended", async () =>
   assert.equal(restored.milestones.M1.tasks.T1.attempts, 2);
 });
 
-test("a milestone completes only with completed tasks and criterion evidence", async () => {
+test("a milestone completes only with completed tasks and gate criterion evidence", async () => {
   const { runDir } = await fixture();
 
   await assert.rejects(
@@ -520,12 +549,23 @@ test("a milestone completes only with completed tasks and criterion evidence", a
     }),
     /has no evidence for its current attempt/,
   );
+  await assert.rejects(
+    addEvidence({
+      runDir,
+      milestoneId: "M1",
+      criteria: ["AC-1"],
+      kind: "inspection",
+      summary: "Premature gate claim.",
+      now: "2026-08-22T12:03:00.000Z",
+    }),
+    /Gate evidence requires all milestone tasks to be done/,
+  );
 
   await addEvidence({
     runDir,
     milestoneId: "M1",
     taskId: "T1",
-    criteria: ["AC-1"],
+    criteria: [],
     kind: "command",
     summary: "State tests passed.",
     command: "npm test -- state",
@@ -537,10 +577,28 @@ test("a milestone completes only with completed tasks and criterion evidence", a
     taskId: "T1",
     now: "2026-08-22T12:05:00.000Z",
   });
+  await assert.rejects(
+    completeMilestone({
+      runDir,
+      milestoneId: "M1",
+      now: "2026-08-22T12:06:00.000Z",
+    }),
+    /has no gate evidence/,
+  );
+  await addEvidence({
+    runDir,
+    milestoneId: "M1",
+    criteria: ["AC-1"],
+    kind: "command",
+    summary: "Foundation gate passed.",
+    command: "npm test -- foundation",
+    exitCode: 0,
+    now: "2026-08-22T12:07:00.000Z",
+  });
   const completed = await completeMilestone({
     runDir,
     milestoneId: "M1",
-    now: "2026-08-22T12:06:00.000Z",
+    now: "2026-08-22T12:08:00.000Z",
   });
 
   assert.equal(completed.milestones.M1.status, "done");
@@ -555,8 +613,14 @@ test("a milestone completes only with completed tasks and criterion evidence", a
   const evidence = JSON.parse(
     await readFile(join(runDir, "evidence", "M1.json"), "utf8"),
   );
-  assert.equal(evidence.entries.length, 1);
-  assert.equal(evidence.entries[0].exitCode, 0);
+  assert.equal(evidence.entries.length, 2);
+  assert.deepEqual(
+    evidence.entries.map(({ taskId, criteria }) => ({ taskId, criteria })),
+    [
+      { taskId: "T1", criteria: [] },
+      { taskId: null, criteria: ["AC-1"] },
+    ],
+  );
 });
 
 test("failed command evidence prevents task completion in the current attempt", async () => {

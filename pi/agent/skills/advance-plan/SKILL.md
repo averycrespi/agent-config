@@ -16,7 +16,7 @@ This skill is goal-agnostic. It does not read, complete, yield, renew, or otherw
 
 ## Core contract
 
-- The plan under `.design/plans/` is immutable execution intent.
+- Once a run opens, its plan under `.design/plans/` is immutable execution intent. Revisions require a new superseding plan path.
 - `state.json` is authoritative for run, milestone, and task status.
 - `evidence/<milestone>.json` is authoritative for acceptance evidence.
 - `decisions.jsonl` records consequential implementation rulings.
@@ -64,7 +64,7 @@ Handle its structured `action` exactly:
 - `created` or `resumed`: use the returned `runDir`, run status, `next` step, and attempt counts.
 - `complete`: report whole-plan completion and stop.
 - `ambiguous`: stop and require an explicit `--run`; never choose a candidate.
-- `drifted`: stop and require explicit new-run initialization or migration.
+- `drifted`: stop and require a new superseding plan path or explicit state migration; never initialize another run from changed content at the same plan path.
 - `invalid`: stop and report the checkout-lineage or state error.
 
 For an explicit run, inspect state and plan drift:
@@ -137,21 +137,20 @@ After implementation, inspect the complete task delta, reject unrelated or prote
 
 ### Evidence and completion
 
-Record only bounded evidence established by the main session and mapped to acceptance criteria:
+Record only bounded evidence established by the main session. Task evidence proves the task outcome and does not need to claim acceptance-criterion coverage:
 
 ```bash
 node <helper> evidence-add \
   --run <run-dir> \
   --milestone M1 \
   --task T1 \
-  --criteria AC-1,AC-2 \
   --kind command \
   --summary "Focused tests passed: 12 tests" \
   --command "npm test -- state" \
   --exit-code 0
 ```
 
-Other evidence kinds are `artifact`, `inspection`, and `manual`. Use `--path` for relevant repository artifacts. Never paste raw logs, secrets, large diffs, or command output into evidence. Expected red-phase test failures are not acceptance evidence.
+Other evidence kinds are `artifact`, `inspection`, and `manual`. Use `--path` for relevant repository artifacts. Task evidence may optionally name criteria when it directly proves them, but milestone gates own final criterion coverage. Never paste raw logs, secrets, large diffs, or command output into evidence. Expected red-phase test failures are not acceptance evidence.
 
 After recording evidence, create one logical verified checkpoint commit for the completed task when it changed files. Inspect the staged diff, stage only task-owned files by name, follow repository commit-message policy, and never include run artifacts, unrelated changes, or likely secrets. Never create an empty commit and never push. If a commit hook fails, diagnose and repair the task within the bounded repair process; never bypass the hook or mark the task complete without the required checkpoint.
 
@@ -175,7 +174,7 @@ node <helper> milestone-start --run <run-dir> --milestone M1
 
 1. Run the milestone verification gate exactly as planned.
 2. Run relevant repository-required checks.
-3. Record gate evidence covering every criterion owned by the milestone.
+3. After all milestone tasks are done, record gate evidence covering every criterion owned by the milestone. Never pre-record gate evidence before the integrated gate runs.
 4. Inspect the integrated milestone diff and documentation impact in the main session, including all task checkpoint commits since the milestone began.
 5. Do not invoke an independent reviewer by default. When the plan, repository instructions, or user explicitly requires one, run it once against the integrated milestone after deterministic gates pass. Evaluate findings and repair confirmed issues through the bounded gate-repair process.
 6. If gate verification or repair changed files after the task checkpoints, create one logical verified gate-repair commit. Inspect the staged diff, stage only gate-owned files by name, and never create an empty commit or push. Do not create a ceremonial milestone commit when the gate changed no files.
@@ -200,7 +199,7 @@ Complete the milestone:
 node <helper> milestone-complete --run <run-dir> --milestone M1
 ```
 
-The helper rejects completion while tasks are incomplete, current-attempt command evidence is failing, or acceptance criteria lack evidence. After completion, stop. Report the next step or whole-plan completion without starting another milestone.
+The helper rejects completion while tasks are incomplete, current-attempt gate command evidence is failing, gate evidence is absent, or the gate evidence does not cover every criterion owned by the milestone. Task evidence alone cannot settle a gate. After completion, stop. Report the next step or whole-plan completion without starting another milestone.
 
 ## 4. Decisions, failures, and bounded repair
 
@@ -286,8 +285,8 @@ The helper:
 - permits one running milestone and one running task;
 - returns an explicit task-or-gate next-step discriminator;
 - starts only the first dependency-ready milestone in plan order;
-- requires current-attempt evidence before task completion;
-- requires criterion evidence before milestone completion;
+- requires current-attempt task evidence before task completion;
+- accepts gate evidence only after all milestone tasks are done and requires it to cover every owned criterion before milestone completion;
 - bounds evidence and validates legacy profile histories when resuming older runs;
 - records decisions append-only;
 - records but never executes evidence command strings.

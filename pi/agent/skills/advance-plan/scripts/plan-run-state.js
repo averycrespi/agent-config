@@ -257,7 +257,10 @@ export function parsePlan(markdown) {
   }
 
   const knownCriteria = new Set(acceptanceCriteria);
-  for (const milestone of milestones) {
+  const milestonePositions = new Map(
+    milestones.map((milestone, index) => [milestone.id, index]),
+  );
+  for (const [milestoneIndex, milestone] of milestones.entries()) {
     if (milestone.criteria.length === 0) {
       throw new Error(`${milestone.id} has no acceptance criteria`);
     }
@@ -294,6 +297,11 @@ export function parsePlan(markdown) {
       if (dependency === milestone.id) {
         throw new Error(`Milestone dependency cycle includes ${milestone.id}`);
       }
+      if (milestonePositions.get(dependency) >= milestoneIndex) {
+        throw new Error(
+          `${milestone.id} depends on later milestone ${dependency}`,
+        );
+      }
     }
   }
 
@@ -306,6 +314,15 @@ export function parsePlan(markdown) {
   if (uncovered.length > 0) {
     throw new Error(
       `Acceptance criteria lack milestone ownership: ${uncovered.join(", ")}`,
+    );
+  }
+  const finalMilestone = milestones.at(-1);
+  const missingFromFinalAudit = acceptanceCriteria.filter(
+    (criterion) => !finalMilestone.criteria.includes(criterion),
+  );
+  if (missingFromFinalAudit.length > 0) {
+    throw new Error(
+      `${finalMilestone.id} final audit is missing acceptance criteria: ${missingFromFinalAudit.join(", ")}`,
     );
   }
   assertAcyclic(milestones);
@@ -501,6 +518,8 @@ export async function initializeRun({ cwd, planPath, runId, now } = {}) {
   const location = await assertPlanPath(cwd ?? process.cwd(), planPath);
   const content = await readFile(location.absolutePlan, "utf8");
   const parsed = parsePlan(content);
+  const planPathKey = location.relativePlan.split("\\").join("/");
+  const planFingerprint = fingerprint(content);
   const createdAt = timestamp(now);
   const runsRoot = await canonicalRunsRoot(location.root, true);
   const slugDir = join(runsRoot, safeSlug(location.relativePlan));
@@ -509,6 +528,24 @@ export async function initializeRun({ cwd, planPath, runId, now } = {}) {
     throw new Error(
       "Run directory must not escape the workspace through a symlink",
     );
+  }
+  const existingEntries = await readdir(slugDir, { withFileTypes: true });
+  for (const entry of existingEntries) {
+    if (
+      !RUN_ID.test(entry.name) ||
+      (!entry.isDirectory() && !entry.isSymbolicLink())
+    ) {
+      continue;
+    }
+    const existing = await readRun(join(slugDir, entry.name));
+    if (
+      existing.planPath === planPathKey &&
+      existing.planFingerprint !== planFingerprint
+    ) {
+      throw new Error(
+        "A run already exists for different content at this plan path; create a new superseding plan path",
+      );
+    }
   }
   const runDir = join(slugDir, runId);
   await mkdir(runDir);
@@ -521,8 +558,8 @@ export async function initializeRun({ cwd, planPath, runId, now } = {}) {
   const state = {
     schemaVersion: 1,
     runId,
-    planPath: location.relativePlan.split("\\").join("/"),
-    planFingerprint: fingerprint(content),
+    planPath: planPathKey,
+    planFingerprint,
     baseCommit: await gitHead(location.root),
     status: "pending",
     currentMilestone: null,
@@ -717,7 +754,7 @@ async function assertCurrentPlan(runDir, state) {
   const content = await readFile(location.absolutePlan, "utf8");
   if (fingerprint(content) !== state.planFingerprint) {
     throw new Error(
-      "Plan fingerprint changed; start a new run or explicitly migrate state",
+      "Plan fingerprint changed; create a new superseding plan path or explicitly migrate state",
     );
   }
   return root;
@@ -1220,8 +1257,21 @@ export async function addEvidence({
         throw new Error(`${taskId} is not the running task`);
       }
     }
-    if (!Array.isArray(criteria) || criteria.length === 0) {
-      throw new Error("Evidence must name at least one acceptance criterion");
+    if (
+      !task &&
+      milestone.taskOrder.some(
+        (milestoneTaskId) => milestone.tasks[milestoneTaskId].status !== "done",
+      )
+    ) {
+      throw new Error("Gate evidence requires all milestone tasks to be done");
+    }
+    if (!Array.isArray(criteria)) {
+      throw new Error("Evidence criteria must be an array");
+    }
+    if (!task && criteria.length === 0) {
+      throw new Error(
+        "Gate evidence must name at least one acceptance criterion",
+      );
     }
     const normalizedCriteria = [...new Set(criteria)];
     for (const criterion of normalizedCriteria) {
@@ -1326,7 +1376,14 @@ export async function completeMilestone({ runDir, milestoneId, now }) {
       );
     }
     const evidence = await readEvidence(absoluteRunDir, milestone);
-    const entries = currentAttemptEvidence(evidence, milestone, null);
+    const entries = currentAttemptEvidence(evidence, milestone, null).filter(
+      (entry) => entry.taskId === null,
+    );
+    if (entries.length === 0) {
+      throw new Error(
+        `${milestoneId} has no gate evidence for its current attempt`,
+      );
+    }
     if (
       entries.some((entry) => entry.kind === "command" && entry.exitCode !== 0)
     ) {
@@ -1505,9 +1562,13 @@ async function cli() {
           runDir: required(flags, "run"),
           milestoneId: required(flags, "milestone"),
           taskId: flags.task,
-          criteria: required(flags, "criteria")
-            .split(",")
-            .map((item) => item.trim()),
+          criteria:
+            flags.criteria === undefined
+              ? []
+              : flags.criteria
+                  .split(",")
+                  .map((item) => item.trim())
+                  .filter(Boolean),
           kind: required(flags, "kind"),
           summary: required(flags, "summary"),
           command: flags.command,
