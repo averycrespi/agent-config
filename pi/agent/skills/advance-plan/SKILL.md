@@ -21,7 +21,7 @@ This skill is goal-agnostic. It does not read, complete, yield, renew, or otherw
 - `evidence/<milestone>.json` is authoritative for acceptance evidence.
 - `decisions.jsonl` records consequential implementation rulings.
 - Git commits are durable milestone checkpoints, not proof by themselves.
-- TODOs are tactical aids only and never replace run state.
+- Use TODOs to expose tactical progress for every task or gate that proceeds past preflight, but never let them replace run state.
 - The deterministic helper owns every run-state mutation. Never edit run artifacts manually.
 - Conversation claims, TODOs, commits, and subagent output never override helper state.
 
@@ -93,6 +93,14 @@ When resuming after an interrupted agent turn, inspect the current workspace and
 - If implementation is partial, inspect the observed state and resume it directly in the main session.
 - If task completion was already recorded, follow the helper's next step rather than repeating the task.
 - If a gate commit exists but milestone completion was interrupted, verify the commit and evidence before recording completion; do not create a duplicate checkpoint.
+
+### Tactical TODO visibility
+
+Once preflight identifies an actionable task or gate, create a TODO list before implementation or gate verification begins. Decompose only the current step into concrete remaining actions such as inspection, implementation, focused verification, evidence recording, and authoritative state settlement. Do not mirror future plan tasks or milestones in TODOs.
+
+Keep exactly one TODO `in_progress` and update each item immediately as work advances. On resume, reconstruct the list from helper state, workspace state, and recorded evidence rather than trusting stale TODO status. Keep the list visible while the step is active. After inspecting final helper status, mark the current tactical outcome and clear the list immediately before reporting the step outcome.
+
+TODOs remain observational aids: helper state selects work and determines completion, even when the TODO list disagrees.
 
 ## 2. Advance one task
 
