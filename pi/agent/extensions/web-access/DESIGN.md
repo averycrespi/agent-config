@@ -77,7 +77,8 @@ Important boundaries:
 
 - Only `github.com` URLs are parsed.
 - Repository size is checked through GitHub's public REST API; if unavailable, clone proceeds without the size precheck.
-- Clone commands use argument arrays, not shell strings.
+- Clone commands use argument arrays, not shell strings, and disable credential helpers and interactive prompts because this route supports public access only.
+- Clone subprocesses run in an isolated process group so timeout or cancellation terminates Git transport descendants as well as the direct child.
 - File trees skip common heavy/generated/binary directories and file extensions.
 - Blob URLs return direct file contents plus the clone path.
 

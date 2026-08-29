@@ -2,7 +2,7 @@
  * GitHub URL handling — shallow clone repos, return README + file tree + path.
  */
 
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   existsSync,
   readFileSync,
@@ -115,21 +115,82 @@ export function parseGitHubUrl(url: string): GitHubUrl | null {
   return result;
 }
 
-function exec(
+export function _exec(
   cmd: string,
   args: string[],
   options: { timeout?: number; cwd?: string; signal?: AbortSignal },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { timeout: options.timeout, cwd: options.cwd, signal: options.signal },
-      (err, stdout, stderr) => {
-        if (err) reject(new Error(stderr || err.message));
-        else resolve(stdout);
+    options.signal?.throwIfAborted();
+    const detached = process.platform !== "win32";
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    let spawnError: Error | undefined;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+    const child = spawn(cmd, args, {
+      cwd: options.cwd,
+      detached,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GCM_INTERACTIVE: "Never",
       },
-    );
+    });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      spawnError = error;
+    });
+    child.on("close", (code, signal) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      options.signal?.removeEventListener("abort", killProcessGroup);
+      if (timedOut) {
+        reject(new Error(`Command timed out after ${options.timeout}ms`));
+      } else if (options.signal?.aborted) {
+        reject(options.signal.reason);
+      } else if (spawnError) {
+        reject(spawnError);
+      } else if (code !== 0) {
+        reject(
+          new Error(
+            stderr ||
+              `Command exited with code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}`,
+          ),
+        );
+      } else {
+        resolve(stdout);
+      }
+    });
+
+    function killProcessGroup(): void {
+      if (!child.pid) return;
+      try {
+        if (detached) process.kill(-child.pid, "SIGKILL");
+        else child.kill("SIGKILL");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+          child.kill("SIGKILL");
+        }
+      }
+    }
+
+    options.signal?.addEventListener("abort", killProcessGroup, { once: true });
+    if (options.timeout !== undefined) {
+      timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        killProcessGroup();
+      }, options.timeout);
+      timeoutHandle.unref();
+    }
   });
 }
 
@@ -317,12 +378,23 @@ export async function fetchGitHub(
   // Clone if not already present
   if (!existsSync(join(clonePath, ".git"))) {
     const cloneUrl = `https://github.com/${gh.owner}/${gh.repo}.git`;
-    const cloneArgs = ["clone", "--depth", "1", "--single-branch"];
+    const cloneArgs = [
+      "-c",
+      "credential.interactive=never",
+      "-c",
+      "credential.helper=",
+      "-c",
+      "core.askPass=",
+      "clone",
+      "--depth",
+      "1",
+      "--single-branch",
+    ];
     if (gh.ref) {
       cloneArgs.push("--branch", gh.ref);
     }
     cloneArgs.push(cloneUrl, clonePath);
-    await exec("git", cloneArgs, {
+    await _exec("git", cloneArgs, {
       timeout: CLONE_TIMEOUT_MS,
       signal,
     });

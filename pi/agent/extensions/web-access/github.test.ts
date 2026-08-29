@@ -1,12 +1,40 @@
+import { execFileSync } from "node:child_process";
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import {
+  _exec,
   fetchGitHub,
   isGitHubRateLimitError,
   parseGitHubUrl,
 } from "./github.ts";
+
+function assertProcessStopped(pid: number): void {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    assert.equal((error as NodeJS.ErrnoException).code, "ESRCH");
+    return;
+  }
+
+  const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], {
+    encoding: "utf8",
+  }).trim();
+  assert.match(
+    state,
+    /^Z/,
+    `process ${pid} is still running in state ${state}`,
+  );
+}
 
 test("parseGitHubUrl returns null for non-URL input", () => {
   assert.equal(parseGitHubUrl("not a url"), null);
@@ -136,6 +164,107 @@ test("fetchGitHub rejects immediately when the signal is already aborted", async
       ),
     { name: "AbortError" },
   );
+});
+
+test("fetchGitHub disables interactive credential prompts for public clones", async () => {
+  const root = join(
+    "/tmp",
+    `pi-github-noninteractive-${process.pid}-${Date.now()}`,
+  );
+  const binDir = join(root, "bin");
+  const owner = "pi-test-owner";
+  const repo = "noninteractive-repo";
+  const cloneOwnerDir = join("/tmp/pi-github-repos", owner);
+  const oldPath = process.env.PATH;
+  await mkdir(binDir, { recursive: true });
+  await rm(cloneOwnerDir, { recursive: true, force: true });
+  await writeFile(
+    join(binDir, "git"),
+    `#!/bin/sh
+if [ "$GIT_TERMINAL_PROMPT" != "0" ] || [ "$GCM_INTERACTIVE" != "Never" ]; then
+  echo "interactive Git credential prompts are enabled" >&2
+  exit 42
+fi
+for destination do :; done
+mkdir -p "$destination/.git"
+printf 'readme' > "$destination/README.md"
+`,
+  );
+  await chmod(join(binDir, "git"), 0o700);
+  process.env.PATH = `${binDir}:${oldPath ?? ""}`;
+  mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(JSON.stringify({ size: 1 }), { status: 200 }),
+  );
+
+  try {
+    const result = await fetchGitHub({ owner, repo }, 10_000);
+    assert.match(result.text, /readme/);
+  } finally {
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+    await rm(cloneOwnerDir, { recursive: true, force: true });
+  }
+});
+
+test("Git command timeout terminates descendants without waiting for their pipes", async () => {
+  const root = join("/tmp", `pi-github-timeout-${process.pid}-${Date.now()}`);
+  const command = join(root, "hanging-git");
+  const childPidFile = join(root, "child.pid");
+  await mkdir(root, { recursive: true });
+  await writeFile(
+    command,
+    `#!/bin/sh
+sh -c 'trap "" TERM; echo $$ > "$1"; sleep 2' sh '${childPidFile}' &
+wait
+`,
+  );
+  await chmod(command, 0o700);
+
+  const startedAt = Date.now();
+  try {
+    await assert.rejects(() => _exec(command, [], { timeout: 100 }));
+    assert.ok(
+      Date.now() - startedAt < 1_000,
+      "timeout waited for an orphaned descendant to close its inherited pipes",
+    );
+    const childPid = Number.parseInt(await readFile(childPidFile, "utf8"), 10);
+    assertProcessStopped(childPid);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Git command cancellation terminates descendants", async () => {
+  const root = join("/tmp", `pi-github-abort-${process.pid}-${Date.now()}`);
+  const command = join(root, "hanging-git");
+  const childPidFile = join(root, "child.pid");
+  await mkdir(root, { recursive: true });
+  await writeFile(
+    command,
+    `#!/bin/sh
+sh -c 'trap "" TERM; echo $$ > "$1"; sleep 2' sh '${childPidFile}' &
+wait
+`,
+  );
+  await chmod(command, 0o700);
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const abortHandle = setTimeout(() => controller.abort(), 100);
+
+  try {
+    await assert.rejects(
+      () => _exec(command, [], { signal: controller.signal }),
+      { name: "AbortError" },
+    );
+    assert.ok(Date.now() - startedAt < 1_000);
+    const childPid = Number.parseInt(await readFile(childPidFile, "utf8"), 10);
+    assertProcessStopped(childPid);
+  } finally {
+    clearTimeout(abortHandle);
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("fetchGitHub rejects oversized repositories using public GitHub metadata", async () => {

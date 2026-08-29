@@ -43,7 +43,7 @@ Example:
 Routes by URL type:
 
 - **HTML pages** — local Readability extraction, optional local Playwright rendering, anonymous/keyed Jina Reader, then authenticated or keyless Exa MCP
-- **GitHub repos** — shallow-clones the repository and returns the README, file tree, and clone path for further exploration with Pi's built-in tools
+- **GitHub repos** — shallow-clones the public repository without interactive authentication and returns the README, file tree, and clone path for further exploration with Pi's built-in tools
 - **PDFs** — returns extracted text and page-count metadata
 
 The Playwright fallback requires Chromium installed for the repository's pinned `playwright-core` version. Run `make install-playwright` from the repository root. If Playwright or Chromium is unavailable, the extension continues to the hosted fallbacks.
@@ -80,7 +80,7 @@ Generic and PDF fetches accept only public HTTP(S) URLs without embedded credent
 
 Search queries and fallback fetch URLs are sent to the selected external provider. Exa MCP receives the configured Exa key in an `x-api-key` header; without one it uses the anonymous service. Anonymous Exa MCP and Jina Reader require no local credential but remain third-party services with changeable limits and privacy policies.
 
-GitHub rate-limit failures are returned as recoverable tool-result messages with a retry/backoff hint instead of being treated as unrecoverable extension failures.
+GitHub clones disable credential helpers and interactive terminal prompts. An unavailable or inaccessible repository fails without asking for GitHub credentials. GitHub rate-limit failures are returned as recoverable tool-result messages with a retry/backoff hint instead of being treated as unrecoverable extension failures.
 
 ## Temporary files
 
