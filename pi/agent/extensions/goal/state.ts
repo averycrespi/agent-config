@@ -83,7 +83,9 @@ function cloneGoal(goal: Goal, now?: () => number): Goal {
     usage.activeSince !== undefined &&
     now
   ) {
-    usage.activeElapsedMs += Math.max(0, now() - usage.activeSince);
+    const timestamp = now();
+    usage.activeElapsedMs += Math.max(0, timestamp - usage.activeSince);
+    usage.activeSince = timestamp;
   }
   return {
     ...goal,

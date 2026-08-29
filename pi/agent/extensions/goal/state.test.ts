@@ -316,6 +316,21 @@ test("goal store tracks active elapsed time and assistant token usage", () => {
   assert.equal(store.getGoal()?.usage?.activeElapsedMs, 5000);
 });
 
+test("persisted active-time snapshots do not recount elapsed time after restore", () => {
+  let now = 1000;
+  const original = createGoalStore(() => now);
+
+  original.setGoal("Measure usage", 100);
+  now = 4000;
+  const snapshot = original.getState();
+
+  now = 5000;
+  const restored = createGoalStore(() => now);
+  restored.replaceState(snapshot);
+
+  assert.equal(restored.getGoal()?.usage?.activeElapsedMs, 4000);
+});
+
 test("goal store adds nested tokens without incrementing assistant turns", () => {
   const store = createGoalStore(() => 1000);
 
