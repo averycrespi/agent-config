@@ -9,7 +9,7 @@ Advance one prepared `.ticket-run/state.json` through one bounded useful action.
 
 ## Authority
 
-- Plane is the canonical ticket contract and shared lifecycle authority.
+- Read `../plane/SKILL.md` completely before accessing Plane. Plane is the canonical ticket contract and shared lifecycle authority; the reference skill supplies no mutation authority.
 - The helper is the only local state writer. Send one JSON request on stdin and use `expectedRevision` for every mutation; never hand-edit state.
 - The current Pi session is the sole writer for repository changes, state, commits, and external mutations. Subagents may perform bounded read-only research or verification.
 - Loop is the only continuation scheduler. Do not create another scheduler, recursively invoke this skill, or use Loop yield for ticket execution.

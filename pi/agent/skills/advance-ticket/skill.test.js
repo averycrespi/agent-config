@@ -20,11 +20,37 @@ function frontmatter(markdown) {
   );
 }
 
-for (const name of ["shape-ticket", "dispatch-ticket", "advance-ticket"]) {
+for (const name of [
+  "plane",
+  "shape-ticket",
+  "dispatch-ticket",
+  "advance-ticket",
+]) {
   test(`${name} is a discoverable narrowly triggered skill`, async () => {
     const metadata = frontmatter(await readSkill(name));
     assert.equal(metadata.name, name);
     assert.match(metadata.description, /^Use when /);
+  });
+}
+
+test("plane centralizes safe access and organization conventions", async () => {
+  const skill = await readSkill("plane");
+  assert.match(skill, /mcp_search/);
+  assert.match(skill, /mcp_describe/);
+  assert.match(skill, /mcp_call/);
+  assert.match(skill, /Workspace/);
+  assert.match(skill, /Project/);
+  assert.match(skill, /Pages/);
+  assert.match(skill, /native relationships/i);
+  assert.match(skill, /nonbinding/i);
+  assert.match(skill, /Draft.*Ready.*In Progress.*Review.*Done/s);
+  assert.match(skill, /does not grant authority/i);
+});
+
+for (const name of ["shape-ticket", "dispatch-ticket", "advance-ticket"]) {
+  test(`${name} loads the shared Plane operating contract`, async () => {
+    const skill = await readSkill(name);
+    assert.match(skill, /Read `\.\.\/plane\/SKILL\.md` completely/);
   });
 }
 
