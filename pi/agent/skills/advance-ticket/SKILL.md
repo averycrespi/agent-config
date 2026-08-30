@@ -49,7 +49,15 @@ Run the ticket-required and repository-required checks, inspect the complete bas
 
 ### `publishing`
 
-Use broker-backed remote Git and GitHub operations. Push only the assigned branch. Create or update exactly one draft PR targeting the assigned target branch. Include ticket context, acceptance-criterion evidence, checks, known gaps, and the run ID. Reread the PR and require its head to equal local HEAD, then progress to `reviewing` with the draft PR URL and published commit.
+Before any remote write, run one fail-closed publication-safety gate:
+
+1. Require a clean working tree and reread the repository instructions.
+2. Inspect the complete outgoing commit range from the assigned base through HEAD, including every commit message, patch, and path; the final diff alone is insufficient because removed content remains in history.
+3. Draft the PR title and body, then invoke `github.run_secret_scanning` on bounded chunks of the outgoing patches and proposed PR metadata.
+4. Review the same outgoing evidence against repository guidance. For public repositories, check especially for private organizations, projects, teams, URLs, credentials, proprietary design material, tracked handoffs, local paths, personal data, and non-generic examples.
+5. Stop before push on any finding, unavailable or incomplete scan, oversized evidence, or uncertainty. If a secret is already committed, adding a removal commit is insufficient; block for explicit operator-controlled history repair.
+
+After the gate passes, use broker-backed remote Git and GitHub operations to push only the assigned branch and create or update exactly one draft PR targeting the assigned target branch. Use a public-safe summary of the outcome, acceptance criteria, implementation, checks, and known gaps. Never copy raw Plane URLs or comments, workspace identifiers, local paths, or run state into public PR metadata. Reread the PR and require its head to equal the unchanged local HEAD, then progress to `reviewing` with the draft PR URL and published commit.
 
 ### `reviewing`
 

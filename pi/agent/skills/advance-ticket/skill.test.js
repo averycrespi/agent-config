@@ -95,6 +95,11 @@ test("advance-ticket routes durable phases through Loop and independent review",
     assert.match(skill, new RegExp(`\\b${phase}\\b`));
   }
   assert.match(skill, /saved `review` workflow/);
+  assert.match(skill, /publication-safety gate/i);
+  assert.match(skill, /complete outgoing commit range/i);
+  assert.match(skill, /github\.run_secret_scanning/);
+  assert.match(skill, /public-safe summary/i);
+  assert.match(skill, /stop before push/i);
   assert.match(skill, /Loop is the only continuation scheduler/);
   assert.match(skill, /awaiting_human/);
 });
