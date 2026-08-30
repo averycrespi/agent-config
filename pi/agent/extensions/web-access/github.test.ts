@@ -26,9 +26,17 @@ function assertProcessStopped(pid: number): void {
     return;
   }
 
-  const state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], {
-    encoding: "utf8",
-  }).trim();
+  let state: string;
+  try {
+    state = execFileSync("ps", ["-o", "state=", "-p", String(pid)], {
+      encoding: "utf8",
+    }).trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException & { status?: number }).status === 1) {
+      return;
+    }
+    throw error;
+  }
   assert.match(
     state,
     /^Z/,

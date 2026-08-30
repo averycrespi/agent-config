@@ -88,6 +88,8 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 
 | Skill                     | Use when                                                                                               |
 | ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `advance-plan`            | Advancing one Ready plan by one resumable task or milestone gate with durable state and verification   |
+| `advance-ticket`          | Advancing one prepared Plane ticket run to an independently reviewed draft PR handoff                  |
 | `agent-engineering`       | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows       |
 | `architect`               | Designing a system or cross-cutting feature and decomposing it into bounded specifications             |
 | `challenge`               | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation |
@@ -96,16 +98,17 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `create-jira-ticket`      | Drafting and creating a Jira ticket via the `mcp-broker` extension's Atlassian namespace               |
 | `create-skill`            | Creating a new skill or updating an existing one                                                       |
 | `diagnose`                | Debugging bugs, failures, flaky behavior, regressions, or performance problems                         |
-| `advance-plan`            | Advancing one Ready plan by one resumable task or milestone gate with durable state and verification   |
+| `dispatch-ticket`         | Inspecting or explicitly operating one Plane ticket run, including dispatch, settlement, and cleanup   |
 | `frontend-design`         | Building web components, pages, or applications that need distinctive, production-grade frontends      |
 | `handoff`                 | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                   |
-| `spin-out`                | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask  |
 | `herdr`                   | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                 |
 | `plan`                    | Turning one Ready specification into one milestone-structured autonomous implementation plan           |
-| `playwright`              | Driving a browser for testing, form filling, screenshots, or data extraction                           |
+| `playwright`              | Driving a browser for testing, form filling, screenshots, and data extraction                          |
 | `review`                  | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings        |
+| `shape-ticket`            | Creating and explicitly approving Plane tickets for ticket-driven delivery                             |
 | `simplify`                | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes   |
 | `specify`                 | Defining one bounded feature or change as a behavioral contract with observable acceptance criteria    |
+| `spin-out`                | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask  |
 | `test-driven-development` | Implementing a feature or bugfix that involves writing meaningful application logic                    |
 | `wiki`                    | Maintaining a persistent markdown wiki from immutable source documents                                 |
 
@@ -113,6 +116,15 @@ Notes:
 
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
 - `clarify` resolves ambiguity and routes work without writing a design artifact. `architect` writes high-level designs under `.design/architectures/` and decomposes them into specifications. `specify` writes one bounded behavioral contract under `.design/specs/`, and `plan` turns one Ready specification into a milestone-structured `.design/plans/` handoff and emits a minimal optional `/goal` invocation. `advance-plan` makes exactly one resumable task-or-gate step while the main session owns implementation, authoritative run state, verification, decisions, evidence, and commits. A goal can call that goal-agnostic primitive once per turn and map its reported outcome to continuation, yield, or completion. `challenge` stress-tests material failure risks, the explicit-only `simplify` skill tests for unnecessary complexity, and `review` evaluates completed changes.
+- The minimal ticket-driven path uses Plane as the canonical contract: `shape-ticket` approves the exact Ready body, `dispatch-ticket` defaults to passive inspection and owns explicit run operations, and `advance-ticket` uses one ignored `.ticket-run/state.json` plus Loop to reach reviewed draft PR handoff. Merge, Plane completion/cancellation, and cleanup remain human-controlled. It intentionally has no queue, registry, controller, separate inspection skill, or multi-file ticket runtime.
 - Hidden `.design/` files are local workflow artifacts. Promote canonical architecture decisions and user-facing contracts into the repository's tracked documentation during implementation.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.
+
+## Ticket workflow migration
+
+The ticket workflow coexists with the legacy `.design` lifecycle during its pilot. Retire legacy skills only after representative runs have exercised interruption and resume, blocking, review repair, settlement, cancellation, and cleanup, and after every existing legacy run is complete or intentionally retired.
+
+Once those conditions hold, remove `architect`, `specify`, `plan`, `advance-plan`, and `create-jira-ticket`. Retain reusable capabilities including `clarify`, `challenge`, `review`, `test-driven-development`, `diagnose`, `herdr`, `handoff`, `simplify`, and explicit non-ticket `spin-out`.
+
+Before that retirement, simplify `clarify` into a research-first “grill me” workflow: investigate answerable context, ask focused user questions until material intent and decisions are clear, and return a concise clarified brief without creating design artifacts. Use it only when material ambiguity warrants clarification; it is not a required ticket phase or a source of delivery authority.
