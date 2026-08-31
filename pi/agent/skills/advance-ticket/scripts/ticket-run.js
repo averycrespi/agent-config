@@ -426,9 +426,19 @@ function applyProgress(state, request) {
     state.planSummary = cleanText(request.planSummary, "planSummary", 2000);
   }
   if (request.toPhase === "reviewing") {
+    const draftPrUrl = assertUrl(request.draftPrUrl, "draftPrUrl");
+    const publishedHead = assertSha(request.publishedHead, "publishedHead");
+    if (request.draftPrConfirmed !== true)
+      throw new Error("reviewing requires a confirmed draft PR");
+    if (request.draftPrHead !== publishedHead)
+      throw new Error("draft PR head must equal published head");
+    if (request.draftPrTargetBranch !== state.assignment.targetBranch)
+      throw new Error("draft PR target must equal assigned target branch");
+    if (request.draftPrSourceBranch !== state.assignment.branch)
+      throw new Error("draft PR source must equal assigned source branch");
     state.publication = {
-      draftPrUrl: assertUrl(request.draftPrUrl, "draftPrUrl"),
-      publishedHead: assertSha(request.publishedHead, "publishedHead"),
+      draftPrUrl,
+      publishedHead,
       reviewedHead: null,
       reviewOutcome: null,
       ciState: null,
@@ -479,17 +489,39 @@ function applyAction(state, request) {
       state.status = "blocked";
       state.stopReason = cleanText(request.reason, "reason", 1000);
       return;
+    case "record_review":
+      requireActive(state);
+      if (state.phase !== "reviewing")
+        throw new Error("record_review requires the reviewing phase");
+      if (request.reviewOutcome !== "pass")
+        throw new Error("record_review requires a passing review");
+      if (request.reviewedHead !== state.publication.publishedHead)
+        throw new Error("reviewed head must equal published head");
+      state.publication.reviewedHead = request.reviewedHead;
+      state.publication.reviewOutcome = "pass";
+      return;
     case "handoff":
       requireActive(state);
       if (state.phase !== "reviewing")
         throw new Error("handoff requires the reviewing phase");
+      if (
+        state.publication.reviewOutcome !== "pass" ||
+        state.publication.reviewedHead !== state.publication.publishedHead
+      ) {
+        throw new Error("handoff requires a recorded passing review");
+      }
       if (request.reviewOutcome !== "pass")
         throw new Error("handoff requires a passing review");
-      if (request.reviewedHead !== state.publication.publishedHead) {
+      if (request.reviewedHead !== state.publication.reviewedHead)
         throw new Error("reviewed head must equal published head");
-      }
-      if (!CI_STATES.has(request.ciState))
-        throw new Error("handoff requires a supported CI state");
+      if (request.ciState !== "pass")
+        throw new Error("handoff requires passing CI");
+      if (request.ciHead !== state.publication.publishedHead)
+        throw new Error("CI head must equal published head");
+      if (request.prReadyConfirmed !== true)
+        throw new Error("handoff requires a PR ready for review");
+      if (request.prReadyHead !== state.publication.publishedHead)
+        throw new Error("ready PR head must equal published head");
       if (request.planeReviewConfirmed !== true)
         throw new Error("handoff requires confirmed Plane Review state");
       state.publication.reviewedHead = assertSha(
@@ -589,6 +621,7 @@ async function runCli() {
       "checkpoint",
       "pause",
       "block",
+      "record_review",
       "handoff",
       "complete",
       "cancel",

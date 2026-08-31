@@ -100,6 +100,13 @@ test("advance-ticket routes durable phases through Loop and independent review",
   assert.match(skill, /github\.run_secret_scanning/);
   assert.match(skill, /public-safe summary/i);
   assert.match(skill, /stop before push/i);
+  assert.match(skill, /open draft[^\n]*assigned target branch/i);
+  assert.match(skill, /head branch is the assigned branch/i);
+  assert.match(skill, /helper `record_review`/i);
+  assert.match(skill, /CI[^\n]*published head/i);
+  assert.match(skill, /mark the draft PR ready for review/i);
+  assert.match(skill, /reread[^\n]*no longer a draft/i);
+  assert.match(skill, /passing CI/i);
   assert.match(skill, /Loop is the only continuation scheduler/);
   assert.match(skill, /awaiting_human/);
 });

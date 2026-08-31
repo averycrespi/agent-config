@@ -34,7 +34,7 @@ Resolve exactly one ticket identifier, URL, or run ID, then progressively inspec
 2. Matching `.ticket-run/state.json` in observed checkouts.
 3. Herdr worktree, workspace, pane, and worker presence.
 4. Assigned Git branch and HEAD.
-5. Draft PR, review, CI, and merge state when publication or settlement is relevant.
+5. PR draft/ready status, review, exact-head CI, and merge state when publication or settlement is relevant.
 6. Loop state only through the owning worker session when liveness is relevant.
 
 Correlate by Plane ticket ID and run ID first. Branches, paths, labels, and process presence are supporting evidence only. Stop on zero matches where one is required, multiple matches, conflicting identities, stale evidence, or malformed state.
@@ -46,7 +46,7 @@ Ticket and Plane state
 Run ID, status, phase, and revision
 Branch and HEAD
 Workspace and worker presence
-Draft PR, review, CI, and merge evidence when relevant
+PR draft/ready status, review, exact-head CI, and merge evidence when relevant
 Warnings and next safe operations
 ```
 
@@ -54,9 +54,9 @@ Inspection performs no focus, prompt, resume, state transition, external write, 
 
 ## Dispatch
 
-Require explicit `dispatch` authority and one Ready ticket whose current canonical contract body hashes to its exact approval marker. Hash only the approved title and description fields; Plane comments and workflow metadata are excluded. Require complete routing, satisfied blocking dependencies, and draft-PR promotion.
+Require explicit `dispatch` authority and one Ready ticket whose current canonical contract body hashes to its exact approval marker. Hash only the approved title and description fields; Plane comments and workflow metadata are excluded. Require complete routing, satisfied blocking dependencies, and the draft-to-review-ready PR promotion policy.
 
-1. Inspect for an existing claim, local state, worktree, branch, worker, or draft PR. An exact existing attempt routes to inspection or recovery; ambiguity stops. Only confirmed absence permits creation.
+1. Inspect for an existing claim, local state, worktree, branch, worker, or pull request. An exact existing attempt routes to inspection or recovery; ambiguity stops. Only confirmed absence permits creation.
 2. Run `herdr worktree list --cwd <repository-path>` and require one parent checkout whose configured remote matches `owner/repository`.
 3. Refresh the exact target branch through the authenticated broker-backed Git route and resolve its immutable commit SHA. Do not use the operator's current HEAD as the approved base.
 4. Derive `avery/<ticket-identifier>-<short-slug>` and `$HOME/worktrees/<repo-slug>/<normalized-full-branch>`. Refuse local or remote branch collisions and occupied paths.
@@ -92,7 +92,7 @@ Require explicit `resume` authority, exact run correlation, current ticket contr
 
 ## Settle
 
-Require explicit `settle` authority and local `awaiting_human` state. Verify through GitHub that a human merged the draft PR and that the merged head equals both the published and independently reviewed head.
+Require explicit `settle` authority and local `awaiting_human` state. Verify through GitHub that a human merged the review-ready PR and that the merged head equals both the published and independently reviewed head.
 
 1. Move Plane to Done and reread confirmation.
 2. Invoke helper `complete` with the merged head and confirmed Plane evidence.

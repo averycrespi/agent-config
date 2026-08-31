@@ -1,6 +1,6 @@
 ---
 name: advance-ticket
-description: Use when advancing one prepared Plane ticket run through planning, implementation, verification, draft PR publication, independent review, and human handoff.
+description: Use when advancing one prepared Plane ticket run through planning, implementation, verification, draft PR publication, independent review, CI, ready-for-review promotion, and human handoff.
 ---
 
 # Advance Ticket
@@ -57,17 +57,19 @@ Before any remote write, run one fail-closed publication-safety gate:
 4. Review the same outgoing evidence against repository guidance. For public repositories, check especially for private organizations, projects, teams, URLs, credentials, proprietary design material, tracked handoffs, local paths, personal data, and non-generic examples.
 5. Stop before push on any finding, unavailable or incomplete scan, oversized evidence, or uncertainty. If a secret is already committed, adding a removal commit is insufficient; block for explicit operator-controlled history repair.
 
-After the gate passes, use broker-backed remote Git and GitHub operations to push only the assigned branch and create or update exactly one draft PR targeting the assigned target branch. Use a public-safe summary of the outcome, acceptance criteria, implementation, checks, and known gaps. Never copy raw Plane URLs or comments, workspace identifiers, local paths, or run state into public PR metadata. Reread the PR and require its head to equal the unchanged local HEAD, then progress to `reviewing` with the draft PR URL and published commit.
+After the gate passes, use broker-backed remote Git and GitHub operations to push only the assigned branch and create or update exactly one draft PR targeting the assigned target branch. Use a public-safe summary of the outcome, acceptance criteria, implementation, checks, and known gaps. Never copy raw Plane URLs or comments, workspace identifiers, local paths, or run state into public PR metadata. Reread and require one open draft PR whose head equals the unchanged local HEAD, whose head branch is the assigned branch, and whose base is the assigned target branch, then progress to `reviewing` with the draft PR URL, published commit, and confirmed draft/head/source/target evidence.
 
 ### `reviewing`
 
 Prepare the published base-to-HEAD evidence and invoke the saved `review` workflow once for the current head. Treat its report as authoritative.
 
 - For confirmed blocking findings, progress back to `implementing`; any changed HEAD must pass full verification, publication, and review again.
-- For an incomplete review, unresolved framework failure, or uncertain external comment state, block with the exact recovery condition.
-- For a passing review, confirm the reviewed head equals the published head. Known failing CI blocks handoff; pending or unavailable CI must be disclosed.
+- For an incomplete review, unresolved framework failure, needs-human finding, or material evidence gap, block with the exact recovery condition.
+- Treat only a report with no material findings as passing review, confirm the reviewed head equals the published head, and invoke helper `record_review` to persist that exact-head outcome. After interruption, reuse only the recorded passing review for the unchanged published head; do not rerun it.
 
-Move Plane to Review and reread confirmation before invoking helper `handoff`. A successful handoff records the reviewed head, review outcome, CI state, and `awaiting_human`, then stops Loop. The worker never settles the run itself.
+After review passes, inspect CI through broker-discovered GitHub operations. Require all required checks to pass for the PR's current head and require that CI head to equal the published head. A pending check remains in `reviewing` with a checkpoint; unavailable or ambiguous CI blocks with an exact recovery condition. For failed CI, inspect the failure and either progress to `implementing` for a bounded repair or block when it is external or not safely repairable. Never hand off with pending, unavailable, ambiguous, or failing CI.
+
+After review and CI pass for the same published head, mark the draft PR ready for review through a broker-discovered GitHub operation. Reread the PR and require that it is open, no longer a draft, still uses the assigned source and target branches, and still has the published head. Then move Plane to Review and reread confirmation. Invoke helper `handoff` with the reviewed head, `ciState: "pass"`, the exact CI head, ready-for-review confirmation and head, and confirmed Plane Review state. A successful handoff records the reviewed head, passing CI state, and `awaiting_human`, then stops Loop. The worker never merges or settles the run itself.
 
 ## Loop composition
 

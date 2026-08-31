@@ -10,7 +10,7 @@ Shape one independently deliverable Plane ticket. Plane is the canonical contrac
 ## Boundaries
 
 - Read `../plane/SKILL.md` completely before accessing Plane; follow its shared organization, trust, identity, and write-confirmation contract.
-- Ready authorizes implementation through an independently reviewed draft pull request, not merge, deploy, Plane completion or cancellation, cleanup, or destructive work.
+- Ready authorizes implementation through an independently reviewed, CI-passing pull request promoted to ready for review, not merge, deploy, Plane completion or cancellation, cleanup, or destructive work.
 
 ## Minimum contract
 
@@ -21,7 +21,7 @@ Require the ticket body to settle:
 - **Repository:** GitHub-style `owner/repository` identity.
 - **Target branch:** the approved base branch.
 - **Verification:** repository-required checks and any ticket-specific evidence.
-- **Promotion:** `Draft pull request`.
+- **Promotion:** `Draft pull request, promoted after independent review and exact-head CI pass`.
 - **Constraints and out of scope:** only when material.
 
 Record dependencies through Plane relationships rather than copying their status into prose. A ticket cannot become Ready while a blocking dependency is incomplete.
@@ -40,7 +40,7 @@ Record dependencies through Plane relationships rather than copying their status
 Before Ready, verify semantically that:
 
 - the outcome and every acceptance criterion are complete and unambiguous;
-- repository, target branch, verification, and draft-PR promotion are explicit;
+- repository, target branch, verification, and PR promotion policy are explicit;
 - all blocking dependencies are Done;
 - the work fits one proportional implementation effort; and
 - no unresolved decision can materially change delivery.

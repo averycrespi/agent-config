@@ -131,11 +131,57 @@ test("advances the minimal delivery lifecycle with expected revisions", async (t
   for (const toPhase of ["verifying", "publishing"]) {
     state = await mutate(root, { action: "progress", toPhase });
   }
+  for (const [evidence, error] of [
+    [{}, /confirmed draft PR/],
+    [
+      {
+        draftPrConfirmed: true,
+        draftPrHead: "d".repeat(40),
+        draftPrTargetBranch: "main",
+        draftPrSourceBranch: "avery/abc-123-example",
+      },
+      /draft PR head/,
+    ],
+    [
+      {
+        draftPrConfirmed: true,
+        draftPrHead: "c".repeat(40),
+        draftPrTargetBranch: "other",
+        draftPrSourceBranch: "avery/abc-123-example",
+      },
+      /assigned target branch/,
+    ],
+    [
+      {
+        draftPrConfirmed: true,
+        draftPrHead: "c".repeat(40),
+        draftPrTargetBranch: "main",
+        draftPrSourceBranch: "other",
+      },
+      /assigned source branch/,
+    ],
+  ]) {
+    await assert.rejects(
+      mutate(root, {
+        action: "progress",
+        toPhase: "reviewing",
+        draftPrUrl: "https://github.com/example/project/pull/42",
+        publishedHead: "c".repeat(40),
+        ...evidence,
+      }),
+      error,
+    );
+  }
+
   state = await mutate(root, {
     action: "progress",
     toPhase: "reviewing",
     draftPrUrl: "https://github.com/example/project/pull/42",
     publishedHead: "c".repeat(40),
+    draftPrConfirmed: true,
+    draftPrHead: "c".repeat(40),
+    draftPrTargetBranch: "main",
+    draftPrSourceBranch: "avery/abc-123-example",
   });
 
   assert.equal(state.phase, "reviewing");
@@ -211,7 +257,7 @@ test("rejects stale or invalid transitions without changing state bytes", async 
   assert.equal(await readFile(statePath, "utf8"), before);
 });
 
-test("requires reviewed current-head evidence for handoff and merge evidence for completion", async (t) => {
+test("requires reviewed, CI-passing, review-ready current-head evidence for handoff", async (t) => {
   const root = await repository(t);
   await initializeTicketRun({ cwd: root, runId: "run-123", ...assignment() });
   await mutate(root, { action: "activate" });
@@ -227,28 +273,72 @@ test("requires reviewed current-head evidence for handoff and merge evidence for
     toPhase: "reviewing",
     draftPrUrl: "https://github.com/example/project/pull/42",
     publishedHead: "c".repeat(40),
+    draftPrConfirmed: true,
+    draftPrHead: "c".repeat(40),
+    draftPrTargetBranch: "main",
+    draftPrSourceBranch: "avery/abc-123-example",
   });
 
   let state = await readTicketRun({ cwd: root });
+  const statePath = join(root, ".ticket-run", "state.json");
+  const currentHeadEvidence = {
+    reviewedHead: "c".repeat(40),
+    reviewOutcome: "pass",
+    ciState: "pass",
+    ciHead: "c".repeat(40),
+    prReadyConfirmed: true,
+    prReadyHead: "c".repeat(40),
+    planeReviewConfirmed: true,
+  };
+
   await assert.rejects(
     applyTicketRunAction({
       cwd: root,
       action: "handoff",
       expectedRevision: state.revision,
+      ...currentHeadEvidence,
+    }),
+    /recorded passing review/,
+  );
+  await assert.rejects(
+    mutate(root, {
+      action: "record_review",
       reviewedHead: "d".repeat(40),
       reviewOutcome: "pass",
-      ciState: "pass",
-      planeReviewConfirmed: true,
     }),
     /reviewed head must equal published head/,
   );
+  state = await mutate(root, {
+    action: "record_review",
+    reviewedHead: "c".repeat(40),
+    reviewOutcome: "pass",
+  });
+  assert.equal(state.publication.reviewedHead, "c".repeat(40));
+  const before = await readFile(statePath, "utf8");
+
+  for (const [overrides, error] of [
+    [{ reviewedHead: "d".repeat(40) }, /reviewed head/],
+    [{ ciState: "pending" }, /passing CI/],
+    [{ ciHead: "d".repeat(40) }, /CI head/],
+    [{ prReadyConfirmed: false }, /ready for review/],
+    [{ prReadyHead: "d".repeat(40) }, /ready PR head/],
+  ]) {
+    await assert.rejects(
+      applyTicketRunAction({
+        cwd: root,
+        action: "handoff",
+        expectedRevision: state.revision,
+        ...currentHeadEvidence,
+        ...overrides,
+      }),
+      error,
+    );
+    assert.equal(await readFile(statePath, "utf8"), before);
+  }
 
   state = await mutate(root, {
     action: "handoff",
-    reviewedHead: "c".repeat(40),
-    reviewOutcome: "pass",
-    ciState: "pass",
-    planeReviewConfirmed: true,
+    ...currentHeadEvidence,
   });
   assert.equal(state.status, "awaiting_human");
   assert.deepEqual(state.nextAction, { action: "await_human" });

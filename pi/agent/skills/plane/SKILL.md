@@ -75,7 +75,7 @@ Draft → Ready → In Progress → Review → Done
 ```
 
 - **Draft:** the contract may still change.
-- **Ready:** the exact contract received explicit approval for implementation through reviewed draft-PR handoff.
+- **Ready:** the exact contract received explicit approval for implementation through independently reviewed, CI-passing, review-ready PR handoff.
 - **In Progress:** one claimed run is executing or paused for recovery.
 - **Review:** implementation reached independently reviewed human handoff.
 - **Done:** a human merge and settlement were confirmed.
