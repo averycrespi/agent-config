@@ -68,6 +68,8 @@ make typecheck        # run TypeScript checks
 make test             # run unit tests
 ```
 
+GitHub Actions runs these checks for pull requests and pushes to `main`.
+
 ## Companion: agent-tools
 
 [`agent-tools`](https://github.com/averycrespi/agent-tools) provides external utilities that complement this configuration repo.
