@@ -123,7 +123,7 @@ function restoreFromBranch(
 }
 
 function buildContinuationMessage(loop: LoopState): string {
-  return `[Loop continuation]\n\n${loop.message}\n\n${CONTINUATION_CONTROL}`;
+  return `${loop.message}\n\n${CONTINUATION_CONTROL}`;
 }
 
 function getAssistantFailure(

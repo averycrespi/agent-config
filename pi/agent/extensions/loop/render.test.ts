@@ -27,7 +27,7 @@ test("loop widget gives running status visual priority over telemetry", () => {
     bold: (text: string) => `<bold>${text}</bold>`,
   };
   const lines = renderLoopWidgetLines(
-    loop({ delaySeconds: 15 }),
+    loop({ delaySeconds: 15, activeElapsedMs: 30_000 }),
     300,
     theme,
     1_000,
@@ -36,7 +36,7 @@ test("loop widget gives running status visual priority over telemetry", () => {
   assert.equal(lines.length, 3);
   assert.equal(
     lines[0],
-    "<accent><bold>● Loop running</bold></accent><borderMuted> · </borderMuted><text>3/10</text><muted> continuations</muted><borderMuted> · </borderMuted><text>12m/60m</text><muted> active</muted><borderMuted> · </borderMuted><text>15s</text><muted> delay</muted>",
+    "<accent><bold>● Loop running</bold></accent><borderMuted> · </borderMuted><text>3/10</text><muted> continuations</muted><borderMuted> · </borderMuted><text>0m/60m</text><muted> active</muted><borderMuted> · </borderMuted><text>15s</text><muted> delay</muted>",
   );
   assert.match(lines[1], /Continue making concrete progress/);
 });
@@ -54,7 +54,8 @@ test("loop widget renders yielded and stopped details safely", () => {
     loop({
       status: "stopped",
       runningSince: undefined,
-      stopReason: "continuation_limit",
+      stopReason: "aborted",
+      detail: "Operation aborted",
     }),
     80,
   );
@@ -62,7 +63,9 @@ test("loop widget renders yielded and stopped details safely", () => {
   assert.match(yielded[0], /Loop yielded · waiting for user input/);
   assert.match(yielded[1], /Need input/);
   assert.doesNotMatch(yielded.join("\n"), /\u001b/);
-  assert.match(stopped[0], /Loop stopped · continuation limit reached/);
+  assert.match(stopped[0], /Loop stopped · aborted/);
+  assert.match(stopped[1], /Continue making concrete progress/);
+  assert.doesNotMatch(stopped[1], /Operation aborted/);
 });
 
 test("loop widget truncates every line to narrow widths", () => {

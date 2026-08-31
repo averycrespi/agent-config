@@ -107,7 +107,7 @@ test("renderResult shows compact state and expanded transition details", async (
     max_continuations: 3,
     max_active_minutes: 5,
   });
-  (result.details as any).loop.runningSince = Date.now();
+  (result.details as any).loop.runningSince = undefined;
   const context = {
     args: { action: "start" },
     lastComponent: undefined,
@@ -131,9 +131,9 @@ test("renderResult shows compact state and expanded transition details", async (
     )
     .render(100);
 
-  assert.deepEqual(collapsed, ["✓ running · 0/3 continuations · 5m left"]);
+  assert.deepEqual(collapsed, ["✓ running · 0/3 continuations · 0m/5m active"]);
   assert.deepEqual(expanded, [
-    "✓ running · 0/3 continuations · 5m left",
+    "✓ running · 0/3 continuations · 0m/5m active",
     "absent → running",
   ]);
 });

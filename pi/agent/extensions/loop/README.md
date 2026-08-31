@@ -34,15 +34,13 @@ The tool should only start a loop when the user, a loaded skill, or an establish
 
 ### Tool rendering
 
-Collapsed tool calls use an action-first summary such as `loop start · 3 continuations · 5m`, `loop yield · waiting for user`, or `loop extend · 10 continuations`. The `loop` title is emphasized, the action is muted, and long or sensitive continuation messages are not echoed. Results show the resulting state and precise remaining bounds; expanded results add the lifecycle transition, such as `absent → running` or `running → yielded`.
+Collapsed tool calls use an action-first summary such as `loop start · 3 continuations · 5m`, `loop yield · waiting for user`, or `loop extend · 10 continuations`. The `loop` title is emphasized, the action is muted, and long or sensitive continuation messages are not echoed. Results show the resulting state and precise continuation and active-time usage; expanded results add the lifecycle transition, such as `absent → running` or `running → yielded`.
 
 ## Continuation message
 
-Each automatic continuation is a custom `loop-continuation` message containing:
+Each automatic continuation is a custom `loop-continuation` message. The custom message type supplies the visible `[loop-continuation]` label, while its content contains:
 
 ```text
-[Loop continuation]
-
 <caller-specified message>
 
 The loop is still running. Use `loop` with `action: "yield"` if progress requires user input, `action: "stop"` when another automatic continuation would not be useful, or `action: "get"` to inspect its state and remaining limits.
@@ -75,7 +73,7 @@ A loop restored from a persisted `running` snapshot becomes `stopped` with reaso
 
 ## Widget
 
-When enabled and a loop exists, a compact widget appears below the editor. It emphasizes the lifecycle status while rendering exact continuation usage, active running-time usage, and a nonzero continuation delay as secondary telemetry. It also shows the configured message or current wait reason and stopped-state diagnostics. Dynamic content is terminal-safe and width-truncated.
+When enabled and a loop exists, a compact widget appears below the editor. It emphasizes the lifecycle status while rendering exact continuation usage, active running-time usage, and a nonzero continuation delay as secondary telemetry. It shows the configured message while running or stopped, the current wait reason while yielded, and stopped-state diagnostics in the status line. Dynamic content is terminal-safe and width-truncated.
 
 ## Configuration
 

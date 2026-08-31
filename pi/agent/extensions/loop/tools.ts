@@ -202,11 +202,11 @@ function summarizeLoopResult(loop: LoopState): string {
   if (loop.status === "stopped") {
     return `✓ stopped · ${stopReasonLabel(loop.stopReason)}`;
   }
-  const remainingMs = Math.max(
+  const activeMinutes = Math.max(
     0,
-    loop.limits.maxActiveMinutes * 60_000 - getLoopActiveElapsedMs(loop),
+    Math.floor(getLoopActiveElapsedMs(loop) / 60_000),
   );
-  return `✓ running · ${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${Math.ceil(remainingMs / 60_000)}m left`;
+  return `✓ running · ${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${activeMinutes}m/${loop.limits.maxActiveMinutes}m active`;
 }
 
 function transitionLabel(action: unknown): string | undefined {

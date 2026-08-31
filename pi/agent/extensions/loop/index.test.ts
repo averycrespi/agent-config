@@ -134,7 +134,8 @@ test("settlement broadcasts the specified message plus control reminder without 
   assert.equal(pi.sentMessages.length, 1);
   const sent = pi.sentMessages[0];
   assert.equal(sent.message.customType, "loop-continuation");
-  assert.match(sent.message.content, /Keep making progress/);
+  assert.match(sent.message.content, /^Keep making progress/);
+  assert.doesNotMatch(sent.message.content, /\[Loop continuation\]/);
   assert.match(sent.message.content, /action: "yield"/);
   assert.match(sent.message.content, /action: "stop"/);
   assert.match(sent.message.content, /action: "get"/);

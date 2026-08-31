@@ -21,7 +21,7 @@ function truncateLine(text: string, width: number): string {
 }
 
 function formatMinutes(ms: number): string {
-  return `${Math.max(0, Math.ceil(ms / 60_000))}m`;
+  return `${Math.max(0, Math.floor(ms / 60_000))}m`;
 }
 
 function formatStopReason(reason: LoopStopReason | undefined): string {
@@ -81,7 +81,7 @@ export function renderLoopWidgetLines(
   if (!loop) return [];
   const safeWidth = Math.max(0, width);
   const detail =
-    loop.status !== "running" && loop.detail ? loop.detail : loop.message;
+    loop.status === "yielded" && loop.detail ? loop.detail : loop.message;
   return [
     truncateLine(statusLine(loop, theme, now), safeWidth),
     truncateLine(`↻ ${sanitizeDisplayText(detail)}`, safeWidth),
