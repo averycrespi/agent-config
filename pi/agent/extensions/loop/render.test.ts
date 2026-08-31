@@ -21,18 +21,22 @@ function loop(overrides: Partial<LoopState> = {}): LoopState {
   };
 }
 
-test("loop widget renders status, precise limits, and message below the editor", () => {
+test("loop widget gives running status visual priority over telemetry", () => {
+  const theme = {
+    fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+    bold: (text: string) => `<bold>${text}</bold>`,
+  };
   const lines = renderLoopWidgetLines(
     loop({ delaySeconds: 15 }),
-    100,
-    undefined,
+    300,
+    theme,
     1_000,
   );
 
   assert.equal(lines.length, 3);
-  assert.match(
+  assert.equal(
     lines[0],
-    /Loop running · 3\/10 continuations · 12m\/60m · 15s delay/,
+    "<accent><bold>● Loop running</bold></accent><borderMuted> · </borderMuted><text>3/10</text><muted> continuations</muted><borderMuted> · </borderMuted><text>12m/60m</text><muted> active</muted><borderMuted> · </borderMuted><text>15s</text><muted> delay</muted>",
   );
   assert.match(lines[1], /Continue making concrete progress/);
 });

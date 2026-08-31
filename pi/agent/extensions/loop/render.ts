@@ -48,22 +48,28 @@ function formatStopReason(reason: LoopStopReason | undefined): string {
 }
 
 function statusLine(loop: LoopState, theme: WidgetTheme, now: number): string {
+  const separator = theme.fg("borderMuted", " · ");
   if (loop.status === "yielded") {
-    return theme.fg("warning", "Loop yielded · waiting for user input");
+    return `${theme.fg("warning", theme.bold("◆ Loop yielded"))}${separator}${theme.fg("muted", "waiting for user input")}`;
   }
   if (loop.status === "stopped") {
-    return theme.fg(
-      "muted",
-      `Loop stopped · ${formatStopReason(loop.stopReason)}`,
-    );
+    return `${theme.fg("muted", theme.bold("■ Loop stopped"))}${separator}${theme.fg("muted", formatStopReason(loop.stopReason))}`;
   }
+
   const elapsed = getLoopActiveElapsedMs(loop, now);
-  return theme.fg(
-    "accent",
-    theme.bold(
-      `Loop running · ${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${formatMinutes(elapsed)}/${loop.limits.maxActiveMinutes}m${loop.delaySeconds > 0 ? ` · ${loop.delaySeconds}s delay` : ""}`,
-    ),
+  const continuationUsage = theme.fg(
+    "text",
+    `${loop.continuationCount}/${loop.limits.maxContinuations}`,
   );
+  const activeUsage = theme.fg(
+    "text",
+    `${formatMinutes(elapsed)}/${loop.limits.maxActiveMinutes}m`,
+  );
+  const delay =
+    loop.delaySeconds > 0
+      ? `${separator}${theme.fg("text", `${loop.delaySeconds}s`)}${theme.fg("muted", " delay")}`
+      : "";
+  return `${theme.fg("accent", theme.bold("● Loop running"))}${separator}${continuationUsage}${theme.fg("muted", " continuations")}${separator}${activeUsage}${theme.fg("muted", " active")}${delay}`;
 }
 
 export function renderLoopWidgetLines(

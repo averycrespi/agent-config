@@ -75,7 +75,7 @@ A loop restored from a persisted `running` snapshot becomes `stopped` with reaso
 
 ## Widget
 
-When enabled and a loop exists, a compact widget appears below the editor. It shows status, exact continuation and running-time usage, a nonzero continuation delay, the configured message or current wait reason, and stopped-state diagnostics. Dynamic content is terminal-safe and width-truncated.
+When enabled and a loop exists, a compact widget appears below the editor. It emphasizes the lifecycle status while rendering exact continuation usage, active running-time usage, and a nonzero continuation delay as secondary telemetry. It also shows the configured message or current wait reason and stopped-state diagnostics. Dynamic content is terminal-safe and width-truncated.
 
 ## Configuration
 
