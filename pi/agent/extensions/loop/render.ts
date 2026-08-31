@@ -61,7 +61,7 @@ function statusLine(loop: LoopState, theme: WidgetTheme, now: number): string {
   return theme.fg(
     "accent",
     theme.bold(
-      `Loop running · ${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${formatMinutes(elapsed)}/${loop.limits.maxActiveMinutes}m`,
+      `Loop running · ${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${formatMinutes(elapsed)}/${loop.limits.maxActiveMinutes}m${loop.delaySeconds > 0 ? ` · ${loop.delaySeconds}s delay` : ""}`,
     ),
   );
 }

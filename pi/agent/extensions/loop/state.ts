@@ -23,6 +23,7 @@ export type LoopState = {
   status: LoopStatus;
   message: string;
   limits: LoopLimits;
+  delaySeconds: number;
   continuationCount: number;
   activeElapsedMs: number;
   runningSince?: number;
@@ -63,6 +64,18 @@ function cloneState(state: PersistedLoopState): PersistedLoopState {
 function positiveInteger(value: unknown, label: string): number {
   if (!Number.isInteger(value) || (value as number) <= 0) {
     throw new Error(`${label} must be a positive integer.`);
+  }
+  return value as number;
+}
+
+function validateDelaySeconds(value: unknown, ceiling: number): number {
+  if (!Number.isInteger(value) || (value as number) < 0) {
+    throw new Error("delaySeconds must be a non-negative integer.");
+  }
+  if ((value as number) > ceiling) {
+    throw new Error(
+      `delaySeconds exceeds the configured ceiling of ${ceiling}.`,
+    );
   }
   return value as number;
 }
@@ -206,6 +219,8 @@ export function createLoopStore(now: () => number = Date.now) {
       limits: LoopLimits,
       ceilings: LoopLimits,
       messageMaxChars: number,
+      delaySeconds = 0,
+      hardMaxDelaySeconds = 3_600,
     ): LoopState {
       if (state.loop) throw new Error("A loop already exists; clear it first.");
       const normalizedMessage = normalizeBoundedText(
@@ -214,6 +229,10 @@ export function createLoopStore(now: () => number = Date.now) {
         "message",
       );
       const validatedLimits = validateLimits(limits, ceilings);
+      const validatedDelaySeconds = validateDelaySeconds(
+        delaySeconds,
+        hardMaxDelaySeconds,
+      );
       const timestamp = now();
       const generation = state.generation + 1;
       state = {
@@ -224,6 +243,7 @@ export function createLoopStore(now: () => number = Date.now) {
           status: "running",
           message: normalizedMessage,
           limits: validatedLimits,
+          delaySeconds: validatedDelaySeconds,
           continuationCount: 0,
           activeElapsedMs: 0,
           runningSince: timestamp,
@@ -394,6 +414,9 @@ export function parsePersistedLoopState(
     (limits.maxContinuations as number) <= 0 ||
     !Number.isInteger(limits.maxActiveMinutes) ||
     (limits.maxActiveMinutes as number) <= 0 ||
+    (loop.delaySeconds !== undefined &&
+      (!Number.isInteger(loop.delaySeconds) ||
+        (loop.delaySeconds as number) < 0)) ||
     !Number.isInteger(loop.continuationCount) ||
     (loop.continuationCount as number) < 0 ||
     !isFiniteNonNegative(loop.activeElapsedMs) ||
@@ -433,6 +456,7 @@ export function parsePersistedLoopState(
       maxContinuations: limits.maxContinuations as number,
       maxActiveMinutes: limits.maxActiveMinutes as number,
     },
+    delaySeconds: (loop.delaySeconds as number | undefined) ?? 0,
     continuationCount: loop.continuationCount as number,
     activeElapsedMs: loop.activeElapsedMs,
     createdAt: loop.createdAt,
@@ -473,7 +497,7 @@ export function formatLoopState(state: PersistedLoopState): string {
   const elapsed = getLoopActiveElapsedMs(loop);
   const lines = [
     `Loop [${loop.status}] ${sanitizeDisplayText(loop.message)}`,
-    `${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${formatDuration(elapsed)}/${formatDuration(loop.limits.maxActiveMinutes * 60_000)} limit`,
+    `${loop.continuationCount}/${loop.limits.maxContinuations} continuations · ${formatDuration(elapsed)}/${formatDuration(loop.limits.maxActiveMinutes * 60_000)} limit${loop.delaySeconds > 0 ? ` · ${loop.delaySeconds}s delay` : ""}`,
   ];
   if (loop.detail) lines.push(sanitizeDisplayText(loop.detail));
   return lines.join("\n");

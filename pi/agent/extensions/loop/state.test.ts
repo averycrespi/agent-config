@@ -12,9 +12,17 @@ const ceilings = { maxContinuations: 20, maxActiveMinutes: 120 };
 test("loop store starts one bounded running loop", () => {
   const store = createLoopStore(() => 1_000);
 
-  const loop = store.start("  Continue useful work  ", limits, ceilings, 100);
+  const loop = store.start(
+    "  Continue useful work  ",
+    limits,
+    ceilings,
+    100,
+    15,
+    300,
+  );
 
   assert.equal(loop.message, "Continue useful work");
+  assert.equal(loop.delaySeconds, 15);
   assert.equal(loop.status, "running");
   assert.equal(loop.continuationCount, 0);
   assert.equal(loop.activeElapsedMs, 0);
@@ -45,6 +53,10 @@ test("loop start validates message, limits, and configured ceilings", () => {
         100,
       ),
     /configured ceiling of 20/,
+  );
+  assert.throws(
+    () => store.start("work", limits, ceilings, 100, 301, 300),
+    /delaySeconds exceeds the configured ceiling of 300/,
   );
 });
 
@@ -198,6 +210,7 @@ test("persisted running loops restore stopped for safety", () => {
   assert.equal(parsed?.loop?.status, "stopped");
   assert.equal(parsed?.loop?.stopReason, "session_restored");
   assert.equal(parsed?.loop?.runningSince, undefined);
+  assert.equal(parsed?.loop?.delaySeconds, 0);
   assert.equal(
     parsePersistedLoopState({ loop: { status: "running" } }),
     undefined,

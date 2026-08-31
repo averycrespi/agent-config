@@ -17,6 +17,7 @@ loop.start({
   message: "Run the next bounded workflow step.",
   maxContinuations: 10,
   maxActiveMinutes: 60,
+  delaySeconds: 15,
 });
 
 loop.yield("Need a user decision");
@@ -26,9 +27,9 @@ loop.resume();
 loop.clear();
 ```
 
-`start` uses configured defaults for omitted limits. `extend` accepts new absolute limits, can only loosen them, does not reset usage, and does not resume the loop. `resume` fails when a current limit is already exhausted.
+`start` uses configured defaults for omitted limits and delay. A nonzero delay waits before every automatic continuation, including the first continuation from an idle API start. The wait counts toward active running time. `extend` accepts new absolute limits, can only loosen them, does not reset usage, and does not resume the loop. `resume` fails when a current limit is already exhausted.
 
-API-triggered starts schedule immediately only when Pi reports the current session idle. Otherwise normal settlement scheduling begins after the active run finishes.
+API-triggered starts begin scheduling only when Pi reports the current session idle. Otherwise normal settlement scheduling begins after the active run finishes.
 
 ## Events
 
@@ -52,8 +53,8 @@ The extension emits the same payload on Pi's shared event bus under `loop:<type>
 
 - `LoopController`
 - `LoopEvent` and `LoopEventType`
-- `StartLoopInput`
-- `LoopState`
+- `StartLoopInput`, including optional `delaySeconds`
+- `LoopState`, including effective `delaySeconds`
 - `LoopLimits` and `LoopLimitPatch`
 
 Returned state is cloned. Mutating it does not mutate the active loop.

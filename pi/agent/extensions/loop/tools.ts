@@ -44,6 +44,7 @@ type LoopParams = {
   reason?: unknown;
   max_continuations?: unknown;
   max_active_minutes?: unknown;
+  delay_seconds?: unknown;
 };
 
 function schema() {
@@ -73,6 +74,13 @@ function schema() {
       Type.Integer({
         minimum: 1,
         description: "Absolute running-time limit for start or extend.",
+      }),
+    ),
+    delay_seconds: Type.Optional(
+      Type.Integer({
+        minimum: 0,
+        description:
+          "Delay before each automatic continuation. Accepted only for start.",
       }),
     ),
   });
@@ -111,6 +119,7 @@ function summarizeCall(
   config: {
     defaultMaxContinuations: number;
     defaultMaxActiveMinutes: number;
+    defaultDelaySeconds: number;
   },
 ): string {
   const action = LOOP_ACTIONS.includes(params.action as LoopAction)
@@ -123,7 +132,10 @@ function summarizeCall(
     const minutes = Number.isInteger(params.max_active_minutes)
       ? (params.max_active_minutes as number)
       : config.defaultMaxActiveMinutes;
-    return `start · ${formatContinuationLimit(continuations)} · ${minutes}m`;
+    const delaySeconds = Number.isInteger(params.delay_seconds)
+      ? (params.delay_seconds as number)
+      : config.defaultDelaySeconds;
+    return `start · ${formatContinuationLimit(continuations)} · ${minutes}m${delaySeconds > 0 ? ` · ${delaySeconds}s delay` : ""}`;
   }
   if (action === "yield" || action === "stop") {
     const reason = boundedDisplay(params.reason);
@@ -234,6 +246,24 @@ function integerField(
   return value as number;
 }
 
+function nonNegativeIntegerField(
+  value: unknown,
+  field: string,
+  ceiling: number,
+  errors: string[],
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 0) {
+    errors.push(`${field} must be a non-negative integer.`);
+    return undefined;
+  }
+  if ((value as number) > ceiling) {
+    errors.push(`${field} exceeds the configured ceiling of ${ceiling}.`);
+    return undefined;
+  }
+  return value as number;
+}
+
 export function registerLoopTool(
   pi: ExtensionAPI,
   store: LoopStore,
@@ -243,6 +273,8 @@ export function registerLoopTool(
     | "defaultMaxActiveMinutes"
     | "hardMaxContinuations"
     | "hardMaxActiveMinutes"
+    | "defaultDelaySeconds"
+    | "hardMaxDelaySeconds"
     | "messageMaxChars"
     | "reasonMaxChars"
   >,
@@ -264,6 +296,7 @@ export function registerLoopTool(
       "Use loop only when the user, a loaded skill, or an established workflow explicitly requests a loop.",
       "Use loop action=yield when progress requires user input; the next real user message wakes the loop.",
       "Use loop action=stop when another automatic continuation would not be useful.",
+      "For polling loops, set delay_seconds and perform at most one polling batch per continuation.",
       "Do not extend a loop merely to avoid reporting a blocker or final result.",
     ],
     parameters: schema(),
@@ -321,6 +354,7 @@ export function registerLoopTool(
       let reason: string | undefined;
       let maxContinuations: number | undefined;
       let maxActiveMinutes: number | undefined;
+      let delaySeconds: number | undefined;
 
       const acceptsLimits = action === "start" || action === "extend";
       const acceptsReason = action === "yield" || action === "stop";
@@ -383,6 +417,17 @@ export function registerLoopTool(
         }
       }
 
+      if (action === "start") {
+        delaySeconds = nonNegativeIntegerField(
+          params.delay_seconds,
+          "delay_seconds",
+          config.hardMaxDelaySeconds,
+          errors,
+        );
+      } else if (params.delay_seconds !== undefined) {
+        errors.push(`delay_seconds is not accepted for ${action}.`);
+      }
+
       if (errors.length > 0) return errorResult(errors, store);
       if (action === "get")
         return result(formatLoopState(store.getState()), store);
@@ -402,6 +447,8 @@ export function registerLoopTool(
               maxActiveMinutes: config.hardMaxActiveMinutes,
             },
             config.messageMaxChars,
+            delaySeconds ?? config.defaultDelaySeconds,
+            config.hardMaxDelaySeconds,
           );
           mutated("started");
         } else if (action === "yield") {

@@ -12,11 +12,15 @@ export type LoopConfig = {
   defaultMaxActiveMinutes: number;
   hardMaxContinuations: number;
   hardMaxActiveMinutes: number;
+  defaultDelaySeconds: number;
+  hardMaxDelaySeconds: number;
   messageMaxChars: number;
   reasonMaxChars: number;
 };
 
 type PlainObject = Record<string, unknown>;
+
+const MAX_DELAY_SECONDS = 2_147_483;
 
 export const DEFAULT_LOOP_CONFIG: LoopConfig = {
   showWidget: true,
@@ -24,6 +28,8 @@ export const DEFAULT_LOOP_CONFIG: LoopConfig = {
   defaultMaxActiveMinutes: 60,
   hardMaxContinuations: 100,
   hardMaxActiveMinutes: 480,
+  defaultDelaySeconds: 0,
+  hardMaxDelaySeconds: 3_600,
   messageMaxChars: 4_000,
   reasonMaxChars: 1_000,
 };
@@ -41,6 +47,27 @@ function parsePositiveInteger(
         ? Number(value)
         : undefined;
   if (parsed !== undefined && Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+  if (value !== undefined) {
+    warnings.push(`Ignoring invalid ${field}: ${String(value)}`);
+  }
+  return fallback;
+}
+
+function parseNonNegativeInteger(
+  value: unknown,
+  field: string,
+  fallback: number,
+  warnings: string[],
+): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : undefined;
+  if (parsed !== undefined && Number.isInteger(parsed) && parsed >= 0) {
     return parsed;
   }
   if (value !== undefined) {
@@ -71,6 +98,12 @@ function readEnvSettings(
       : {}),
     ...(env.LOOP_HARD_MAX_ACTIVE_MINUTES !== undefined
       ? { hardMaxActiveMinutes: env.LOOP_HARD_MAX_ACTIVE_MINUTES }
+      : {}),
+    ...(env.LOOP_DEFAULT_DELAY_SECONDS !== undefined
+      ? { defaultDelaySeconds: env.LOOP_DEFAULT_DELAY_SECONDS }
+      : {}),
+    ...(env.LOOP_HARD_MAX_DELAY_SECONDS !== undefined
+      ? { hardMaxDelaySeconds: env.LOOP_HARD_MAX_DELAY_SECONDS }
       : {}),
     ...(env.LOOP_MESSAGE_MAX_CHARS !== undefined
       ? { messageMaxChars: env.LOOP_MESSAGE_MAX_CHARS }
@@ -117,6 +150,27 @@ export function parseLoopConfig(options: {
     DEFAULT_LOOP_CONFIG.defaultMaxActiveMinutes,
     warnings,
   );
+  const configuredHardMaxDelaySeconds = parsePositiveInteger(
+    merged.hardMaxDelaySeconds,
+    "hardMaxDelaySeconds",
+    DEFAULT_LOOP_CONFIG.hardMaxDelaySeconds,
+    warnings,
+  );
+  if (configuredHardMaxDelaySeconds > MAX_DELAY_SECONDS) {
+    warnings.push(
+      `hardMaxDelaySeconds exceeds the timer-safe maximum; using ${MAX_DELAY_SECONDS}.`,
+    );
+  }
+  const hardMaxDelaySeconds = Math.min(
+    configuredHardMaxDelaySeconds,
+    MAX_DELAY_SECONDS,
+  );
+  const configuredDefaultDelaySeconds = parseNonNegativeInteger(
+    merged.defaultDelaySeconds,
+    "defaultDelaySeconds",
+    DEFAULT_LOOP_CONFIG.defaultDelaySeconds,
+    warnings,
+  );
 
   if (configuredDefaultContinuations > hardMaxContinuations) {
     warnings.push(
@@ -126,6 +180,11 @@ export function parseLoopConfig(options: {
   if (configuredDefaultMinutes > hardMaxActiveMinutes) {
     warnings.push(
       `defaultMaxActiveMinutes exceeds hardMaxActiveMinutes; using ${hardMaxActiveMinutes}.`,
+    );
+  }
+  if (configuredDefaultDelaySeconds > hardMaxDelaySeconds) {
+    warnings.push(
+      `defaultDelaySeconds exceeds hardMaxDelaySeconds; using ${hardMaxDelaySeconds}.`,
     );
   }
 
@@ -144,6 +203,11 @@ export function parseLoopConfig(options: {
     ),
     hardMaxContinuations,
     hardMaxActiveMinutes,
+    defaultDelaySeconds: Math.min(
+      configuredDefaultDelaySeconds,
+      hardMaxDelaySeconds,
+    ),
+    hardMaxDelaySeconds,
     messageMaxChars: parsePositiveInteger(
       merged.messageMaxChars,
       "messageMaxChars",

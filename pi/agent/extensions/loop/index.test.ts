@@ -9,6 +9,8 @@ const config = {
   defaultMaxActiveMinutes: 60,
   hardMaxContinuations: 20,
   hardMaxActiveMinutes: 120,
+  defaultDelaySeconds: 0,
+  hardMaxDelaySeconds: 300,
   messageMaxChars: 100,
   reasonMaxChars: 100,
 };
@@ -80,11 +82,13 @@ function makeCtx(branch: unknown[] = []) {
 async function setup(
   branch: unknown[] = [],
   runtimeConfig: typeof config = config,
+  wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>,
 ) {
   const pi = makePi();
   const ctx = makeCtx(branch);
   createLoopExtension({
     loadConfig: async () => ({ config: runtimeConfig, warnings: [] }),
+    wait,
   })(pi);
   await pi.handlers.get("session_start")({}, ctx);
   return { pi, ctx };
@@ -149,6 +153,68 @@ test("settlement broadcasts the specified message plus control reminder without 
   );
 });
 
+test("settlement waits for the configured delay before claiming a continuation", async () => {
+  const waits: number[] = [];
+  let release!: () => void;
+  const { pi, ctx } = await setup([], config, (milliseconds) => {
+    waits.push(milliseconds);
+    return new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  });
+  await execute(pi, {
+    action: "start",
+    message: "Poll once per continuation",
+    delay_seconds: 5,
+  });
+  await pi.handlers.get("agent_end")(
+    { messages: [{ role: "assistant", stopReason: "stop" }] },
+    ctx,
+  );
+
+  const settling = pi.handlers.get("agent_settled")({}, ctx);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(waits, [5_000]);
+  assert.equal(pi.sentMessages.length, 0);
+  assert.equal(loopApi.get()?.continuationCount, 0);
+
+  release();
+  await settling;
+
+  assert.equal(pi.sentMessages.length, 1);
+  assert.equal(loopApi.get()?.continuationCount, 1);
+});
+
+test("stopping during a delay cancels the pending continuation", async () => {
+  const { pi, ctx } = await setup(
+    [],
+    config,
+    (_milliseconds, signal) =>
+      new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+  );
+  await execute(pi, {
+    action: "start",
+    message: "Poll once per continuation",
+    delay_seconds: 5,
+  });
+  await pi.handlers.get("agent_end")(
+    { messages: [{ role: "assistant", stopReason: "stop" }] },
+    ctx,
+  );
+
+  const settling = pi.handlers.get("agent_settled")({}, ctx);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await execute(pi, { action: "stop", reason: "No more polling" });
+  await settling;
+
+  assert.equal(pi.sentMessages.length, 0);
+  assert.equal(loopApi.get()?.continuationCount, 0);
+  assert.equal(loopApi.get()?.status, "stopped");
+});
+
 test("a stale settlement cannot claim a replacement loop", async () => {
   const { pi, ctx } = await setup();
   await execute(pi, { action: "start", message: "old work" });
@@ -170,6 +236,63 @@ test("a stale settlement cannot claim a replacement loop", async () => {
   assert.equal(loopApi.get()?.message, "replacement work");
   assert.equal(loopApi.get()?.continuationCount, 0);
   assert.equal(pi.sentMessages.length, 0);
+});
+
+test("lifecycle mutations invalidate scheduling before a delay starts", async () => {
+  const { pi, ctx } = await setup();
+  await execute(pi, {
+    action: "start",
+    message: "Poll once per continuation",
+    delay_seconds: 5,
+  });
+  let releasePending!: (value: boolean) => void;
+  ctx.hasPendingMessages = () =>
+    new Promise<boolean>((resolve) => {
+      releasePending = resolve;
+    });
+  await pi.handlers.get("agent_end")(
+    { messages: [{ role: "assistant", stopReason: "stop" }] },
+    ctx,
+  );
+
+  const settling = pi.handlers.get("agent_settled")({}, ctx);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await execute(pi, { action: "stop", reason: "Pause polling" });
+  await execute(pi, { action: "resume" });
+  releasePending(false);
+  await settling;
+
+  assert.equal(loopApi.get()?.status, "running");
+  assert.equal(loopApi.get()?.continuationCount, 0);
+  assert.equal(pi.sentMessages.length, 0);
+});
+
+test("continued subscribers can stop before the message is enqueued", async () => {
+  const { pi, ctx } = await setup();
+  await execute(pi, { action: "start", message: "work" });
+  const unsubscribe = loopApi.subscribe((event) => {
+    if (event.type === "continued") loopApi.stop("Subscriber stopped loop");
+  });
+  const observed: string[] = [];
+  const unsubscribeObserver = loopApi.subscribe((event) =>
+    observed.push(event.type),
+  );
+  await pi.handlers.get("agent_end")(
+    { messages: [{ role: "assistant", stopReason: "stop" }] },
+    ctx,
+  );
+
+  await pi.handlers.get("agent_settled")({}, ctx);
+  unsubscribe();
+  unsubscribeObserver();
+
+  assert.equal(loopApi.get()?.status, "stopped");
+  assert.equal(pi.sentMessages.length, 0);
+  assert.deepEqual(observed, ["continued", "stopped"]);
+  assert.deepEqual(
+    pi.emittedEvents.slice(-2).map((event: any) => event.name),
+    ["loop:continued", "loop:stopped"],
+  );
 });
 
 test("pending messages defer scheduling until their run settles", async () => {

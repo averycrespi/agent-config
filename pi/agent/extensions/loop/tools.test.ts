@@ -28,6 +28,8 @@ const config = {
   defaultMaxActiveMinutes: 60,
   hardMaxContinuations: 100,
   hardMaxActiveMinutes: 480,
+  defaultDelaySeconds: 0,
+  hardMaxDelaySeconds: 300,
   messageMaxChars: 100,
   reasonMaxChars: 100,
 };
@@ -56,7 +58,9 @@ test("loop tool advertises all lifecycle actions and snake_case limits", () => {
   ]);
   assert.ok(tool.parameters.properties.max_continuations);
   assert.ok(tool.parameters.properties.max_active_minutes);
+  assert.ok(tool.parameters.properties.delay_seconds);
   assert.match(tool.promptGuidelines.join("\n"), /explicit/i);
+  assert.match(tool.promptGuidelines.join("\n"), /polling loops.*delay/i);
 });
 
 test("renderCall uses an action-first summary without echoing the continuation message", () => {
@@ -73,8 +77,9 @@ test("renderCall uses an action-first summary without echoing the continuation m
       message: "A long or sensitive continuation message",
       max_continuations: 3,
       max_active_minutes: 5,
+      delay_seconds: 15,
     }),
-    "loop start · 3 continuations · 5m",
+    "loop start · 3 continuations · 5m · 15s delay",
   );
   assert.equal(render({ action: "get" }), "loop get");
   assert.equal(
@@ -196,6 +201,7 @@ test("start uses defaults and persists one shared loop", async () => {
   assert.match(result.content[0].text, /Loop \[running\] Keep going/);
   assert.equal(store.getLoop()?.limits.maxContinuations, 10);
   assert.equal(store.getLoop()?.limits.maxActiveMinutes, 60);
+  assert.equal(store.getLoop()?.delaySeconds, 0);
   assert.equal(pi.entries.length, 1);
   assert.equal(pi.entries[0].type, "loop-state");
 });
@@ -208,10 +214,12 @@ test("tool validates action fields atomically", async () => {
     message: "work",
     reason: "unexpected",
     max_continuations: 101,
+    delay_seconds: 301,
   });
 
   assert.match(result.content[0].text, /reason is not accepted for start/);
   assert.match(result.content[0].text, /configured ceiling of 100/);
+  assert.match(result.content[0].text, /delay_seconds.*ceiling of 300/);
   assert.equal(store.getLoop(), undefined);
   assert.equal(pi.entries.length, 0);
 });

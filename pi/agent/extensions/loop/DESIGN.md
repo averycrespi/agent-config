@@ -23,9 +23,9 @@ There is at most one loop per active Pi session branch. Statuses are:
 
 Normal user input does not change a running loop. A stopped loop cannot yield because that would convert explicit-resume semantics into automatic wake semantics.
 
-Continuation and running-time limits are absolute. Extend can only increase them, never resets counters, never resumes, and cannot exceed configuration ceilings. Resume checks current usage before transitioning.
+Continuation and running-time limits are absolute. Extend can only increase them, never resets counters, never resumes, and cannot exceed configuration ceilings. Resume checks current usage before transitioning. Each loop also persists a non-negative continuation delay bounded by configuration; older snapshots normalize to zero delay.
 
-Each start and clear advances a generation. Scheduler callbacks compare the claimed loop generation before sending so stale work cannot revive or continue a replaced loop.
+Each start and clear advances a generation. Scheduler callbacks compare the claimed loop generation before sending so stale work cannot revive or continue a replaced loop. Lifecycle mutations that make an existing wait stale abort its timer.
 
 ## Scheduling
 
@@ -37,12 +37,14 @@ Each start and clear advances a generation. Scheduler callbacks compare the clai
 2. stops on an unrecovered provider error;
 3. defers when Pi reports pending messages;
 4. verifies the loop is still running;
-5. checks limits and atomically claims one continuation;
-6. persists the incremented counter;
-7. emits the mutation event;
-8. sends one custom follow-up with `triggerTurn: true`.
+5. waits for the configured delay while active time continues to accrue;
+6. rechecks generation, running state, idleness, pending messages, and limits;
+7. atomically claims one continuation;
+8. persists the incremented counter;
+9. emits the mutation event;
+10. sends one custom follow-up with `triggerTurn: true`.
 
-The continuation's model-visible content contains the caller message and a stable control reminder. Exact counters remain out of that message to avoid budget-driven rushing, but are available through state inspection and the widget.
+The continuation's model-visible content contains the caller message and a stable control reminder. Exact counters remain out of that message to avoid budget-driven rushing, but are available through state inspection and the widget. Delay is deterministic scheduler state rather than prompt advice; polling guidance only tells the caller to select an interval and keep each continuation to one polling batch.
 
 ## Persistence
 
@@ -81,4 +83,4 @@ Configuration ceilings apply equally to the tool, commands, and imported API. Ra
 
 ## Change guidance
 
-Keep state transitions and limit checks centralized in `state.ts`. Preserve claim-before-send ordering, settlement deduplication, generation checks, stopped-versus-yielded semantics, shared ceilings, and safe restoration. Add state tests before lifecycle tests when changing transitions. Update README and API documentation for any user-facing or cross-extension contract change.
+Keep state transitions and limit checks centralized in `state.ts`. Preserve delay-before-claim and claim-before-send ordering, post-delay lifecycle checks, timer cancellation, settlement deduplication, generation checks, stopped-versus-yielded semantics, shared ceilings, and safe restoration. Add state tests before lifecycle tests when changing transitions. Update README and API documentation for any user-facing or cross-extension contract change.

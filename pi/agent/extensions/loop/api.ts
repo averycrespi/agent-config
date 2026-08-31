@@ -5,6 +5,7 @@ export type StartLoopInput = {
   message: string;
   maxContinuations?: number;
   maxActiveMinutes?: number;
+  delaySeconds?: number;
 };
 
 export type LoopEventType =

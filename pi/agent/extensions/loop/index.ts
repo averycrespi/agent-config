@@ -37,7 +37,29 @@ type LoopExtensionOptions = {
   loadConfig?: (
     cwd: string,
   ) => Promise<{ config: LoopConfig; warnings: string[] }>;
+  wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
 };
+
+function waitForDelay(
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timeout = setTimeout(resolve, milliseconds);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
 
 function setLoopWidget(
   pi: ExtensionAPI,
@@ -91,6 +113,10 @@ function restoreFromBranch(
     restored.loop.limits.maxActiveMinutes = Math.min(
       restored.loop.limits.maxActiveMinutes,
       config.hardMaxActiveMinutes,
+    );
+    restored.loop.delaySeconds = Math.min(
+      restored.loop.delaySeconds,
+      config.hardMaxDelaySeconds,
     );
   }
   store.replaceState(restored ?? { generation: 0 });
@@ -158,16 +184,20 @@ function parseExtendCommand(args: string): LoopLimitPatch {
 
 export function createLoopExtension(options: LoopExtensionOptions = {}) {
   const loadConfig = options.loadConfig ?? loadLoopConfig;
+  const wait = options.wait ?? waitForDelay;
 
   return function loopExtension(pi: ExtensionAPI) {
     const store = createLoopStore();
     const apiListeners = new Set<(event: LoopEvent) => void>();
+    const eventQueue: LoopEvent[] = [];
+    let publishingEvents = false;
     let config = DEFAULT_LOOP_CONFIG;
     let currentCtx: ExtensionContext | undefined;
     let unsubscribeWidget: (() => void) | undefined;
     let unbindApi: (() => void) | undefined;
     let runSerial = 0;
     let scheduledSerial = -1;
+    let pendingSchedule: AbortController | undefined;
     let pendingFailure:
       | {
           reason: "error" | "aborted";
@@ -190,11 +220,37 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
       );
     }
 
+    function cancelPendingSchedule(): void {
+      pendingSchedule?.abort();
+      pendingSchedule = undefined;
+    }
+
     function publish(type: LoopEventType): void {
+      if (
+        [
+          "started",
+          "yielded",
+          "stopped",
+          "resumed",
+          "cleared",
+          "exhausted",
+        ].includes(type)
+      ) {
+        cancelPendingSchedule();
+      }
       appendState(pi, store.getState());
-      const event: LoopEvent = { type, loop: store.getLoop() };
-      for (const listener of apiListeners) listener(event);
-      pi.events.emit(`loop:${type}`, event);
+      eventQueue.push({ type, loop: store.getLoop() });
+      if (publishingEvents) return;
+      publishingEvents = true;
+      try {
+        let event: LoopEvent | undefined;
+        while ((event = eventQueue.shift())) {
+          for (const listener of apiListeners) listener(event);
+          pi.events.emit(`loop:${event.type}`, event);
+        }
+      } finally {
+        publishingEvents = false;
+      }
     }
 
     function requireLoop(): LoopState {
@@ -211,35 +267,72 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
         if (scheduledSerial === lifecycleSerial) return;
         scheduledSerial = lifecycleSerial;
       }
-      const loop = store.getLoop();
-      if (!loop || loop.status !== "running") return;
-      if (typeof (ctx as any).hasPendingMessages === "function") {
-        if (await (ctx as any).hasPendingMessages()) return;
-      }
-      const claim = store.claimContinuation(loop.generation);
-      if (!claim.claimed) {
-        if (claim.stopReason) publish("exhausted");
-        return;
-      }
-      publish("continued");
-      const claimedLoop = store.getLoop();
-      if (!claimedLoop || claimedLoop.generation !== loop.generation) return;
-      const sender = (pi as any).sendMessage;
-      if (typeof sender !== "function") return;
-      sender.call(
-        pi,
-        {
-          customType: "loop-continuation",
-          content: buildContinuationMessage(claimedLoop),
-          display: true,
-          details: {
-            loopId: claimedLoop.id,
-            generation: claimedLoop.generation,
-            continuation: claimedLoop.continuationCount,
+      cancelPendingSchedule();
+      const schedule = new AbortController();
+      pendingSchedule = schedule;
+      try {
+        const loop = store.getLoop();
+        if (!loop || loop.status !== "running") return;
+        if (typeof (ctx as any).hasPendingMessages === "function") {
+          if (await (ctx as any).hasPendingMessages()) return;
+          if (schedule.signal.aborted) return;
+        }
+        if (loop.delaySeconds > 0) {
+          await wait(loop.delaySeconds * 1_000, schedule.signal);
+          if (schedule.signal.aborted) return;
+        }
+        const currentLoop = store.getLoop();
+        if (
+          !currentLoop ||
+          currentLoop.status !== "running" ||
+          currentLoop.generation !== loop.generation
+        ) {
+          return;
+        }
+        if (
+          typeof (ctx as any).isIdle === "function" &&
+          !(ctx as any).isIdle()
+        ) {
+          return;
+        }
+        if (typeof (ctx as any).hasPendingMessages === "function") {
+          if (await (ctx as any).hasPendingMessages()) return;
+          if (schedule.signal.aborted) return;
+        }
+        const claim = store.claimContinuation(loop.generation);
+        if (!claim.claimed) {
+          if (claim.stopReason) publish("exhausted");
+          return;
+        }
+        publish("continued");
+        const claimedLoop = store.getLoop();
+        if (
+          schedule.signal.aborted ||
+          !claimedLoop ||
+          claimedLoop.status !== "running" ||
+          claimedLoop.generation !== loop.generation
+        ) {
+          return;
+        }
+        const sender = (pi as any).sendMessage;
+        if (typeof sender !== "function") return;
+        sender.call(
+          pi,
+          {
+            customType: "loop-continuation",
+            content: buildContinuationMessage(claimedLoop),
+            display: true,
+            details: {
+              loopId: claimedLoop.id,
+              generation: claimedLoop.generation,
+              continuation: claimedLoop.continuationCount,
+            },
           },
-        },
-        { deliverAs: "followUp", triggerTurn: true },
-      );
+          { deliverAs: "followUp", triggerTurn: true },
+        );
+      } finally {
+        if (pendingSchedule === schedule) pendingSchedule = undefined;
+      }
     }
 
     const controller: LoopController = {
@@ -255,6 +348,8 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           },
           ceilings(),
           config.messageMaxChars,
+          input.delaySeconds ?? config.defaultDelaySeconds,
+          config.hardMaxDelaySeconds,
         );
         publish("started");
         if (
@@ -344,6 +439,8 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
             },
             ceilings(),
             config.messageMaxChars,
+            config.defaultDelaySeconds,
+            config.hardMaxDelaySeconds,
           );
           publish("started");
           notifyState(ctx);
@@ -453,6 +550,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
       runSerial = 0;
       scheduledSerial = -1;
       pendingFailure = undefined;
+      cancelPendingSchedule();
       await loadRuntimeConfig(ctx);
       restoreFromBranch(store, ctx, config);
       unsubscribeWidget = store.subscribe(() => renderWidget(ctx));
@@ -463,6 +561,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
     pi.on("session_tree", async (_event, ctx) => {
       currentCtx = ctx;
       pendingFailure = undefined;
+      cancelPendingSchedule();
       await loadRuntimeConfig(ctx);
       restoreFromBranch(store, ctx, config);
       renderWidget(ctx);
@@ -544,6 +643,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
       unbindApi?.();
       unbindApi = undefined;
       currentCtx = undefined;
+      cancelPendingSchedule();
       apiListeners.clear();
       store.replaceState({ generation: 0 });
       setLoopWidget(pi, ctx, undefined);

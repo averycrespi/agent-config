@@ -11,6 +11,7 @@ function loop(overrides: Partial<LoopState> = {}): LoopState {
     status: "running",
     message: "Continue making concrete progress",
     limits: { maxContinuations: 10, maxActiveMinutes: 60 },
+    delaySeconds: 0,
     continuationCount: 3,
     activeElapsedMs: 12 * 60_000,
     runningSince: 1_000,
@@ -21,10 +22,18 @@ function loop(overrides: Partial<LoopState> = {}): LoopState {
 }
 
 test("loop widget renders status, precise limits, and message below the editor", () => {
-  const lines = renderLoopWidgetLines(loop(), 100, undefined, 1_000);
+  const lines = renderLoopWidgetLines(
+    loop({ delaySeconds: 15 }),
+    100,
+    undefined,
+    1_000,
+  );
 
   assert.equal(lines.length, 3);
-  assert.match(lines[0], /Loop running · 3\/10 continuations · 12m\/60m/);
+  assert.match(
+    lines[0],
+    /Loop running · 3\/10 continuations · 12m\/60m · 15s delay/,
+  );
   assert.match(lines[1], /Continue making concrete progress/);
 });
 
