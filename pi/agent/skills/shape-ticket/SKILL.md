@@ -28,11 +28,13 @@ Record dependencies through Plane relationships rather than copying their status
 
 ## Create or refine Draft
 
-1. Resolve the workspace, project, ticket type, and likely duplicates.
+Workflow **Draft** is a visible lifecycle meaning, not Plane's `is_draft` flag. Ticket-driven work items must never use `is_draft: true`; that flag creates a hidden internal draft rather than a ticket in the project's normal work-item list.
+
+1. Resolve the workspace, project, ticket type, likely duplicates, and the target project's configured states by immutable ID. Prefer a visible project state named Draft. If none exists, select an appropriate visible Backlog or other unstarted state and report that workflow Draft maps to it. Never assume a state name or ID.
 2. Select one independently deliverable outcome. Split work that requires separate repositories, promotion decisions, or independently useful outcomes.
-3. Present a complete **Draft preview** containing title, body, project, initial state, and relationships.
+3. Present a complete **Draft preview** containing title, body, project, relationships, and the actual resolved Plane state name and ID. When using a fallback state, label the workflow-Draft-to-Plane-state mapping explicitly.
 4. Require explicit approval before creating a new ticket. Approval to discuss or shape work is not creation approval.
-5. Create or update the ticket in Draft, reread it, and report its confirmed identifier and URL.
+5. Create or update the visible ticket with the resolved project state and without `is_draft: true`. Reread it, then find its immutable ID in the project's normal work-item list, accounting for pagination. Direct retrieval by ID alone is insufficient confirmation. Report its confirmed identifier, URL, actual Plane state, and any fallback mapping.
 6. Research answerable questions before asking the user. Use the clarification protocol for material product, compatibility, security, data, or migration decisions.
 
 ## Approve Ready
