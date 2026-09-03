@@ -54,7 +54,7 @@ See [`pi/README.md`](pi/README.md) for the complete extension and skill catalog.
 
 ### Herdr integration
 
-[Herdr](https://herdr.dev/) provides the terminal and worktree control plane used by the `herdr` and `spin-out` skills. Herdr's Pi integration installs a local lifecycle bridge, while the repository-owned `ask_user` extension reports interactive questions through that bridge. See the [Pi Herdr integration documentation](pi/README.md#herdr-integration) for component ownership, installation, and updates.
+[Herdr](https://herdr.dev/) provides the terminal and worktree control plane used by the `herdr` and `spin-out` skills. Herdr's Pi integration installs a local lifecycle bridge, while the repository-owned `ask_user` extension reports interactive questions through that bridge. When Pi and the Herdr server run in a Lima guest, attach with a macOS-local `herdr --remote` client so host screenshots and clipboard images are transferred into the guest instead of appearing as inaccessible `/var/folders/...` paths. See the [Pi Herdr integration documentation](pi/README.md#herdr-integration) for component ownership, installation, updates, and the remote-client setup.
 
 ### Development
 
