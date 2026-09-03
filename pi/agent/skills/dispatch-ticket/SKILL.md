@@ -68,7 +68,7 @@ Require explicit `dispatch` authority and one Ready ticket whose current canonic
 
 6. Verify the observed path, branch, HEAD, workspace ID, and root pane. Retain and report partial resources on failure.
 7. Add `/.ticket-run/` to the target checkout's local Git exclude, never tracked `.gitignore`.
-8. Generate an opaque run ID and worker name. Initialize the single paused state file with the helper's `init` action, including ticket identity/hash and observed assignment.
+8. Generate an opaque run ID and worker name. Initialize the single paused state file with the helper's `init` action, including the immutable Plane ticket ID, ticket identifier, contract hash, and observed assignment. A browser URL is not required run identity.
 9. Reread Plane Ready and the exact canonical contract-body hash. Move Plane to In Progress and add a minimal portable claim as a Plane comment:
 
    ```text

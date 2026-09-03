@@ -34,7 +34,7 @@ Workflow **Draft** is a visible lifecycle meaning, not Plane's `is_draft` flag. 
 2. Select one independently deliverable outcome. Split work that requires separate repositories, promotion decisions, or independently useful outcomes.
 3. Present a complete **Draft preview** containing title, body, project, relationships, and the actual resolved Plane state name and ID. When using a fallback state, label the workflow-Draft-to-Plane-state mapping explicitly.
 4. Require explicit approval before creating a new ticket. Approval to discuss or shape work is not creation approval.
-5. Create or update the visible ticket with the resolved project state and without `is_draft: true`. Reread it, then find its immutable ID in the project's normal work-item list, accounting for pagination. Direct retrieval by ID alone is insufficient confirmation. Report its confirmed identifier, URL, actual Plane state, and any fallback mapping.
+5. Create or update the visible ticket with the resolved project state and without `is_draft: true`. Reread it, then find its immutable ID in the project's normal work-item list, accounting for pagination. Direct retrieval by ID alone is insufficient confirmation. Report its confirmed identifier, immutable ID, actual Plane state, and any fallback mapping.
 6. Research answerable questions before asking the user. Use the clarification protocol for material product, compatibility, security, data, or migration decisions.
 
 ## Approve Ready
@@ -71,4 +71,4 @@ For a Ready but undispatched ticket, return it to Draft before changing its cont
 
 ## Report
 
-Report the confirmed ticket identifier and URL, current state, repository and target branch, dependency disposition, approved contract hash when present, approval obtained in this invocation, and any blocker or operator action required.
+Report the confirmed ticket identifier and immutable ID, current state, repository and target branch, dependency disposition, approved contract hash when present, approval obtained in this invocation, and any blocker or operator action required.

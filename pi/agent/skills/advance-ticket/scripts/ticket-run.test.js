@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -50,15 +50,11 @@ async function mutate(root, request) {
   });
 }
 
-function runCli(request) {
+function runCli(request, script = join(import.meta.dirname, "ticket-run.js")) {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [join(import.meta.dirname, "ticket-run.js")],
-      {
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
+    const child = spawn(process.execPath, [script], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (chunk) => (stdout += chunk));
@@ -84,6 +80,24 @@ test("hashes the exact approved ticket contract deterministically", () => {
   );
 });
 
+test("initializes without requiring or persisting a ticket URL", async (t) => {
+  const root = await repository(t);
+  const input = assignment();
+  delete input.ticket.url;
+
+  const state = await initializeTicketRun({
+    cwd: root,
+    runId: "run-without-url",
+    ...input,
+  });
+
+  assert.deepEqual(state.ticket, {
+    id: "plane-id-123",
+    identifier: "ABC-123",
+    contractHash: input.ticket.contractHash,
+  });
+});
+
 test("initializes one paused run and derives its next safe action", async (t) => {
   const root = await repository(t);
   const state = await initializeTicketRun({
@@ -96,6 +110,7 @@ test("initializes one paused run and derives its next safe action", async (t) =>
   assert.equal(state.revision, 0);
   assert.equal(state.status, "paused");
   assert.equal(state.phase, "planning");
+  assert.equal("url" in state.ticket, false);
   assert.deepEqual(state.nextAction, { action: "activate", phase: "planning" });
   assert.deepEqual(await readTicketRun({ cwd: root }), state);
 
@@ -103,6 +118,23 @@ test("initializes one paused run and derives its next safe action", async (t) =>
     initializeTicketRun({ cwd: root, runId: "run-other", ...assignment() }),
     /already exists/,
   );
+});
+
+test("reads legacy state containing a ticket URL without retaining it", async (t) => {
+  const root = await repository(t);
+  await initializeTicketRun({
+    cwd: root,
+    runId: "run-legacy",
+    ...assignment(),
+  });
+  const statePath = join(root, ".ticket-run", "state.json");
+  const legacy = JSON.parse(await readFile(statePath, "utf8"));
+  legacy.ticket.url = "https://plane.example.com/ABC-123";
+  await writeFile(statePath, `${JSON.stringify(legacy, null, 2)}\n`);
+
+  const state = await readTicketRun({ cwd: root });
+
+  assert.equal("url" in state.ticket, false);
 });
 
 test("advances the minimal delivery lifecycle with expected revisions", async (t) => {
@@ -382,6 +414,21 @@ test("provides a structured stdin JSON CLI", async (t) => {
   result = await runCli({ action: "unknown", cwd: root });
   assert.notEqual(result.code, 0);
   assert.match(JSON.parse(result.stdout).error, /unknown action/);
+});
+
+test("runs the CLI when invoked through a symlink", async (t) => {
+  const root = await repository(t);
+  const script = join(root, "ticket-run.js");
+  await symlink(join(import.meta.dirname, "ticket-run.js"), script);
+
+  const result = await runCli(
+    { action: "hash", contract: "Ticket contract\n" },
+    script,
+  );
+
+  assert.equal(result.code, 0);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /"hash":"sha256:[a-f0-9]{64}"/);
 });
 
 test("refuses a symlinked ticket-run directory", async (t) => {

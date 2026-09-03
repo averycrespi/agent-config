@@ -108,7 +108,6 @@ function validateIdentity(ticket, assignment) {
   const validatedTicket = {
     id: cleanText(ticket.id, "ticket.id", 200),
     identifier: cleanText(ticket.identifier, "ticket.identifier", 50),
-    url: assertUrl(ticket.url, "ticket.url"),
     contractHash: ticket.contractHash,
   };
   if (!TICKET_IDENTIFIER.test(validatedTicket.identifier)) {
@@ -636,7 +635,7 @@ async function runCli() {
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  import.meta.url === pathToFileURL(await realpath(process.argv[1])).href
 ) {
   runCli().catch((error) => {
     process.stdout.write(`${JSON.stringify({ error: error.message })}\n`);
