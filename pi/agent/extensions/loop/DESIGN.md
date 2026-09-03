@@ -62,7 +62,7 @@ Typed API subscriptions and `pi.events` receive lifecycle events after state mut
 
 ## UI
 
-The informational widget uses key `loop` and `belowEditor` placement. It shows precise counters because the widget is user-facing, while continuation prompts omit them. Dynamic message and reason text is control-stripped, whitespace-collapsed, and width-truncated.
+The informational widget uses key `loop` and `belowEditor` placement. It shows precise counters because the widget is user-facing, while continuation prompts omit them. During a scheduler delay, extension-local ephemeral state supplies the next-continuation deadline and a one-second render timer updates a trailing countdown. `Loop waiting` is presentation only: persisted lifecycle status remains `running`, active time continues to accrue, and cancellation clears both the deadline and render timer. Outside an active wait, the widget shows the configured delay instead. Dynamic message and reason text is control-stripped, whitespace-collapsed, and width-truncated.
 
 Tool rows follow the shared action grammar: a stable emphasized `loop` title, muted action-first summary, compact state result, and optional expanded transition. Start calls show bounds but never echo the continuation message. Renderers use `_shared/render.ts` for width-aware component reuse and sanitize dynamic reasons and errors before styling.
 

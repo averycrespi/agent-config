@@ -41,6 +41,21 @@ test("loop widget gives running status visual priority over telemetry", () => {
   assert.match(lines[1], /Continue making concrete progress/);
 });
 
+test("loop widget replaces the configured delay with a trailing countdown while waiting", () => {
+  const lines = renderLoopWidgetLines(
+    loop({ delaySeconds: 15 }),
+    300,
+    undefined,
+    1_000,
+    13_000,
+  );
+
+  assert.equal(
+    lines[0],
+    "◷ Loop waiting · 3/10 continuations · 12m/60m active · next continuation in 12s",
+  );
+});
+
 test("loop widget renders yielded and stopped details safely", () => {
   const yielded = renderLoopWidgetLines(
     loop({

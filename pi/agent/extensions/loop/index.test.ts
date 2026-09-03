@@ -83,12 +83,17 @@ async function setup(
   branch: unknown[] = [],
   runtimeConfig: typeof config = config,
   wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>,
+  timers?: {
+    setInterval: (callback: () => void, milliseconds: number) => any;
+    clearInterval: (timer: any) => void;
+  },
 ) {
   const pi = makePi();
   const ctx = makeCtx(branch);
   createLoopExtension({
     loadConfig: async () => ({ config: runtimeConfig, warnings: [] }),
     wait,
+    ...timers,
   })(pi);
   await pi.handlers.get("session_start")({}, ctx);
   return { pi, ctx };
@@ -157,12 +162,28 @@ test("settlement broadcasts the specified message plus control reminder without 
 test("settlement waits for the configured delay before claiming a continuation", async () => {
   const waits: number[] = [];
   let release!: () => void;
-  const { pi, ctx } = await setup([], config, (milliseconds) => {
-    waits.push(milliseconds);
-    return new Promise<void>((resolve) => {
-      release = resolve;
-    });
-  });
+  let tick!: () => void;
+  let clearedTimer: unknown;
+  const timer = { id: "countdown" };
+  const { pi, ctx } = await setup(
+    [],
+    config,
+    (milliseconds) => {
+      waits.push(milliseconds);
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    },
+    {
+      setInterval(callback) {
+        tick = callback;
+        return timer;
+      },
+      clearInterval(handle) {
+        clearedTimer = handle;
+      },
+    },
+  );
   await execute(pi, {
     action: "start",
     message: "Poll once per continuation",
@@ -179,12 +200,35 @@ test("settlement waits for the configured delay before claiming a continuation",
   assert.deepEqual(waits, [5_000]);
   assert.equal(pi.sentMessages.length, 0);
   assert.equal(loopApi.get()?.continuationCount, 0);
+  const waitingWidget = pi.widgets.at(-1)?.content(
+    { requestRender() {} },
+    {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    },
+  );
+  assert.match(
+    waitingWidget.render(300)[0],
+    /Loop waiting.*next continuation in 5s$/,
+  );
+  const widgetCount = pi.widgets.length;
+  tick();
+  assert.equal(pi.widgets.length, widgetCount + 1);
 
   release();
   await settling;
 
   assert.equal(pi.sentMessages.length, 1);
   assert.equal(loopApi.get()?.continuationCount, 1);
+  const runningWidget = pi.widgets.at(-1)?.content(
+    { requestRender() {} },
+    {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    },
+  );
+  assert.match(runningWidget.render(300)[0], /Loop running.*5s delay$/);
+  assert.equal(clearedTimer, timer);
 });
 
 test("stopping during a delay cancels the pending continuation", async () => {

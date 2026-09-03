@@ -73,7 +73,7 @@ A loop restored from a persisted `running` snapshot becomes `stopped` with reaso
 
 ## Widget
 
-When enabled and a loop exists, a compact widget appears below the editor. It emphasizes the lifecycle status while rendering exact continuation usage, active running-time usage, and a nonzero continuation delay as secondary telemetry. It shows the configured message while running or stopped, the current wait reason while yielded, and stopped-state diagnostics in the status line. Dynamic content is terminal-safe and width-truncated.
+When enabled and a loop exists, a compact widget appears below the editor. It emphasizes the lifecycle status while rendering exact continuation usage and active running-time usage. A running loop shows its configured nonzero delay as secondary telemetry. While the scheduler is waiting for that delay, the status changes to `Loop waiting` and replaces the configured delay with a trailing `next continuation in 12s` countdown that updates once per second. This is transient presentation state, not a persisted lifecycle status, and waiting time continues to count as active running time. The widget shows the configured message while running, waiting, or stopped, the current wait reason while yielded, and stopped-state diagnostics in the status line. Dynamic content is terminal-safe and width-truncated.
 
 ## Configuration
 

@@ -33,11 +33,15 @@ const WIDGET_PLACEMENT = "belowEditor";
 const CONTINUATION_CONTROL =
   'The loop is still running. Use `loop` with `action: "yield"` if progress requires user input, `action: "stop"` when another automatic continuation would not be useful, or `action: "get"` to inspect its state and remaining limits.';
 
+type IntervalHandle = ReturnType<typeof setInterval> | number;
+
 type LoopExtensionOptions = {
   loadConfig?: (
     cwd: string,
   ) => Promise<{ config: LoopConfig; warnings: string[] }>;
   wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  setInterval?: (callback: () => void, milliseconds: number) => IntervalHandle;
+  clearInterval?: (timer: IntervalHandle) => void;
 };
 
 function waitForDelay(
@@ -185,6 +189,11 @@ function parseExtendCommand(args: string): LoopLimitPatch {
 export function createLoopExtension(options: LoopExtensionOptions = {}) {
   const loadConfig = options.loadConfig ?? loadLoopConfig;
   const wait = options.wait ?? waitForDelay;
+  const startInterval: NonNullable<LoopExtensionOptions["setInterval"]> =
+    options.setInterval ??
+    ((callback, milliseconds) => setInterval(callback, milliseconds));
+  const stopInterval: NonNullable<LoopExtensionOptions["clearInterval"]> =
+    options.clearInterval ?? ((timer) => clearInterval(timer));
 
   return function loopExtension(pi: ExtensionAPI) {
     const store = createLoopStore();
@@ -198,6 +207,8 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
     let runSerial = 0;
     let scheduledSerial = -1;
     let pendingSchedule: AbortController | undefined;
+    let pendingContinuationAt: number | undefined;
+    let countdownTimer: IntervalHandle | undefined;
     let pendingFailure:
       | {
           reason: "error" | "aborted";
@@ -216,13 +227,23 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
       setLoopWidget(
         pi,
         ctx,
-        config.showWidget && loop ? createLoopWidget(loop) : undefined,
+        config.showWidget && loop
+          ? createLoopWidget(loop, pendingContinuationAt)
+          : undefined,
       );
+    }
+
+    function clearCountdown(): void {
+      pendingContinuationAt = undefined;
+      if (countdownTimer !== undefined) stopInterval(countdownTimer);
+      countdownTimer = undefined;
     }
 
     function cancelPendingSchedule(): void {
       pendingSchedule?.abort();
       pendingSchedule = undefined;
+      clearCountdown();
+      if (currentCtx) renderWidget(currentCtx);
     }
 
     function publish(type: LoopEventType): void {
@@ -278,8 +299,13 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           if (schedule.signal.aborted) return;
         }
         if (loop.delaySeconds > 0) {
+          pendingContinuationAt = Date.now() + loop.delaySeconds * 1_000;
+          renderWidget(ctx);
+          countdownTimer = startInterval(() => renderWidget(ctx), 1_000);
           await wait(loop.delaySeconds * 1_000, schedule.signal);
           if (schedule.signal.aborted) return;
+          clearCountdown();
+          renderWidget(ctx);
         }
         const currentLoop = store.getLoop();
         if (
@@ -331,7 +357,11 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           { deliverAs: "followUp", triggerTurn: true },
         );
       } finally {
-        if (pendingSchedule === schedule) pendingSchedule = undefined;
+        if (pendingSchedule === schedule) {
+          pendingSchedule = undefined;
+          clearCountdown();
+          renderWidget(ctx);
+        }
       }
     }
 
