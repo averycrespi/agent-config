@@ -1,11 +1,11 @@
 ---
 name: agent-engineering
-description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra, GPT-5.x, and Claude 4.x, and platform-specific patterns for Claude Code, the Claude Agent SDK, and Pi. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
+description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra and GPT-5.6, and platform-specific patterns for Claude Code, the Claude Agent SDK, and Pi. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
 ---
 
 # Agent Engineering
 
-This skill teaches the engineering discipline of _building_ AI coding agents — the harness, the workflow, the model choices — not the discipline of _using_ one. Most of the literature came together in 2025–2026 under names like "harness engineering," "context engineering," and "agentic workflow design." This skill is intentionally optimized for Claude/OpenAI/Pi coding harnesses because those are the platforms covered by the repo and references; for Gemini, Copilot/Cursor/Windsurf, SWE-agent variants, or local models, use these principles but re-check the platform's primary docs. This is the distilled core; deep references live in `references/`.
+This skill teaches the engineering discipline of _building_ AI coding agents — the harness, the workflow, the model choices — not the discipline of _using_ one. Most of the literature came together in 2025–2026 under names like "harness engineering," "context engineering," and "agentic workflow design." Model-specific guidance is scoped to GPT-5.6 and GPT-6 Astra. This skill also retains Claude Code/Claude Agent SDK/OpenAI/Pi platform patterns and model-independent research because those are the platforms covered by the repo and references; for Gemini, Copilot/Cursor/Windsurf, SWE-agent variants, or local models, use these principles but re-check the platform's primary docs. This is the distilled core; deep references live in `references/`.
 
 ## Mental model
 
@@ -29,11 +29,11 @@ Fourteen principles that show up repeatedly across 2025–2026 literature, vendo
 
 2. **Subagents are usually read-mostly context firewalls.** Use them for exploration, retrieval, review, verification, and other independent workstreams. Sequential writable delegation can work when a deterministic orchestrator defines one bounded task, permits one writer, owns durable state and evidence, and independently verifies the result. Avoid parallel writes to shared state; isolate truly independent implementation work before parallelizing it. Claude Code's official guidance is to use subagents to _answer questions, not write code_, while GPT-5.6 permits broader delegation but warns against ordered chains and shared mutable resources. ([Anthropic on context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents); [GPT-5.6 Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent); [HumanLayer on context firewalls](https://www.humanlayer.dev/blog/skill-issue-harness-engineering-for-coding-agents))
 
-3. **Validated machine-readable output, not free text.** JSON schemas (TypeBox / Pydantic / Zod) are preferred for phase boundaries when the API supports strict structured output. Parsed tagged outputs (`<status>done</status>`) are an acceptable fallback in CLI/Pi-style harnesses where JSON is brittle. Free-text completion markers like `<promise>COMPLETE</promise>` are fragile. GPT-5.5 explicitly recommends moving output schemas out of prompt prose into the Structured Outputs API. ([GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5))
+3. **Validated machine-readable output, not free text.** JSON schemas (TypeBox / Pydantic / Zod) are preferred for phase boundaries when the API supports strict structured output. Parsed tagged outputs (`<status>done</status>`) are an acceptable fallback in CLI/Pi-style harnesses where JSON is brittle. Free-text completion markers like `<promise>COMPLETE</promise>` are fragile. Keep output schemas out of prompt prose when the API can enforce them. ([Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6))
 
-4. **Tune reasoning per phase with evaluations.** Don't assume one OpenAI reasoning effort or Claude effort/thinking configuration fits every phase. Execution often benefits from lower effort, while planning, debugging, verification, and review may justify more. GPT-5.6 defaults to `medium`, adds `max`, and recommends preserving the previous model's effort as a migration baseline before testing one level lower. Its `pro` mode is independent of effort and should be enabled in the API, not prompted. Claude Opus 4.8 defaults to `high` and supports adaptive thinking as its only thinking-on mode. ([Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6); [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8))
+4. **Tune reasoning per phase with evaluations.** Don't assume one reasoning effort fits every phase. Execution often benefits from lower effort, while planning, debugging, verification, and review may justify more. GPT-5.6 defaults to `medium`, adds `max`, and recommends preserving the previous model's effort as a migration baseline before testing one level lower. Its `pro` mode is independent of effort and should be enabled in the API, not prompted. Astra does not support `none`; use `low` as the initial replacement. ([Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6); [Using GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra))
 
-5. **Cross-family verification beats same-model verification.** Self-preference bias is the most damaging of the four canonical judge biases (position, verbosity, self-preference, authority); judges are ~50% more likely to pass output from their own family on objective rubrics. Route implementer through one family, reviewer through another. ([Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996))
+5. **Verify independently against evidence.** Use fresh read-only reviewer contexts, authoritative acceptance criteria, and concrete file/line or command evidence. Choose GPT-5.6 or Astra reviewers by task-level evaluations; a different model is optional diversity, not proof of independence. Same-family reviews retain correlated-error and self-preference risks. ([Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996))
 
 6. **Deterministic gates first, agentic rubrics second, multi-reviewer third.** Tests, types, lints, and builds catch the cheap failures for free. Agentic rubrics built from the ticket+repo at runtime catch what tests miss. Multi-reviewer with diverse lenses catches what rubrics miss. Skipping the cheap layer to argue with an LLM is a tax. ([Agentic Rubrics as Contextual Verifiers](https://arxiv.org/pdf/2601.04171))
 
@@ -43,7 +43,7 @@ Fourteen principles that show up repeatedly across 2025–2026 literature, vendo
 
 9. **Sticky completion + bounded fix loops.** Allow a small, explicit number of verifier-driven fix rounds when the workflow has a `fix` phase. After the cap, or once a task/phase reaches `done`, there is no edge back to implementation: remaining findings become known issues. Without this, models perpetually nitpick on style. The `pi-supervisor` "5-strike lenient mode" is a useful reference point.
 
-10. **Compaction-aware design.** Long pipelines lose information mid-run; the question is whether you control how. Anthropic's [context engineering post](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) and OpenAI's [compaction guide](https://developers.openai.com/api/docs/guides/compaction) name the same three techniques: (a) compaction, (b) structured note-taking artifacts on disk, (c) just-in-time retrieval. The 5-min Anthropic prompt-cache TTL is a hard pacing constraint. (See `references/context-engineering.md`.)
+10. **Compaction-aware design.** Long pipelines lose information mid-run; the question is whether you control how. Anthropic's [context engineering post](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) and OpenAI's [compaction guide](https://developers.openai.com/api/docs/guides/compaction) name the same three techniques: (a) compaction, (b) structured note-taking artifacts on disk, (c) just-in-time retrieval. Measure cache reuse and write costs rather than treating caching as free. (See `references/context-engineering.md`.)
 
 11. **Diff budgets and idle-iteration kill switches.** Mechanical brakes catch the "implementer wandered off" failure mode before fix-loops kick in. Hard cap on per-task diff size; abort if no file delta in N iterations. Cheap and load-bearing.
 
@@ -82,23 +82,22 @@ Documented failure modes — short list. Full annotated catalog in `references/a
 - **Unstructured multi-agent debate / negotiation.** GPT-5.6's beta supports bounded coordinator-worker delegation, but open-ended agents arguing or negotiating without a fixed decomposition, budget, and synthesis contract remains fragile.
 - **Parallel implementations of the same subtask + merge.** Hidden coupling kills it.
 - **Uncontrolled mid-task replanning.** Keep acceptance criteria stable during execution; treat user-requested changes as explicit scope revisions with updated durable state. Astra's mid-turn steering can deliver corrections, but does not replace orchestrator-owned scope and evidence.
-- **Generic LLM-as-judge without rubrics.** Beaten consistently by rubric-based + cross-family.
+- **Generic LLM-as-judge without rubrics.** Prefer independent AC-grounded review with concrete evidence.
 - **Free-text completion markers.** `<promise>COMPLETE</promise>` is fragile; validated machine-readable output is robust.
-- **Unbounded verify → implement loopback.** The exact open-ended loop GPT-5/Claude-4-class models thrash in. Use bounded fix rounds, then report known issues.
+- **Unbounded verify → implement loopback.** Repeated review can keep finding new issues without converging. Use bounded fix rounds, then report known issues.
 - **Massive context windows as a substitute for retrieval.** Two 2026 vendor reports argue that context drift causes more enterprise failures than raw context exhaustion ([Zylos](https://zylos.ai/research/2026-02-28-ai-agent-context-compression-strategies), [Harness](https://www.harness.io/blog/defeating-context-rot-mastering-the-flow-of-ai-sessions)). Big windows make compaction _more_ important, not less.
 - **Self-improving agents that rewrite their own scaffold mid-run.** Cool research, not production-ready. ([Live-SWE-Agent](https://arxiv.org/pdf/2511.13646))
-- **Context anxiety.** Sonnet 4.5 documented to take shortcuts when it _believes_ it's near context exhaustion ([Inkeep on Context Anxiety](https://inkeep.com/blog/context-anxiety)). Don't expose the agent to its own context-pressure signal unless you've thought about it.
+- **Uncalibrated context-pressure cues.** Evaluate whether turn/token warnings encourage premature completion. Keep hard budgets in the harness and preserve completion criteria across compaction.
 
 ## Model-specific cheat sheet
 
 Quick orientation; deep guidance in `references/models.md`.
 
-- **GPT-6 Astra**: define authorized follow-through, audit skills and `AGENTS.md` for conflicting instructions, specify delegation triggers, and bound verification to required checks and unresolved risks. Expect more clarification and detailed formatting unless prompted otherwise. Read the [Astra migration guidance](references/models.md#gpt-6-astra) before carrying over GPT-5.x settings; tool calling requires Responses and `none` reasoning is unsupported.
-- **Claude 4.x**: consider for long-running, high-reasoning agent loops; select against task-level evaluations rather than a universal family ranking.
-- **GPT-5.x / Codex**: retain as an execution and migration baseline. For GPT-5.6, use Sol for flagship capability, Terra for a capability/cost balance, and Luna for efficient high-volume work.
+- **GPT-6 Astra**: define authorized follow-through, audit skills and `AGENTS.md` for conflicting instructions, specify delegation triggers, and bound verification to required checks and unresolved risks. Expect more clarification and detailed formatting unless prompted otherwise. Read the [Astra migration guidance](references/models.md#gpt-6-astra) before carrying over GPT-5.6 settings; tool calling requires Responses and `none` reasoning is unsupported.
+- **GPT-5.6**: retain as an execution and migration baseline. For GPT-5.6, use Sol for flagship capability, Terra for a capability/cost balance, and Luna for efficient high-volume work.
 - **Model-specific prompting advice changes quickly.** Read the current migration/prompting guide for the exact model version before reusing an older harness prompt.
 
-Cross-family rule: **never use the same model for implement and verify if you can avoid it.**
+Verification rule: **independent context and concrete evidence matter more than a model-name change.**
 
 ## Platform cheat sheet
 
@@ -113,7 +112,7 @@ For exact platform behavior, current gotchas, and repo-specific conventions, rea
 ## How to use this skill
 
 1. **For broad orientation** ("how should I shape this harness?"): read this `SKILL.md` end-to-end. The principles section is the load-bearing part.
-2. **For model-specific design questions** ("how does Astra change my prompt?", "how does Opus 4.8 change my prompt?"): read `references/models.md`.
+2. **For model-specific design questions** ("how does Astra change my GPT-5.6 prompt?"): read `references/models.md`.
 3. **For platform-specific implementation** ("how do I wire up a Claude Code hook?"): read `references/platforms.md`.
 4. **For workflow design** ("what phases should my pipeline have?"): read `references/workflow-patterns.md`.
 5. **For verification design** ("how should my reviewer be structured?"): read `references/verification.md`.

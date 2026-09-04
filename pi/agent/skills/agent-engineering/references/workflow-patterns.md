@@ -24,7 +24,7 @@ Brief description of each:
 | plan-repair | Plan + repo state + AC | Revised plan or "plan is good"                                | One bounded revision allowed. Catches plan/repo drift before it becomes implementer thrash. |
 | implement   | One task + AC + plan   | Scoped workspace diff and structured handoff                  | Sequential per task. Fresh writer each; orchestrator verifies and checkpoints.              |
 | validate    | All commits            | Pass/fail of deterministic gates (tests, types, lints, build) | Cheap, fast, infallible-on-true-pass.                                                       |
-| review      | All commits + AC       | Per-criterion verdicts + any findings                         | Multiple reviewers, diverse lenses, ideally cross-family. Read-only.                        |
+| review      | All commits + AC       | Per-criterion verdicts + any findings                         | Independent read-only review; add distinct lenses according to risk.                        |
 | fix         | Review findings        | Code changes                                                  | 2-round cap. Sticky completion.                                                             |
 | emit-report | Everything             | Structured JSON + human-readable summary                      | Always emits. No unbounded verify→implement loopback.                                       |
 
@@ -112,7 +112,7 @@ This does not overturn the sequential-implement rule. It offers a lower-applicat
 
 [`roach-pi`](https://github.com/tmdgusya/roach-pi)'s pattern: each reviewer role runs **twice with different seeds**, where seed 2 is told "focus on what seed 1 might miss by examining alternative paths." Doubles reviewer cost, lower-variance findings, cheaper than maintaining 6 distinct reviewer roles.
 
-When you can afford it, **cross-family verification beats two-seed same-model**. See `verification.md` for self-preference bias evidence. When you can't afford cross-family (cost, infrastructure), two-seed is the cheapest diversity you can buy.
+For GPT-5.6/Astra workflows, start with fresh read-only reviewer contexts and artifact-grounded evidence. Add a second lens or another available model when risk or measured recall justifies the cost. Same-family blind spots remain; repeated runs are not a substitute for deterministic gates. Verify seed support before translating this pattern into API parameters. See `verification.md`.
 
 ## Validator information barrier
 
@@ -188,7 +188,7 @@ The orchestrator's job is to **terminate**. Always emit a final report — pass,
 
 Don't:
 
-- Allow unbounded `verify → implement` loopback. The exact open-ended loop GPT-5/Claude-4-class models thrash in.
+- Allow unbounded `verify → implement` loopback. Repeated review can keep finding new issues without converging.
 - Allow free-text completion markers. `<promise>COMPLETE</promise>` is fragile.
 - Skip the report on cancel. A canceled run that emits a "what was done so far" report is salvageable; one that doesn't is throwaway work.
 

@@ -67,7 +67,7 @@ This `agent-engineering` skill is itself an example of the pattern.
 
 Authoritative: [Sub-agents](https://docs.claude.com/en/docs/claude-code/sub-agents) and [Subagents in Claude Code blog](https://claude.com/blog/subagents-in-claude-code).
 
-Subagents are markdown files in `.claude/agents/*.md` (project) or `~/.claude/agents/` (user), can also be provided by managed settings, CLI JSON, or plugins, and are invoked through the `Agent` tool with a prompt and an optional subagent type. Each subagent runs in an isolated context window — the parent doesn't see what the subagent saw, only its final response. Claude Code includes built-in `Explore` (Haiku, read-only), `Plan` (read-only planning research), and `general-purpose` subagents.
+Subagents are markdown files in `.claude/agents/*.md` (project) or `~/.claude/agents/` (user), can also be provided by managed settings, CLI JSON, or plugins, and are invoked through the `Agent` tool with a prompt and an optional subagent type. Each subagent runs in an isolated context window — the parent doesn't see what the subagent saw, only its final response. Claude Code includes built-in `Explore` (read-only), `Plan` (read-only planning research), and `general-purpose` subagents.
 
 **Key knobs:**
 
@@ -81,7 +81,7 @@ Subagents are markdown files in `.claude/agents/*.md` (project) or `~/.claude/ag
 - Read-only fan-out: search, retrieval, review, classification.
 - Anything verbose where you only need a summary.
 - Anything that would pollute the parent context if inlined.
-- Cross-family review only when an external orchestrator or bridge actually routes the review to a non-Claude model; ordinary Claude Code subagents should not be assumed to do this.
+- Independent review with fresh context, authoritative acceptance criteria, and artifact-based evidence. Platform subagent settings do not by themselves establish model diversity.
 
 **When not to:**
 
@@ -99,7 +99,7 @@ Three configuration scopes:
 - **Project**: in `.claude/settings.json`, checked into the repo.
 - **User**: in `~/.claude/settings.json`.
 
-MCP tools surface to the model as regular tools with provider-prefixed names (e.g. `mcp__github__list_pull_requests`, or `mcp__mcp-broker__github_list_pull_requests` when GitHub is exposed through a broker server named `mcp-broker`). The Tool Search Tool (see `models.md`) becomes very useful when you have many MCP tools — defer-load avoids 30+ tool schemas in every system prompt.
+MCP tools surface to the model as regular tools with provider-prefixed names (e.g. `mcp__github__list_pull_requests`, or `mcp__mcp-broker__github_list_pull_requests` when GitHub is exposed through a broker server named `mcp-broker`). Use the platform's documented tool-discovery mechanism for large MCP catalogs rather than loading every schema into the prompt; verify support in the current platform docs.
 
 ### Settings.json
 
@@ -115,7 +115,7 @@ Hierarchy (highest priority first):
 4. `.claude/settings.json`
 5. `~/.claude/settings.json`
 
-Use the `update-config` skill in this repo for non-trivial settings edits.
+Validate settings syntax and effective configuration after non-trivial edits.
 
 ### Slash commands
 
@@ -234,7 +234,7 @@ These showed up repeatedly across the Pi extensions surveyed for this skill:
 
 ### Pi gotchas
 
-From this repo's `CLAUDE.md` and the broader ecosystem:
+From this repo's `AGENTS.md` and the broader ecosystem:
 
 - **Extensions run with full system permissions.** `extensions.md` explicitly warns. Only install trusted code, and enforce risky actions in tools rather than relying on prompt instructions.
 - **`mock.method` from `node:test` can't replace ESM module exports** — they're non-configurable bindings. To stub something like `child_process.spawn`, wrap in an exported holder (`export const _spawn = { fn: _nodeSpawn }`) and call through `_spawn.fn(...)`. Tests then `mock.method(_spawn, "fn", stub)`. Reference pattern in this repo: `pi/agent/extensions/subagents/spawn.ts`.

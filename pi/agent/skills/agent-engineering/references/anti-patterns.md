@@ -30,9 +30,9 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: While an implementer is executing, a coach/planner agent monitors and injects new guidance.
 
-**Why it fails**: Devin's data — "performs worse when you keep telling it more after it starts." Iterative coaching mid-task is _negative-EV_ for current-gen agents. The implementer treats new guidance as additional constraints, leading to over-cautious or self-contradictory output.
+**Why it fails**: Devin's production report warns that repeated coaching can hurt performance. Treat this as evidence against uncontrolled prompt accumulation, not a universal prohibition on user corrections.
 
-**Instead**: Take the spec as immutable once implementation begins. If the plan needs to change, halt, replan from scratch with full context, then restart implementation.
+**Instead**: Keep acceptance criteria stable during execution. For an authorized scope revision, update durable requirements, reconcile completed work, and revalidate affected evidence. Astra steering can deliver the correction without making the model the owner of scope.
 
 **Citation**: [Cognition — Devin Annual Performance Review 2025](https://cognition.ai/blog/devin-annual-performance-review-2025).
 
@@ -52,9 +52,9 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: "Is this code good? Yes/No." Free-text reviewer with no scoring rubric.
 
-**Why it fails**: Beaten consistently by rubric-based + cross-family verifiers in every benchmark since 2025. Generic judges produce generic verdicts; they don't catch specific bugs.
+**Why it fails**: Generic judges produce verdicts without a task-specific basis. AC-grounded rubrics make claims falsifiable and direct the reviewer toward concrete defects.
 
-**Instead**: Per-criterion rubric grounded in acceptance criteria. Validated machine-readable output (`{criterion_id, verdict, evidence}` where JSON is supported). Cross-family if available. See `verification.md`.
+**Instead**: Per-criterion rubric grounded in acceptance criteria. Validated machine-readable output (`{criterion_id, verdict, evidence}` where JSON is supported). Use fresh reviewer context and inspect actual artifacts. See `verification.md`.
 
 **Citation**: [Agentic Rubrics as Contextual Verifiers](https://arxiv.org/pdf/2601.04171).
 
@@ -72,7 +72,7 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: Verifier finds an issue; orchestrator routes back to implementer; implementer fixes; verifier re-runs with no hard cap or termination policy.
 
-**Why it fails**: The exact open-ended loop GPT-5/Claude-4-class models thrash in. Verifier finds new issues with each iteration; perfectionism prevents termination.
+**Why it fails**: Verifier finds new issues with each iteration; perfectionism prevents termination.
 
 **Instead**: Use an explicit fix phase with a hard cap (2 rounds by default). After cap, surface remaining issues as known issues in the report. Always emit a final report. Sticky completion: once a phase reaches `done`, no edge out.
 
@@ -82,21 +82,21 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: Orchestrator composes the system prompt from multiple skill files, plus per-phase prompts, plus user `AGENTS.md`, plus repo `CLAUDE.md`. One says "never X," another says "always X."
 
-**Why it fails**: GPT-5.x's tighter instruction-following means conflicting directives cause the model to burn reasoning tokens reconciling rather than resolving. Quality drops.
+**Why it fails**: Astra's stronger instruction following makes conflicting skill and repository guidance consequential; unclear rules can cause unnecessary pauses or scope drift.
 
 **Instead**: Run a contradiction-lint pass on composed prompts. Cheap pre-flight check; large quality win.
 
-**Citation**: GPT-5 prompting guides note this; documented in the OpenAI cookbook.
+**Citation**: [Using GPT-6 Astra — Instruction following](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).
 
 ### Step-by-step prose where outcome+success-criteria would do
 
 **What**: System prompt micro-specifies the procedure: "First do X, then Y, then Z."
 
-**Why it fails on GPT-5.5 and GPT-5.6**: OpenAI's [GPT-5.5 prompt guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) says to replace step-by-step prose with outcome + success criteria, and GPT-5.6 carries that guidance forward while recommending shorter prompts. Tighter instruction-following can over-literalize a procedure even when a better path exists.
+**Why it fails on GPT-5.6**: Excessive procedural detail can constrain the model to a worse path. OpenAI recommends shorter prompts that state outcomes, constraints, and success criteria.
 
 **Instead**: "Achieve X with these criteria for done: ..."
 
-**Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5); [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6); [the-decoder summary](https://the-decoder.com/openai-says-old-prompts-are-holding-gpt-5-5-back-and-developers-need-a-fresh-baseline/).
+**Citation**: [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
 
 ### Generic brevity instructions on GPT-5.6
 
@@ -112,21 +112,11 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: System prompt explains when to use each tool, side effects, error handling, retry semantics.
 
-**Why it fails on GPT-5.5 and GPT-5.6**: That guidance belongs in tool _descriptions_. Putting it in the system prompt means the model has to mentally re-route every tool decision through prose; it also bloats the system prompt.
+**Why it fails on GPT-5.6**: That guidance belongs in tool _descriptions_. Putting it in the system prompt means the model has to mentally re-route every tool decision through prose; it also bloats the system prompt.
 
 **Instead**: Move per-tool guidance into the tool description: when to use, side effects, retry safety, error modes. System prompt describes the agent's _role_.
 
-**Citation**: [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5); [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
-
-### Old "double-check" / "be careful" scaffolding on Claude Opus 4.x
-
-**What**: Prompt says "double-check your work," "be careful with X," "verify before responding."
-
-**Why it fails**: Current Opus 4.x models follow instructions more literally. "Double-check" produces extra verification turns instead of being interpreted as polite emphasis. Wastes tokens, slows the loop.
-
-**Instead**: State the constraint once, clearly. Trust the model. Use structured verification at phase boundaries instead of asking the implementer to self-verify.
-
-**Citation**: [Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code); [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8).
+**Citation**: [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6).
 
 ## Context and memory
 
@@ -140,15 +130,13 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **Citation**: Zylos, Harness, [Anthropic on context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents).
 
-### Context anxiety
+### Uncalibrated context-pressure cues
 
-**What**: Surfacing context-pressure signals to the agent ("you have N tokens remaining," "you're at 80% of your context limit").
+**What**: Surfacing turn/token warnings without measuring their effect on completion quality.
 
-**Why it fails**: Sonnet 4.5 documented to take shortcuts when it _believes_ it's near context exhaustion — even when it isn't. The model sees the cue and switches into "ship something now" mode.
+**Risk to evaluate**: Warnings may encourage premature completion rather than useful prioritization. Treat this as a harness design hypothesis, not a documented GPT-5.6/Astra behavior.
 
-**Instead**: Don't expose the agent to its own context-pressure signal unless eagerness-to-finish is what you want. Use structured effort/task-budget controls deliberately, not as generic "be quick" hints.
-
-**Citation**: [Inkeep on Context Anxiety](https://inkeep.com/blog/context-anxiety) — documents Cognition's discovery.
+**Instead**: Keep hard budgets in the harness, preserve acceptance criteria across compaction, and require honest partial-result reporting. See `context-engineering.md`.
 
 ### Inlining workflow state into every subagent prompt
 
@@ -186,9 +174,9 @@ Mitigations map to patterns elsewhere in this skill:
 
 **What**: Devin's documented finding from 18 months of production.
 
-**Why it matters**: It's not just mid-task replanning. Any pattern where the harness keeps adding to the prompt during execution is suspect. "Helpful" reminders, status nudges, mid-stream feedback — all degrade performance.
+**Why it matters**: Repeated reminders and coaching can accumulate conflicting constraints. This production observation does not establish that every mid-stream update degrades GPT-5.6 or Astra.
 
-**Instead**: Take the spec as immutable. If something needs to change, halt and restart with the new spec.
+**Instead**: Avoid redundant nudges. Handle user corrections as explicit scope revisions with updated durable state and evidence; see the Astra guidance in `models.md`.
 
 **Citation**: [Cognition — Devin Annual Performance Review 2025](https://cognition.ai/blog/devin-annual-performance-review-2025).
 
@@ -214,13 +202,13 @@ Mitigations map to patterns elsewhere in this skill:
 
 **Citation**: Strong 2026 verification pattern across [Anthropic](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents), [Augment](https://www.augmentcode.com/guides/harness-engineering-ai-coding-agents), [Datadog](https://www.datadoghq.com/blog/ai/harness-first-agents/).
 
-### Same model for implement and verify
+### Verification that trusts the implementer's narrative
 
-**What**: The same GPT-5.x model implements and verifies.
+**What**: A reviewer approves the implementer's explanation without independently inspecting the change.
 
-**Why it fails**: Self-preference bias. Judges are ~50% more likely to pass output from their own family on objective rubrics, with worse skews on subjective rubrics.
+**Why it fails**: Persuasive prose can hide defects, and shared assumptions or model-family biases can produce correlated errors.
 
-**Instead**: Cross-family routing. Implementer through one provider, verifier through another. Cheapest single-action mitigation. Two-seed reviewers as fallback.
+**Instead**: Use fresh read-only reviewer context, AC from authoritative artifacts, deterministic results, and concrete file/line evidence. Select GPT-5.6/Astra reviewers by evaluations; changing models is optional diversity and does not remove same-family blind spots. See `verification.md`.
 
 **Citation**: [Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996).
 
@@ -278,7 +266,7 @@ Mitigations map to patterns elsewhere in this skill:
 
 **What**: A trailing comma or stray quote in `settings.json` disables the entire file. Hooks don't fire. No warning.
 
-**Instead**: Validate `settings.json` as part of CI. The `update-config` skill in this repo handles this.
+**Instead**: Validate `settings.json` as part of CI.
 
 **Citation**: [Claude Lab — Hooks Not Firing troubleshooting](https://claudelab.net/en/articles/claude-code/claude-code-hooks-not-firing-troubleshooting).
 
@@ -296,7 +284,7 @@ Mitigations map to patterns elsewhere in this skill:
 
 **Instead**: Wrap in an exported holder: `export const _spawn = { fn: _nodeSpawn }`. Call through `_spawn.fn(...)`. Tests then `mock.method(_spawn, "fn", stub)`. Reference: `pi/agent/extensions/subagents/spawn.ts:19-22`.
 
-**Citation**: This repo's `CLAUDE.md`.
+**Citation**: This repo's `AGENTS.md`.
 
 ### Pi: snake_case schemas vs camelCase fields
 
@@ -304,4 +292,4 @@ Mitigations map to patterns elsewhere in this skill:
 
 **Instead**: Map in the tool's `execute` body. This is the in-repo convention.
 
-**Citation**: This repo's `CLAUDE.md`.
+**Citation**: This repo's `AGENTS.md`.

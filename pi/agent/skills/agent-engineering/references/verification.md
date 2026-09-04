@@ -65,9 +65,9 @@ Untreated judges commonly exhibit these. Listed in rough order of severity for v
 
 Judges are ~50% more likely to pass output from their own model family on objective rubrics. On subjective rubrics, the skew is worse. Reference: [Self-Preference Bias in Rubric-Based Evaluation](https://arxiv.org/abs/2604.06996) — quantifies SPB on objective IFEval rubrics and subjective HealthBench (10-point skew).
 
-Mitigation: **never use the same model for implement and verify if avoidable**. Route implementer through GPT-5.x, reviewer through Claude (or vice versa). The Pi `subagents` extension supports per-subagent selection through centrally configured profiles; cross-family independence exists only when those profiles map to different provider families. In Claude Code CLI and the Claude Agent SDK, `AgentDefinition.model` / subagent model settings should be treated as Claude-family selection unless current primary docs and environment configuration prove otherwise; use an external orchestrator, broker/MCP bridge, or separate process for true cross-family review.
+Mitigation: separate implementation from verification context. Give a fresh read-only reviewer the authoritative AC, actual diff, repository context, and deterministic results rather than the implementer's persuasive narrative. Require per-criterion evidence and calibrate the reviewer on known defects. Choose between GPT-5.6 and Astra based on evaluation results; neither changing models within one family nor running fresh instances eliminates family-level self-preference.
 
-Caveat: rubric biases can transfer across judge families. Reference: [Rubrics as an Attack Surface: Stealthy Preference Drift](https://arxiv.org/abs/2602.13576) — learned rubric biases transfer across judge models. Cross-model is a strong mitigation, not a complete one.
+Caveat: the cited measurements are not a GPT-5.6/Astra coding-review benchmark. Rubric biases can also transfer across judge families; see [Rubrics as an Attack Surface: Stealthy Preference Drift](https://arxiv.org/abs/2602.13576). Model diversity is an optional mitigation, not a substitute for evidence.
 
 ### Verbosity bias
 
@@ -91,15 +91,13 @@ Responses that cite prior work, name experts, or use technical jargon score high
 
 Mitigation: reviewer prompt says "do not give credit for citations or appeals to authority; verify each factual claim against the code."
 
-## Cross-model verification
+## Independent verification with available models
 
-The cheapest single-action mitigation against self-preference bias.
+Independence is a workflow property: fresh context, read-only access, authoritative AC, and findings grounded in artifacts the reviewer inspects. A different model name alone does not establish it.
 
-Pattern: route implementer through one provider, reviewer through another. On Pi, the `subagents` extension supports per-subagent selection through centrally configured profiles; map implementation and review profiles to different provider families when independence matters. In Claude Code CLI and the Claude Agent SDK, ordinary `.claude/agents/` / `AgentDefinition` reviewers should be treated as Claude-family unless current primary docs and environment configuration prove otherwise; use an external orchestrator, broker/MCP bridge, or separate process to route review to a non-Claude model.
+For GPT-5.6/Astra deployments, select reviewer profiles by task-level quality, cost, and latency evaluations. A fresh instance of the implementing model is acceptable; use another available model or a second distinct review lens when it demonstrably adds value. Do not require an unused provider solely to satisfy a cross-family rule.
 
-Cost: minimal when the deployment already has both providers wired in; otherwise it adds integration and credential-management complexity.
-
-When you can't (single-provider deployment, latency, cost), fall back to **two-seed reviewers** (`roach-pi`'s pattern). Doubles cost, halves variance, doesn't address self-preference but does address single-run noise.
+Use repeated independent reviews only when risk or measured recall justifies their cost. Different prompts or stochastic runs can expose missed paths, but correlated errors remain; do not assume a second run halves variance. Check whether the provider actually supports a seed parameter before adopting a literal two-seed implementation.
 
 For higher-stakes evaluation, consider **jury-on-demand** — dynamic jury selection per input with member-weighting. Reference: [Who Judges the Judge? LLM Jury-on-Demand](https://arxiv.org/pdf/2512.01786). Production-overkill for most harnesses; useful for evaluation infra.
 
@@ -185,8 +183,8 @@ The presence of an LLM verifier in the pipeline is itself a design decision, not
 If you're starting a new harness today and want defaults that work:
 
 1. Wire deterministic gates first. Don't add an LLM verifier until tests/types/lints are passing.
-2. Two reviewers minimum: plan-completeness + integration. Add security if untrusted input is in scope; performance if you have hot paths.
-3. Cross-family if both providers are available. Two-seed if not. One reviewer is rarely enough.
+2. Size review to risk and required workflow gates. A single fresh reviewer can cover completeness and integration; add distinct security or performance lenses when relevant.
+3. Use available GPT-5.6/Astra profiles with independent context and artifact-based evidence. Add model diversity or repeated runs only when evaluations justify them; acknowledge same-family blind spots.
 4. Per-criterion verdicts in strict JSON where supported, otherwise parsed tags. No free-text "looks good" outputs.
 5. Calibrate on 50+ examples before declaring the verifier authoritative; otherwise label it as triage.
 6. Inline anti-bias instructions in the reviewer prompt.

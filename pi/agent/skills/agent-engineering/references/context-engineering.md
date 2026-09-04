@@ -110,20 +110,9 @@ These are useful when designing custom memory layers; for most harnesses, struct
 
 ## Practical pacing constraints
 
-### Anthropic prompt cache TTL
-
-[Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching): system prompt, tool defs, and CLAUDE.md are cached automatically. **5-minute ephemeral TTL** by default. Anything over ~270s between turns blows the cache.
-
-Practical implications:
-
-- Polling loops that sleep ≥5 min pay a cache miss every wake-up. Either drop to ≤270s (stay in cache) or commit to ≥1200s (one cache miss buys a much longer wait).
-- The 1-hour cache is available for long-running loops — opt in via `cache_control: {ttl: "1h"}`.
-- Thinking-config changes invalidate the _message_ cache (system stays cached). Pin thinking config across an agent loop.
-- Place `cache_control: {type:"ephemeral"}` on the _last_ tool definition to cache all of them.
-
 ### OpenAI compaction and GPT-5.6 prompt caching
 
-The Responses API compaction is server-side and opaque; preserve compacted items unchanged and compact at deliberate boundaries before stale context accumulates. Long-context pricing changes above 272K input tokens on GPT-5.5 and GPT-5.6, so context growth affects both quality and cost.
+The Responses API compaction is server-side and opaque; preserve compacted items unchanged and compact at deliberate boundaries before stale context accumulates. Long-context pricing changes above 272K input tokens on GPT-5.6, so context growth affects both quality and cost.
 
 GPT-5.6 prompt caching is a separate optimization:
 
@@ -135,17 +124,11 @@ GPT-5.6 prompt caching is a separate optimization:
 
 ### Tokenizer changes between model versions
 
-Opus 4.7's tokenizer was ~1.0–1.35x more tokens than 4.6, and Opus 4.8 changed prompt-cache economics again. Recompute context budgets, `max_tokens`, cache thresholds, and compaction triggers on model upgrades. Same warning applies whenever a provider ships a new tokenizer or cache policy.
+Recompute context budgets, output limits, cache thresholds, and compaction triggers on model upgrades. Do not assume token counts or cache economics remain unchanged.
 
-## Context anxiety
+## Context-pressure cues
 
-[Inkeep on Context Anxiety](https://inkeep.com/blog/context-anxiety) documented Cognition's finding that Sonnet 4.5 takes shortcuts when it _believes_ it's near context exhaustion — even when it isn't. The model sees "approaching limit" cues and switches into "ship something now" mode.
-
-Implications:
-
-- Don't expose the agent to its own context-pressure signal unless you've thought about it.
-- Don't write "you have N turns remaining" into prompts unless you actually want eagerness-to-finish.
-- Claude effort/task-budget style controls are explicit versions of this signal — use them intentionally, not as generic "be quick" hints.
+Treat the effect of turn/token warnings as an evaluation question for GPT-5.6 and Astra, not a universal model behavior. Check whether warnings induce premature completion or useful prioritization. Keep hard budgets in the harness, preserve acceptance criteria across compaction, and require honest partial-result reporting when a limit is reached.
 
 ## Compaction-aware prompt design
 
@@ -153,8 +136,7 @@ If your harness runs through compaction events (Claude Agent SDK loops or OpenAI
 
 - **Re-state constraints at phase boundaries.** "Reminder: do not modify the public API. AC are at <workflowDir>/ac.json."
 - **Reference artifacts by path, not inline.** Compaction collapses inline content; paths survive.
-- **Use GPT-5.2/5.4-style `<planning>` blocks** for ephemeral scratch work. Tokens are discardable during compaction.
-- **Use Claude adaptive thinking deliberately.** Opus 4.8 supports adaptive thinking as the only thinking-on mode; thinking content is omitted by default, so opt into summarized display only when the harness actually needs it visible.
+- **Keep durable decisions separate from scratch work.** Do not rely on special prompt tags to preserve or discard content unless the current API explicitly supports that behavior.
 
 ## Practical defaults
 
@@ -164,7 +146,6 @@ If you're starting a new harness:
 2. **Compact at deliberate boundaries.** OpenAI: threshold-driven or `/responses/compact`; GPT-5.6 Multi-agent handles per-agent compaction automatically. Anthropic: rely on the Agent SDK's automatic compaction unless you have a specific reason not to.
 3. **Choose reasoning continuity deliberately.** Use GPT-5.6 `all_turns` only while prior reasoning remains relevant; preserve every typed output item in stateless loops.
 4. **Cache only reusable prefixes.** Measure GPT-5.6 cache writes against later reads instead of assuming caching is free.
-5. **Pace Anthropic polling loops to either ≤270s or ≥1200s.** Cache TTL drives cost.
-6. **Re-state hard constraints at every phase entry.** Not paranoia — the [Long-Horizon Task Mirage](https://arxiv.org/html/2604.11978v1) catastrophic-forgetting evidence is real.
-7. **Don't expose context-pressure signals to the agent** unless the eagerness-to-finish behavior is what you want.
-8. **On model upgrades**, recompute context budgets and compaction triggers — tokenizers and cache policies change.
+5. **Re-state hard constraints at every phase entry.** The [Long-Horizon Task Mirage](https://arxiv.org/html/2604.11978v1) provides suggestive evidence, with the domain caveats noted above.
+6. **Evaluate context-pressure cues** before relying on them to improve prioritization.
+7. **On model upgrades**, recompute context budgets and compaction triggers — tokenizers and cache policies change.

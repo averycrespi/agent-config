@@ -45,21 +45,6 @@ These are the load-bearing references. Read them directly when you need to groun
 
 ## 2. Model-specific guides
 
-- [Claude models overview](https://platform.claude.com/docs/en/about-claude/models/overview) — Authoritative model spec sheet.
-- [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8) — Current Opus guidance: `high` default effort, adaptive-thinking-only thinking mode, fast mode, lower prompt-cache minimum, refusal stop details.
-- [Introducing Claude Opus 4.8](https://www.anthropic.com/news/claude-opus-4-8) — Release post.
-- [What's new in Claude Opus 4.7](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7) — Still useful for migration caveats inherited by 4.8: no sampling params, no explicit thinking budgets, tokenizer changes.
-- [Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code) — Remove "double-check" scaffolding; don't overuse `max` effort.
-- [Building with extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) — Interleaved thinking automatic on 4.6/4.7/4.8; tool-use constraints; pin thinking config.
-- [Anthropic system cards index](https://www.anthropic.com/system-cards) — Safety system-card index; re-check current Opus/Sonnet/Haiku cards before making deployment claims.
-- [GPT-5 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide)
-- [GPT-5.1 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-1_prompting_guide)
-- [GPT-5.2 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-2_prompting_guide) — `<planning>` block (compaction-discardable); strict JSON schemas; tighter scope discipline.
-- [GPT-5.4 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.4) — "Bias to action" default; per-plan-item closure.
-- [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) — Migration baseline retained by GPT-5.6: move tool guidance to descriptions, replace prose procedure with outcome+criteria, drop schemas from prose, and use the Responses API.
-- [GPT-5.5 model page](https://developers.openai.com/api/docs/models/gpt-5.5) — 1.05M context, default `reasoning_effort=medium`.
-- [GPT-5.5 system card](https://openai.com/index/gpt-5-5-system-card/) — Persistence delta; harness-relevant signal that 5.5 keeps going where 5.4 gave up.
-- [Introducing GPT-5.5](https://openai.com/index/introducing-gpt-5-5/) — Release post. Migration history for GPT-5.6.
 - [Using GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra) — Primary Astra migration and prompting guide: initiative, instruction-file audits, writing style, delegation, proportional verification, Responses-only tool calling, reasoning updates, async tools, and steering. Vendor behavioral guidance; validate in the target harness.
 - [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — GPT-5.6 migration and prompting baseline; model routing, shorter prompts, effort/pro mode, persisted reasoning, PTC, Multi-agent, caching, vision, and safety deltas.
 - [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol), [Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), and [Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) — Authoritative model roles, limits, and pricing references.
@@ -68,7 +53,6 @@ These are the load-bearing references. Read them directly when you need to groun
 - [OpenAI Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent) — GPT-5.6 Responses API beta, supported collaboration actions, limits, compaction behavior, and HTTP/WebSocket guidance.
 - [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching) — GPT-5.6 explicit breakpoints, keys, TTL, write pricing, and observability fields.
 - [OpenAI safety best practices](https://developers.openai.com/api/docs/guides/safety-best-practices) — Safety identifiers and deployment controls.
-- [atLabs — GPT-5.2 Prompting Guide: The 2026 Playbook](https://www.atlabs.ai/blog/gpt-5.2-prompting-guide-the-2026-playbook-for-developers-agents) — Practitioner adaptation.
 
 ## 3. Platform docs
 
@@ -102,8 +86,6 @@ These are the load-bearing references. Read them directly when you need to groun
 - [Slash commands in the SDK](https://docs.claude.com/en/docs/claude-code/sdk/sdk-slash-commands)
 - [Plugins in the SDK](https://docs.claude.com/en/docs/agent-sdk/plugins)
 - [Migration guide (Claude Code SDK → Claude Agent SDK)](https://docs.claude.com/en/docs/claude-code/sdk/migration-guide)
-- [Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) — 5-min ephemeral TTL.
-- [Tool use with prompt caching](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching)
 - [Memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool)
 - [Programmatic tool calling](https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling)
 - [claude-agent-sdk-typescript](https://github.com/anthropics/claude-agent-sdk-typescript)
@@ -124,12 +106,9 @@ These are the load-bearing references. Read them directly when you need to groun
 - [Codex CLI features](https://developers.openai.com/codex/cli/features)
 - [Codex subagents](https://developers.openai.com/codex/subagents)
 - [AGENTS.md guide](https://developers.openai.com/codex/guides/agents-md) — Override convention; `project_doc_max_bytes`.
-- [Codex Prompting Guide (cookbook)](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide)
 - [Skills + Shell + Compaction tips for long-running agents](https://developers.openai.com/blog/skills-shell-tips) — Best published source on long-running-agent harness discipline.
 - [Compaction guide — Responses API](https://developers.openai.com/api/docs/guides/compaction)
 - [Compact a response — API reference](https://developers.openai.com/api/reference/resources/responses/methods/compact)
-- [TechCrunch: OpenAI releases GPT-5.5](https://techcrunch.com/2026/04/23/openai-chatgpt-gpt-5-5-ai-model-superapp/)
-- [NVIDIA blog — OpenAI's GPT-5.5 Powers Codex on NVIDIA Infrastructure](https://blogs.nvidia.com/blog/openai-codex-gpt-5-5-ai-agents/)
 
 ### Pi-mono
 
@@ -240,7 +219,6 @@ A high-leverage set of harness-pattern repos from the survey for this skill.
 - [Datadog — Closing the verification loop: Observability-driven harnesses](https://www.datadoghq.com/blog/ai/harness-first-agents/) — Production telemetry perspective.
 - [Augment Code — Harness Engineering for AI Coding Agents](https://www.augmentcode.com/guides/harness-engineering-ai-coding-agents) — Linter/CI gates as deterministic outer harness.
 - [Addy Osmani — Agent Harness Engineering](https://addyosmani.com/blog/agent-harness-engineering/) — Anchor for "agent = model + harness" framing.
-- [Inkeep — Context Anxiety](https://inkeep.com/blog/context-anxiety) — Sonnet 4.5 takes shortcuts when it _believes_ it's near context exhaustion. **Sharp anti-pattern citation.**
 - [WaveSpeedAI — Claude Code Agent Harness: Architecture Breakdown](https://wavespeed.ai/blog/posts/claude-code-agent-harness-architecture/) — Reverse-engineered five-stage compaction.
 - [Jonathan Fulton — Inside the Agent Harness: How Codex and Claude Code Actually Work](https://medium.com/jonathans-musings/inside-the-agent-harness-how-codex-and-claude-code-actually-work-63593e26c176) — Side-by-side harness comparison.
 - [Clyro — The 5 AI Agent Failure Modes](https://clyro.dev/blog/the-5-ai-agent-failure-modes-why-they-fail-in-production/) — Quantified taxonomy: Context Blindness 31.6%, Rogue Actions 30.3%, Silent Degradation 24.9%, Memory Corruption 8.1%, Runaway Execution 5.1%.
@@ -275,13 +253,6 @@ A high-leverage set of harness-pattern repos from the survey for this skill.
 - [Mellanon gist — Skills structure & activation](https://gist.github.com/mellanon/50816550ecb5f3b239aa77eef7b8ed8d)
 - [Builder.io — Claude Code Routines Tutorial](https://www.builder.io/blog/claude-code-routines)
 - [dabit3 gist — How to Build a Custom Agent Framework with PI](https://gist.github.com/dabit3/e97dbfe71298b1df4d36542aceb5f158)
-
-### GPT-5.x migration
-
-- [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — Primary source; preserve prior effort as a baseline, test one level lower, and shorten accumulated prompts.
-- [the-decoder — OpenAI says old prompts are holding GPT-5.5 back](https://the-decoder.com/openai-says-old-prompts-are-holding-gpt-5-5-back-and-developers-need-a-fresh-baseline/)
-- [TokenMix — GPT-5.5 Migration Checklist](https://tokenmix.ai/blog/gpt-5-5-migration-checklist)
-- [Simon Willison — GPT-5.5 prompting guide notes](https://simonwillison.net/2026/apr/25/gpt-5-5-prompting-guide/)
 
 ## 9. Evidence labels and maintenance
 

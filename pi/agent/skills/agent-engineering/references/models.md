@@ -1,8 +1,6 @@
 # Model-specific guidance
 
-Use this reference for harness guidance on OpenAI's GPT-6 Astra and GPT-5.x models and Anthropic's Claude 4.x family. They differ on default behavior, the knobs to turn, and the failure modes to guard against. Treat this as harness guidance, not a full model card.
-
-The GPT-5.x and Claude sections retain the 2026-07-09 baseline; the Astra section follows the linked live migration guide. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
+Use this reference for harness guidance on GPT-6 Astra and GPT-5.6. Keep platform APIs separate from model capabilities; see `platforms.md` for Claude Code, the Claude Agent SDK, and Pi. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
 
 ## GPT-6 Astra
 
@@ -19,98 +17,20 @@ Primary source: [Using GPT-6 Astra](https://developers.openai.com/api/docs/guide
 ### API and harness migration
 
 - **Use `model: "gpt-6-astra"` and Responses for tools.** Chat Completions is supported, but Astra tool calling requires the Responses API. Verify the installed provider adapter's support before changing model routing; a provider feature is not automatically available through a coding harness.
-- **Rebaseline reasoning.** Map previous `none` or `minimal` effort to `low` initially; otherwise preserve effective effort and compare alternatives on representative tasks. Astra does not support `none`. Preserve explicit permission, budget, and termination controls regardless of effort.
+- **Rebaseline reasoning.** Map previous `none` effort to `low` initially; otherwise preserve effective effort and compare alternatives on representative tasks. Astra does not support `none`. Preserve explicit permission, budget, and termination controls regardless of effort.
 - **Remove unsupported parameters.** Remove `temperature`, `top_p`, and `top_logprobs`; also remove Chat Completions `logprobs` or Responses `include` entries for `message.output_text.logprobs`.
-- **Change effort through the supported protocol.** For compatible standard single-agent requests, use `configuration_update` input items between responses while keeping request-level `reasoning.effort` unchanged to preserve the cached prefix. The update persists until overridden. Check current compatibility limits before enabling this; do not generalize Claude's pin-thinking rule to all Astra conversations.
+- **Change effort through the supported protocol.** For compatible standard single-agent requests, use `configuration_update` input items between responses while keeping request-level `reasoning.effort` unchanged to preserve the cached prefix. The update persists until overridden. Check current compatibility limits before enabling this.
 - **Treat async tools as an integration feature.** Astra can continue independent work while a function/custom tool marked `async: true` runs. The application still owns execution, pending work, and result delivery using the original `call_id`. Define dependency, timeout, cancellation, and late-result policies before enabling it; async execution does not authorize concurrent shared-state writes.
 - **Treat steering as explicit scope revision.** Responses WebSockets support additional user instructions while Astra works. Keep durable requirements and verification evidence aligned with the revision; do not assume a steering message rolls back side effects. Verify the transport and adapter before exposing this behavior to users.
-- **Recheck inherited capabilities and deployment settings.** The guide lists Structured Outputs, PTC, multi-agent orchestration, persisted reasoning, compaction, caching, and pro mode as supported. When migrating from GPT-5.5 or earlier, replace `prompt_cache_retention` with `prompt_cache_options.ttl: "30m"` and review cache billing. Astra Fast mode is unavailable with EU data residency; use Standard processing there. Revalidate these settings rather than assuming model substitution is sufficient.
+- **Recheck inherited capabilities and deployment settings.** The guide lists Structured Outputs, PTC, multi-agent orchestration, persisted reasoning, compaction, caching, and pro mode as supported. Review cache configuration and billing. Astra Fast mode is unavailable with EU data residency; use Standard processing there. Revalidate these settings rather than assuming model substitution is sufficient.
 
 ### Migration acceptance checks
 
 Evaluate representative small edits, multi-file work, ambiguous requests, approval-gated actions, delegation opportunities, and resumed tasks. Record task correctness, completion evidence, unnecessary clarification, delegation usefulness, verification repetition, output completeness, latency, and cost. Compare the existing prompt with the revised prompt at a controlled effort setting before changing multiple knobs. Keep model-specific capabilities separate from what the installed harness actually exposes.
 
-## Claude 4.x family
+## GPT-5.6
 
-Three current models as of 2026-05:
-
-| Model      | Released | Context | Output | Thinking modes              | Notes                                                                                       |
-| ---------- | -------- | ------- | ------ | --------------------------- | ------------------------------------------------------------------------------------------- |
-| Opus 4.8   | 2026-05  | 1M      | 128K   | Adaptive only               | Long-running, high-reasoning. Default for agent loops where reasoning quality matters most. |
-| Sonnet 4.6 | 2025-Q4  | 1M      | 64K    | Adaptive + extended         | The workhorse. Balanced cost/quality.                                                       |
-| Haiku 4.5  | 2025-10  | 200K    | 64K    | Extended only (no adaptive) | Fast, cheap. Good for fan-out subagents (review, classify, retrieve).                       |
-
-Authoritative model overview: [Claude models overview](https://platform.claude.com/docs/en/about-claude/models/overview).
-
-### Opus 4.8 specifics that change harness design
-
-The single most important page: [What's new in Claude Opus 4.8](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-8). Version-specific changes for harness authors:
-
-- **Adaptive thinking is the only thinking-on mode.** Extended-thinking budgets remain unsupported; setting `budget_tokens` returns 400.
-- **Default effort is `high` on API and Claude Code.** Treat `max` as an explicit overthinking/extra-cost choice, not the default for agentic work.
-- **`temperature`, `top_p`, `top_k` remain unsupported.** Determinism via seeds and harness design, not sampling knobs.
-- **Thinking content is omitted by default.** The model still thinks, but you don't see it unless you opt in via summarized display. Agent UIs that streamed thinking tokens for "the agent is working" feedback need to be updated.
-- **Mid-conversation system messages preserve cache hits.** Use them for turn-local or phase-local steering instead of rebuilding the whole system prompt when the provider supports it.
-- **Fast mode exists for higher output speed at premium pricing.** Useful for latency-sensitive review or fan-out phases; cost routing should make the trade-off explicit.
-- **Lower prompt-cache minimums reduce the cost of small stable prefixes.** Re-evaluate prompt-cache boundaries after upgrading from 4.7.
-- **4.7 migration caveats still matter.** Remove old "double-check" / "be careful" scaffolding; literal instruction-following turns those into extra verification turns instead of polite emphasis. ([Best practices for using Claude Opus 4.7 with Claude Code](https://claude.com/blog/best-practices-for-using-claude-opus-4-7-with-claude-code))
-
-### Extended thinking and interleaved thinking
-
-Authoritative: [Building with extended thinking](https://platform.claude.com/docs/en/build-with-claude/extended-thinking).
-
-- On 4.6/4.7/4.8, **interleaved thinking is automatic with adaptive thinking** — no beta header.
-- With interleaved thinking, `budget_tokens` can exceed `max_tokens` (it's per-turn, not per-response).
-- Tool-use constraints: `tool_choice` must be `auto` or `none` (not `any`). Thinking blocks **must be passed back unmodified** with tool results — losing them invalidates the chain.
-- You **cannot toggle thinking mid-turn**. Pin thinking config across an agent loop.
-- Thinking-param changes invalidate the _message_ cache (system stays cached). For long agent loops, use the 1-hour cache and don't change thinking config inside the loop.
-
-### Tool use specifics for Claude 4.x
-
-Authoritative: [Advanced tool use](https://www.anthropic.com/engineering/advanced-tool-use).
-
-Three beta primitives that change harness design:
-
-1. **Tool Search Tool** (`defer_loading: true`). Saves ~85% of system-prompt tokens when you have a large tool library, without breaking prompt cache. Tools surface their schemas only when the model searches for them. Especially useful when wiring 30+ MCP tools.
-2. **Programmatic Tool Calling** (`allowed_callers: ["code_execution_20260120"]`). Claude writes Python that calls your tools as async functions inside a code-execution sandbox; intermediate tool results never enter the model's context. Best for batch fan-out: verifier loops, multi-file lookups, filter-before-return. Constraints: not compatible with `tool_choice` forcing, `disable_parallel_tool_use: true`, `strict: true`, or MCP-connector tools.
-3. **Tool Use Examples**. Lifts complex-parameter accuracy from ~72% to ~90%. Cheap to add.
-
-Reference: [Programmatic tool calling](https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling).
-
-### Claude Agent SDK
-
-The "Claude Code SDK" was renamed to "Claude Agent SDK" in early 2026. It packages the Claude Code agent loop with built-in tools, hooks, subagents, MCP, sessions, and permissions — usable from TS or Python.
-
-- Overview: [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)
-- Building agents: [Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk) — frames the loop as gather→act→verify→repeat.
-- Migration guide for the rename: [Claude Code SDK → Claude Agent SDK migration](https://docs.claude.com/en/docs/claude-code/sdk/migration-guide). Check the current SDK release notes before adopting a new Claude model; model support has moved quickly across 4.x releases.
-
-What the SDK gives you for harness work:
-
-- The same Claude-Code agent loop with built-in tools (`Read`/`Write`/`Edit`/`Bash`/`Monitor`/`Glob`/`Grep`/`WebSearch`/`WebFetch`/`AskUserQuestion`).
-- Hooks: `PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`, `SessionEnd`, `UserPromptSubmit`. Programmatic instead of declarative.
-- Subagents via `AgentDefinition`, invoked through the `Agent` tool. Subagent messages tagged with `parent_tool_use_id` so you can track who said what.
-- Sessions: capture `session_id` from the init message; resume to keep full context. Critical for multi-step workflows.
-- Permissions via `allowed_tools` and `canUseTool` callback ([Permissions handling](https://docs.claude.com/en/docs/agent-sdk/permissions)).
-- `setting_sources` to control which `.claude/` configs load — useful when your harness lives inside a user's checkout and you don't want their personal settings to leak.
-
-### Prompt caching for agent loops
-
-Reference: [Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) and [Tool use with prompt caching](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching).
-
-- System prompt, tool definitions, and `CLAUDE.md` are cached automatically.
-- **5-minute ephemeral TTL is the load-bearing constraint** for any "babysit" or polling loop. Anything over ~270s between turns blows the cache.
-- For long-running loops, use the 1-hour cache.
-- Place `cache_control: {type:"ephemeral"}` on the _last_ tool definition to cache all of them.
-- Thinking-config changes invalidate the message cache; pin thinking config.
-
-### Memory tool
-
-Reference: [Memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool). `BetaAbstractMemoryTool` (Python) / `betaMemoryTool` (TS). Client-side `/memories` directory you back with whatever store you want — file system, sqlite, KV. Pairs naturally with structured note-taking artifacts (see `context-engineering.md`).
-
-## GPT-5.x family
-
-Historical flagship baseline as of 2026-07; retain for GPT-5.x routing and migration comparisons:
+Primary source: [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6). Retain this baseline for GPT-5.6 routing and migration comparisons.
 
 | Model         | Role                       | Context | Output | Default `reasoning.effort` |
 | ------------- | -------------------------- | ------- | ------ | -------------------------- |
@@ -118,111 +38,57 @@ Historical flagship baseline as of 2026-07; retain for GPT-5.x routing and migra
 | GPT-5.6 Terra | Capability/cost balance    | 1.05M   | 128K   | medium                     |
 | GPT-5.6 Luna  | Efficient high-volume work | 1.05M   | 128K   | medium                     |
 
-The `gpt-5.6` alias routes to `gpt-5.6-sol`. Earlier GPT-5.x releases remain relevant as migration history: GPT-5.2 introduced compaction-discardable planning; GPT-5.4 emphasized bias to action and plan-item closure; GPT-5.5 established the outcome-oriented prompt baseline that GPT-5.6 retains.
+The `gpt-5.6` alias routes to `gpt-5.6-sol`.
 
-Prompting guides (each release tightens rather than reinvents):
-
-- [GPT-5 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5_prompting_guide)
-- [GPT-5.1 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-1_prompting_guide)
-- [GPT-5.2 Prompting Guide](https://developers.openai.com/cookbook/examples/gpt-5/gpt-5-2_prompting_guide)
-- [GPT-5.4 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.4)
-- [GPT-5.5 Prompt Guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5) — still applicable to GPT-5.6
-- [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — **the highest-signal page in the family**
-
-### GPT-5.6 specifics
-
-Authoritative pages: [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [Programmatic Tool Calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling), [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent), and [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
-
-Harness-relevant changes:
+### Harness-relevant guidance
 
 1. **Route across Sol, Terra, and Luna.** Sol is the flagship; Terra balances capability and cost; Luna targets efficient high-volume work. The unsuffixed alias resolves to Sol.
-2. **Migrate by evaluation, not slug replacement.** Preserve the GPT-5.5/5.4 reasoning effort as the first baseline, then test one level lower. GPT-5.6 supports `none`, `low`, `medium`, `high`, `xhigh`, and `max`; omitted effort defaults to `medium`.
+2. **Migrate by evaluation, not slug replacement.** Preserve effective reasoning effort as the first baseline, then test one level lower. GPT-5.6 supports `none`, `low`, `medium`, `high`, `xhigh`, and `max`; omitted effort defaults to `medium`.
 3. **Treat pro mode and effort as independent.** Set `reasoning.mode: "pro"` on the chosen GPT-5.6 model for difficult quality-first work. Do not prompt the model to "use pro mode," and do not switch to a separate Pro slug.
-4. **Shorten accumulated harness prompts.** OpenAI reports internal gains from removing redundant instructions, examples, verbose tool descriptions, and global response templates. State the goal, important constraints, authorization boundary, evidence requirements, success criteria, and output contract. Avoid generic "be concise" instructions: GPT-5.6 is already compressed and may omit required artifacts.
+4. **Shorten accumulated harness prompts.** OpenAI reports internal gains from removing redundant instructions, examples, verbose tool descriptions, and global response templates. State the goal, important constraints, authorization boundary, evidence requirements, success criteria, and output contract. Avoid generic "be concise" instructions: GPT-5.6 is already compressed and may omit required artifacts. Put per-tool usage contracts in tool descriptions and enforce structured output through schemas rather than prose.
 5. **Use persisted reasoning deliberately.** `reasoning.context: "all_turns"` can reuse compatible earlier reasoning when goals and assumptions remain stable; use `current_turn` when earlier reasoning is stale. With `store: false` or ZDR workflows, request encrypted reasoning content and replay every output item.
 6. **Use Programmatic Tool Calling only for bounded computation over tools.** It fits filtering, joining, ranking, deduplication, aggregation, and validation in an isolated JavaScript runtime. Keep direct calls for approval-sensitive actions, writes, fresh semantic judgment, and citation/native-artifact preservation.
 7. **Treat Multi-agent as a bounded beta primitive, not the outer orchestrator.** Opt in through the beta Responses SDK or `OpenAI-Beta: responses_multi_agent=v1`, and set `multi_agent.enabled: true` on the request; item schemas may change. It fits independent exploration, research, comparison, review, and isolated components. Default concurrency is three, but total descendants and depth have no fixed service limit and `max_tool_calls` is unavailable; enforce application-level time, cost, fan-out, retry, permission, and termination limits. Keep shared-state writes sequential.
 8. **Re-evaluate prompt caching economics.** GPT-5.6 supports explicit breakpoints and more reliable matching with `prompt_cache_key`, but cache writes cost 1.25× uncached input. Monitor `cache_write_tokens` and `cached_tokens`; use explicit mode when only known-stable prefixes should be written.
 9. **Budget for richer image inputs and safety pauses.** `original` and `auto` can preserve large image dimensions, increasing tokens and latency. Real-time cyber and biology classifiers can pause streaming or refuse dual-use requests; distinguish those events from transport failures and send a privacy-preserving `safety_identifier` for individual end users.
 
-### GPT-5.5 specifics (migration baseline)
+API references: [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [Programmatic Tool Calling](https://developers.openai.com/api/docs/guides/tools-programmatic-tool-calling), [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent), and [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
 
-Released 2026-04-23. Default `reasoning_effort=medium`. Authoritative pages: [model page](https://developers.openai.com/api/docs/models/gpt-5.5), [system card](https://openai.com/index/gpt-5-5-system-card/), [GPT-5.5 prompt guidance](https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.5), [introducing GPT-5.5](https://openai.com/index/introducing-gpt-5-5/).
+## Responses API for harnesses
 
-OpenAI's explicit migration directives (from the GPT-5.5 prompt guidance):
-
-1. **Don't drop-in replace.** Rebaseline. The-decoder summarizes OpenAI's framing: legacy 5.2/5.4 prompts overspecify and "narrow the model's search space." ([the-decoder migration writeup](https://the-decoder.com/openai-says-old-prompts-are-holding-gpt-5-5-back-and-developers-need-a-fresh-baseline/))
-2. **Move tool-specific guidance OUT of the system prompt and INTO tool descriptions.** When to use, side effects, retry safety, error modes — all belong in the tool description. The system prompt should describe the _agent's role_, not how each tool works.
-3. **Replace step-by-step procedure prose with outcome + success criteria.** "First do X, then Y, then Z" → "achieve X with these criteria for done." Tighter instruction-following means the model now over-literally follows the procedure even when a better path exists.
-4. **Drop output schemas from prose; use Structured Outputs.** Don't say "respond with JSON like {...}" — wire it through the structured output API.
-5. **Keep stable content at the start of the request, dynamic at the end.** Caching alignment.
-6. **Use the Responses API with correct `phase` handling for all reasoning/tool/multi-turn work.** Compaction and reasoning-token tracking depend on it.
-7. **Re-tune `text.verbosity`.** Same `low` setting produces shorter output on 5.5 than on 5.4. ([Simon Willison's notes](https://simonwillison.net/2026/apr/25/gpt-5-5-prompting-guide/))
-
-System-card harness-relevant signal: persistence delta. Cyber Range pass rate jumped 73.33% → 93.33% vs 5.4-Thinking, attributed to "persistence at exploitation." 5.5 keeps going where 5.4 gave up — **explicit stop conditions matter more than they did on 5.4**.
-
-Pricing flips above 272K input tokens (2x in / 1.5x out for the rest of the session). Harness routing should track session token totals.
-
-### GPT-5.4 (still relevant — Codex fallback)
-
-- "Bias to action" replaces 5.0's more cautious default.
-- Explicitly recommends `reasoning_effort: low` or `none` for execution phases.
-- Plans must reach _active closure_ — every plan item marked Done/Blocked/Cancelled before yielding.
-- `<planning>` block (introduced in 5.2) — tokens discarded during compaction. Use it for ephemeral scratch work.
-
-### GPT-5.x recurring patterns
-
-Stable across recent releases:
-
-- **Persistence framing.** "Only terminate your turn when you are sure the problem is solved … never stop or hand back when uncertain." The fix for over-clarification on ambiguous tickets.
-- **Eagerness control via budget.** Explicit tool-call budgets for context discovery. GPT-5.4 guidance: "default to implementing with reasonable assumptions" once intent is clear.
-- **Contradictory instructions are uniquely damaging.** Tighter instruction-following means conflicting directives ("never X" + "always X") cause the model to burn reasoning tokens reconciling rather than resolving. Run a contradiction-lint pass over composed system prompts.
-- **Self-rubric construction.** For "zero-to-one" tasks, instruct the model to construct an internal 5–7 category rubric _before_ building, then iterate against it.
-- **Scope-discipline blocks.** "Implement EXACTLY and ONLY what the user requests." Especially needed on 5.5 because the persistence boost otherwise produces gold-plating.
-
-### Responses API for harnesses
-
-Authoritative pages:
-
-- [Compaction guide](https://developers.openai.com/api/docs/guides/compaction)
-- [`/responses/compact` endpoint](https://developers.openai.com/api/reference/resources/responses/methods/compact)
+Authoritative pages: [Compaction guide](https://developers.openai.com/api/docs/guides/compaction) and [`/responses/compact` endpoint](https://developers.openai.com/api/reference/resources/responses/methods/compact).
 
 Compaction is first-class. Two modes:
 
 1. **Threshold-driven**: set `context_management.compact_threshold`; on overflow the server emits an opaque encrypted compaction item that carries forward state/reasoning. ZDR-friendly when `store=false`. Chain via appended item OR `previous_response_id`.
 2. **Explicit-control**: call `/responses/compact` yourself when your harness decides to compact. Use this when you want compaction to align with phase boundaries (e.g. compact at end of `plan` before entering `implement`).
 
-GPT-5.6 adds adjacent but distinct state controls: persisted reasoning (`reasoning.context`), prompt caching with explicit breakpoints, and Programmatic Tool Calling to reduce predictable intermediate tool output. Multi-agent beta automatically compacts each agent context and does not support the standalone compact endpoint.
+Keep persisted reasoning (`reasoning.context`), prompt caching, and PTC distinct from compaction. GPT-5.6 Multi-agent beta automatically compacts each agent context and does not support the standalone compact endpoint.
 
 ## OpenAI Codex CLI
 
-Codex CLI is OpenAI's official coding harness — comparable to Claude Code. Tracks GPT-5.x as the default model.
+Codex CLI is OpenAI's coding harness. Verify its installed model support and configuration rather than assuming its defaults match this reference's model scope.
 
 Authoritative pages:
 
 - [Codex changelog](https://developers.openai.com/codex/changelog)
 - [Codex CLI features](https://developers.openai.com/codex/cli/features)
 - [Codex subagents](https://developers.openai.com/codex/subagents)
-- [Codex prompting guide (cookbook)](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide) — the published Codex-1 system message
-- [Skills + Shell + Compaction blog](https://developers.openai.com/blog/skills-shell-tips) — best published source on long-running-agent harness discipline
+- [Skills + Shell + Compaction blog](https://developers.openai.com/blog/skills-shell-tips)
 - [AGENTS.md guide](https://developers.openai.com/codex/guides/agents-md)
 
-Recent harness-relevant changes (May 2026):
+Harness-relevant platform baseline (May 2026; revalidate against the installed release):
 
 - **Codex CLI v0.135.0**: `codex doctor` reports richer environment/Git/terminal/app-server/thread diagnostics; `/permissions` understands named permission profiles; the Python SDK exposes sandbox presets; packaged builds bundle a patched zsh helper.
-- **Codex app May 29 update**: Windows computer use and remote control, thread coordination for local projects and worktrees, broader past-thread search, and token-activity/profile visibility.
-- **Memory and telemetry moved into first-class runtime state.** Recent changelog entries moved memory runtime state to SQLite and added memory/goal telemetry. Treat durable memory as a stateful subsystem, not prompt text.
-- **AGENTS.md resolution**: global `~/.codex/` then root → cwd; `AGENTS.override.md` beats `AGENTS.md` at each level; concatenated root-down so closer files override; capped at `project_doc_max_bytes` (32 KiB). The override convention is the canonical spec for layered agent guidance.
+- **Memory and telemetry are runtime state.** Recent changelog entries moved memory runtime state to SQLite and added memory/goal telemetry. Treat durable memory as a stateful subsystem, not prompt text.
+- **AGENTS.md resolution**: global `~/.codex/` then root → cwd; `AGENTS.override.md` beats `AGENTS.md` at each level; concatenated root-down so closer files override; capped at `project_doc_max_bytes` (32 KiB).
 - **Subagents**: Codex only spawns them when explicitly asked. Built-ins are `default`, `worker`, and `explorer`; custom agents are TOML files under `.codex/agents/` or `~/.codex/agents/`. `agents.max_threads` defaults to 6 and `agents.max_depth` defaults to 1. `spawn_agents_on_csv` requires each worker to call `report_agent_job_result` exactly once.
 - **Skills + shell + compaction**: skill descriptions should read like routing logic, including when _not_ to use the skill; templates and examples belong inside skills; use server-side compaction as a default long-run primitive; keep networking on narrow org/request allowlists and use `domain_secrets` so credentials never reach the model.
-- **`apply_patch` is a dedicated tool, not shell.** The cookbook prompting guide explicitly says use it "to match training distributions."
 
-## Cross-family rules
+## Shared operating rules
 
-These apply regardless of which model family you're using:
-
-1. **Never use the same model for implement and verify if avoidable.** Self-preference bias is the most damaging judge bias. Cross-family routing is the cheapest mitigation. ([Self-Preference Bias paper](https://arxiv.org/abs/2604.06996))
-2. **Preserve reasoning continuity using the model's protocol.** Pin Claude thinking configuration across a turn and preserve required blocks. Astra supports compatible between-response effort changes through `configuration_update` without rewriting the cached prefix; do not apply the older blanket pinning rule to that path.
-3. **Read the model's own most recent prompting/migration guide before reusing prompts.** Both families have published "your old prompts are wrong" notices for major releases (Anthropic via 4.7/4.8 migration guidance; OpenAI via GPT-5.5 prompt guidance). The advice is genuinely different version-to-version.
-4. **Cache and context strategy is model-specific.** Anthropic: 5-min ephemeral TTL by default; place `cache_control` on the last tool. OpenAI: combine server-side compaction, persisted reasoning, and prompt caching deliberately; preserve opaque response items and account for GPT-5.6 cache-write charges.
-5. **Tokenizers and cache behavior change.** Recompute context budgets, max-token settings, and compaction/cache thresholds on model upgrades; Opus 4.7 changed token counts materially, and Opus 4.8 changed prompt-cache economics.
+1. **Verify independently against evidence.** Run deterministic gates first. When LLM review is warranted, use a fresh read-only context, AC loaded from authoritative artifacts, and file/line or command evidence. GPT-5.6 and Astra can review each other's work, but different models in one family do not eliminate correlated errors or self-preference. See `verification.md`.
+2. **Preserve reasoning continuity using the model's protocol.** Preserve opaque response items. Astra supports compatible between-response effort changes through `configuration_update` without rewriting the cached prefix.
+3. **Read the exact model's current prompting guide before reusing prompts.** Keep task intent, authorization boundaries, output contracts, and stop conditions explicit; evaluate model-specific tuning separately.
+4. **Combine context controls deliberately.** Use compaction, persisted reasoning, and prompt caching for their distinct purposes; account for cache-write charges.
+5. **Recompute budgets on upgrades.** Tokenizers and cache policies can change. Recheck context budgets, max-token settings, and compaction/cache thresholds.
