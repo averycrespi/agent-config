@@ -1,6 +1,6 @@
 ---
 name: agent-engineering
-description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for Claude 4.x and GPT-5.x families, and platform-specific patterns for Claude Code, the Claude Agent SDK, and Pi. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
+description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra, GPT-5.x, and Claude 4.x, and platform-specific patterns for Claude Code, the Claude Agent SDK, and Pi. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
 ---
 
 # Agent Engineering
@@ -81,7 +81,7 @@ Documented failure modes — short list. Full annotated catalog in `references/a
 
 - **Unstructured multi-agent debate / negotiation.** GPT-5.6's beta supports bounded coordinator-worker delegation, but open-ended agents arguing or negotiating without a fixed decomposition, budget, and synthesis contract remains fragile.
 - **Parallel implementations of the same subtask + merge.** Hidden coupling kills it.
-- **LLM-driven mid-task replanning.** Devin's data: "performs worse when you keep telling it more after it starts." Take the spec as immutable once implementation begins.
+- **Uncontrolled mid-task replanning.** Keep acceptance criteria stable during execution; treat user-requested changes as explicit scope revisions with updated durable state. Astra's mid-turn steering can deliver corrections, but does not replace orchestrator-owned scope and evidence.
 - **Generic LLM-as-judge without rubrics.** Beaten consistently by rubric-based + cross-family.
 - **Free-text completion markers.** `<promise>COMPLETE</promise>` is fragile; validated machine-readable output is robust.
 - **Unbounded verify → implement loopback.** The exact open-ended loop GPT-5/Claude-4-class models thrash in. Use bounded fix rounds, then report known issues.
@@ -93,8 +93,9 @@ Documented failure modes — short list. Full annotated catalog in `references/a
 
 Quick orientation; deep guidance in `references/models.md`.
 
-- **Claude 4.x** is the better default when you want long-running, high-reasoning agent loops.
-- **GPT-5.x / Codex** is the better default when you want strong execution, explicit structured outputs, and OpenAI's codex-style harness guidance. For GPT-5.6, use Sol for flagship capability, Terra for a capability/cost balance, and Luna for efficient high-volume work.
+- **GPT-6 Astra**: define authorized follow-through, audit skills and `AGENTS.md` for conflicting instructions, specify delegation triggers, and bound verification to required checks and unresolved risks. Expect more clarification and detailed formatting unless prompted otherwise. Read the [Astra migration guidance](references/models.md#gpt-6-astra) before carrying over GPT-5.x settings; tool calling requires Responses and `none` reasoning is unsupported.
+- **Claude 4.x**: consider for long-running, high-reasoning agent loops; select against task-level evaluations rather than a universal family ranking.
+- **GPT-5.x / Codex**: retain as an execution and migration baseline. For GPT-5.6, use Sol for flagship capability, Terra for a capability/cost balance, and Luna for efficient high-volume work.
 - **Model-specific prompting advice changes quickly.** Read the current migration/prompting guide for the exact model version before reusing an older harness prompt.
 
 Cross-family rule: **never use the same model for implement and verify if you can avoid it.**
@@ -112,7 +113,7 @@ For exact platform behavior, current gotchas, and repo-specific conventions, rea
 ## How to use this skill
 
 1. **For broad orientation** ("how should I shape this harness?"): read this `SKILL.md` end-to-end. The principles section is the load-bearing part.
-2. **For model-specific design questions** ("how does Opus 4.8 change my prompt?"): read `references/models.md`.
+2. **For model-specific design questions** ("how does Astra change my prompt?", "how does Opus 4.8 change my prompt?"): read `references/models.md`.
 3. **For platform-specific implementation** ("how do I wire up a Claude Code hook?"): read `references/platforms.md`.
 4. **For workflow design** ("what phases should my pipeline have?"): read `references/workflow-patterns.md`.
 5. **For verification design** ("how should my reviewer be structured?"): read `references/verification.md`.

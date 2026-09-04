@@ -1,8 +1,34 @@
 # Model-specific guidance
 
-Two families dominate AI coding agents in July 2026: Anthropic's Claude 4.x and OpenAI's GPT-5.x. They differ on default behavior, the knobs you turn, and the failure modes you guard against. This document captures what's load-bearing for _harness design_ — not a full model card.
+Use this reference for harness guidance on OpenAI's GPT-6 Astra and GPT-5.x models and Anthropic's Claude 4.x family. They differ on default behavior, the knobs to turn, and the failure modes to guard against. Treat this as harness guidance, not a full model card.
 
-Cutoff: 2026-07-09. Verify model names, beta features, pricing, and version-specific claims against the linked primary sources before relying on them.
+The GPT-5.x and Claude sections retain the 2026-07-09 baseline; the Astra section follows the linked live migration guide. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
+
+## GPT-6 Astra
+
+Primary source: [Using GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra). Treat the behavioral tendencies below as vendor guidance to evaluate in the target harness, not measured results from this repository. Do not transfer GPT-5.6 benchmark gains, variant names, or defaults to Astra without evidence.
+
+### Prompt and skill migration
+
+1. **Define authorized follow-through.** Astra is documented as more likely to ask when input could materially change the result. Treat action requests as authorization to complete their in-scope work, make routine low-risk assumptions, and ask focused questions for genuinely consequential ambiguity. Complete independently authorized preparation before requesting approval; do not guess through ambiguity that would invalidate that preparation. Preserve local approval rules for external publication, destructive actions, and unrelated work. Do not copy the vendor's broad draft-PR/worktree autonomy examples as blanket authorization.
+2. **Audit the composed instruction surface.** Inspect system/developer prompts, `AGENTS.md`, loaded skills, tool descriptions, and workflow prompts for conflicting scope, confirmation, stopping, and delegation rules. Astra's stronger instruction following makes stale guidance consequential. Remove duplicate or contradictory rules instead of layering on another persistence slogan. Respect the actual instruction hierarchy; a skill cannot declare that user requests override system or developer requirements. When a skill unexpectedly blocks work, report the exact file and instruction and distinguish its requirement from an interpretation.
+3. **Specify the communication contract.** Astra tends toward detailed, formatted answers and recurring phrases. Request the answer or action first, plain language, proportional detail, and lists or tables only when useful. Preserve required evidence and artifacts rather than using a global brevity rule that suppresses them. Do not transfer GPT-5.6's advice against generic concision prompts as an Astra-specific rule.
+4. **Make delegation triggers explicit.** Delegate independent exploration, source retrieval, and review when isolation or parallelism improves the result. Give each child a self-contained question, explicit capabilities, and an output contract; retain synthesis in the orchestrator. Keep deterministic checks inline when cheaper. Bound fan-out, depth, and cost in code, and keep shared-state writes sequential. Astra may otherwise delegate less than intended; the vendor's broad delegation prompt is not a reason to spawn on every possible opportunity.
+5. **Calibrate verification without weakening gates.** Run meaningful checks appropriate to the change and every repository-required check. After they pass, broaden or repeat only for new changes, failures, or unresolved risks. Avoid tests that merely mirror low-impact implementation details. Retain meaningful regression tests, independent review where required, and explicit bounded fix loops; do not reinterpret this guidance as permission to skip mandatory tests.
+
+### API and harness migration
+
+- **Use `model: "gpt-6-astra"` and Responses for tools.** Chat Completions is supported, but Astra tool calling requires the Responses API. Verify the installed provider adapter's support before changing model routing; a provider feature is not automatically available through a coding harness.
+- **Rebaseline reasoning.** Map previous `none` or `minimal` effort to `low` initially; otherwise preserve effective effort and compare alternatives on representative tasks. Astra does not support `none`. Preserve explicit permission, budget, and termination controls regardless of effort.
+- **Remove unsupported parameters.** Remove `temperature`, `top_p`, and `top_logprobs`; also remove Chat Completions `logprobs` or Responses `include` entries for `message.output_text.logprobs`.
+- **Change effort through the supported protocol.** For compatible standard single-agent requests, use `configuration_update` input items between responses while keeping request-level `reasoning.effort` unchanged to preserve the cached prefix. The update persists until overridden. Check current compatibility limits before enabling this; do not generalize Claude's pin-thinking rule to all Astra conversations.
+- **Treat async tools as an integration feature.** Astra can continue independent work while a function/custom tool marked `async: true` runs. The application still owns execution, pending work, and result delivery using the original `call_id`. Define dependency, timeout, cancellation, and late-result policies before enabling it; async execution does not authorize concurrent shared-state writes.
+- **Treat steering as explicit scope revision.** Responses WebSockets support additional user instructions while Astra works. Keep durable requirements and verification evidence aligned with the revision; do not assume a steering message rolls back side effects. Verify the transport and adapter before exposing this behavior to users.
+- **Recheck inherited capabilities and deployment settings.** The guide lists Structured Outputs, PTC, multi-agent orchestration, persisted reasoning, compaction, caching, and pro mode as supported. When migrating from GPT-5.5 or earlier, replace `prompt_cache_retention` with `prompt_cache_options.ttl: "30m"` and review cache billing. Astra Fast mode is unavailable with EU data residency; use Standard processing there. Revalidate these settings rather than assuming model substitution is sufficient.
+
+### Migration acceptance checks
+
+Evaluate representative small edits, multi-file work, ambiguous requests, approval-gated actions, delegation opportunities, and resumed tasks. Record task correctness, completion evidence, unnecessary clarification, delegation usefulness, verification repetition, output completeness, latency, and cost. Compare the existing prompt with the revised prompt at a controlled effort setting before changing multiple knobs. Keep model-specific capabilities separate from what the installed harness actually exposes.
 
 ## Claude 4.x family
 
@@ -84,7 +110,7 @@ Reference: [Memory tool](https://platform.claude.com/docs/en/agents-and-tools/to
 
 ## GPT-5.x family
 
-Current flagship family as of 2026-07:
+Historical flagship baseline as of 2026-07; retain for GPT-5.x routing and migration comparisons:
 
 | Model         | Role                       | Context | Output | Default `reasoning.effort` |
 | ------------- | -------------------------- | ------- | ------ | -------------------------- |
@@ -196,7 +222,7 @@ Recent harness-relevant changes (May 2026):
 These apply regardless of which model family you're using:
 
 1. **Never use the same model for implement and verify if avoidable.** Self-preference bias is the most damaging judge bias. Cross-family routing is the cheapest mitigation. ([Self-Preference Bias paper](https://arxiv.org/abs/2604.06996))
-2. **Pin thinking/reasoning config across a single loop.** Mid-loop changes invalidate caches and (on Claude) break thinking-block continuity.
+2. **Preserve reasoning continuity using the model's protocol.** Pin Claude thinking configuration across a turn and preserve required blocks. Astra supports compatible between-response effort changes through `configuration_update` without rewriting the cached prefix; do not apply the older blanket pinning rule to that path.
 3. **Read the model's own most recent prompting/migration guide before reusing prompts.** Both families have published "your old prompts are wrong" notices for major releases (Anthropic via 4.7/4.8 migration guidance; OpenAI via GPT-5.5 prompt guidance). The advice is genuinely different version-to-version.
 4. **Cache and context strategy is model-specific.** Anthropic: 5-min ephemeral TTL by default; place `cache_control` on the last tool. OpenAI: combine server-side compaction, persisted reasoning, and prompt caching deliberately; preserve opaque response items and account for GPT-5.6 cache-write charges.
 5. **Tokenizers and cache behavior change.** Recompute context budgets, max-token settings, and compaction/cache thresholds on model upgrades; Opus 4.7 changed token counts materially, and Opus 4.8 changed prompt-cache economics.
