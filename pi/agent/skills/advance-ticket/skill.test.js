@@ -97,7 +97,9 @@ test("advance-ticket routes durable phases through Loop and independent review",
   assert.match(skill, /saved `review` workflow/);
   assert.match(skill, /publication-safety gate/i);
   assert.match(skill, /complete outgoing commit range/i);
-  assert.match(skill, /github\.run_secret_scanning/);
+  assert.match(skill, /locally installed `gitleaks`/i);
+  assert.match(skill, /gitleaks[\s\S]*unavailable[\s\S]*stop before push/i);
+  assert.doesNotMatch(skill, /github\.run_secret_scanning/);
   assert.match(skill, /public-safe summary/i);
   assert.match(skill, /stop before push/i);
   assert.match(skill, /open draft[^\n]*assigned target branch/i);
