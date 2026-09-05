@@ -259,6 +259,150 @@ test("per-agent timeout aborts an attempt and returns a structured failure", asy
   assert.equal((result.result as any)[0].error.code, "agent_timeout");
 });
 
+for (const [label, override, effective] of [
+  ["configured default", undefined, 100],
+  ["shorter override", 5, 5],
+  ["longer override", 250, 250],
+] as const) {
+  test(`agent deadline uses ${label} without retrying or losing siblings`, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let markFastSettled!: () => void;
+    const fastSettled = new Promise<void>((resolve) => {
+      markFastSettled = resolve;
+    });
+    let sawAbort = false;
+    let attempts = 0;
+    const pending = runWorkflow(
+      script(`export async function run() {
+        return await parallelSettled([
+          () => agent("slow", { ${POLICY}, retries: 2${override === undefined ? "" : `, timeoutMs: ${override}`} }),
+          async () => {
+            const value = await agent("fast", { ${POLICY} });
+            log("fast settled");
+            return value;
+          },
+        ]);
+      }`),
+      {
+        cwd: "/tmp",
+        timeoutMs: 1000,
+        agentTimeoutMs: 100,
+        onUpdate: (snapshot) => {
+          if (
+            snapshot.logs.some((entry) =>
+              entry.message.includes("fast settled"),
+            )
+          )
+            markFastSettled();
+        },
+        spawnAgent: async (value) => {
+          if (value.prompt === "fast") return { ok: true, text: "retained" };
+          attempts += 1;
+          assert.equal(value.effectiveTimeoutMs, effective);
+          await new Promise<void>((resolve) => {
+            value.signal?.addEventListener(
+              "abort",
+              () => {
+                sawAbort = true;
+                resolve();
+              },
+              { once: true },
+            );
+            markStarted();
+          });
+          return { ok: false, text: null, errorCode: "subagent_aborted" };
+        },
+      },
+    );
+    await Promise.all([started, fastSettled]);
+    t.mock.timers.tick(effective - 1);
+    assert.equal(sawAbort, false);
+    t.mock.timers.tick(1);
+    const result = await pending;
+    assert.equal(sawAbort, true);
+    assert.equal(attempts, 1);
+    const branches = result.result as any[];
+    assert.equal(branches[0].ok, false);
+    assert.equal(branches[0].error.code, "agent_timeout");
+    assert.equal(branches[0].error.details.effectiveTimeoutMs, effective);
+    assert.deepEqual(branches[1], { ok: true, value: "retained" });
+    assert.equal(result.agentFailureCount, 1);
+    assert.equal(result.settledBranchFailureCount, 1);
+  });
+}
+
+test("whole-run deadline cancels and drains active work while retaining structured successes", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const calls: string[] = [];
+  let drained = false;
+  const pending = runWorkflow(
+    script(`export async function run() {
+      await agent("done", { ${POLICY}, output: { schema: { type: "string" } } });
+      await agent("slow", { ${POLICY}, timeoutMs: 1000 });
+      return await agent("never", { ${POLICY} });
+    }`),
+    {
+      cwd: "/tmp",
+      timeoutMs: 50,
+      agentTimeoutMs: 500,
+      spawnAgent: async (value) => {
+        calls.push(value.prompt);
+        if (value.prompt === "done") {
+          return {
+            ok: true,
+            text: null,
+            hasStructured: true,
+            value: "retained",
+          };
+        }
+        await new Promise<void>((resolve) => {
+          value.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+          markStarted();
+        });
+        drained = true;
+        return { ok: false, text: null, errorCode: "subagent_aborted" };
+      },
+    },
+  );
+  const rejected = assert.rejects(pending, (error: any) => {
+    assert.equal(error.code, "workflow_timeout");
+    assert.deepEqual(error.diagnostic.counts, {
+      completed: 1,
+      failed: 0,
+      timedOut: 0,
+      canceled: 1,
+      outstanding: 0,
+    });
+    assert.equal(
+      error.diagnostic.recoveryRecords[0].structuredValue,
+      "retained",
+    );
+    assert.equal(
+      error.diagnostic.recoveryRecords[1].failure.code,
+      "workflow_aborted",
+    );
+    assert.equal(error.diagnostic.recoveryRecords[1].effectiveTimeoutMs, 1000);
+    return true;
+  });
+  await started;
+  t.mock.timers.tick(49);
+  assert.equal(drained, false);
+  t.mock.timers.tick(1);
+  await rejected;
+  assert.equal(drained, true);
+  assert.deepEqual(calls, ["done", "slow"]);
+});
+
 test("workflow cancellation stops admission and returns an abort diagnostic", async () => {
   const controller = new AbortController();
   const pending = runWorkflow(

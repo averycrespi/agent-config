@@ -95,6 +95,15 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
     assert.match(guidance, new RegExp(term));
   }
   assert.doesNotMatch(guidance, /agent\?|model\?|model: "small"|model: "big"/);
+  assert.match(registered.description, /Omit timeoutMs normally/);
+  assert.match(registered.description, /agentTimeoutMs.*10 minutes/);
+  assert.match(registered.description, /per-attempt.*whole-run/);
+  assert.match(
+    guidance,
+    /blanket short deadlines.*substantial.*strong-profile/,
+  );
+  assert.match(guidance, /timeout alone does not prove.*stalled/);
+  assert.match(guidance, /partial results.*before.*retry/i);
 });
 
 test("workflow config display omits removed model tiers", () => {

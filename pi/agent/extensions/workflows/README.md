@@ -64,7 +64,9 @@ Both `validate` and `run` reject obvious straight-line `run()` bodies with no va
 
 Workflow options cannot name agents, select exact models or effort, request raw tools/extensions/environment, or rely on hidden defaults. The host routes every request through the subagents extension's centralized capability/profile policy and live model registry.
 
-Retries are clamped to 0–2. A valid positive `timeoutMs` shorter than the configured default applies to every retry attempt for that logical call. Structured output uses `{ output: { schema } }` and resolves to the validated value. Prefer it for research and fan-in boundaries that need machine-readable results; validated structured successes may be retained after abnormal termination, unlike successful prose. See Logging and retained output for retention limits.
+Retries are clamped to 0–2. Omit `timeoutMs` normally to use configured `agentTimeoutMs` (default 10 minutes). A valid positive `timeoutMs` overrides that default, shorter or longer, separately for every attempt of an `agent()` or `verify()` call; it does not extend `workflowTimeoutMs` (default one hour), which bounds the entire run including later phases. Set an override only for a justified task-specific deadline, accounting for workload and profile. Avoid blanket short deadlines for substantial research, review, or strong-profile calls. Inspect effective settings with `/workflows-config`.
+
+Structured output uses `{ output: { schema } }` and resolves to the validated value. Prefer it for research and fan-in boundaries that need machine-readable results; validated structured successes may be retained after abnormal termination, unlike successful prose. See Logging and retained output for retention limits.
 
 ## Saved workflows
 
@@ -151,15 +153,15 @@ The separate call row is suppressed, and every result starts with one width-trun
 
 Settings live under `extension:workflows`. Global, project, and valid environment values use normal precedence. Use `/workflows-config` to inspect effective values and `/workflows-list` for inventory.
 
-| Field                     | Default                | Environment override                   | Description                                                       |
-| ------------------------- | ---------------------- | -------------------------------------- | ----------------------------------------------------------------- |
-| `workflowTimeoutMs`       | `3600000`              | `WORKFLOWS_WORKFLOW_TIMEOUT_MS`        | Whole-run timeout in milliseconds.                                |
-| `agentTimeoutMs`          | `600000`               | `WORKFLOWS_AGENT_TIMEOUT_MS`           | Default logical-call timeout.                                     |
-| `maxConcurrency`          | `4`                    | `WORKFLOWS_MAX_CONCURRENCY`            | Sandbox scheduler limit, clamped to 16.                           |
-| `maxTokensPerRun`         | `0`                    | `WORKFLOWS_MAX_TOKENS_PER_RUN`         | Observed-token limit; `0` disables.                               |
-| `maxAgentsPerRun`         | `100`                  | `WORKFLOWS_MAX_AGENTS_PER_RUN`         | Logical-call limit; `0` disables.                                 |
-| `maxVisibleSettledAgents` | `5`                    | `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` | Settled progress rows shown; `0` shows running agents only.       |
-| `userWorkflowsDir`        | `<agentDir>/workflows` | `WORKFLOWS_USER_WORKFLOWS_DIR`         | Saved definition directory; relative paths resolve from call cwd. |
+| Field                     | Default                | Environment override                   | Description                                                              |
+| ------------------------- | ---------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| `workflowTimeoutMs`       | `3600000`              | `WORKFLOWS_WORKFLOW_TIMEOUT_MS`        | Whole-run timeout in milliseconds.                                       |
+| `agentTimeoutMs`          | `600000`               | `WORKFLOWS_AGENT_TIMEOUT_MS`           | Default per-attempt agent/verify timeout; call `timeoutMs` overrides it. |
+| `maxConcurrency`          | `4`                    | `WORKFLOWS_MAX_CONCURRENCY`            | Sandbox scheduler limit, clamped to 16.                                  |
+| `maxTokensPerRun`         | `0`                    | `WORKFLOWS_MAX_TOKENS_PER_RUN`         | Observed-token limit; `0` disables.                                      |
+| `maxAgentsPerRun`         | `100`                  | `WORKFLOWS_MAX_AGENTS_PER_RUN`         | Logical-call limit; `0` disables.                                        |
+| `maxVisibleSettledAgents` | `5`                    | `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` | Settled progress rows shown; `0` shows running agents only.              |
+| `userWorkflowsDir`        | `<agentDir>/workflows` | `WORKFLOWS_USER_WORKFLOWS_DIR`         | Saved definition directory; relative paths resolve from call cwd.        |
 
 ```json
 {
@@ -199,6 +201,7 @@ Recovery files share the subagent diagnostic pool's seven-day lazy retention and
 - `run() must return a result` / `workflow_missing_result`: return a value from `run()` itself, not only a nested callback; use `null` for an intentional empty result. Complex missing-return paths are detected at runtime.
 - `report() requires options with a callable gate`: use `return await report(value, { gate: () => verdict })`; for ungated output, simply `return value`.
 - Saved workflow invalid/unknown: inspect `workflow list`, `/workflows-list`, and strict filename/metadata identity.
+- `agent_timeout`: that child's effective deadline expired. `workflow_timeout`: the whole-run deadline expired and active children were canceled. Neither proves the work stalled. Inspect the effective deadline, progress, failure details (use `parallelSettled()` for per-branch records), and any recovery artifact before deciding on a new run. Preserve useful completed results and target missing work instead of blindly repeating the whole fan-out; recovery does not automatically resume a run.
 - Retry only transient read-only calls; policy, cap, budget, timeout, cancellation, and permanent schema failures are not retry classes.
 
 ## Prior art

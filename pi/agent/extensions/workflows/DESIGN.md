@@ -75,7 +75,9 @@ One synchronous ledger reserves logical request IDs and tracks latest cumulative
 
 ## Timeout, retry, and termination
 
-Runtime resolves one effective timeout per logical call. A valid shorter call timeout applies across retries. Per-call timeout aborts only that attempt and waits for settlement before scheduler capacity is released. Parent cancellation and whole-run timeout terminate admission, abort active calls, kill the sandbox, and drain admitted promises.
+Runtime resolves one effective timeout per logical call. Omitted `timeoutMs` inherits configured `agentTimeoutMs`; a valid explicit value replaces it, whether shorter or longer, for each retry attempt. Profiles do not change this policy. The whole-run deadline starts with the workflow and still bounds later-starting calls and longer overrides. Per-call timeout aborts only that attempt and waits for settlement before scheduler capacity is released. Parent cancellation and whole-run timeout terminate admission, abort active calls, kill the sandbox, and drain admitted promises.
+
+Deadline-selection guidance belongs in `workflow-tool.ts`'s tool description and prompt guidelines, not a general engineering skill. Prefer configured defaults and justify overrides from workload and profile; do not infer stagnation from elapsed time alone. Registration tests check that this guidance reaches the agent, while runtime tests establish deadline inheritance, override behavior, sibling preservation, and whole-run cancellation. These tests do not prove model compliance.
 
 Retries are bounded to 0–2. Permanent policy/schema, cap, budget, timeout, and cancellation causes are not retried. The first top-level cause remains authoritative; later budget state or retention warnings cannot relabel it.
 

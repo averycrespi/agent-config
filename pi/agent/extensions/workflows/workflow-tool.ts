@@ -226,6 +226,7 @@ Scripts must start with literal metadata: export const meta = { name: \"...\", d
 run() must return its final value: return results, or return await report(results, { gate: () => verdict }). report() is an async gate, not an output emitter; return null for an intentional empty result.
 Use the globals agent(prompt, { intent, capabilities, profile, output?, retries?, timeoutMs? }), verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy; write-filesystem and exec-shell are rejected. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
+Omit timeoutMs normally to use configured agentTimeoutMs (default 10 minutes). An explicit timeoutMs overrides the per-attempt agent/verify deadline, not the whole-run workflowTimeoutMs (default 1 hour), which still bounds all work.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
     promptSnippet:
       "List, validate, or run a deterministic foreground JavaScript workflow.",
@@ -241,7 +242,8 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Treat `budget` as an advisory snapshot only. `workflow_run_cap_exceeded` denies later calls, while `workflow_budget_exceeded` aborts active agents and prevents retries or new spawns.",
       "Every agent and verify call must set a self-contained intent, explicit capabilities (including []), and profile.",
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
-      "Use `timeoutMs` on an agent call when one slow branch should fail without exhausting the whole workflow timeout.",
+      "In workflow scripts, prefer configured deadlines; set agent/verify `timeoutMs` only for a justified task-specific per-attempt deadline. Account for workload and profile; avoid blanket short deadlines for substantial research, review, or strong-profile calls. A longer child override cannot extend the whole-run deadline.",
+      "After a workflow timeout, inspect the failure code, effective deadline, available progress, and partial results before deciding whether to retry. A timeout alone does not prove work stalled. Preserve useful completed results and target missing work; do not blindly rerun the entire fan-out. Timeout failures are not automatically retried.",
     ],
     parameters: workflowParamsSchema,
     renderCall: renderWorkflowCall,
