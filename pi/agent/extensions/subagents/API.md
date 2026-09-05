@@ -63,7 +63,7 @@ type Capability =
   | "read-web";
 ```
 
-The effective grants and global ceilings are documented in [README.md](./README.md). `write-filesystem` and `exec-shell` are mutable authority. Direct model-facing batches serialize mutable calls to one child, but curated API callers must impose any stricter caller-specific coordination policy. Child processes inherit the parent environment.
+The effective grants and global ceilings are documented in [README.md](./README.md). `write-filesystem` and `exec-shell` are mutable authority. Direct model-facing batches serialize mutable calls to one child; curated API callers own their coordination policy. Keep implementation in the owning session by default. Mutable delegation requires an explicit user request and an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Prevent overlapping parent or child writes and retain stricter caller boundaries. These prerequisites are not validated by `runSubagent()`. Child processes inherit the parent environment.
 
 ### `SpawnOutcome`
 

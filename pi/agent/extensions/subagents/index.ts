@@ -154,23 +154,13 @@ export function buildPolicyDescription(_config: SubagentsConfig): string {
 
 export function buildDelegationGuidance(config: SubagentsConfig): string {
   return `\n\n## Subagent delegation
-Use spawn_agents proactively for read-mostly work that would otherwise expand the main context, require iterative searching, or benefit from an isolated second opinion. Use writable delegation only when an explicit execution workflow defines one writer, bounded scope, orchestrator-owned state, and independent verification.
+Use spawn_agents for a self-contained question when parallelism, isolation of substantial intermediate context, or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline; avoid duplicating the child's investigation.
 
-Delegate when:
-- localizing unfamiliar code, tracing control/data flow, or reading more than a few files
-- checking external docs, remote metadata, issues, PRs, releases, or web sources
-- reviewing a plan, diff, branch, PR, or design against explicit criteria
-- distilling noisy logs, traces, metrics, query results, or large command output
-- implementing one bounded task inside an explicit sequential execution workflow
-- splitting independent read-only questions that can run concurrently
+Keep implementation and fixes in the owning session by default. Writable delegation is an exception only when explicitly requested by the user and supported by an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never overlap parent or child writes in the same checkout. Preserve stricter active workflow boundaries.
 
-Do not delegate when:
-- multiple agents would write to the same checkout concurrently
-- a deterministic command, test, typecheck, lint, or focused search would answer faster
-- the subagent would need unstated conversation context or user-owned decisions
-- delegation would mostly duplicate effort
+For each child, provide one self-contained question or task, scope boundaries, relevant context and decisions, authoritative source paths, explicit capabilities and profile, an evidence-bearing deliverable with uncertainties, and a stop condition. Supply necessary context rather than the entire conversation. The parent owns synthesis and checks consequential claims against evidence; a valid schema or confident summary is not proof of correctness.
 
-Profiles describe routing policy, not fixed model identities: fast for routine bounded work, balanced for substantial work, and strong for demanding self-contained work. Pass independent read-only agents in one spawn_agents call; writable agents must run one at a time. At most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema for validated machine-readable results.`;
+Profiles describe routing policy, not fixed model identities: fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Pass independent read-only agents in one spawn_agents call; writable agents must run one at a time. At most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema when automation needs validated machine-readable results.`;
 }
 
 function toRunRequest(

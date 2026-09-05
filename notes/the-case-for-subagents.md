@@ -1,41 +1,44 @@
 # The Case for Subagents
 
+Subagents are useful when a self-contained question benefits from parallelism, isolation of substantial intermediate context, or independent judgment. Those benefits must outweigh startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation.
+
 ## What I mean by subagent
 
-A child invocation spawned by a main orchestrating agent to do scoped work and return a small result. In the workflows I care about, subagents are arranged **linearly** — the orchestrator dispatches one, waits, optionally runs review layers against the output, then either accepts it or redispatches with corrections. Not a parallel swarm of peers.
+A child invocation spawned by an owning agent to do scoped work and return an evidence-bearing result. Independent read-only questions can run in parallel. Implementation and fixes stay in the owning session by default; writable delegation is an explicitly requested exception, not a routine phase of coding.
 
 ## The main argument: context quality
 
-The agent gets less intelligent as its context fills up. Long contexts degrade instruction-following, lose track of earlier constraints, and drift. The main agent is the one you actually need to be sharp — it holds the plan, makes the decisions, and decides when to stop.
+Exploration notes, logs, and intermediate search results can bury the requirements and decisions the main agent needs. A child can process that material and return relevant findings with source references and uncertainties. The main agent retains synthesis and checks consequential claims against the evidence.
 
-Shunting work into a subagent and getting back only a summary keeps the main agent's context lean. The subagent can burn through hundreds of thousands of tokens reading files, running tools, and iterating; the orchestrator sees a paragraph.
+This is a potential quality benefit, not a promise of lower cost. Subagents add model work, and reconstructing missing context can erase the savings from a smaller summary. The [Voidwire implementation report](https://labs.voidwire.info/posts/the-real-cost-of-claude-code-subagents/) describes substantial token overhead; it is not a universal multiplier or proof that the trade improves implementation quality.
 
-This is a **quality** argument, not a cost argument. Subagents burn more tokens, not fewer — [~10x more on typical implementation tasks](https://labs.voidwire.info/posts/the-real-cost-of-claude-code-subagents/). You're trading raw token spend for a sharper orchestrator, and that's usually the right trade.
+A fresh context can also help independent review. Using the same model as the implementer does not eliminate correlated blind spots, but independence does not require deliberately choosing a weaker model.
 
-Secondary benefits worth noting: subagents can run with different models (cheap model under expensive orchestrator), different tool allowlists, and without inheriting the orchestrator's conversational assumptions when that's desirable (e.g. independent review).
+## How to delegate
 
-The formalized version of this argument is [Recursive Language Models](https://alexzhang13.github.io/blog/2025/rlm/) (Zhang et al., MIT, 2025): if the root model never directly sees the big context and instead dispatches recursive calls that return distilled results, you get near-infinite effective context without context rot. Subagents as used in coding harnesses are the depth-1, human-scaffolded case of the same idea — agents decompose problems; RLMs decompose context.
+Give each child one question or task, scope boundaries, relevant context and decisions, authoritative source paths, explicit capabilities and profile, an evidence-bearing deliverable with uncertainties, and a stop condition. Supply necessary context rather than the whole conversation. Use structured output when automation needs it; schema validity does not establish factual correctness.
 
-## The observability complaint
+Do not delegate a short lookup or deterministic check when doing it inline is cheaper. Avoid duplicating the child's investigation. Add separate review when required or justified by risk, rather than attaching a reviewer chain to every result. Keep repair and redispatch bounded.
 
-The standard objection: you can't see what the subagent is doing, and you can't steer it mid-flight the way you can steer the main agent. The stronger version is about auditing — "I can't verify what it did after the fact, so I don't trust the output."
+## The steelman: implementation needs continuity
 
-## Why I think the complaint points at an architecture problem
+Cognition's [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) identifies a real mechanism: actions carry implicit decisions that other agents may not see. Parallel writers can choose incompatible approaches. Sequential writers avoid simultaneous edits, but still lose information at handoffs.
 
-If you find yourself wanting to reach into a subagent and steer it, you've scoped it wrong. A well-architected subagent has a narrow, well-specified job and a clear deliverable. If it goes off the rails, the problem is upstream — the orchestrator handed it a bad prompt, an unclear deliverable, or too much latitude.
+A plan records intent, not every rejected alternative or constraint discovered during implementation. Summarizing that work can remove information the owner needs to verify or extend it. A lean parent context is not automatically a better-informed parent.
 
-Trust the output, don't trust the subagent: put review layers between the subagent and the orchestrator. If the output fails review, redispatch with corrections. This is much more robust than trying to babysit a running subagent, and it's the pattern my own workflow leans on heavily.
+This supports preserving implementation ownership as the default. It does not prove that one sequential implementation child is always worse; the cited practitioner arguments do not directly establish that comparison under matched conditions. The claim that implementation is where subagents help most is likewise unsupported.
 
-## The parallel-coordination counterargument
+## The writable exception
 
-Cognition's [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) is the serious dissent, and it's worth naming because it's partly right. Their Flappy Bird example: one subagent builds a Mario-style background, another builds a non-game bird, because decomposition leaks implicit decisions the peers can't see. Their conclusion is that tight scoping can't save you.
+Keep writable delegation available when explicitly requested by the user through an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never overlap parent or child writes in one checkout, and preserve stricter active workflow boundaries.
 
-I think this is accurate for **parallel peer coordination** — genuinely hard, because implicit decisions don't propagate between siblings. It's not accurate for **linear orchestration with review gates**, where a single orchestrator holds the full plan, dispatches one subagent at a time, and judges each output before the next step. Implementation work in that shape is fine — and it's where subagents help _most_, because implementation is what bloats the main context worst.
+A bounded component with stable interfaces and explicit acceptance checks may justify that exception. A fresh implementer for every tightly coupled slice should not be the default. If a child needs steering, inspect the scope and handoff, but recognize that legitimate discoveries or requirement changes can also demand intervention.
+
+Before claiming an advantage, compare owning-session implementation against one sequential child with the same model, effort, tools, starting revision, and acceptance checks. Use repeated trials and measure verified success, regressions, handoff omissions, parent rework, latency, and total usage. That experiment can follow adoption of the conservative default; it need not block it.
 
 ## References
 
-- [Anthropic — Subagents in Claude Code](https://claude.com/blog/subagents-in-claude-code)
-- [Cognition — Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents)
-- [Voidwire Labs — The Real Cost of Claude Code Subagents](https://labs.voidwire.info/posts/the-real-cost-of-claude-code-subagents/)
-- [Zhang et al. — Recursive Language Models](https://alexzhang13.github.io/blog/2025/rlm/)
-- [`plan-execute-review.md`](./plan-execute-review.md) — the workflow shape this note assumes
+- [Anthropic — Subagents in Claude Code](https://claude.com/blog/subagents-in-claude-code) — context isolation and scoped child work.
+- [Cognition — Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) — practitioner argument about shared context and implicit decisions.
+- [Voidwire Labs — The Real Cost of Claude Code Subagents](https://labs.voidwire.info/posts/the-real-cost-of-claude-code-subagents/) — implementation token-overhead report, not a general quality comparison.
+- [`plan-execute-review.md`](./plan-execute-review.md) — phase boundaries without mandatory child handoffs.

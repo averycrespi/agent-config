@@ -5,7 +5,7 @@
 A three-phase loop that most serious Claude Code / AI coding workflows have converged on:
 
 1. **Plan** — Turn a fuzzy request into an explicit artifact: a spec, design doc, or task list. Often preceded by a Socratic brainstorming step to pin down requirements.
-2. **Execute** — Work the plan task-by-task with one writer at a time, using fresh subagent contexts, worktrees, or sessions while the orchestrator retains durable state and verification authority.
+2. **Execute** — Implement and fix in the owning session by default. Use writable delegation only when explicitly requested by the user through an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification.
 3. **Review** — Validate the output against the plan and against quality bars (correctness, security, style). The orchestrator verifies each delegated task directly; independent review is most useful as a holistic risk-appropriate pass before merge rather than an automatic reviewer chain after every task.
 
 ## The convergence
@@ -21,9 +21,9 @@ Independently developed workflows all landed in roughly the same place:
 
 The shape isn't arbitrary — the workflow's phases map onto natural seams in how agents actually operate:
 
-- **Cleave points for composition.** Each phase boundary is a place you can swap in a different model, dispatch to a subagent, or hand off to a fresh session. Planning benefits from a strong model; execution can often use a cheaper one; review wants independence from the author.
-- **Artifact handoff.** Plans, specs, and task lists are durable — they survive context resets and can be passed between agents without losing fidelity. Handing over a plan file is much higher-bandwidth than trying to serialize a live conversation.
-- **Context efficiency.** Long work is the enemy of quality. Splitting at plan and task boundaries lets each subagent start with minimal, task-specific context while the orchestrator verifies the actual diff and retains the durable execution record.
+- **Composition points.** Phase boundaries make delegation possible, not mandatory. Delegate a self-contained question when parallelism, substantial context isolation, or independent judgment clearly outweighs startup, handoff, and verification costs.
+- **Artifact handoff.** Plans, specs, and task lists survive context resets, but do not preserve every implicit decision. Carry relevant decisions and evidence across any necessary handoff; do not assume a plan replaces the implementer's accumulated understanding.
+- **Context quality.** Isolate noisy intermediate material when doing so helps the owner. Keep tightly coupled implementation in the owning session rather than rotating fresh writers merely to shorten its context.
 - **Tunable.** The workflow has many independent knobs — review depth, subagent isolation vs. inline, TDD on/off, how granular plans get, whether verification is parallel or sequential. Each can be adjusted without restructuring the whole loop.
 
 ## References

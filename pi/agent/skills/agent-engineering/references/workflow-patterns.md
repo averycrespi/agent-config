@@ -2,7 +2,7 @@
 
 This document covers multi-phase agent workflow design — the patterns deterministic orchestrators use to drive a sequence of LLM calls toward a complete artifact (a PR, a refactor, a migration). Single-agent harness patterns are in `platforms.md` and `models.md`; this document is about what happens between agents.
 
-The reference architecture is a deterministically controlled pipeline with validated machine-readable output at each phase boundary: strict JSON where the API supports it, parsed tags where CLI ergonomics make JSON brittle. Fresh subagents remain the portable default; GPT-5.6 can instead use bounded model-managed delegation inside a decomposable phase while code retains the outer control plane.
+The reference architecture is a deterministically controlled pipeline with validated machine-readable output at each phase boundary: strict JSON where the API supports it, parsed tags where CLI ergonomics make JSON brittle. Fresh subagents are an option when a self-contained question benefits from parallelism, substantial context isolation, or independent judgment; phase boundaries alone do not justify delegation. GPT-5.6 can use bounded model-managed delegation inside such a phase while code retains the outer control plane.
 
 ## The canonical phase sequence
 
@@ -16,19 +16,19 @@ Most production pipelines collapse adjacent phases. Don't add a phase unless the
 
 Brief description of each:
 
-| Phase       | Input                  | Output                                                        | Notes                                                                                       |
-| ----------- | ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| extract-AC  | Ticket / design doc    | `ac.json` — list of `{id, criterion, verifies_via}`           | Production case studies all do this. Plays the role of contract for downstream phases.      |
-| localize    | AC + repo state        | Ranked file list + entry points                               | Largest single contributor on top SWE-bench scaffolds. Read-only, parallelizable.           |
-| plan        | AC + localization      | 1–15 outline-level tasks                                      | Plan = intent, not diff. The implementer owns code-level details.                           |
-| plan-repair | Plan + repo state + AC | Revised plan or "plan is good"                                | One bounded revision allowed. Catches plan/repo drift before it becomes implementer thrash. |
-| implement   | One task + AC + plan   | Scoped workspace diff and structured handoff                  | Sequential per task. Fresh writer each; orchestrator verifies and checkpoints.              |
-| validate    | All commits            | Pass/fail of deterministic gates (tests, types, lints, build) | Cheap, fast, infallible-on-true-pass.                                                       |
-| review      | All commits + AC       | Per-criterion verdicts + any findings                         | Independent read-only review; add distinct lenses according to risk.                        |
-| fix         | Review findings        | Code changes                                                  | 2-round cap. Sticky completion.                                                             |
-| emit-report | Everything             | Structured JSON + human-readable summary                      | Always emits. No unbounded verify→implement loopback.                                       |
+| Phase       | Input                  | Output                                                        | Notes                                                                                                                      |
+| ----------- | ---------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| extract-AC  | Ticket / design doc    | `ac.json` — list of `{id, criterion, verifies_via}`           | Production case studies all do this. Plays the role of contract for downstream phases.                                     |
+| localize    | AC + repo state        | Ranked file list + entry points                               | Largest single contributor on top SWE-bench scaffolds. Read-only, parallelizable.                                          |
+| plan        | AC + localization      | 1–15 outline-level tasks                                      | Plan = intent, not diff. The implementer owns code-level details.                                                          |
+| plan-repair | Plan + repo state + AC | Revised plan or "plan is good"                                | One bounded revision allowed. Catches plan/repo drift before it becomes implementer thrash.                                |
+| implement   | One task + AC + plan   | Scoped workspace diff and structured handoff                  | Owning session implements by default; writable delegation requires explicit user request and the execution contract below. |
+| validate    | All commits            | Pass/fail of deterministic gates (tests, types, lints, build) | Cheap, fast, infallible-on-true-pass.                                                                                      |
+| review      | All commits + AC       | Per-criterion verdicts + any findings                         | Independent read-only review; add distinct lenses according to risk.                                                       |
+| fix         | Review findings        | Code changes                                                  | 2-round cap. Sticky completion.                                                                                            |
+| emit-report | Everything             | Structured JSON + human-readable summary                      | Always emits. No unbounded verify→implement loopback.                                                                      |
 
-A sequential writer in one checkout is safe only when the orchestrator starts one bounded task, launches exactly one writable child, inspects the actual diff, reruns deterministic checks, records authoritative evidence, and owns the commit. Do not batch a writer with readers or other writers; use isolated worktrees only for genuinely independent parallel implementation.
+Keep implementation and fixes in the owning session by default. When the user explicitly requests writable delegation, require an explicit execution workflow with one bounded task, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. The orchestrator inspects the actual diff, runs relevant deterministic checks, and retains any separately authorized commit authority. Do not batch a writer with readers or other writers, or overlap parent and child writes. Preserve stricter workflow boundaries, including read-only subagents in `work-ticket`. Serialization prevents simultaneous-write conflicts, not loss of implicit decisions across handoffs; a fresh writer per task is not the default.
 
 ## Acceptance criteria as the canonical rubric
 
@@ -48,9 +48,9 @@ In this repo, `shape-ticket` defines acceptance criteria in the canonical Plane 
 
 ## Localization
 
-A read-only fan-out phase that produces a ranked file list and entry points before planning starts. Top SWE-bench scaffolds (AutoCodeRover, SWE-agent, Augment) all have localization-style machinery; public analyses often identify it as one of the largest scaffold contributors.
+Produce a ranked file list and entry points. Use read-only fan-out only when independent retrieval questions offer a clear parallelism or substantial context-isolation benefit; otherwise keep localization inline. Top SWE-bench scaffolds (AutoCodeRover, SWE-agent, Augment) all have localization-style machinery; public analyses often identify it as one of the largest scaffold contributors.
 
-Implementation:
+Example when fan-out is justified:
 
 - 2–3 retrieval subagents in parallel: one BM25, one symbol-graph walk, one ripgrep concept search.
 - Each returns a ranked list of files with one-line justification per file.
@@ -61,7 +61,7 @@ Implementation:
 
 ## Plan-repair gate
 
-A cheap subagent between plan-emit and implement-loop that re-validates the plan against current repo state and the AC list. One bounded revision allowed.
+A bounded check between plan-emit and implement-loop that re-validates the plan against current repo state and the AC list. Use a fresh read-only context when independent judgment offers a clear benefit; otherwise check inline. One bounded revision allowed.
 
 Why: the [Long-Horizon Task Mirage](https://arxiv.org/html/2604.11978v1) paper found 72.5% of agent failures are process-level — subplan errors and history-error accumulation dominate. The paper's caveat is that it studies Web/OS/Embodied/DB, not coding, so treat this as a high-leverage hypothesis rather than measured-on-coding fact.
 
@@ -73,13 +73,11 @@ Implementation:
 
 Maps to `ralph-meets-rex`'s "planner can reject upfront" pattern, applied between phases.
 
-## Sequential implement, parallel review
+## Owning-session implementation, independent review
 
-The default pattern for most coding workflows.
+**Preserve implementation continuity.** Actions carry implicit decisions ([Cognition principle 2](https://cognition.ai/blog/dont-build-multi-agents)). Keep implementation and fixes with their owner by default; use the explicit writable exception above when requested. This is a design default, not controlled evidence that one sequential child is always worse.
 
-**Sequential implement**, because actions carry implicit decisions ([Cognition principle 2](https://cognition.ai/blog/dont-build-multi-agents)). Two implementers working on different tasks in parallel will fork micro-decisions that conflict at merge. The exception is **worktree-per-task with no overlap**, but this is rarely as cheap as it sounds — shared ports, databases, services bite hard.
-
-**Parallel review**, because review is read-only and benefits from diversity. The lens-based pattern:
+**Use independent review where required or beneficial.** Start with one reviewer and add parallel lenses when distinct risks justify the coordination cost. Categories alone do not require separate agents. Possible lenses:
 
 | Lens              | What it looks for                                                     |
 | ----------------- | --------------------------------------------------------------------- |

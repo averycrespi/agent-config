@@ -47,7 +47,7 @@ test("resolver creates an internal invocation from central policy", () => {
     assert.deepEqual(result.errors, []);
     assert.equal(result.prepared?.modelSelector, "p/m");
     assert.equal(result.prepared?.profile, "balanced");
-    assert.equal(result.prepared?.thinking, "high");
+    assert.equal(result.prepared?.thinking, "medium");
     assert.deepEqual(result.prepared?.invocation.toolAllowlist, [
       "mcp_search",
       "mcp_describe",
@@ -69,6 +69,32 @@ test("resolver creates an internal invocation from central policy", () => {
     assert.equal("disableSkills" in result.prepared!.invocation, false);
   } finally {
     mock.restoreAll();
+  }
+});
+
+test("shipped profiles resolve to explicit child routing", () => {
+  for (const [profile, id, thinking] of [
+    ["fast", "gpt-5.6-luna", "medium"],
+    ["balanced", "gpt-5.6-sol", "medium"],
+    ["strong", "gpt-6-astra", "high"],
+  ] as const) {
+    const result = resolveSubagentRequest(
+      request({
+        profile,
+        capabilities: [],
+        modelRegistry: {
+          find: (provider, modelId) =>
+            provider === "openai-codex" && modelId === id
+              ? { ...model, provider, id }
+              : undefined,
+        },
+      }),
+      DEFAULT_SUBAGENTS_CONFIG,
+    );
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.prepared?.invocation.model, `openai-codex/${id}`);
+    assert.equal(result.prepared?.invocation.thinking, thinking);
+    assert.equal(result.prepared?.invocation.inheritSession, "none");
   }
 });
 
@@ -139,7 +165,7 @@ test("runSubagent validates before launching and forwards only normalized author
     assert.deepEqual(invocation.toolAllowlist, []);
     assert.deepEqual(invocation.extensionAllowlist, []);
     assert.equal(invocation.model, "p/m");
-    assert.equal(invocation.thinking, "high");
+    assert.equal(invocation.thinking, "medium");
     assert.equal(invocation.output, output);
   } finally {
     mock.restoreAll();

@@ -119,6 +119,37 @@ test("delegation guidance documents explicit policy without named agents", () =>
   assert.doesNotMatch(buildPolicyDescription(config), /test\/model/);
 });
 
+test("delegation guidance requires benefit, ownership, and evidence-bearing briefs", () => {
+  const guidance = buildDelegationGuidance(config);
+  assert.match(guidance, /self-contained question when parallelism/);
+  assert.match(
+    guidance,
+    /File count, task category, and read-only status alone do not justify delegation/,
+  );
+  assert.match(
+    guidance,
+    /Keep implementation and fixes in the owning session by default/,
+  );
+  assert.match(guidance, /only when explicitly requested by the user/);
+  assert.match(
+    guidance,
+    /explicit execution workflow with bounded scope, one writer/,
+  );
+  assert.match(guidance, /structured handoff, and independent verification/);
+  assert.match(guidance, /Never overlap parent or child writes/);
+  for (const requirement of [
+    "scope boundaries",
+    "relevant context and decisions",
+    "authoritative source paths",
+    "explicit capabilities and profile",
+    "evidence-bearing deliverable with uncertainties",
+    "stop condition",
+    "parent owns synthesis and checks consequential claims",
+  ])
+    assert.ok(guidance.includes(requirement), requirement);
+  assert.doesNotMatch(guidance, /reading more than a few files|Delegate when:/);
+});
+
 test("preflight accepts explicit empty capabilities", async () => {
   assert.deepEqual(
     await validateSpawnAgentSpecs([valid({ capabilities: [] })], config, ctx),

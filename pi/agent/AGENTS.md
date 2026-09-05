@@ -15,7 +15,7 @@
 
 - For nontrivial tasks, identify acceptance criteria before implementing. Treat plans as intent and constraints, not literal diffs to apply blindly.
 - Prefer validated machine-readable outputs for automation and workflow boundaries. Avoid relying on free-text completion markers when a schema or structured format is available.
-- Follow the active delegation tool and workflow contracts; prefer read-only delegation. Delegate writes only through an explicit execution workflow with bounded scope, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never run overlapping writable agents in one checkout.
+- Follow the active delegation tool and workflow contracts. Delegate self-contained questions when parallelism, isolation of substantial intermediate context, or independent judgment offers a clear benefit over startup, handoff, and verification costs—not merely because of file count or task category. Keep implementation and fixes in the owning session by default. Delegate writes only when explicitly requested by the user and through an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never overlap parent or child writes in one checkout; preserve stricter active workflow boundaries.
 - Run deterministic checks such as typecheck, lint, tests, or focused scripts before dispatching LLM reviewers when practical. Pass them first or report their failures and gaps in the reviewer brief.
 - Keep verification and fix loops bounded. If deterministic checks or reviewer feedback repeat without meaningful progress, stop and report known issues with the evidence gathered.
 

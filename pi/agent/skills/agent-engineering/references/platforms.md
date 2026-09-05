@@ -41,7 +41,7 @@ These showed up repeatedly across the Pi extensions surveyed for this skill:
 1. **Tagged-output protocol > free text, ≤ JSON.** rmr's `<rmr:status>`, autonomous-dev's `STATUS:/PR_URL:/SUMMARY:` blocks. Models reliably emit tags inside markdown without escaping issues. JSON is more rigid; tags are more forgiving.
 2. **Plan = intent, not diff.** Across rmr, roach-pi, agent-pi: "A good plan does NOT contain line-by-line diffs. The implementing agent decides the code-level details." Don't over-specify.
 3. **Implementer prompt always says "don't gold-plate."** Universal failure mode. rmr-tackle: "Do NOT gold-plate. Implement what the plan asks for, elegantly, then stop." autonomous-dev-worker: "Keep PRs focused. Respect scope. Don't add unrelated features."
-4. **Verify is parallelizable and benefits from diversity.** Single-pass verify is rarer than multi-pass.
+4. **Review can benefit from independent judgment.** Add parallel reviewers only when distinct risks justify the cost; preserve required review gates.
 5. **Termination is hard; cap + structured-output > free-text marker.** Ralph's text-match termination is fragile; tag-based or schema-based completion signals are robust.
 6. **Worktrees are underused.** Only `roach-pi` uses them, and only for parallel subagents.
 7. **Compaction is hostile to long pipelines.** Only `roach-pi` survives compaction by re-injecting workflow state; others assume single-shot or human-driven resume. Pi's `session_before_compact` / `session_compact` hooks are the right extension surface for making this durable.

@@ -12,7 +12,7 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **Why it fails**: Agents can drift, agree spuriously, argue past each other, or expand work without a deterministic stop condition. GPT-5.6's Multi-agent beta makes bounded coordinator-worker delegation a supported primitive; it does not make open-ended negotiation reliable.
 
-**Instead**: Keep permissions, budgets, validation, and termination in a deterministic outer control plane. Delegate independent, bounded workstreams with explicit outputs, then validate the synthesized result. Prefer read-heavy work and serialize shared-state writes.
+**Instead**: Keep permissions, budgets, validation, and termination in a deterministic outer control plane. Delegate self-contained questions only when parallelism, substantial context isolation, or independent judgment offers a clear benefit, then validate the synthesized result. Keep implementation and fixes in the owning session unless the user explicitly requests a compliant writable execution workflow.
 
 **Citation**: [Cognition — Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (2025); [OpenAI — Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent) (GPT-5.6 beta).
 
@@ -20,9 +20,9 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **What**: N implementer agents work on the same task in parallel; orchestrator picks the best or merges.
 
-**Why it fails**: Hidden coupling. Each implementation makes micro-decisions (variable naming, error handling style, where to put a helper) that diverge. Merging produces inconsistent code or requires a third agent to reconcile, which loses the benefit. Worktree-per-implementer is fine for _different_ tasks but not for racing the same task.
+**Why it fails**: Hidden coupling. Each implementation makes micro-decisions (variable naming, error handling style, where to put a helper) that diverge. Merging produces inconsistent code or requires a third agent to reconcile, which loses the benefit. Different tasks or isolated worktrees do not by themselves remove logical coupling or justify delegation.
 
-**Instead**: Sequential implement. One implementer per task. If you want diversity, change task decomposition or use multiple reviewers, not multiple implementers.
+**Instead**: Preserve owning-session implementation by default. A writable exception requires an explicit user request, an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. For independent judgment, prefer risk-justified read-only review.
 
 **Citation**: [Cognition — Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents), principle 2.
 

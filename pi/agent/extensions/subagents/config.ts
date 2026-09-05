@@ -31,10 +31,10 @@ export type SubagentsConfig = {
 export const DEFAULT_SUBAGENTS_CONFIG: SubagentsConfig = {
   maxConcurrency: DEFAULT_MAX_CONCURRENCY,
   profileFastModel: "openai-codex/gpt-5.6-luna",
-  profileFastEffort: "high",
-  profileBalancedModel: "openai-codex/gpt-5.6-terra",
-  profileBalancedEffort: "high",
-  profileStrongModel: "openai-codex/gpt-5.6-sol",
+  profileFastEffort: "medium",
+  profileBalancedModel: "openai-codex/gpt-5.6-sol",
+  profileBalancedEffort: "medium",
+  profileStrongModel: "openai-codex/gpt-6-astra",
   profileStrongEffort: "high",
   allowedCapabilities: [...CAPABILITIES],
 };

@@ -25,15 +25,15 @@ test("config exposes centralized policy defaults", () => {
     DEFAULT_SUBAGENTS_CONFIG.profileFastModel,
     "openai-codex/gpt-5.6-luna",
   );
-  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileFastEffort, "high");
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileFastEffort, "medium");
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileBalancedModel,
-    "openai-codex/gpt-5.6-terra",
+    "openai-codex/gpt-5.6-sol",
   );
-  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "high");
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "medium");
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileStrongModel,
-    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-6-astra",
   );
   assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileStrongEffort, "high");
   assert.deepEqual(DEFAULT_SUBAGENTS_CONFIG.allowedCapabilities, [

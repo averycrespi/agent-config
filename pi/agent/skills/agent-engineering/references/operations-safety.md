@@ -119,14 +119,14 @@ Good escalation output includes the blocking fact, 2–4 concrete options, the r
 
 ### One agent or workflow?
 
-| Question                                                                               | If yes, lean toward                                          |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Is the task small, interactive, and locally verifiable?                                | One agent loop                                               |
-| Does the task need durable AC, planning, implementation, review, and report artifacts? | Workflow                                                     |
-| Does the task span multiple independent read-only investigations?                      | Workflow with subagent fan-out                               |
-| Is implementation decomposed into bounded tasks with independent checks?               | Deterministic orchestrator with one writable child at a time |
-| Does the task require multiple externally visible side effects?                        | Workflow with explicit approval/finalization phases          |
-| Would a failed run need to resume after crash or hand off to another actor?            | Workflow with durable state                                  |
+| Question                                                                                       | If yes, lean toward                                          |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Is the task small, interactive, and locally verifiable?                                        | One agent loop                                               |
+| Does the task need durable AC, planning, implementation, review, and report artifacts?         | Workflow                                                     |
+| Do self-contained read-only questions offer a clear fan-out benefit?                           | Workflow with subagent fan-out                               |
+| Did the user explicitly request delegated implementation under the bounded execution contract? | Deterministic orchestrator with one writable child at a time |
+| Does the task require multiple externally visible side effects?                                | Workflow with explicit approval/finalization phases          |
+| Would a failed run need to resume after crash or hand off to another actor?                    | Workflow with durable state                                  |
 
 ### LLM verifier or deterministic verifier?
 
