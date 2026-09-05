@@ -71,7 +71,7 @@ test("review is a valid saved workflow with strict prepared-context input", asyn
   assert.deepEqual(workflow.meta, {
     name: "review",
     description:
-      "Review prepared code-change evidence with bounded independent lenses and adjudication",
+      "Review prepared evidence with one independent reviewer and optional risk-driven lenses",
   });
 
   for (const args of [
@@ -85,6 +85,8 @@ test("review is a valid saved workflow with strict prepared-context input", asyn
     validArgs({ contextPaths: new Array(1) }),
     validArgs({ checks: [{ name: "tests", status: "green", summary: "ok" }] }),
     validArgs({ requestedLenses: ["security"] }),
+    validArgs({ reviewMode: "unknown" }),
+    validArgs({ reviewMode: "confirmation" }),
     validArgs({
       checks: Array.from({ length: 51 }, () => ({
         name: "test",
@@ -124,7 +126,7 @@ test("review is a valid saved workflow with strict prepared-context input", asyn
   }
 });
 
-test("review runs three structured core lenses and reports clean supplied evidence cautiously", async () => {
+test("review runs one independent reviewer without mandatory adjudication", async () => {
   const workflow = await loadWorkflow();
   const requests: any[] = [];
   const result = await runWorkflow(workflow, {
@@ -138,7 +140,7 @@ test("review runs three structured core lenses and reports clean supplied eviden
 
   assert.deepEqual(
     requests.map((request) => request.intent),
-    ["Review behavior", "Review assurance", "Review maintainability"],
+    ["Review independent"],
   );
   for (const request of requests) {
     assert.deepEqual(request.capabilities, ["read-filesystem"]);
@@ -176,25 +178,19 @@ test("review deterministically adds only requested or risk-selected optional len
 
   assert.deepEqual(
     requests.map((request) => request.intent),
-    [
-      "Review behavior",
-      "Review assurance",
-      "Review maintainability",
-      "Review architecture",
-      "Review performance",
-    ],
+    ["Review independent", "Review architecture", "Review performance"],
   );
 });
 
-test("review adjudicates structured candidates once and renders only accepted findings", async () => {
+test("optional lenses adjudicate immutable grouped candidates once", async () => {
   const workflow = await loadWorkflow();
   const requests: any[] = [];
   const result = await runWorkflow(workflow, {
     cwd: "/repo",
-    args: validArgs(),
+    args: validArgs({ requestedLenses: ["architecture", "performance"] }),
     spawnAgent: async (request) => {
       requests.push(request);
-      if (request.intent === "Review behavior") {
+      if (request.intent === "Review independent") {
         return structured({
           findings: [
             finding(),
@@ -207,10 +203,10 @@ test("review adjudicates structured candidates once and renders only accepted fi
           gaps: [],
         });
       }
-      if (request.intent === "Review assurance") {
+      if (request.intent === "Review architecture") {
         return structured({ findings: [finding()], gaps: [] });
       }
-      if (request.intent === "Review maintainability") {
+      if (request.intent === "Review performance") {
         return structured({
           findings: [
             finding({
@@ -233,7 +229,10 @@ test("review adjudicates structured candidates once and renders only accepted fi
           request.prompt.split("Candidate groups:\n")[1],
         );
         assert.equal(groups.length, 3);
-        assert.deepEqual(groups[0].candidateIds, ["behavior-1", "assurance-1"]);
+        assert.deepEqual(groups[0].candidateIds, [
+          "independent-1",
+          "architecture-1",
+        ]);
         assert.equal(
           groups[2].finding.claim,
           "A separate defect shares the same title and location.",
@@ -241,7 +240,7 @@ test("review adjudicates structured candidates once and renders only accepted fi
         return structured({
           dispositions: [
             {
-              candidateIds: ["behavior-1", "assurance-1"],
+              candidateIds: ["independent-1", "architecture-1"],
               status: "confirmed",
               reason: "Both candidates identify the same evidenced defect.",
               normalizedFinding: finding({
@@ -250,12 +249,12 @@ test("review adjudicates structured candidates once and renders only accepted fi
               }),
             },
             {
-              candidateIds: ["behavior-2"],
+              candidateIds: ["independent-2"],
               status: "rejected",
               reason: "The claim is not supported by the supplied evidence.",
             },
             {
-              candidateIds: ["maintainability-1"],
+              candidateIds: ["performance-1"],
               status: "rejected",
               reason: "The separate claim is not supported.",
             },
@@ -285,17 +284,17 @@ test("review preserves partial results and marks failed core coverage incomplete
     cwd: "/repo",
     args: validArgs(),
     spawnAgent: async (request) =>
-      request.intent === "Review assurance"
+      request.intent === "Review independent"
         ? failed("provider unavailable")
         : structured({ findings: [], gaps: [] }),
   });
 
   assert.equal(result.settledBranchFailureCount, 1);
   assert.match(result.result as string, /Outcome: incomplete/);
-  assert.match(result.result as string, /2\/3 reviewer lenses completed/);
+  assert.match(result.result as string, /0\/1 reviewer lenses completed/);
   assert.match(
     result.result as string,
-    /Reviewer assurance failed: provider unavailable/,
+    /Reviewer independent failed: provider unavailable/,
   );
   assert.doesNotMatch(
     result.result as string,
@@ -307,9 +306,9 @@ test("review fails adjudication semantics closed into needs-human findings", asy
   const workflow = await loadWorkflow();
   const result = await runWorkflow(workflow, {
     cwd: "/repo",
-    args: validArgs(),
+    args: validArgs({ requestedLenses: ["architecture"] }),
     spawnAgent: async (request) => {
-      if (request.intent === "Review behavior") {
+      if (request.intent === "Review independent") {
         return structured({ findings: [finding()], gaps: [] });
       }
       if (request.intent === "Adjudicate review findings") {
@@ -383,9 +382,9 @@ test("review bounds hostile structured-output collections before adjudication an
   }));
   const result = await runWorkflow(workflow, {
     cwd: "/repo",
-    args: validArgs(),
+    args: validArgs({ requestedLenses: ["architecture"] }),
     spawnAgent: async (request) => {
-      if (request.intent === "Review behavior") {
+      if (request.intent === "Review independent") {
         return structured({ findings, gaps: reviewerGaps });
       }
       if (request.intent === "Adjudicate review findings") {
@@ -425,14 +424,14 @@ test("review bounds and terminal-sanitizes model-derived findings", async () => 
     cwd: "/repo",
     args: validArgs(),
     spawnAgent: async (request) => {
-      if (request.intent === "Review behavior") {
+      if (request.intent === "Review independent") {
         return structured({ findings: [hostile], gaps: [] });
       }
       if (request.intent === "Adjudicate review findings") {
         return structured({
           dispositions: [
             {
-              candidateIds: ["behavior-1"],
+              candidateIds: ["independent-1"],
               status: "confirmed",
               reason: "confirmed",
               normalizedFinding: hostile,
@@ -447,4 +446,83 @@ test("review bounds and terminal-sanitizes model-derived findings", async () => 
 
   assert.doesNotMatch(result.result as string, /\u001b|\[31m/);
   assert.ok((result.result as string).length < 8_000);
+});
+
+test("single-reviewer findings need no adjudicator and suggestions do not block", async () => {
+  for (const scenario of [
+    { value: finding(), outcome: "findings" },
+    {
+      value: finding({ severity: "minor", category: "style" }),
+      outcome: "non-blocking suggestions",
+    },
+    { value: finding({ category: "style" }), outcome: "incomplete" },
+    { value: finding({ confidence: "low" }), outcome: "incomplete" },
+  ]) {
+    let launches = 0;
+    const result = await runWorkflow(await loadWorkflow(), {
+      cwd: "/repo",
+      args: validArgs(),
+      spawnAgent: async () => {
+        launches += 1;
+        return structured({ findings: [scenario.value], gaps: [] });
+      },
+    });
+    assert.equal(launches, 1);
+    assert.match(
+      result.result as string,
+      new RegExp(`Outcome: ${scenario.outcome}`),
+    );
+    assert.match(result.result as string, /Incorrect boundary handling/);
+  }
+});
+
+test("focused confirmation carries original blockers and repair boundaries through every selected reviewer", async () => {
+  const priorReviewContext = [
+    "Original blocker B-1: boundary value rejected; repaired code.js and its direct caller; verify no caller regression.",
+  ];
+  const requests: any[] = [];
+  const result = await runWorkflow(await loadWorkflow(), {
+    cwd: "/repo",
+    args: validArgs({
+      reviewMode: "confirmation",
+      priorReviewContext,
+      requestedLenses: ["architecture"],
+    }),
+    spawnAgent: async (request) => {
+      requests.push(request);
+      if (request.intent === "Adjudicate review findings") {
+        return structured({
+          dispositions: [
+            {
+              candidateIds: ["independent-1"],
+              status: "confirmed",
+              reason: "Original blocker remains evidenced",
+            },
+          ],
+          gaps: [],
+        });
+      }
+      return structured({
+        findings: request.intent === "Review independent" ? [finding()] : [],
+        gaps: [],
+      });
+    },
+  });
+  assert.equal(requests.length, 3);
+  for (const request of requests) {
+    const json = request.prompt
+      .split("Prepared review context:\n")[1]
+      .split("\n\nCandidate groups:")[0];
+    const context = JSON.parse(json);
+    assert.deepEqual(context.priorReviewContext, priorReviewContext);
+    assert.deepEqual(context.deterministicChecks, [
+      {
+        name: "tests",
+        status: "passed",
+        summary: "12 passed",
+        artifactPath: "",
+      },
+    ]);
+  }
+  assert.match(result.result as string, /Outcome: findings/);
 });

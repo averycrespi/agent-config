@@ -5,7 +5,7 @@ description: Use when reviewing code changes, a working tree, branch, commit ran
 
 # Review
 
-Use the saved `review` workflow as the review engine. Prepare its evidence package, invoke it once, and present its report. Do not recreate reviewer lenses, spawn a separate review panel, or adjudicate findings in the parent session.
+Use the saved `review` workflow as the review engine. Prepare its evidence package and present its consolidated report. Default to one independent reviewer; add lenses only for identified risks. Do not recreate a separate panel or silently re-adjudicate findings in the parent session. Repairs stay in the owning session, never writable workflow children.
 
 ## Prepare the target
 
@@ -35,7 +35,8 @@ Pass a strict object containing:
 - `objective` and `acceptanceCriteria`;
 - `changedFiles` and non-empty `contextPaths`;
 - `checks` with honest statuses and summaries;
-- `priorReviewContext` from relevant earlier review rounds;
+- `reviewMode`: `initial` (default) or `confirmation` after repairs;
+- `priorReviewContext` from earlier review rounds; confirmation requires original blockers, their dispositions, repair scope, and affected boundaries;
 - `knownGaps` for missing diffs, deleted artifacts, unavailable checks, or uncertain scope;
 - `riskTags` grounded in the change;
 - `requestedLenses`: only `architecture` and/or `performance`, and only when explicitly warranted.
@@ -65,7 +66,7 @@ Invoke:
 }
 ```
 
-If strict input validation rejects the package before launching agents, correct the packaging error and retry once. Do not rerun because findings are inconvenient, and do not start an autonomous fix/re-review loop.
+If strict input validation rejects the package before launching agents, correct the packaging error and retry once. Do not rerun because findings are inconvenient. After authorized repairs, prepare fresh evidence and use focused confirmation rather than unrestricted fresh review.
 
 ## Present the result
 
@@ -76,4 +77,13 @@ Treat workflow execution health and review outcome as separate facts.
 - Preserve confirmed findings, needs-human findings, check failures, coverage, and known gaps. Do not silently omit, downgrade, rewrite, or re-adjudicate them.
 - Never claim the change is clean or ready when the outcome is `incomplete`, checks failed or were not run, candidates need human judgment, or known gaps are material.
 - If the report contains no material findings, state that this conclusion is limited to the supplied evidence and displayed coverage.
-- Offer to fix confirmed findings only after presenting the complete report; perform fixes as a separate user-directed task.
+- Present the complete consolidated report before repairs. If repairs are already authorized by the user's implementation request or active delivery scope, perform bounded repairs without redundant confirmation. Otherwise offer to fix confirmed blockers and wait for authorization.
+- Treat critical/major findings as blockers only with evidence of security, correctness, acceptance, compatibility, data-integrity, required-CI, or explicit resource-requirement violations. Keep nonblocking suggestions visible without reopening implementation. Needs-human findings and unsupported blocking categories require resolution, not silent downgrading.
+
+## Authorized repair boundary
+
+For ticket work, load `../work-ticket/SKILL.md` and persist `begin_repair` before editing, retaining findings, dispositions, and the run-wide two-cycle allowance. One consolidated review followed by one repair batch consumes a cycle. Do not reset consumption on interruption or count ordinary implementation/test iteration as review repair.
+
+For non-ticket work, use at most two authorized repair batches and retain the count and original report in the existing task continuity record; if durable recovery evidence is unavailable after interruption, stop rather than assume a fresh allowance. Do not create a new orchestration system or require a new request for each already-authorized bounded batch.
+
+Repair consolidated blockers only within authorized scope. Rerun affected and repository-required checks, then invoke `reviewMode: confirmation` with the earlier blockers/report, dispositions, changed revision, and repair-touched boundaries. Confirmation checks original blockers, affected boundaries, and repair-induced regressions—not unrelated fresh improvements. Preserve unresolved findings. After two cycles, stop with a blocked handoff and remaining blockers; exhaustion never means approval. Material scope changes still require authorization.

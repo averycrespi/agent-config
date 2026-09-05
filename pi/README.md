@@ -117,10 +117,10 @@ See [AGENTS.md](../AGENTS.md) for repo-specific authoring guidance.
 
 JavaScript orchestration definitions under `agent/workflows/` are installed into Pi's default saved-workflow store. They run through the `workflows` extension with the same sandbox, centrally resolved subagent capabilities/profiles, concurrency, budgets, and validation as inline workflows. Saved workflows reject mutable filesystem and shell capabilities. Workspace mutation stays in the main session unless an explicit execution workflow authorizes bounded writable delegation, such as through `spawn_agents` or `spin-out`. Their `*.test.ts` files stay beside the definitions and are included in repository lint, typecheck, and test commands.
 
-| Workflow        | Purpose                                                                                         |
-| --------------- | ----------------------------------------------------------------------------------------------- |
-| `deep-research` | Explicitly requested or approved deep public-web research with a verified cited report.         |
-| `review`        | Review caller-prepared change evidence through bounded independent lenses and one adjudication. |
+| Workflow        | Purpose                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------- |
+| `deep-research` | Explicitly requested or approved deep public-web research with a verified cited report. |
+| `review`        | Review prepared evidence with one independent reviewer and optional risk-driven lenses. |
 
 Run definitions through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. `deep-research` accepts a question string; `review` requires prepared target, patch/context-path, and deterministic-check evidence. The companion [`review` skill](agent/skills/review/SKILL.md) prepares that package for normal interactive use. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for exact contracts and safety boundaries.
 
@@ -138,14 +138,12 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 
 | Skill                  | Use when                                                                                                    |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `advance-ticket`       | Advancing one prepared Plane ticket run to an independently reviewed, CI-passing, review-ready PR           |
 | `agent-engineering`    | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows            |
 | `challenge`            | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation      |
 | `clarify`              | Researching material ambiguity and asking focused questions to return an actionable brief without artifacts |
 | `create-html-artifact` | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools               |
 | `create-skill`         | Creating a new skill or updating an existing one                                                            |
 | `diagnose`             | Debugging bugs, failures, flaky behavior, regressions, or performance problems                              |
-| `dispatch-ticket`      | Inspecting or explicitly operating one Plane ticket run, including dispatch, settlement, and cleanup        |
 | `frontend-design`      | Building web components, pages, or applications that need distinctive, production-grade frontends           |
 | `handoff`              | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                        |
 | `herdr`                | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                      |
@@ -156,13 +154,14 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 | `simplify`             | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes        |
 | `spin-out`             | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask       |
 | `wiki`                 | Maintaining a persistent markdown wiki from immutable source documents                                      |
+| `work-ticket`          | Owning one selected Plane ticket through explicitly authorized local implementation or reviewed PR delivery |
 
 Notes:
 
 - Testing policy lives in [the global agent instructions](agent/AGENTS.md#testing-and-verification-evidence): require proportionate regression evidence and focused plus broader checks, while leaving test-first sequencing optional.
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
 - `clarify` researches answerable questions, resolves material user-owned decisions, and returns a concise brief without writing artifacts. It is optional, not a required ticket phase. `challenge` stress-tests material failure risks, explicit-only `simplify` tests for unnecessary complexity, and `review` evaluates completed changes.
-- The minimal ticket-driven path uses Plane as the canonical contract: the `plane` reference skill centralizes safe broker access and organization conventions, `shape-ticket` approves the exact Ready body, `dispatch-ticket` defaults to passive inspection and owns explicit run operations, and `advance-ticket` uses one ignored `.ticket-run/state.json` plus Loop and a fail-closed pre-push secret/guidance check to reach a review-ready PR after independent review and exact-head CI pass. Merge, Plane completion/cancellation, and cleanup remain human-controlled. It intentionally has no queue, registry, controller, separate inspection skill, or multi-file ticket runtime.
+- The ticket path uses `plane` for safe broker access, `shape-ticket` for a verifiable contract, and `work-ticket` for one authorized owner. Ready is optional context, not implementation or publication authority. Work can stay in the current checkout; Herdr handles requested or necessary worktree isolation. One `.pi/tickets/<immutable-ticket-id>/state.json` retains authorization, plan/progress, revision-bound evidence, findings, and at most two review-driven repair cycles. The helper installs `/.pi/tickets/` in Git info exclude without changing tracked `.gitignore`. Local completion leaves Plane In Progress. Authorized PR delivery requires history/metadata safety checks, independent review (one reviewer by default), and required exact-head CI before Review handoff. Settlement, cancellation, and cleanup need explicit authority. There is no mandatory phase cursor, per-turn checkpoint, queue, registry, or controller. Legacy `.ticket-run/` records remain untouched and ignored, with no migration or recovery support.
 - Keep canonical user-facing contracts and architecture decisions in the appropriate existing documentation or explicitly authorized ticket artifacts.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.
@@ -173,4 +172,4 @@ The legacy `.design` lifecycle and its `architect`, `specify`, `plan`, `advance-
 
 Existing local `.design` artifacts are not deleted or migrated automatically. Treat them as historical context, verify their claims against current repository state, and explicitly re-scope any unfinished work before continuing. Do not attempt to resume an old run with the removed helper.
 
-The Goal extension remains available for general-purpose, evidence-audited objectives. It does not restore the retired plan workflow or replace ticket state; ticket delivery continues to use Loop as its sole continuation scheduler.
+The Goal extension remains available for general-purpose, evidence-audited objectives. It does not restore the retired plan workflow or replace ticket state; ticket delivery may use Loop for optional bounded continuation, not mandatory execution choreography.

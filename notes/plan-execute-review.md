@@ -15,7 +15,7 @@ Independently developed workflows all landed in roughly the same place:
 - **[Superpowers](https://github.com/obra/superpowers)** (Jesse Vincent) — brainstorm → plan → isolated-worktree execution → two-stage review (spec, then code quality). Test-first is mandatory.
 - **[spec-kit](https://github.com/github/spec-kit)** (GitHub) — constitution → specify → plan → tasks → implement → validate. Agent-agnostic; upstream "constitution" encodes project principles.
 - **[GSD](https://crtlaltclaude.com/)** — questionnaire-driven setup → research → planning → roadmap execution → checkpoint verification.
-- **My own skills** — optional research-first `clarify`, `challenge` for proposed approaches, and `review` for completed changes. Prepared delivery uses `shape-ticket` → explicit `dispatch-ticket` → `advance-ticket`, with canonical ticket acceptance criteria, one implementation owner, durable checkpoints, Loop continuation, and independent review before human handoff.
+- **My own skills** — optional research-first `clarify`, `challenge` for proposed approaches, and `review` for completed changes. Ticket delivery uses `shape-ticket` and explicitly authorized `work-ticket`, with canonical acceptance criteria, one implementation owner, a durable working plan and revision-bound evidence, optional Loop continuation, and risk-proportionate independent review before PR handoff. Plan → implement → verify → handoff is a working sequence, not a mandatory phase machine.
 
 ## Why it works
 
