@@ -22,7 +22,7 @@ Read each applicable reference completely **before** its operation:
 
 - [Helper interface](references/helper.md): before invoking `scripts/ticket-state.js`, including read-only inspection.
 - [Recovery](references/recovery.md): before resuming after compaction/interruption, taking over ownership, recovering a helper failure, or reopening local completion for an explicitly requested follow-up.
-- [Publication](references/publication.md): before preparing or performing PR publication or promotion.
+- [Publication](references/publication.md): before preparing or performing PR publication or promotion, including explicit publication of a completed local delivery via `begin_pr`.
 - [Settlement and cleanup](references/settlement.md): before settlement, cancellation, or cleanup.
 
 Inspection-only requests do not initialize or mutate ticket state, claim ownership, or change Plane. Report observed state and gaps; do not convert inspection into execution.
@@ -57,7 +57,8 @@ Repair only authorized blockers, rerun affected and required checks, and request
 
 ## Delivery boundaries and handoff
 
-- Local completion records verified evidence and leaves Plane **In Progress** unless separately authorized settlement changes it. It does not mean Review, merge, or Done. Keep it sticky unless the user explicitly requests further local implementation after handoff; follow recovery and use `reopen_local` with fresh scope/authority and a plan before editing. Preserve the same run, owner, findings, history, and consumed repairs; invalidate prior delivery evidence. Ordinary `authorize` or resume cannot reopen completion, and PR/Done/Canceled states cannot use this path.
+- Local completion records verified evidence and leaves Plane **In Progress** unless separately authorized settlement changes it. It does not mean Review, merge, or Done. Keep it sticky except for explicit user-authorized local follow-up or publication. For further local implementation after handoff, follow recovery and use `reopen_local` with fresh scope/authority and a plan before editing. Preserve the same run, owner, findings, history, and consumed repairs; invalidate prior delivery evidence. Ordinary `authorize` or resume cannot reopen completion, and PR/Done/Canceled states cannot use this path.
+- For an explicit push/PR request after local completion, follow publication and use `begin_pr` for the unchanged completed snapshot and scope. Do not invent fresh coding authority or use `reopen_local`. Preserve current checks/review, history and consumed repairs; require fresh safety scans and exact-head CI. This does not reopen PR/Done/Canceled states or grant settlement/cleanup authority.
 - PR delivery retains fail-closed outgoing-history/metadata safety scans before push and independent review plus required exact-head CI before review-ready handoff. Pending CI means waiting; failed/unknown CI or unresolved blockers prevent promotion. Follow the publication procedure before acting.
 - Merge, deployment, settlement, cancellation, and cleanup retain explicit authority boundaries. Do not merge or deploy automatically. Done/Canceled require confirmed effects; PR settlement requires the merged head to match the reviewed/published head. Cleanup requires a settled/canceled disposition, clean checkout, no live writer, known PR/matching Plane state, and no unpushed work at risk; use the settlement procedure and Herdr without force.
 - Loop is optional continuation, only when requested by the user or an established workflow. Persist state before yielding/stopping. Do not reset/extend exhausted usage to avoid a blocker. One polling batch per continuation; record external waiting instead of busy-looping.

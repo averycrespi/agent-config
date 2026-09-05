@@ -369,6 +369,25 @@ async function noOtherWriter(p, ticketId) {
     );
   }
 }
+function deliveryArchive(s) {
+  return structuredClone({
+    revision: s.revision,
+    owner: s.owner,
+    contract: s.contract,
+    authorization: s.authorization,
+    completionAuthorization: s.completionAuthorization ?? s.authorization,
+    plan: s.plan,
+    progress: s.progress,
+    nextAction: s.nextAction,
+    blocker: s.blocker,
+    snapshot: s.snapshot,
+    evidence: s.evidence,
+    review: s.review,
+    findings: s.findings,
+    repairCount: s.repairCount,
+    reconciliation: s.reconciliation ?? null,
+  });
+}
 function invalidate(s, current) {
   if (s.snapshot.fingerprint !== current.fingerprint) {
     s.evidence = {};
@@ -548,23 +567,9 @@ function apply(s, r) {
       const nextPlan = plan(r.plan);
       const observations = text(r.observations, "follow-up reconciliation");
       s.localFollowups ??= [];
-      s.localFollowups.push({
-        revision: s.revision,
-        owner: s.owner,
-        contract: s.contract,
-        authorization: s.authorization,
-        plan: s.plan,
-        progress: s.progress,
-        nextAction: s.nextAction,
-        blocker: s.blocker,
-        snapshot: s.snapshot,
-        evidence: s.evidence,
-        review: s.review ? structuredClone(s.review) : null,
-        findings: structuredClone(s.findings),
-        repairCount: s.repairCount,
-        reconciliation: s.reconciliation ?? null,
-      });
+      s.localFollowups.push(deliveryArchive(s));
       s.authorization = authorization;
+      delete s.completionAuthorization;
       s.contract = nextContract;
       s.plan = nextPlan;
       s.evidence = {};
@@ -576,6 +581,55 @@ function apply(s, r) {
         "Explicitly authorized local follow-up; prior delivery archived";
       s.nextAction =
         "Implement the follow-up plan and record fresh verification evidence";
+      break;
+    }
+    case "begin_pr": {
+      requireThat(
+        s.status === "local_complete" && !s.pr && !s.prDelivery,
+        "begin_pr requires local completion without prior PR delivery",
+      );
+      permitted(s, "implement");
+      permitted(s, "commit");
+      requireThat(
+        s.completionAuthorization?.operations.includes("implement") &&
+          s.completionAuthorization.operations.includes("commit"),
+        "begin_pr requires implementation/commit authority at local completion",
+      );
+      requireThat(
+        s.externalWrites.every(
+          (w) => w.operation === "implement" && w.outcome === "confirmed",
+        ),
+        "begin_pr requires confirmed implementation-only external history",
+      );
+      requireThat(
+        r.planeState === "In Progress" && r.noPrConfirmed === true,
+        "begin_pr requires fresh Plane In Progress and no-PR observations",
+      );
+      verified(s);
+      requireThat(
+        !openBlockers(s).length,
+        "unresolved blockers prevent PR transition",
+      );
+      const publicationEvidence = text(
+        r.publicationEvidence,
+        "explicit push/PR authorization evidence",
+      );
+      const observations = text(r.observations, "PR delivery reconciliation");
+      s.prDelivery = deliveryArchive(s);
+      s.authorization = {
+        operations: ["implement", "commit", "publish"],
+        boundary: "pr",
+        evidence: publicationEvidence,
+      };
+      delete s.evidence.safety;
+      delete s.evidence.ci;
+      s.reconciliation = { observations, fingerprint: r.fingerprint };
+      s.status = "active";
+      s.blocker = null;
+      s.progress =
+        "Explicitly authorized publication of the unchanged local delivery";
+      s.nextAction =
+        "Scan outgoing history and PR metadata, then follow publication and exact-head review/CI gates";
       break;
     }
     case "reconcile":
@@ -792,6 +846,7 @@ function apply(s, r) {
           "local completion leaves Plane In Progress",
         );
         s.status = "local_complete";
+        s.completionAuthorization = structuredClone(s.authorization);
       }
       s.progress = text(r.summary, "handoff evidence");
       s.nextAction =
@@ -910,7 +965,9 @@ export async function ticketState(r) {
       requireThat(r.owner === s.owner, "checkout belongs to another owner");
     requireThat(
       !TERMINAL.has(s.status) ||
-        ["authorize", "reopen_local", "settle", "cancel"].includes(r.action) ||
+        ["authorize", "reopen_local", "begin_pr", "settle", "cancel"].includes(
+          r.action,
+        ) ||
         (["external", "gate"].includes(r.action) &&
           ["settle", "cancel", "cleanup"].includes(r.operation)),
       "handoff is sticky; do not resume completed delivery",
@@ -918,10 +975,23 @@ export async function ticketState(r) {
     if (
       !TERMINAL.has(s.status) ||
       r.operation === "cleanup" ||
-      r.action === "reopen_local"
+      ["reopen_local", "begin_pr"].includes(r.action)
     )
       await noOtherWriter(p, s.ticketId);
-    if (r.action === "reopen_local") {
+    if (s.status === "local_complete" && !s.completionAuthorization) {
+      // Preserve legacy completion authority before a terminal authorize can replace it.
+      s.completionAuthorization = structuredClone(s.authorization);
+    }
+    if (r.action === "begin_pr") {
+      requireThat(
+        r.fingerprint === current.fingerprint &&
+          current.fingerprint === s.snapshot.fingerprint &&
+          current.clean &&
+          s.assignment.branch !== s.assignment.targetBranch,
+        "begin_pr requires unchanged completed snapshot and clean separate source branch",
+      );
+    }
+    if (["reopen_local", "begin_pr"].includes(r.action)) {
       requireThat(
         r.fingerprint === current.fingerprint,
         "follow-up revision mismatch",

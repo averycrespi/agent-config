@@ -6,6 +6,10 @@ Read the existing record first, then reconcile actual ticket, files, Git, owners
 
 Resume the same run rather than initialize another attempt. Prove a previous owner absent/released before taking over; a helper lock does not enforce editor/process isolation. Cross-check portable claims and actual workers before starting. Stop on duplicates, malformed state, branch/base drift, or unresolved ownership. After a helper crash, inspect `.pi/tickets/.writer.lock/owner.json` and prove its process absent before separately removing that exact stale lock; never delete ticket state to get unstuck.
 
+## Publication after local completion
+
+For an explicit push/PR request on an unchanged `local_complete` delivery, read [publication](publication.md) and use `begin_pr` with the same run/owner, fresh CAS/snapshot and publication evidence. Do not invent a coding request or use `reopen_local`; ordinary `authorize` and `reconcile` remain unable to resume terminal delivery. `begin_pr` archives prior completion, retains current checks/review for unchanged scope, clears safety/CI, and preserves all repair consumption. It cannot reopen `awaiting_human`, Done, or Canceled, combine owner takeover, bypass unresolved effects, or authorize settlement/cleanup. After a successful transition, recover pending publication writes through ordinary reconciliation; do not repeat `begin_pr` or any confirmed write.
+
 ## Explicit follow-up after local completion
 
 Keep completion sticky for ordinary resume, reconciliation, authorization updates, and unsolicited review suggestions. Only an explicit user request for additional implementation after local handoff permits `reopen_local`; do not use `init`, delete state, or switch to untracked ordinary coding to bypass the completed attempt. `authorize` alone still cannot reopen it.

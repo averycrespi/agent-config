@@ -1139,6 +1139,467 @@ test("local reopen preserves stronger PR and settlement safeguards and unresolve
   }
 });
 
+async function publicationFixture(t) {
+  const f = await fixture(t, true);
+  f.input.authorization = {
+    operations: ["implement", "commit"],
+    boundary: "local",
+    evidence: "Original local implementation and commit request",
+  };
+  await init(f);
+  return f;
+}
+async function beginPr(f, overrides = {}) {
+  return mutate(f, {
+    action: "begin_pr",
+    publicationEvidence:
+      "User: LGTM, push and open PR, then monitor required CI",
+    fingerprint: (await snap(f)).fingerprint,
+    observations:
+      "Same sole owner, unchanged scope/files/head/checks; fresh Plane In Progress and no PR or unresolved effects",
+    planeState: "In Progress",
+    noPrConfirmed: true,
+    ...overrides,
+  });
+}
+
+test("completed local delivery can publish with exhausted repairs, preserving history and all publication gates", async (t) => {
+  const f = await publicationFixture(t);
+  await localHandoff(f);
+  await followup(f);
+  for (const id of ["first", "second"]) {
+    await checks(f);
+    await review(f, [blocker(id)]);
+    await mutate(f, { action: "begin_repair", repairPlan: `Fix ${id}` });
+    await checks(f);
+    await review(
+      f,
+      [],
+      [
+        {
+          id,
+          disposition: "fixed",
+          evidence: "Independent confirmation passes",
+        },
+      ],
+    );
+  }
+  await mutate(f, {
+    action: "external",
+    operation: "implement",
+    key: "claim",
+    intent: "Claim exact ticket",
+    outcome: "confirmed",
+    summary: "Reread claim",
+  });
+  const old = await localHandoff(f);
+  assert.equal(old.repairCount, 2);
+  const s = await beginPr(f);
+  assert.equal(s.status, "active");
+  assert.equal(s.revision, old.revision + 1);
+  assert.deepEqual(s.authorization, {
+    operations: ["implement", "commit", "publish"],
+    boundary: "pr",
+    evidence: "User: LGTM, push and open PR, then monitor required CI",
+  });
+  for (const key of [
+    "runId",
+    "owner",
+    "contract",
+    "assignment",
+    "plan",
+    "findings",
+    "repairs",
+    "repairCount",
+    "externalWrites",
+    "localFollowups",
+    "snapshot",
+    "review",
+  ])
+    assert.deepEqual(s[key], old[key]);
+  for (const key of [
+    "revision",
+    "authorization",
+    "progress",
+    "evidence",
+    "review",
+    "findings",
+    "repairCount",
+  ])
+    assert.deepEqual(s.prDelivery[key], old[key]);
+  assert.deepEqual(s.evidence.verification, old.evidence.verification);
+  await assert.rejects(beginPr(f), /requires local completion/);
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "publish" }),
+    /safety evidence/,
+  );
+  await safety(f);
+  await mutate(f, { action: "gate", operation: "publish" });
+  const intent = {
+    action: "external",
+    operation: "publish",
+    key: "publish-head",
+    intent: "Push assigned branch and create draft PR",
+    summary: "Exact observed publication state",
+  };
+  await mutate(f, { ...intent, outcome: "pending" });
+  await mutate(f, {
+    action: "reconcile",
+    observations:
+      "Interrupted publication; reread exact remote state before confirming",
+  });
+  await mutate(f, { ...intent, outcome: "confirmed" });
+  await assert.rejects(
+    mutate(f, { ...intent, outcome: "pending" }),
+    /must not be repeated/,
+  );
+  await assert.rejects(
+    mutate(f, {
+      action: "publication",
+      pr: { ...(await pr(f)), head: "a".repeat(40) },
+      confirmed: true,
+      metadataHash,
+    }),
+    /identity mismatch/,
+  );
+  await assert.rejects(
+    mutate(f, {
+      action: "publication",
+      pr: await pr(f),
+      confirmed: true,
+      metadataHash: `sha256:${"0".repeat(64)}`,
+    }),
+    /scanned metadata/,
+  );
+  await mutate(f, {
+    action: "publication",
+    pr: await pr(f),
+    confirmed: true,
+    metadataHash,
+  });
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "promote" }),
+    /passing CI/,
+  );
+  const ci = {
+    action: "evidence",
+    kind: "ci",
+    fingerprint: (await snap(f)).fingerprint,
+    head: (await snap(f)).head,
+    summary: "Required exact-head CI observed",
+  };
+  await assert.rejects(
+    mutate(f, { ...ci, head: "a".repeat(40), passed: true }),
+    /CI head mismatch/,
+  );
+  await mutate(f, { ...ci, passed: false });
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "promote" }),
+    /passing CI/,
+  );
+  await mutate(f, { ...ci, passed: true });
+  await mutate(f, { action: "gate", operation: "promote" });
+  await review(f, [blocker("publication-blocker")]);
+  await assert.rejects(
+    mutate(f, {
+      action: "begin_repair",
+      repairPlan: "Cannot consume a third cycle",
+    }),
+    /exhausted/,
+  );
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "promote" }),
+    /independent review/,
+  );
+  await review(
+    f,
+    [],
+    [
+      {
+        id: "publication-blocker",
+        disposition: "not-applicable",
+        evidence:
+          "Independent reproduction demonstrates the reported violation does not apply",
+      },
+    ],
+  );
+  const delivered = await mutate(f, {
+    action: "handoff",
+    pr: await pr(f, false),
+    confirmed: true,
+    planeState: "Review",
+    summary: "Exact-head human review handoff",
+  });
+  assert.equal(delivered.status, "awaiting_human");
+  assert.equal(delivered.repairCount, 2);
+  assert.deepEqual(delivered.prDelivery, s.prDelivery);
+  for (const operation of ["settle", "cancel", "cleanup"])
+    await assert.rejects(
+      mutate(f, { action: "gate", operation }),
+      /not authorized/,
+    );
+  await assert.rejects(beginPr(f), /requires local completion/);
+});
+
+test("begin_pr drops stale publication evidence and unrelated authority without faking a coding request", async (t) => {
+  const f = await publicationFixture(t);
+  await checks(f);
+  await mutate(f, {
+    action: "authorize",
+    authorization: {
+      operations: [
+        "implement",
+        "commit",
+        "publish",
+        "settle",
+        "cancel",
+        "cleanup",
+      ],
+      boundary: "local",
+      evidence: "Prior separately authorized operations",
+    },
+  });
+  await safety(f);
+  const old = await localHandoff(f);
+  await mutate(f, {
+    action: "authorize",
+    authorization: {
+      ...old.authorization,
+      boundary: "pr",
+      evidence: "User requests PR publication",
+    },
+  });
+  assert.equal((await read(f)).status, "local_complete");
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "publish" }),
+    /sticky/,
+  );
+  const s = await beginPr(f);
+  assert.deepEqual(s.prDelivery.evidence.safety, old.evidence.safety);
+  assert.equal(s.evidence.safety, undefined);
+  assert.equal(s.evidence.ci, undefined);
+  assert.equal(s.review, null);
+  await safety(f);
+  await mutate(f, {
+    action: "publication",
+    pr: await pr(f),
+    confirmed: true,
+    metadataHash,
+  });
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "promote" }),
+    /independent review/,
+  );
+  for (const operation of ["settle", "cancel", "cleanup"])
+    await assert.rejects(
+      mutate(f, { action: "gate", operation }),
+      /not authorized/,
+    );
+  await review(f);
+  await writeFile(join(f.cwd, "code.js"), "export const value = 2;\n");
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "publish" }),
+    /passing required checks/,
+  );
+  await mutate(f, {
+    action: "reconcile",
+    observations: "Unexpected code drift; checks/review no longer current",
+  });
+  assert.deepEqual((await read(f)).evidence, {});
+  assert.equal((await read(f)).review.stale, true);
+});
+
+test("begin_pr rejects missing consent, stale CAS/scope/snapshot, dirty checkout and wrong owner atomically", async (t) => {
+  const f = await publicationFixture(t);
+  const old = await localHandoff(f);
+  const bytes = await readFile(f.file, "utf8");
+  for (const overrides of [
+    { publicationEvidence: undefined },
+    { publicationEvidence: "" },
+    { observations: "" },
+    { noPrConfirmed: false },
+    { planeState: "Done" },
+    { expectedRevision: old.revision - 1 },
+    { runId: "wrong-run" },
+    { owner: "other-owner", previousOwnerReleased: true },
+    { contract: "Expanded scope" },
+    { fingerprint: `sha256:${"0".repeat(64)}` },
+  ]) {
+    await assert.rejects(beginPr(f, overrides));
+    assert.equal(await readFile(f.file, "utf8"), bytes);
+  }
+  await writeFile(join(f.cwd, "unrelated.txt"), "Unrelated user work");
+  await assert.rejects(beginPr(f), /unchanged completed snapshot/);
+  assert.equal(await readFile(f.file, "utf8"), bytes);
+  assert.equal(
+    await readFile(join(f.cwd, "unrelated.txt"), "utf8"),
+    "Unrelated user work",
+  );
+  git(f.cwd, "add", "unrelated.txt");
+  git(f.cwd, "commit", "-qm", "test: change head after completion");
+  await assert.rejects(beginPr(f), /unchanged completed snapshot/);
+  assert.equal(await readFile(f.file, "utf8"), bytes);
+});
+
+test("terminal authorize cannot retroactively grant delivery-time commit authority", async (t) => {
+  for (const legacy of [false, true]) {
+    const f = await publicationFixture(t);
+    await mutate(f, {
+      action: "authorize",
+      authorization: { ...f.input.authorization, operations: ["implement"] },
+    });
+    const completed = await localHandoff(f);
+    if (legacy) {
+      const stored = JSON.parse(await readFile(f.file, "utf8"));
+      delete stored.completionAuthorization;
+      await writeFile(f.file, JSON.stringify(stored));
+    }
+    const authorized = await mutate(f, {
+      action: "authorize",
+      authorization: {
+        operations: ["implement", "commit", "publish"],
+        boundary: "pr",
+        evidence: "Later authority does not rewrite local delivery",
+      },
+    });
+    assert.deepEqual(
+      authorized.completionAuthorization,
+      completed.authorization,
+    );
+    const bytes = await readFile(f.file, "utf8");
+    await assert.rejects(beginPr(f), /authority at local completion/);
+    assert.equal(await readFile(f.file, "utf8"), bytes);
+  }
+});
+
+test("legacy completion retains original authorization across later PR authorization and archives both", async (t) => {
+  const f = await publicationFixture(t);
+  const completed = await localHandoff(f);
+  const stored = JSON.parse(await readFile(f.file, "utf8"));
+  delete stored.completionAuthorization;
+  await writeFile(f.file, JSON.stringify(stored));
+  const updated = await mutate(f, {
+    action: "authorize",
+    authorization: {
+      operations: ["implement", "commit", "publish"],
+      boundary: "pr",
+      evidence: "User later requested publication",
+    },
+  });
+  assert.deepEqual(updated.completionAuthorization, completed.authorization);
+  const s = await beginPr(f);
+  assert.deepEqual(
+    s.prDelivery.completionAuthorization,
+    completed.authorization,
+  );
+  assert.deepEqual(s.prDelivery.authorization, updated.authorization);
+  assert.deepEqual(s.completionAuthorization, completed.authorization);
+});
+
+test("begin_pr retains one-writer, branch and terminal lifecycle exclusions", async (t) => {
+  for (const variant of [
+    "active",
+    "done",
+    "canceled",
+    "pending",
+    "confirmed-settle",
+    "other-ticket",
+    "target-branch",
+    "branch-drift",
+    "no-commit",
+    "scope-drift",
+    "recorded-pr",
+  ]) {
+    const f = await publicationFixture(t);
+    await mutate(f, {
+      action: "authorize",
+      authorization: {
+        ...f.input.authorization,
+        operations: ["implement", "commit", "settle", "cancel", "publish"],
+      },
+    });
+    if (variant === "pending")
+      await mutate(f, {
+        action: "external",
+        operation: "implement",
+        key: "claim",
+        intent: "Claim",
+        outcome: "pending",
+        summary: "Unconfirmed",
+      });
+    if (variant === "recorded-pr") {
+      await checks(f);
+      await mutate(f, {
+        action: "authorize",
+        authorization: {
+          ...f.input.authorization,
+          operations: ["implement", "commit", "publish"],
+          boundary: "pr",
+        },
+      });
+      await safety(f);
+      await mutate(f, {
+        action: "publication",
+        pr: await pr(f),
+        confirmed: true,
+        metadataHash,
+      });
+      await mutate(f, {
+        action: "authorize",
+        authorization: f.input.authorization,
+      });
+    }
+    if (variant !== "active") await localHandoff(f);
+    if (variant === "done")
+      await mutate(f, {
+        action: "settle",
+        planeState: "Done",
+        confirmed: true,
+      });
+    if (variant === "canceled")
+      await mutate(f, {
+        action: "cancel",
+        planeState: "Canceled",
+        confirmed: true,
+        reason: "User canceled",
+      });
+    if (variant === "confirmed-settle")
+      await mutate(f, {
+        action: "external",
+        operation: "settle",
+        key: "settle",
+        intent: "Set Done",
+        outcome: "confirmed",
+        summary: "Reread effect",
+      });
+    if (variant === "other-ticket")
+      await ticketState({
+        ...f.input,
+        action: "init",
+        ticketId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        runId: "other-run",
+      });
+    if (variant === "target-branch")
+      git(f.cwd, "branch", "-m", "main", "old-main");
+    if (variant === "target-branch") git(f.cwd, "branch", "-m", "main");
+    if (variant === "branch-drift") git(f.cwd, "switch", "-qc", "avery/other");
+    if (variant === "no-commit")
+      await mutate(f, {
+        action: "authorize",
+        authorization: { ...f.input.authorization, operations: ["implement"] },
+      });
+    if (variant === "scope-drift")
+      await mutate(f, {
+        action: "authorize",
+        contract: "Different approved scope",
+        authorization: f.input.authorization,
+      });
+    const bytes = await readFile(f.file, "utf8");
+    await assert.rejects(beginPr(f));
+    assert.equal(await readFile(f.file, "utf8"), bytes);
+  }
+});
+
 test("malformed scanned metadata digest is rejected atomically", async (t) => {
   const f = await fixture(t, true);
   await init(f);
