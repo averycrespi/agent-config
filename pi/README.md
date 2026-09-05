@@ -136,25 +136,24 @@ Markdown snippets invoked with `/name` in Pi, where `name` is the filename witho
 
 Markdown skill packages that load on demand via progressive disclosure — only the `name` and `description` are pre-registered; the body of `SKILL.md` and any bundled `references/` files load only when the skill activates.
 
-| Skill                  | Use when                                                                                                    |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `agent-engineering`    | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows            |
-| `challenge`            | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation      |
-| `clarify`              | Researching material ambiguity and asking focused questions to return an actionable brief without artifacts |
-| `create-html-artifact` | Creating standalone HTML reports, explainers, visual plans, dashboards, slide decks, or tools               |
-| `create-skill`         | Creating a new skill or updating an existing one                                                            |
-| `diagnose`             | Debugging bugs, failures, flaky behavior, regressions, or performance problems                              |
-| `frontend-design`      | Building web components, pages, or applications that need distinctive, production-grade frontends           |
-| `handoff`              | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                        |
-| `herdr`                | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                      |
-| `plane`                | Safely accessing and organizing Plane workspaces, projects, work items, Pages, and relationships            |
-| `playwright`           | Driving a browser for testing, form filling, screenshots, and data extraction                               |
-| `review`               | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings             |
-| `shape-ticket`         | Creating and explicitly approving Plane tickets for ticket-driven delivery                                  |
-| `simplify`             | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes        |
-| `spin-out`             | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask       |
-| `wiki`                 | Maintaining a persistent markdown wiki from immutable source documents                                      |
-| `work-ticket`          | Owning one selected Plane ticket through explicitly authorized local implementation or reviewed PR delivery |
+| Skill               | Use when                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `agent-engineering` | Designing, building, debugging, or reviewing AI coding agent harnesses and multi-phase workflows            |
+| `challenge`         | Stress-testing plans, proposals, designs, architecture decisions, and approaches before implementation      |
+| `clarify`           | Researching material ambiguity and asking focused questions to return an actionable brief without artifacts |
+| `create-skill`      | Creating a new skill or updating an existing one                                                            |
+| `diagnose`          | Debugging bugs, failures, flaky behavior, regressions, or performance problems                              |
+| `frontend-design`   | Building web components, pages, or applications that need distinctive, production-grade frontends           |
+| `handoff`           | Compacting a Pi session into a local `.handoffs/` document; explicit invocation only                        |
+| `herdr`             | Controlling Herdr panes, agents, and workspaces, including Herdr-managed Git worktrees                      |
+| `plane`             | Safely accessing and organizing Plane workspaces, projects, work items, Pages, and relationships            |
+| `playwright`        | Driving a browser for testing, form filling, screenshots, and data extraction                               |
+| `review`            | Preparing code-change evidence, invoking the saved review workflow, and presenting its findings             |
+| `shape-ticket`      | Creating and explicitly approving Plane tickets for ticket-driven delivery                                  |
+| `simplify`          | Explicitly testing pre-implementation artifacts for unnecessary complexity while preserving outcomes        |
+| `spin-out`          | Spinning out or delegating work to a new Pi agent in a Herdr worktree; activates only on explicit ask       |
+| `wiki`              | Maintaining a persistent markdown wiki from immutable source documents                                      |
+| `work-ticket`       | Owning one selected Plane ticket through explicitly authorized local implementation or reviewed PR delivery |
 
 Notes:
 
