@@ -1,79 +1,27 @@
 # Clarification Protocol
 
-Use this protocol to resolve material ambiguity without making silent user-owned decisions. The calling skill supplies the ambiguity taxonomy, completion gate, and output contract appropriate to its scale, which may be a conversational brief rather than a durable artifact.
+Resolve material ambiguity at the calling task's scale. Follow its authority boundary and output contract; clarification does not grant new authority.
 
-## 1. Establish
+## Establish and research
 
-Restate the intended outcome in one or two sentences. Identify what is already known, the decision scale, and the likely next artifact or action.
+Identify the intended outcome, settled decisions, and remaining uncertainty from the request and available evidence. Investigate contradictions instead of silently choosing a source.
 
-Treat supplied tickets, plans, specifications, architecture documents, sketches, and prior conversation as evidence, not automatically as settled truth. Call out contradictions between sources.
+Research questions the repository, existing artifacts, or authoritative external sources can answer before asking the user. Delegate self-contained research questions when parallelism, isolation of substantial context, or independent judgment clearly outweighs startup and handoff costs; keep straightforward lookups inline. Use configured memory tools when prior decisions matter.
 
-## 2. Research answerable questions
+## Separate defaults from decisions
 
-Gather enough evidence before asking for the user's attention.
+Choose reasonable, low-impact, reversible defaults consistent with the request, including user-visible wording or presentation choices. State assumptions when they help the user understand the result.
 
-Use whichever sources apply:
+Ask when unresolved alternatives materially affect scope, correctness, acceptance criteria, security, data semantics, system boundaries, authorization, or risk tolerance. Do not hide those decisions as defaults. Leave routine implementation choices to execution and explicitly defer decisions owned by a downstream task.
 
-- **Codebase:** read repository instructions, existing design artifacts, relevant source, tests, configuration, and nearby conventions.
-- **Subagents:** for substantial or unfamiliar questions, run independent read-only research branches in one parallel dispatch when possible.
-- **Web:** research current external APIs, libraries, standards, and public examples when they constrain the decision.
-- **Memory:** use configured memory tools when prior preferences or decisions may matter.
+## Ask focused questions
 
-Do not ask a question that research can answer. When evidence only suggests a default for a user-owned choice, ask and recommend that default.
+Ask one material question at a time, wait for the answer, and use it to choose the next question. Resolve upstream decisions first. Prefer `ask_user` with 2–5 options when trade-offs warrant a choice; put the recommendation first and explain it briefly.
 
-## 3. Map ambiguities privately
+Retain settled decisions and their rationale to avoid repeated questions. Do not require a taxonomy, formal ledger, or fixed response template for a simple clarification.
 
-Classify each category in the calling skill's taxonomy as **Clear**, **Partial**, **Missing**, or **Not Applicable**. For every Partial or Missing category, classify the gap as:
+## Finish and continue
 
-- answerable through more research,
-- a material user-owned decision,
-- safe to record as a non-blocking assumption,
-- intentionally deferred to a named downstream action or artifact, or
-- out of scope.
+Stop questioning when the current task is actionable: material decisions are settled, routine defaults are reasonable, and any downstream deferrals are explicit. Summarize only useful decisions, assumptions, unresolved concerns, and the next action.
 
-A safe assumption must be low-impact, reversible, and not user-visible. Do not assume scope, observable behavior, acceptance criteria, security posture, data semantics, system boundaries, or risk tolerance when multiple reasonable choices exist.
-
-## 4. Ask one decision-tree question at a time
-
-Ask exactly one focused question, wait for the answer, then choose the next question from the updated dependency tree.
-
-- Resolve parent decisions before child details.
-- Prioritize the highest `impact × uncertainty` gap.
-- Ask only when the answer can materially change the outcome, scope, architecture, behavior, verification, risk, or next action.
-- Prefer `ask_user` with 2–5 options when several valid choices have different trade-offs.
-- Put the recommended option first and explain the recommendation briefly.
-- Constrain short-answer questions to a clear answer shape.
-- Resolve ambiguous answers before moving to another branch.
-
-Default format:
-
-```text
-Recommended: <answer> — <brief reason>.
-Question: <one decision to resolve?>
-Options: <2–5 choices, or a short-answer constraint>
-```
-
-Stop asking when all decisions owned by the current skill are settled, explicitly deferred to the correct downstream action or artifact, or safely recorded as non-blocking assumptions.
-
-## 5. Maintain a decision ledger
-
-After each answer, record internally:
-
-- **Decision:** the chosen outcome.
-- **Rationale:** user preference or supporting evidence.
-- **Implications:** affected boundaries, behavior, artifacts, tests, rollout, or risks.
-- **Follow-ups:** child questions unlocked by the decision.
-
-Use the ledger to avoid repeated questions, detect contradictions, and write a coherent final artifact or summary.
-
-## 6. Run the calling skill's completion gate
-
-Before finalizing, verify that:
-
-- every decision owned at the current scale is settled,
-- downstream deferrals are explicit and correctly scoped,
-- no assumption hides a material user-owned choice,
-- success can be evaluated at the current scale, and
-- the recommended next action or artifact is unambiguous.
-
-If the user stops before the gate passes, report the settled decisions and remaining blockers. Only write a Draft artifact when the calling skill permits it; never label an artifact Ready while blocking decisions remain.
+Resume already-authorized work without a new approval pause. Keep an explicitly requested standalone clarification session read-only. If the user stops or required evidence remains unavailable, report settled decisions and remaining blockers; never label an artifact Ready while blocking decisions remain.

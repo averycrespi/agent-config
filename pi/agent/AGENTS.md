@@ -58,6 +58,7 @@
 ## Git Rules
 
 - **For ordinary ad hoc coding, never commit unless the user explicitly asks.** If unclear, ask first.
+- **Wiki checkpoints are an explicit exception.** Authorized wiki ingests, filed answers, and accepted maintenance changes include automatic commits under the `wiki` skill's checkpoint policy, unless the user or vault policy says otherwise. This does not authorize pushing or committing unrelated work.
 - **For explicit autonomous plan-execution workflows** (for example, when the user asks you to execute a written implementation plan and you are following an execution skill that requires checkpoints), create the workflow's required commits automatically.
 - **Do not rewrite history, force-push, run destructive git commands, or bypass safeguards** unless the user explicitly requests it. If a commit fails a hook, fix the issue and create a new commit rather than amending or skipping the hook.
 - Stage files by name, not `git add -A` or `git add .`.

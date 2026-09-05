@@ -30,7 +30,7 @@ If no local schema exists, create only the minimal skeleton the user requested, 
 
 ## Git checkpoints
 
-Some wiki vaults want automatic commits after meaningful wiki operations. Follow the vault's local `AGENTS.md` or schema. When no local policy exists:
+Authorized wiki writes include automatic checkpoints as an explicit exception to the general ad hoc commit rule. Follow the user's instructions and the vault's local `AGENTS.md` or schema. When no local policy exists:
 
 - Commit after each completed ingest.
 - Commit after applying accepted lint recommendations.
@@ -76,7 +76,7 @@ When ingesting a source:
 
 1. Read the source and relevant existing wiki pages. Start with `wiki/index.md`, then inspect candidate concept/entity/source pages.
 2. Identify the source's key claims, entities, concepts, dates, open questions, and contradictions with existing pages.
-3. Discuss emphasis with the user when the source is broad, ambiguous, sensitive, or likely to update many pages.
+3. Ask about emphasis only when an unresolved choice materially affects the result or privacy boundary. Research answerable uncertainty and use reasonable defaults; source breadth or page count alone does not require discussion.
 4. Create or update a source summary page under `wiki/sources/`.
 5. Update relevant concept, entity, analysis, and question pages. Prefer improving existing pages over creating near-duplicates.
 6. Update `wiki/index.md` for new or materially changed pages.

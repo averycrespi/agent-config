@@ -21,7 +21,7 @@ Use the current `HEAD` as the default base unless the user supplied another ref.
 
 ## Choose the branch and path
 
-Honor an explicit branch or base ref. Otherwise derive a short descriptive branch from the task using `avery/<description>`, or `avery/ABC-123-<description>` when a ticket is known. The branch must be new; do not reuse, reset, or overwrite an existing local or remote-tracking branch. Check `refs/heads/<branch>` and matching `refs/remotes/*/<branch>` with `git show-ref` or `git for-each-ref`; stop and ask for another name if either exists.
+Honor an explicit branch or base ref. Otherwise derive a short descriptive branch from the task using `avery/<description>`, or `avery/ABC-123-<description>` when a ticket is known. The branch must be new; do not reuse, reset, or overwrite an existing local or remote-tracking branch. Check `refs/heads/<branch>` and matching `refs/remotes/*/<branch>` with `git show-ref` or `git for-each-ref`. If an agent-derived name collides, choose and verify a fresh variant; ask before changing a conflicting name explicitly requested by the user.
 
 Place the checkout at `$HOME/worktrees/<repo-slug>/<branch-slug>`:
 
@@ -29,7 +29,7 @@ Place the checkout at `$HOME/worktrees/<repo-slug>/<branch-slug>`:
 - Derive `<branch-slug>` from the full branch name.
 - Normalize each by lowercasing, replacing every run of non-ASCII-alphanumeric characters, including `/`, with `-`, and trimming leading or trailing `-`.
 
-Inspect both the filesystem path and the `herdr worktree list` result. Stop rather than overwrite an occupied path or conflicting worktree.
+Inspect both the filesystem path and the `herdr worktree list` result. For a collision under an agent-derived name, choose another branch variant and verify both its refs and normalized path before creation. For an explicitly requested name or unresolved identity conflict, stop and ask. Never overwrite an occupied path or conflicting worktree.
 
 ## Create the worktree
 
@@ -112,7 +112,7 @@ herdr agent start <agent-name> --kind pi --pane <root-pane-id>
 After Herdr reports that Pi is ready, submit a short prompt through the agent surface without `--wait`:
 
 ```text
-Read `.handoffs/<filename>.md` completely before taking any action. Treat it as the task brief. Then inspect the worktree and its AGENTS.md instructions, execute the objective, and verify the acceptance criteria. If the handoff conflicts with repository state, depends on unavailable source changes, or is ambiguous, stop and ask the user.
+Read `.handoffs/<filename>.md` completely before taking any action. Treat it as the task brief. Then inspect the worktree and its AGENTS.md instructions, execute the objective, and verify the acceptance criteria. Investigate answerable uncertainty and use reasonable, reversible defaults within scope. Stop and ask when unresolved ambiguity or conflicting repository state materially affects scope, authorization, correctness, identity, or required source state; do not proceed with required source changes unavailable in this checkout.
 ```
 
 Keep the prompt path-based; do not duplicate the handoff body into it. Sending without `--wait` lets the delegated agent continue asynchronously.

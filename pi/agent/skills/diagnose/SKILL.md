@@ -64,17 +64,17 @@ For performance bugs, measure first: establish a baseline timing/profile/query p
 
 Apply the smallest evidence-backed fix and add proportionate regression-capable automated coverage when a meaningful seam exists. Prefer retaining the minimized reproduction as a test, and validate that it detects the real bug pattern. Choose test-first sequencing when it improves confidence; do not require literal failing-test-before-fix ordering or revert correct code to manufacture it.
 
-Run the regression check and original feedback loop when available. If reliable reproduction or a correct automated seam is impractical, explain why and use the strongest available deterministic evidence. Avoid adding a shallow test that cannot detect the real bug pattern.
+Use the feedback loop during diagnosis and repair whenever it informs the next step. If reliable reproduction or a correct automated seam is impractical, explain why and use the strongest available deterministic evidence. Avoid adding a shallow test that cannot detect the real bug pattern.
 
-### 6. Cleanup and report
+### 6. Cleanup, verify, and report
 
-Before declaring done:
+Remove `[DEBUG-...]` instrumentation and remove throwaway harnesses unless intentionally retained as verification tools or regression coverage. Then establish final verification evidence:
 
-- rerun the original repro loop when available and confirm the outcome, or document the fallback evidence and remaining uncertainty
-- run the regression check, or document why reliable automated coverage is impractical
+- confirm the original symptom is fixed through the repro loop when available, or document fallback evidence and remaining uncertainty
+- confirm the regression check passes, or document why reliable automated coverage is impractical
 - run relevant broader deterministic checks and all repository-required checks; disclose failed or unrun checks
-- remove `[DEBUG-...]` instrumentation
-- delete throwaway harnesses or move them only if they are intentionally retained
 - report the supported diagnosis, verification evidence, and any unresolved uncertainty
+
+Reuse passing evidence for unchanged relevant state, including when the retained repro is the regression test. Repeat or broaden checks only after changes (including cleanup that affects their coverage), failures, unresolved concerns, or an explicit required gate.
 
 If the diagnosis reveals architectural friction, such as no test seam or tangled callers, recommend a follow-up after the fix is verified.

@@ -21,6 +21,6 @@ Read [the clarification protocol](references/protocol.md) completely and follow 
 
 Return a concise brief with the clarified outcome, settled decisions and rationale, scope boundaries, material assumptions or unresolved questions, and a concrete recommended next action. Omit empty sections.
 
-When the request is already clear, say so and recommend the next action without a redundant interview. Use `shape-ticket` only when a Plane delivery ticket is the intended next artifact; direct implementation, further research, or a design discussion may be more appropriate.
+When the request is already clear, skip the interview and continue already-authorized work; for a standalone clarification request, say it is clear and recommend the next action. Use `shape-ticket` only when a Plane delivery ticket is the intended next artifact; direct implementation, further research, or a design discussion may be more appropriate.
 
-Do not create or edit files, tickets, or other durable artifacts. Another explicitly authorized task or workflow owns any subsequent action.
+A standalone clarification request is read-only: do not create or edit files, tickets, or other durable artifacts. When clarification occurs inside already-authorized work, resume that work once the material ambiguity is resolved without asking for authorization again. This skill grants no additional delivery authority.
