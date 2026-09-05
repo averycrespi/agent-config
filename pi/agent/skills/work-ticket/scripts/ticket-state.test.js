@@ -799,6 +799,346 @@ test("settlement and cleanup reject unsafe pending writes before external effect
   );
 });
 
+async function localHandoff(f) {
+  await checks(f);
+  return mutate(f, {
+    action: "handoff",
+    planeState: "In Progress",
+    summary: "Verified local delivery retained for the user",
+  });
+}
+async function followup(f, overrides = {}) {
+  return mutate(f, {
+    action: "reopen_local",
+    newContract: `${contract} Explicitly requested local follow-up.`,
+    authorization: {
+      operations: ["implement", "commit"],
+      boundary: "local",
+      evidence:
+        "User explicitly requested follow-up changes and a local commit after handoff",
+    },
+    plan: [
+      {
+        step: "Implement follow-up",
+        verification: "New regression tests",
+        status: "todo",
+      },
+    ],
+    observations:
+      "Fresh ticket/files/Git/checks/owner inspection; same sole writer, Plane In Progress, no PR or pending effects",
+    planeState: "In Progress",
+    noPrConfirmed: true,
+    fingerprint: (await snap(f)).fingerprint,
+    ...overrides,
+  });
+}
+
+test("explicit local follow-up retains delivery history and repair consumption but requires fresh evidence", async (t) => {
+  const f = await fixture(t);
+  await init(f);
+  await checks(f);
+  await review(f, [blocker()]);
+  await mutate(f, {
+    action: "begin_repair",
+    repairPlan: "Fix original blocker",
+  });
+  await checks(f);
+  await review(
+    f,
+    [],
+    [
+      {
+        id: "boundary",
+        disposition: "fixed",
+        evidence: "Independent regression confirms repair",
+      },
+    ],
+  );
+  await mutate(f, {
+    action: "external",
+    operation: "implement",
+    key: "claim",
+    intent: "Claim exact ticket/run",
+    outcome: "confirmed",
+    summary: "Claim reread",
+  });
+  const old = await localHandoff(f);
+  const s = await followup(f);
+  assert.equal(s.status, "active");
+  assert.equal(s.revision, old.revision + 1);
+  for (const key of [
+    "runId",
+    "owner",
+    "assignment",
+    "findings",
+    "repairs",
+    "repairCount",
+    "externalWrites",
+  ])
+    assert.deepEqual(s[key], old[key]);
+  assert.equal(s.repairCount, 1);
+  assert.equal(s.localFollowups.length, 1);
+  for (const key of [
+    "revision",
+    "owner",
+    "contract",
+    "authorization",
+    "plan",
+    "progress",
+    "snapshot",
+    "evidence",
+    "review",
+    "findings",
+    "repairCount",
+  ])
+    assert.deepEqual(s.localFollowups[0][key], old[key]);
+  assert.deepEqual(s.evidence, {});
+  assert.equal(s.review.stale, true);
+  assert.notEqual(s.contract, old.contract);
+  await assert.rejects(localHandoffWithoutChecks(f), /passing required checks/);
+  for (const operation of ["publish", "settle", "cancel", "cleanup"])
+    await assert.rejects(
+      mutate(f, { action: "gate", operation }),
+      /not authorized/,
+    );
+  await mutate(f, { action: "gate", operation: "commit" });
+  await checks(f);
+  await assert.rejects(localHandoffWithoutChecks(f), /incomplete review/);
+  await review(f, [blocker("followup")]);
+  await mutate(f, {
+    action: "begin_repair",
+    repairPlan: "Use remaining cycle",
+  });
+  assert.equal((await read(f)).repairCount, 2);
+  await checks(f);
+  await review(
+    f,
+    [],
+    [
+      {
+        id: "followup",
+        disposition: "fixed",
+        evidence: "Focused confirmation passes",
+      },
+    ],
+  );
+  const second = await localHandoff(f);
+  await writeFile(join(f.cwd, "unrelated.txt"), "Preserve unrelated user work");
+  const reopened = await followup(f);
+  assert.equal(reopened.localFollowups.length, 2);
+  assert.deepEqual(reopened.localFollowups[0], s.localFollowups[0]);
+  assert.deepEqual(reopened.localFollowups[1].evidence, second.evidence);
+  assert.deepEqual(reopened.localFollowups[1].snapshot, second.snapshot);
+  assert.notEqual(reopened.snapshot.fingerprint, second.snapshot.fingerprint);
+  assert.equal(
+    await readFile(join(f.cwd, "unrelated.txt"), "utf8"),
+    "Preserve unrelated user work",
+  );
+  await checks(f);
+  await review(f, [blocker("third")]);
+  await assert.rejects(
+    mutate(f, { action: "begin_repair", repairPlan: "Cannot refund budget" }),
+    /exhausted/,
+  );
+});
+
+async function localHandoffWithoutChecks(f) {
+  return mutate(f, {
+    action: "handoff",
+    planeState: "In Progress",
+    summary: "Attempt handoff",
+  });
+}
+
+test("local reopen rejects invalid authority, stale requests and owner/scope conflicts atomically", async (t) => {
+  const f = await fixture(t);
+  await init(f);
+  await localHandoff(f);
+  const old = await read(f);
+  const bytes = await readFile(f.file, "utf8");
+  for (const overrides of [
+    { authorization: undefined },
+    {
+      authorization: {
+        operations: ["implement"],
+        boundary: "local",
+        evidence: "",
+      },
+    },
+    ...["publish", "settle", "cancel", "cleanup"].map((op) => ({
+      authorization: {
+        operations: ["implement", op],
+        boundary: "local",
+        evidence: "New request",
+      },
+    })),
+    {
+      authorization: {
+        operations: ["implement", "commit", "publish"],
+        boundary: "pr",
+        evidence: "PR request",
+      },
+    },
+    { expectedRevision: old.revision - 1 },
+    { runId: "other-run" },
+    { owner: "other-owner", previousOwnerReleased: true },
+    { contract: "Wrong prior baseline" },
+    { newContract: "" },
+    { plan: [] },
+    { observations: "" },
+    { noPrConfirmed: false },
+    { planeState: "Done" },
+    { fingerprint: `sha256:${"0".repeat(64)}` },
+  ]) {
+    await assert.rejects(followup(f, overrides));
+    assert.equal(await readFile(f.file, "utf8"), bytes);
+  }
+  await mutate(f, {
+    action: "authorize",
+    authorization: f.input.authorization,
+  });
+  assert.equal((await read(f)).status, "local_complete");
+  for (const action of ["reconcile", "checkpoint"])
+    await assert.rejects(
+      mutate(f, { action, observations: "No implicit restart" }),
+      /sticky/,
+    );
+  await followup(f, {
+    authorization: {
+      ...f.input.authorization,
+      evidence: "User requested follow-up without commits",
+    },
+  });
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "commit" }),
+    /not authorized/,
+  );
+  await assert.rejects(followup(f), /requires local completion/);
+});
+
+test("local follow-up invalidates evidence even with identical scope and snapshot", async (t) => {
+  const f = await fixture(t);
+  await init(f);
+  await checks(f);
+  await review(f);
+  const old = await localHandoff(f);
+  const s = await followup(f, { newContract: old.contract });
+  assert.equal(s.contract, old.contract);
+  assert.deepEqual(s.snapshot, old.snapshot);
+  assert.deepEqual(s.evidence, {});
+  assert.equal(s.review.stale, true);
+  assert.deepEqual(s.localFollowups[0].evidence, old.evidence);
+  assert.deepEqual(s.localFollowups[0].review, old.review);
+  await assert.rejects(localHandoffWithoutChecks(f), /passing required checks/);
+});
+
+test("local reopen cannot steal a checkout released to another ticket", async (t) => {
+  const f = await fixture(t);
+  await init(f);
+  await localHandoff(f);
+  const bytes = await readFile(f.file, "utf8");
+  await ticketState({
+    ...f.input,
+    action: "init",
+    ticketId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    runId: "other-run",
+  });
+  await assert.rejects(followup(f), /checkout already owned/);
+  assert.equal(await readFile(f.file, "utf8"), bytes);
+});
+
+test("local reopen preserves stronger PR and settlement safeguards and unresolved effects", async (t) => {
+  for (const variant of [
+    "active",
+    "awaiting_human",
+    "done",
+    "canceled",
+    "pr",
+    "pending",
+    "external-settle",
+  ]) {
+    const f = await fixture(
+      t,
+      variant === "awaiting_human" || variant === "pr",
+    );
+    f.input.authorization.operations.push("settle", "cancel");
+    await init(f);
+    if (["awaiting_human", "pr"].includes(variant)) {
+      await checks(f);
+      await safety(f);
+      await mutate(f, {
+        action: "publication",
+        pr: await pr(f),
+        confirmed: true,
+        metadataHash,
+      });
+      await review(f);
+      await mutate(f, {
+        action: "evidence",
+        kind: "ci",
+        fingerprint: (await snap(f)).fingerprint,
+        head: (await snap(f)).head,
+        passed: true,
+        summary: "Exact head checks pass",
+      });
+      if (variant === "pr") {
+        await mutate(f, {
+          action: "authorize",
+          authorization: { ...f.input.authorization, boundary: "local" },
+        });
+        await localHandoff(f);
+      } else {
+        await mutate(f, {
+          action: "handoff",
+          pr: await pr(f, false),
+          confirmed: true,
+          planeState: "Review",
+          summary: "PR ready",
+        });
+      }
+    } else if (variant !== "active") {
+      if (variant === "pending")
+        await mutate(f, {
+          action: "external",
+          operation: "implement",
+          key: "claim",
+          intent: "Claim ticket",
+          outcome: "pending",
+          summary: "Unresolved claim",
+        });
+      await localHandoff(f);
+      if (variant === "external-settle")
+        await mutate(f, {
+          action: "external",
+          operation: "settle",
+          key: "settle",
+          intent: "Set Done",
+          outcome: "pending",
+          summary: "Not yet confirmed",
+        });
+      if (variant === "done")
+        await mutate(f, {
+          action: "settle",
+          planeState: "Done",
+          confirmed: true,
+        });
+      if (variant === "canceled")
+        await mutate(f, {
+          action: "cancel",
+          planeState: "Canceled",
+          confirmed: true,
+          reason: "User canceled",
+        });
+    }
+    const bytes = await readFile(f.file, "utf8");
+    await assert.rejects(
+      followup(f),
+      /requires local completion|external history/,
+    );
+    assert.equal(await readFile(f.file, "utf8"), bytes);
+  }
+});
+
 test("malformed scanned metadata digest is rejected atomically", async (t) => {
   const f = await fixture(t, true);
   await init(f);

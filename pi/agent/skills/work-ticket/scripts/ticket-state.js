@@ -515,6 +515,69 @@ function apply(s, r) {
         if (s.review) s.review.stale = true;
       }
       break;
+    case "reopen_local": {
+      requireThat(
+        s.status === "local_complete" &&
+          s.authorization.boundary === "local" &&
+          !s.pr,
+        "reopen_local requires local completion without a recorded PR",
+      );
+      requireThat(
+        s.externalWrites.every(
+          (w) => w.operation === "implement" && w.outcome === "confirmed",
+        ),
+        "reopen_local requires confirmed implementation-only external history",
+      );
+      requireThat(
+        r.planeState === "In Progress" && r.noPrConfirmed === true,
+        "reopen_local requires fresh Plane In Progress and no-PR observations",
+      );
+      const authorization = authority(r.authorization);
+      requireThat(
+        authorization.boundary === "local" &&
+          authorization.operations.every((op) =>
+            ["implement", "commit"].includes(op),
+          ),
+        "reopen_local accepts only explicit local implementation/commit authority",
+      );
+      const nextContract = text(
+        r.newContract,
+        "follow-up scope baseline",
+        100000,
+      );
+      const nextPlan = plan(r.plan);
+      const observations = text(r.observations, "follow-up reconciliation");
+      s.localFollowups ??= [];
+      s.localFollowups.push({
+        revision: s.revision,
+        owner: s.owner,
+        contract: s.contract,
+        authorization: s.authorization,
+        plan: s.plan,
+        progress: s.progress,
+        nextAction: s.nextAction,
+        blocker: s.blocker,
+        snapshot: s.snapshot,
+        evidence: s.evidence,
+        review: s.review ? structuredClone(s.review) : null,
+        findings: structuredClone(s.findings),
+        repairCount: s.repairCount,
+        reconciliation: s.reconciliation ?? null,
+      });
+      s.authorization = authorization;
+      s.contract = nextContract;
+      s.plan = nextPlan;
+      s.evidence = {};
+      if (s.review) s.review.stale = true;
+      s.reconciliation = { observations, fingerprint: r.fingerprint };
+      s.status = "active";
+      s.blocker = null;
+      s.progress =
+        "Explicitly authorized local follow-up; prior delivery archived";
+      s.nextAction =
+        "Implement the follow-up plan and record fresh verification evidence";
+      break;
+    }
     case "reconcile":
       text(r.observations, "ticket/files/Git/PR/check reconciliation");
       s.reconciliation = {
@@ -847,13 +910,29 @@ export async function ticketState(r) {
       requireThat(r.owner === s.owner, "checkout belongs to another owner");
     requireThat(
       !TERMINAL.has(s.status) ||
-        ["authorize", "settle", "cancel"].includes(r.action) ||
+        ["authorize", "reopen_local", "settle", "cancel"].includes(r.action) ||
         (["external", "gate"].includes(r.action) &&
           ["settle", "cancel", "cleanup"].includes(r.operation)),
       "handoff is sticky; do not resume completed delivery",
     );
-    if (!TERMINAL.has(s.status) || r.operation === "cleanup")
+    if (
+      !TERMINAL.has(s.status) ||
+      r.operation === "cleanup" ||
+      r.action === "reopen_local"
+    )
       await noOtherWriter(p, s.ticketId);
+    if (r.action === "reopen_local") {
+      requireThat(
+        r.fingerprint === current.fingerprint,
+        "follow-up revision mismatch",
+      );
+      // Archive the completed delivery before snapshot invalidation drops its evidence.
+      apply(s, r);
+      invalidate(s, current);
+      s.revision += 1;
+      await persist(p, s);
+      return s;
+    }
     invalidate(s, current);
     if (r.action === "gate") {
       gate(s, r.operation, r);
