@@ -119,7 +119,7 @@ JavaScript orchestration definitions under `agent/workflows/` are installed into
 
 | Workflow        | Purpose                                                                                         |
 | --------------- | ----------------------------------------------------------------------------------------------- |
-| `deep-research` | Research a question across public web sources and return a verified cited report.               |
+| `deep-research` | Explicitly requested or approved deep public-web research with a verified cited report.         |
 | `review`        | Review caller-prepared change evidence through bounded independent lenses and one adjudication. |
 
 Run definitions through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. `deep-research` accepts a question string; `review` requires prepared target, patch/context-path, and deterministic-check evidence. The companion [`review` skill](agent/skills/review/SKILL.md) prepares that package for normal interactive use. See [the workflows README](agent/extensions/workflows/README.md#saved-workflows) for exact contracts and safety boundaries.

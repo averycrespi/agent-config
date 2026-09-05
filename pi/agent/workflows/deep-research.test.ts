@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { parseWorkflowScript } from "../extensions/workflows/parser.ts";
 import { runWorkflow } from "../extensions/workflows/runtime.ts";
+import { inventoryWorkflows } from "../extensions/workflows/store.ts";
 
 const workflowFile = new URL("./deep-research.js", import.meta.url);
 
@@ -141,11 +143,7 @@ async function runSimpleResearch(options: {
 
 test("deep-research is a valid saved workflow with a strict question input", async () => {
   const workflow = await loadWorkflow();
-  assert.deepEqual(workflow.meta, {
-    name: "deep-research",
-    description:
-      "Run one broad, bounded public-web research baseline and return an independently verified cited report. Include an explicit as-of date or cutoff and any must-cover sources. Use once per research question; review its coverage and limitations, then use targeted research for gaps instead of rerunning. Not for local, private, or authenticated sources.",
-  });
+  assert.equal(workflow.meta.name, "deep-research");
 
   for (const args of [undefined, null, "", "   ", { question: "topic" }]) {
     let launches = 0;
@@ -162,6 +160,46 @@ test("deep-research is a valid saved workflow with a strict question input", asy
     );
     assert.equal(launches, 0);
   }
+});
+
+test("deep-research inventory preserves opt-in routing before description truncation", async () => {
+  const inventory = await inventoryWorkflows(
+    fileURLToPath(new URL(".", workflowFile)),
+  );
+  const entry = inventory.entries.find((item) => item.name === "deep-research");
+  assert.equal(entry?.valid, true);
+  const description = entry?.description ?? "";
+  assert.match(
+    description,
+    /^Opt-in only: user requests deep research\/an exhaustive report/,
+  );
+  assert.match(
+    description,
+    /asks to run this workflow, or approves a proposed run/,
+  );
+  assert.match(
+    description,
+    /Generic research, investigation, comparison, or docs lookup does not qualify/,
+  );
+  assert.match(description, /broad questions alone do not qualify/);
+
+  const workflow = await loadWorkflow();
+  assert.match(
+    workflow.meta.description,
+    /Default to targeted searches, source reads, or bounded read-only delegation/,
+  );
+  assert.match(
+    workflow.meta.description,
+    /Once authorized, use once per research question/,
+  );
+  assert.match(
+    workflow.meta.description,
+    /targeted research for gaps instead of rerunning/,
+  );
+  assert.match(
+    workflow.meta.description,
+    /Not for local, private, or authenticated sources/,
+  );
 });
 
 test("deep-research accepts one primary source and skips repair after a passing audit", async () => {

@@ -47,6 +47,8 @@ Policy validation and output-schema validation occur before process launch. Retr
 
 ## Deep research routing
 
+Caller-side opt-in guidance belongs in the saved definition's `meta.description` and README, not a global workflow restriction or a runtime authorization flag. Keep the opt-in requirement and generic-research exclusions within the inventory's 240-character description limit. Tests check the actual inventory to prevent truncation from hiding that distinction; they do not prove model compliance with the guidance.
+
 The saved workflow deliberately narrows each phase:
 
 - scope/synthesis/audit/repair use `[]` with `strong`;

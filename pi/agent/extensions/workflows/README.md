@@ -73,12 +73,16 @@ Saved definitions are regular `<name>.js` files in `userWorkflowsDir`. Filename 
 ```json
 { "action": "list" }
 { "action": "validate", "name": "review" }
-{ "action": "run", "name": "deep-research", "args": "What changed?" }
+{ "action": "run", "name": "deep-research", "args": "Produce an exhaustive public-web report on WebAssembly browser support as of 2026-06-01, prioritizing browser vendor documentation." }
 ```
 
 Inventory rejects unsafe names, symlinks, non-regular/unreadable/oversized files, filename/metadata mismatches, and parser failures. It is bounded to 200 candidates, 256 KiB per file, 2 MiB parsed source, and 32 KiB tool text.
 
 ### `deep-research`
+
+Use only when the user explicitly requests deep research, asks to run this workflow, or approves a proposed deep-research run. Equivalent intent such as “produce an exhaustive research report” qualifies; exact wording is not required. Generic requests to research, investigate, compare, or check current documentation do not activate it. Default to targeted searches, source reads, or bounded read-only delegation. Do not automatically escalate because a question is broad.
+
+Once authorized, use once per research question. Include an explicit as-of date or cutoff and any must-cover sources; review the report's coverage and limitations, then use targeted research for gaps instead of rerunning. This is caller-side routing guidance, not a runtime approval check: the question string alone cannot establish user authorization. Local, private, and authenticated sources are out of scope.
 
 The shipped workflow accepts a non-empty question and uses exact routing:
 

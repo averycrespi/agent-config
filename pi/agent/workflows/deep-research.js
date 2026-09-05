@@ -1,7 +1,7 @@
 export const meta = {
   name: "deep-research",
   description:
-    "Run one broad, bounded public-web research baseline and return an independently verified cited report. Include an explicit as-of date or cutoff and any must-cover sources. Use once per research question; review its coverage and limitations, then use targeted research for gaps instead of rerunning. Not for local, private, or authenticated sources.",
+    "Opt-in only: user requests deep research/an exhaustive report, asks to run this workflow, or approves a proposed run. Generic research, investigation, comparison, or docs lookup does not qualify; broad questions alone do not qualify. Default to targeted searches, source reads, or bounded read-only delegation. Return an independently verified cited public-web report. Include an explicit as-of date or cutoff and any must-cover sources. Once authorized, use once per research question; review coverage and limitations, then use targeted research for gaps instead of rerunning. Not for local, private, or authenticated sources.",
 };
 
 const scopeOutput = {
