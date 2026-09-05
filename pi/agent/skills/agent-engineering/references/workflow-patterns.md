@@ -4,9 +4,11 @@ This document covers multi-phase agent workflow design — the patterns determin
 
 The reference architecture is a deterministically controlled pipeline with validated machine-readable output at each phase boundary: strict JSON where the API supports it, parsed tags where CLI ergonomics make JSON brittle. Fresh subagents are an option when a self-contained question benefits from parallelism, substantial context isolation, or independent judgment; phase boundaries alone do not justify delegation. GPT-5.6 can use bounded model-managed delegation inside such a phase while code retains the outer control plane.
 
-## The canonical phase sequence
+## Optional phase decomposition
 
-The richest pipelines surveyed in 2026 use some subset of:
+Start with **plan → implement → verify → handoff**, carrying acceptance criteria, authority, evidence, and required gates through the work. Separate phases, agents, and artifacts are design options, not prerequisites for that sequence.
+
+For workflows whose measured failure modes justify additional stages, the richest pipelines surveyed in 2026 use some subset of:
 
 ```
 extract-AC  →  localize  →  plan  →  plan-repair  →  implement  →  validate  →  review  →  fix  →  emit-report
@@ -170,15 +172,15 @@ For crash-safe execution, pair these artifacts with a durable state machine: cur
 
 ## Diff budgets and idle-iteration kill switches
 
-Two independent guardrails that catch the "implementer wandered off" failure mode mechanically, before fix-loops kick in.
+Optional guardrails for unattended workflows with observed scope drift or repeated unproductive work. Calibrate against representative tasks before adopting them; they do not replace acceptance checks, configured execution limits, or bounded repair.
 
-**Diff budget**: hard cap on per-task diff (e.g., 500 lines added/changed). Patches over the cap are rejected at apply time — the implementer must shrink. Catches gold-plating and unrelated refactors.
+**Diff budget**: an explicitly configured per-task diff cap can flag oversized patches for scope review. Choose the cap from the task's expected changes rather than imposing an arbitrary universal line count; legitimate migrations and generated changes can be large.
 
-**Idle-iteration kill**: abort if no file delta in N iterations. Catches thrash where the agent keeps "reasoning" without producing changes.
+**Progress guard**: evaluate task-relevant progress, including narrowed hypotheses, retrieved evidence, and completed verification. No file delta alone does not establish stagnation. Use a file-delta counter only within a bounded write phase where evaluations show it distinguishes thrash from useful work.
 
 Reference: [Tests-First Agent Loop / diff budgets](https://medium.com/@Micheal-Lanham/stop-burning-tokens-the-tests-first-agent-loop-that-cuts-thrash-by-50-d66bd62a948e). Caveat: the post's headline "50% thrash reduction" is a single anecdotal comparison (12 → 7 iterations on one task), not a measured benchmark; the post's primary advocacy is for _tests-first_ prompting, with diff budgets as a supporting guardrail.
 
-The two are independently useful — diff caps physically reject oversize patches; idle-iteration kills are a separate thrash detector. Use both.
+Measure false stops as well as avoided thrash. Adopt either guard only when its benefit outweighs interrupting useful work; do not require both by default.
 
 ## Termination discipline
 

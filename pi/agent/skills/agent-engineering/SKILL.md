@@ -45,7 +45,7 @@ Fourteen principles that show up repeatedly across 2025–2026 literature, vendo
 
 10. **Compaction-aware design.** Long pipelines lose information mid-run; the question is whether you control how. Anthropic's [context engineering post](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) and OpenAI's [compaction guide](https://developers.openai.com/api/docs/guides/compaction) name the same three techniques: (a) compaction, (b) structured note-taking artifacts on disk, (c) just-in-time retrieval. Measure cache reuse and write costs rather than treating caching as free. (See `references/context-engineering.md`.)
 
-11. **Diff budgets and idle-iteration kill switches.** Mechanical brakes catch the "implementer wandered off" failure mode before fix-loops kick in. Hard cap on per-task diff size; abort if no file delta in N iterations. Cheap and load-bearing.
+11. **Evaluate workflow-specific progress guards.** Diff caps and idle-iteration limits are optional controls for unattended workflows with demonstrated scope drift or thrash, not universal requirements. Calibrate them against representative tasks; reading, diagnosis, and verification can make meaningful progress without file changes. Preserve configured execution limits and bounded repair even when these additional guards are unnecessary.
 
 12. **Termination beats unbounded correctness loops.** No open-ended `verify → implement` loopback. Bounded fix phases are fine; after the cap, always emit a final report — pass, fail-with-known-issues, or canceled — and exit. The orchestrator's job is to terminate; the user's job is to decide what to do with a partial result.
 
@@ -71,13 +71,9 @@ Brief each child with one question or task, scope boundaries, relevant context a
 
 Treat owning-session implementation as a continuity-preserving default, not proof that every sequential implementation child performs worse. Serialization removes simultaneous-write conflicts but not handoff loss. Compare the two architectures under matched model, effort, tools, starting revision, and acceptance checks before claiming an advantage.
 
-For workflow phase design, the canonical sequence (from the SOTA design doc and `references/workflow-patterns.md`) is:
+Start workflow design with **plan → implement → verify → handoff**, preserving acceptance criteria, authority boundaries, required checks, and bounded repair. These are working activities, not mandatory separate agents or phase transitions.
 
-```
-extract-AC → localize → plan → plan-repair → implement → validate → review → fix → emit-report
-```
-
-Most production pipelines collapse some of these. Don't add a phase unless the cost of missing it is clear.
+Load [workflow patterns](references/workflow-patterns.md) when a demonstrated need calls for additional localization, plan repair, independent review, or orchestration stages. Evaluate each added stage against the cost of omitting it; an elaborate reference architecture is not a default execution checklist.
 
 ## Anti-patterns
 

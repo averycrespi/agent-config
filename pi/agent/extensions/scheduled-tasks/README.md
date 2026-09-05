@@ -107,7 +107,7 @@ Rules:
 
 Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `executionShell`, invalid `timeoutMinutes`, invalid `precheck`, missing/unreadable enabled-task precheck scripts, invalid `catchup`, missing deterministic scheduler CLI prerequisites, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files or precheck scripts, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
-Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` after editing task files.
+Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` for each changed task after a coherent edit batch, before enabling or manually running it. Revalidate after fixes or subsequent changes; individual edits within one batch do not each need a validation call. Explicit debugging of a failing task may use the manual-run exception described by the bundled skill.
 
 ## Commands
 

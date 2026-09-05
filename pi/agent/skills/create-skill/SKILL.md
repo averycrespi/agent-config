@@ -46,7 +46,7 @@ Write using **imperative/infinitive form** (verb-first instructions), not second
 
 ### 1. Understand Usage
 
-Gather concrete examples of how the skill will be used. Ask about trigger conditions, expected workflows, and edge cases. Skip only when usage patterns are already clearly understood.
+Inspect the request, supplied examples, existing skills, repository instructions, and tool contracts first. Infer routine usage from that evidence. Ask only about unresolved choices that materially affect activation, behavior, or safety; do not require a trigger/workflow/edge-case interview when the request is actionable.
 
 ### 2. Plan Contents
 
@@ -60,6 +60,10 @@ Create the skill directory and SKILL.md with proper frontmatter. Add any bundled
 2. When should it be used?
 3. How should the agent use it, including references to any bundled resources?
 
-### 4. Iterate
+### 4. Check instruction compatibility
 
-Use the skill on real tasks, notice struggles or inefficiencies, update SKILL.md or bundled resources, and test again.
+Compare the proposed skill and its references with applicable `AGENTS.md`, tool contracts, and related skills for conflicting authority, scope, confirmation, delegation, verification, and stopping rules. Resolve contradictions at their source rather than adding another reminder. Preserve the actual instruction hierarchy and required gates. Make conditional reference-loading triggers explicit and verify local links resolve.
+
+### 5. Iterate
+
+Use the skill on representative tasks, checking activation, authorized follow-through, necessary questions, useful delegation, proportionate verification, and output completeness. Update guidance based on observed struggles; structural checks cannot prove model compliance.

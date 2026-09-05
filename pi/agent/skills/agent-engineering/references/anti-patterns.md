@@ -242,13 +242,13 @@ Mitigations map to patterns elsewhere in this skill:
 
 **Citation**: Datadog's observability-driven harness framing; this skill's `operations-safety.md` checklist.
 
-### No idle-iteration kill switch
+### Unbounded work without a progress policy
 
-**What**: Pipeline loops until success or context exhaustion. No "if no file delta in N turns, abort" check.
+**What**: An unattended pipeline repeats work without task-relevant progress, bounded repair, or configured execution limits.
 
-**Why it fails**: Catches the "implementer wandered off into discussion" failure mode. Without a kill switch, the loop burns tokens producing reasoning without producing changes.
+**Why it fails**: Repeated unproductive actions consume resources. Conversely, treating every turn without a file modification as idle can stop useful reading, diagnosis, or verification.
 
-**Instead**: Idle-iteration counter. Abort if no file modification in N turns (3–5 typical). Pair with a diff budget for orthogonal coverage.
+**Instead**: Preserve execution budgets and bounded fix loops. Evaluate optional progress guards against actual failure modes and count evidence gathering and completed checks as progress. Restrict file-delta counters or diff caps to workflows where measurements justify them; do not impose a universal number of idle turns.
 
 **Citation**: [Tests-First Agent Loop](https://medium.com/@Micheal-Lanham/stop-burning-tokens-the-tests-first-agent-loop-that-cuts-thrash-by-50-d66bd62a948e).
 
