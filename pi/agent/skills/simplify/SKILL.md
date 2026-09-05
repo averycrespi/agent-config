@@ -23,7 +23,7 @@ Route adjacent work deliberately:
 - Use `clarify` when the desired outcome or governing requirements remain unclear.
 - Use `challenge` when the primary question is what could materially fail.
 - Use `review` for completed code or behavior.
-- Return requirement changes to `specify`, implementation planning to `plan`, and system-boundary changes to `architect`.
+- Clarify material requirement or system-boundary changes before revision; use `shape-ticket` when the target is a Plane delivery contract. Revise other artifacts directly only when authorized.
 
 Do not create a replacement artifact or edit the target unless explicitly asked.
 

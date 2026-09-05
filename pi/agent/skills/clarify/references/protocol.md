@@ -1,6 +1,6 @@
 # Clarification Protocol
 
-Use this protocol to resolve material ambiguity without making silent user-owned decisions. The calling skill supplies the ambiguity taxonomy, completion gate, and artifact contract appropriate to its scale.
+Use this protocol to resolve material ambiguity without making silent user-owned decisions. The calling skill supplies the ambiguity taxonomy, completion gate, and output contract appropriate to its scale, which may be a conversational brief rather than a durable artifact.
 
 ## 1. Establish
 
@@ -28,7 +28,7 @@ Classify each category in the calling skill's taxonomy as **Clear**, **Partial**
 - answerable through more research,
 - a material user-owned decision,
 - safe to record as a non-blocking assumption,
-- intentionally deferred to a named downstream artifact, or
+- intentionally deferred to a named downstream action or artifact, or
 - out of scope.
 
 A safe assumption must be low-impact, reversible, and not user-visible. Do not assume scope, observable behavior, acceptance criteria, security posture, data semantics, system boundaries, or risk tolerance when multiple reasonable choices exist.
@@ -39,7 +39,7 @@ Ask exactly one focused question, wait for the answer, then choose the next ques
 
 - Resolve parent decisions before child details.
 - Prioritize the highest `impact × uncertainty` gap.
-- Ask only when the answer can change the artifact, scope, architecture, behavior, verification, risk, or downstream decomposition.
+- Ask only when the answer can materially change the outcome, scope, architecture, behavior, verification, risk, or next action.
 - Prefer `ask_user` with 2–5 options when several valid choices have different trade-offs.
 - Put the recommended option first and explain the recommendation briefly.
 - Constrain short-answer questions to a clear answer shape.
@@ -53,7 +53,7 @@ Question: <one decision to resolve?>
 Options: <2–5 choices, or a short-answer constraint>
 ```
 
-Stop asking when all decisions owned by the current skill are settled, explicitly deferred to the correct downstream artifact, or safely recorded as non-blocking assumptions.
+Stop asking when all decisions owned by the current skill are settled, explicitly deferred to the correct downstream action or artifact, or safely recorded as non-blocking assumptions.
 
 ## 5. Maintain a decision ledger
 
@@ -74,6 +74,6 @@ Before finalizing, verify that:
 - downstream deferrals are explicit and correctly scoped,
 - no assumption hides a material user-owned choice,
 - success can be evaluated at the current scale, and
-- the recommended next artifact is unambiguous.
+- the recommended next action or artifact is unambiguous.
 
 If the user stops before the gate passes, report the settled decisions and remaining blockers. Only write a Draft artifact when the calling skill permits it; never label an artifact Ready while blocking decisions remain.

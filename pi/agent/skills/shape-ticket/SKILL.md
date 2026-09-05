@@ -35,7 +35,7 @@ Workflow **Draft** is a visible lifecycle meaning, not Plane's `is_draft` flag. 
 3. Present a complete **Draft preview** containing title, body, project, relationships, and the actual resolved Plane state name and ID. When using a fallback state, label the workflow-Draft-to-Plane-state mapping explicitly.
 4. Require explicit approval before creating a new ticket. Approval to discuss or shape work is not creation approval.
 5. Create or update the visible ticket with the resolved project state and without `is_draft: true`. Reread it, then find its immutable ID in the project's normal work-item list, accounting for pagination. Direct retrieval by ID alone is insufficient confirmation. Report its confirmed identifier, immutable ID, actual Plane state, and any fallback mapping.
-6. Research answerable questions before asking the user. Use the clarification protocol for material product, compatibility, security, data, or migration decisions.
+6. Research answerable questions before asking the user. Read and use [the clarification protocol](../clarify/references/protocol.md) for material product, compatibility, security, data, or migration decisions.
 
 ## Approve Ready
 

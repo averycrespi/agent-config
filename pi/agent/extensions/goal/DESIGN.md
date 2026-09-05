@@ -87,11 +87,9 @@ When enabled, the extension provides a custom `session_before_compact` summary c
 
 Because extension-provided compaction can replace Pi's default compaction result, do not assume default file/change tracking survives compaction when this feature is enabled.
 
-## Plan execution boundary
+## Execution boundary
 
-A goal objective may use auto-run as a liveness layer around one goal-agnostic `advance-plan` call per turn, but the extension does not parse plans, invoke skills, or infer execution progress. The Ready plan and `.design/runs/.../state.json` remain authoritative. The objective maps `advance-plan` outcomes to continuation, yield, or evidence-audited completion; goal snapshots never duplicate task, milestone, or acceptance state.
-
-That mapping may return normally once per step and essential-failure identity after `advance-plan` reports `failed-retryable`, allowing auto-run to resume the same durable step in a fresh invocation. `advance-plan` owns the narrow classification and records its essential-failure marker in authoritative run evidence so interruption cannot restore the allowance; the generated objective yields after repeated exhaustion or any non-retryable stop. Keep this policy outside goal state and scheduling so the extension neither interprets plan failures nor lets the agent renew continuation budgets.
+A goal objective may steer work across turns, but the extension does not parse task artifacts, invoke skills, or infer execution progress. Durable requirements and execution evidence remain outside goal snapshots. Keep task-specific retry and completion policies outside goal state and scheduling; the extension must not interpret workflow failures or let the agent renew continuation budgets.
 
 ## Security and boundaries
 

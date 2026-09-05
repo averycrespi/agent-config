@@ -19,7 +19,7 @@ This is a public repository. When creating or modifying content:
 - **No internal details** - Don't reference specific companies, projects, team names, or internal URLs
 - **No private data** - Don't include API keys, tokens, credentials, or sensitive configuration
 - **Generic examples** - Use placeholders like `ABC-123` for tickets, `example.com` for domains
-- **Sanitize design artifacts** - Review `.design/` architecture, specification, and plan files before committing to ensure they contain no proprietary information
+- **Sanitize design artifacts** - Review architecture, specification, and planning content before committing to ensure it contains no proprietary information
 
 ## Commands
 
@@ -51,7 +51,7 @@ Test files import source with `.ts` extensions (e.g. `from "./state.ts"`). This 
 
 ## Skill Naming Convention
 
-- **Workflow skills** (invoked to perform a task): use verb-object names when natural, or concise task names for broad workflows (e.g., `clarify`, `architect`, `specify`, `plan`)
+- **Workflow skills** (invoked to perform a task): use verb-object names when natural, or concise task names for broad workflows (e.g., `clarify`, `challenge`, `review`)
 - **Reference skills** (provide information/context): use nouns (e.g., `agent-engineering`)
 
 ## Notes Format

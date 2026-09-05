@@ -52,7 +52,7 @@ Validated evidence completes the active goal immediately, freezes its usage coun
 
 ## State and persistence
 
-Goal state is scoped to Pi's session tree branch, not the git branch. The extension restores the latest valid snapshot from the active session branch on session start, resume, and tree navigation; starting a fresh Pi session in the same git branch does not restore the goal. For plan-driven work, keep the `.design/plans/` file as the durable implementation artifact and use the goal as the current session's steering state.
+Goal state is scoped to Pi's session tree branch, not the git branch. The extension restores the latest valid snapshot from the active session branch on session start, resume, and tree navigation; starting a fresh Pi session in the same git branch does not restore the goal. Keep durable task requirements and execution evidence outside goal snapshots when work must survive a fresh session; use the goal as the current session's steering state.
 
 Snapshots include goal lifecycle state and, when present, auto-run lifecycle state. Auto-run state is separate from goal status so automation can stop while the goal remains active for steering and manual continuation. Legacy snapshots remain valid; obsolete nested metadata is ignored, while an interrupted legacy completion claim is restored as paused and stops a paired running auto-run.
 
@@ -78,14 +78,6 @@ When the current goal is active and `injectActiveGoal` is enabled, each agent tu
 - a qualitative reminder that configured continuation/time bounds apply when auto-run is running
 
 No goal context is injected when the goal is paused, complete, absent, or injection is disabled. When checkpoint guidance is enabled, the agent is told to create git commits at logical verified checkpoints, stage files by name, and never push unless explicitly asked.
-
-## Goal-driven plan execution
-
-The `plan` skill emits an optional goal objective that names a Ready plan and invokes the goal-agnostic `advance-plan` skill exactly once per agent turn. `advance-plan` reports whether it progressed, stopped, or completed; the objective maps that outcome to normal continuation, `yield`, or an evidence-audited `complete` action.
-
-A narrowly classified `failed-retryable` outcome also returns normally so auto-run invokes the same durable step once more for that essential failure. It applies only after the first full repair-allowance exhaustion for that failure when demonstrated progress leaves a falsifiable next repair. A repeated exhaustion of the same failure, an early non-progress stop, or any blocked, unsafe, drifted, ambiguous, or invalid condition yields immediately. Demonstrated progress that exposes a materially different essential failure starts a new bounded failure identity. The objective owns this policy; the goal extension does not parse plan state or grant additional continuation budgets.
-
-Goal state never duplicates plan progress: `.design/runs/.../state.json` remains authoritative, including after an interrupted turn or a fresh Pi session. Resolve a yielded condition before `/goal-renew`; the next bounded advancement resumes the helper-reported task or milestone gate.
 
 ## Widget
 

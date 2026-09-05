@@ -1,6 +1,6 @@
 # Agent Config
 
-My personal [Pi](https://pi.dev/) setup for software development. It adds a structured workflow for clarifying intent, designing systems, specifying bounded changes, planning, simplifying, and challenging implementation, advancing plans through resumable tasks and milestone gates with durable evidence, optionally driving full plans through bounded session goals, and independently reviewing the result.
+My personal [Pi](https://pi.dev/) setup for software development. It supports research-first clarification, focused implementation, ticket-driven delivery, pre-implementation challenge and simplification, and independent review. Bounded session goals remain available for adaptive work outside the ticket workflow.
 
 The repository contains the skills, extensions, prompts, and saved workflows that power that setup. Custom extensions are written in TypeScript and maintained with tests and documentation.
 
@@ -10,13 +10,12 @@ The harness combines a simple development loop with tools that keep work scoped,
 
 ### Workflow
 
-1. **Clarify and route** ambiguous requests with `clarify` when the right design artifact is not yet clear.
-2. **Design and specify** broad systems with `architect`, then turn each outcome—or one smaller standalone change—into a Ready specification with `specify`.
-3. **Plan and stress-test** one specification with `plan`, the explicit-only `simplify` skill for unnecessary complexity, and `challenge` for substantial risks.
-4. **Implement** one bounded, resumable plan step with `advance-plan`: either one main-session task or one milestone gate, while the main session owns implementation, run state, verification, decisions, evidence, and commits. For autonomous execution, use the minimal `/goal` invocation emitted by `plan` to call `advance-plan` once per turn.
-5. **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
+- **Clarify** material ambiguity with `clarify`: research first, ask focused questions, and return a concise brief without creating artifacts. Skip the interview when the request is already clear.
+- **Stress-test** concrete approaches with `challenge` for material risks or explicit-only `simplify` for unnecessary complexity.
+- **Implement and verify** directly for authorized local work, or use the ticket workflow for prepared delivery. Keep evidence and checks proportionate to the change.
+- **Review** completed changes with `review`, which combines repository context, deterministic checks, and independent analysis.
 
-For Plane-native delivery, a smaller parallel path is available: the shared `plane` reference skill defines safe access and organization conventions, `shape-ticket` approves an exact Ready ticket contract, `dispatch-ticket` passively inspects or explicitly provisions one Herdr worktree and Pi worker, and `advance-ticket` uses one ignored local state file plus Loop and a fail-closed pre-push secret/guidance check to reach a review-ready PR after independent review and exact-head CI pass. Human operators retain merge, Plane settlement, cancellation, and cleanup authority. This path deliberately has no controller, queue, registry, or separate inspection skill.
+For Plane-native delivery, the shared `plane` reference skill defines safe access and organization conventions, `shape-ticket` approves an exact Ready ticket contract, `dispatch-ticket` passively inspects or explicitly provisions one Herdr worktree and Pi worker, and `advance-ticket` uses one ignored local state file plus Loop and a fail-closed pre-push secret/guidance check to reach a review-ready PR after independent review and exact-head CI pass. Human operators retain merge, Plane settlement, cancellation, and cleanup authority. This path deliberately has no controller, queue, registry, or separate inspection skill.
 
 ### Choosing an orchestration primitive
 
@@ -37,7 +36,7 @@ Use a **loop** when only liveness is needed. A loop rebroadcasts a caller-specif
 
 Use a **goal** when progress is adaptive but can be made and audited one turn at a time. Goals keep the main agent moving toward an objective until it completes, yields, is interrupted, or reaches a configured bound. A goal supplies continuation and steering; it does not replace a durable plan or prescribe a fixed phase graph.
 
-These primitives compose. A skill or extension can use a loop as a lower-level liveness layer, while a goal-driven plan may advance one main-session implementation step per turn and use read-only subagents or workflows for bounded research, diagnosis, or explicitly required review. The objective-bearing layer owns completion policy, the main session owns workspace mutation and plan evidence, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
+These primitives compose. A skill or extension can use a loop as a lower-level liveness layer, while a goal may steer adaptive main-session work across turns and use read-only subagents or workflows for bounded research, diagnosis, or explicitly required review. The objective-bearing layer owns completion policy, the main session owns workspace mutation and execution evidence, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
 
 For explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
 

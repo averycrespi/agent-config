@@ -31,7 +31,7 @@ A paused run requires explicit dispatch or resume authority before helper `activ
 
 For an active run, perform one bounded useful action in the current phase. Record a helper `checkpoint`, `progress`, `pause`, `block`, or `handoff` before returning. Reread state after mutation and trust its revision and next action over conversation memory.
 
-Use a short proportional plan. One implementation packet is normal. Do not recreate the milestone-heavy `.design` planning lifecycle inside a ticket run; Git commits and the current checkpoint are the durable implementation history.
+Use a short proportional plan. One implementation packet is normal. Keep planning proportional to the ticket; Git commits and the current checkpoint are the durable implementation history.
 
 ## Phase routing
 
