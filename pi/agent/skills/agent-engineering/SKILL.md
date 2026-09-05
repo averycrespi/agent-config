@@ -1,11 +1,11 @@
 ---
 name: agent-engineering
-description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra and GPT-5.6, and platform-specific patterns for Claude Code, the Claude Agent SDK, and Pi. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
+description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra and GPT-5.6, and platform-specific patterns for Pi and Codex. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
 ---
 
 # Agent Engineering
 
-This skill teaches the engineering discipline of _building_ AI coding agents — the harness, the workflow, the model choices — not the discipline of _using_ one. Most of the literature came together in 2025–2026 under names like "harness engineering," "context engineering," and "agentic workflow design." Model-specific guidance is scoped to GPT-5.6 and GPT-6 Astra. This skill also retains Claude Code/Claude Agent SDK/OpenAI/Pi platform patterns and model-independent research because those are the platforms covered by the repo and references; for Gemini, Copilot/Cursor/Windsurf, SWE-agent variants, or local models, use these principles but re-check the platform's primary docs. This is the distilled core; deep references live in `references/`.
+This skill teaches the engineering discipline of _building_ AI coding agents — the harness, the workflow, the model choices — not the discipline of _using_ one. Most of the literature came together in 2025–2026 under names like "harness engineering," "context engineering," and "agentic workflow design." Model-specific guidance is scoped to GPT-5.6 and GPT-6 Astra. Platform guidance focuses on Pi and Codex, alongside model-independent research from multiple sources. For other platforms and models, use these principles but re-check their primary docs. This is the distilled core; deep references live in `references/`.
 
 ## Mental model
 
@@ -16,7 +16,7 @@ harness = (what the model sees)  +  (what it can do)  +  (the loop around it)
 
 There are two design scopes, and they interleave:
 
-- **Single-agent harness.** One model, one loop. Decisions: tool surface, context strategy, system prompt, hooks, model+effort selection, retry behavior. Examples: Claude Code's main loop, Codex CLI, a one-shot SDK script.
+- **Single-agent harness.** One model, one loop. Decisions: tool surface, context strategy, system prompt, hooks, model+effort selection, retry behavior. Examples: Pi's main loop, Codex CLI, a one-shot SDK script.
 - **Workflow.** Multi-phase orchestration where deterministic code drives a sequence of LLM calls (often as fresh subagents). Decisions: phase boundaries, what crosses each boundary, verification shape, termination. Examples: `roach-pi`'s `agentic-harness`, OpenAI's internal Codex pipeline.
 
 A workflow is built out of harnesses. So the harness-level principles always apply; workflow-level principles add to them.
@@ -25,9 +25,9 @@ A workflow is built out of harnesses. So the harness-level principles always app
 
 Fourteen principles that show up repeatedly across 2025–2026 literature, vendor writeups, and open-source harnesses. Sources and caveats live in `references/bibliography.md`; evidence strength varies from primary docs to production anecdotes, so treat version-specific claims as revalidation targets.
 
-1. **Keep a deterministic outer control plane.** A Claude Code retrospective estimated that ~98.4% of Claude Code is deterministic infra. Cognition's [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) formalized the same lesson. GPT-5.6's [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent) makes bounded model-managed delegation useful inside a phase, but code should still own permissions, budgets, validation, durable state, and termination.
+1. **Keep a deterministic outer control plane.** Cognition's [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) argues for coherent control rather than loosely coordinated agents. GPT-5.6's [Multi-agent beta](https://developers.openai.com/api/docs/guides/tools-multi-agent) makes bounded model-managed delegation useful inside a phase, but code should still own permissions, budgets, validation, durable state, and termination.
 
-2. **Subagents are usually read-mostly context firewalls.** Use them for exploration, retrieval, review, verification, and other independent workstreams. Sequential writable delegation can work when a deterministic orchestrator defines one bounded task, permits one writer, owns durable state and evidence, and independently verifies the result. Avoid parallel writes to shared state; isolate truly independent implementation work before parallelizing it. Claude Code's official guidance is to use subagents to _answer questions, not write code_, while GPT-5.6 permits broader delegation but warns against ordered chains and shared mutable resources. ([Anthropic on context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents); [GPT-5.6 Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent); [HumanLayer on context firewalls](https://www.humanlayer.dev/blog/skill-issue-harness-engineering-for-coding-agents))
+2. **Subagents are usually read-mostly context firewalls.** Use them for exploration, retrieval, review, verification, and other independent workstreams. Sequential writable delegation can work when a deterministic orchestrator defines one bounded task, permits one writer, owns durable state and evidence, and independently verifies the result. Avoid parallel writes to shared state; isolate truly independent implementation work before parallelizing it. GPT-5.6 permits broader delegation but warns against ordered chains and shared mutable resources. ([Anthropic on context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents); [GPT-5.6 Multi-agent](https://developers.openai.com/api/docs/guides/tools-multi-agent); [HumanLayer on context firewalls](https://www.humanlayer.dev/blog/skill-issue-harness-engineering-for-coding-agents))
 
 3. **Validated machine-readable output, not free text.** JSON schemas (TypeBox / Pydantic / Zod) are preferred for phase boundaries when the API supports strict structured output. Parsed tagged outputs (`<status>done</status>`) are an acceptable fallback in CLI/Pi-style harnesses where JSON is brittle. Free-text completion markers like `<promise>COMPLETE</promise>` are fragile. Keep output schemas out of prompt prose when the API can enforce them. ([Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6))
 
@@ -103,8 +103,7 @@ Verification rule: **independent context and concrete evidence matter more than 
 
 Quick orientation; deep guidance in `references/platforms.md`.
 
-- **Claude Code**: best when you want an interactive coding harness with first-class hooks, skills, subagents, routines, and settings.
-- **Claude Agent SDK**: best when you want the Claude Code loop but need to drive it programmatically in TypeScript or Python.
+- **Codex CLI**: use for OpenAI's coding harness, layered repository instructions, and documented subagent and automation patterns.
 - **Pi (`@earendil-works/pi-coding-agent`)**: best when you want a smaller TypeScript extension surface and a lightweight base for custom harness experiments.
 
 For exact platform behavior, current gotchas, and repo-specific conventions, read `references/platforms.md`.
@@ -113,7 +112,7 @@ For exact platform behavior, current gotchas, and repo-specific conventions, rea
 
 1. **For broad orientation** ("how should I shape this harness?"): read this `SKILL.md` end-to-end. The principles section is the load-bearing part.
 2. **For model-specific design questions** ("how does Astra change my GPT-5.6 prompt?"): read `references/models.md`.
-3. **For platform-specific implementation** ("how do I wire up a Claude Code hook?"): read `references/platforms.md`.
+3. **For platform-specific implementation** ("how do I wire up a Pi extension?"): read `references/platforms.md`.
 4. **For workflow design** ("what phases should my pipeline have?"): read `references/workflow-patterns.md`.
 5. **For verification design** ("how should my reviewer be structured?"): read `references/verification.md`.
 6. **For context-budget problems** ("the agent is forgetting the constraints"): read `references/context-engineering.md`.

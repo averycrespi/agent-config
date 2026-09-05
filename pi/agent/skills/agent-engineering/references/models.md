@@ -1,6 +1,6 @@
 # Model-specific guidance
 
-Use this reference for harness guidance on GPT-6 Astra and GPT-5.6. Keep platform APIs separate from model capabilities; see `platforms.md` for Claude Code, the Claude Agent SDK, and Pi. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
+Use this reference for harness guidance on GPT-6 Astra and GPT-5.6. Keep platform APIs separate from model capabilities; see `platforms.md` for Pi and Codex. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
 
 ## GPT-6 Astra
 

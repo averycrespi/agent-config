@@ -8,11 +8,7 @@ A useful directional signal from the Zylos and Harness vendor reports: **context
 
 ### 1. Compaction
 
-Replace prior turns with a summary when the conversation grows large. Two flavors:
-
-**Anthropic / Claude Code style**: automatic, opaque to the developer. The Claude Agent SDK loop compacts when nearing context limit. WaveSpeedAI's reverse-engineering identifies five stages: budget reduction → snip → microcompact → context collapse → auto-compact ([Claude Code Agent Harness: Architecture Breakdown](https://wavespeed.ai/blog/posts/claude-code-agent-harness-architecture/)).
-
-**OpenAI Responses API style**: explicit. Two modes:
+Replace prior turns with a compacted representation when the conversation grows large. The OpenAI Responses API supports two modes:
 
 - **Threshold-driven**: `context_management.compact_threshold` triggers an opaque encrypted compaction item carrying state/reasoning. Chain via `previous_response_id` or by appending the item.
 - **Explicit**: call [`/responses/compact`](https://developers.openai.com/api/reference/resources/responses/methods/compact) when _you_ decide. Best for harnesses that want compaction at phase boundaries (e.g. compact at end of `plan` before entering `implement`).
@@ -53,8 +49,6 @@ Why subagent prompts say "read `<workflowDir>/PLAN.md` for the plan" instead of 
 - **Compaction-survivability.** A path is a 50-token constant; the plan body that the path resolves to is fresh on every read.
 - **Forensic trail.** When something goes wrong, the human has the artifacts to reconstruct what the agent saw. Add phase traces and tool-call logs when the harness needs replay, not just explanation.
 - **Cross-subagent consistency.** Every subagent reads the same artifact; no drift from copy-paste.
-
-The Claude Agent SDK [Memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool) is the SDK-blessed surface for this — `BetaAbstractMemoryTool` (Python) / `betaMemoryTool` (TS), client-side `/memories` directory you back with whatever store you want.
 
 `pi-coordination`'s scout output is a worked example: ~85K-token "context document" plus ~15K-token "synthesized meta-prompt" — relevant context as data, generation guidance as instruction. Different files, different sizes, different lifetimes.
 
@@ -106,7 +100,7 @@ The harness-relevant takeaways (caveat: high-leverage hypotheses, not measured-o
 - [GAM: Hierarchical Graph-based Agentic Memory](https://arxiv.org/html/2604.12285) — two-layer topic→episodic retrieval keeps inference tokens flat as memory grows.
 - [Rethinking Memory Mechanisms of Foundation Agents in the Second Half](https://arxiv.org/html/2602.06052v3) — companion survey to Anthropic's posts.
 
-These are useful when designing custom memory layers; for most harnesses, structured note-taking + durable phase state + the SDK's memory tool is enough.
+These are useful when designing custom memory layers; for most harnesses, structured note-taking and durable phase state are a sufficient starting point.
 
 ## Practical pacing constraints
 
@@ -132,7 +126,7 @@ Treat the effect of turn/token warnings as an evaluation question for GPT-5.6 an
 
 ## Compaction-aware prompt design
 
-If your harness runs through compaction events (Claude Agent SDK loops or OpenAI Responses API loops with thresholds), prompt design changes:
+If your harness runs through compaction events, prompt design changes:
 
 - **Re-state constraints at phase boundaries.** "Reminder: do not modify the public API. AC are at <workflowDir>/ac.json."
 - **Reference artifacts by path, not inline.** Compaction collapses inline content; paths survive.
@@ -143,7 +137,7 @@ If your harness runs through compaction events (Claude Agent SDK loops or OpenAI
 If you're starting a new harness:
 
 1. **Always write structured artifacts and durable state.** `ac.json`, `PLAN.md`, `DECISIONS.md` minimum, plus phase/attempt/completion state outside the conversation. Subagent prompts reference artifacts by path.
-2. **Compact at deliberate boundaries.** OpenAI: threshold-driven or `/responses/compact`; GPT-5.6 Multi-agent handles per-agent compaction automatically. Anthropic: rely on the Agent SDK's automatic compaction unless you have a specific reason not to.
+2. **Compact at deliberate boundaries.** OpenAI: threshold-driven or `/responses/compact`; GPT-5.6 Multi-agent handles per-agent compaction automatically.
 3. **Choose reasoning continuity deliberately.** Use GPT-5.6 `all_turns` only while prior reasoning remains relevant; preserve every typed output item in stateless loops.
 4. **Cache only reusable prefixes.** Measure GPT-5.6 cache writes against later reads instead of assuming caching is free.
 5. **Re-state hard constraints at every phase entry.** The [Long-Horizon Task Mirage](https://arxiv.org/html/2604.11978v1) provides suggestive evidence, with the domain caveats noted above.

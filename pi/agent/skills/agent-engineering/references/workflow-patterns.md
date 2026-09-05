@@ -147,7 +147,7 @@ Caveats:
 - **Worktrees isolate code, not runtime.** Shared ports, databases, services bite hard. Solve this separately.
 - **Disk cost is real.** Reports of ~10GB consumed in 20 minutes on a 2GB codebase via auto-worktree.
 - **Branch naming + cleanup matters.** Follow the active Git rules and use a janitor.
-- **At the time of writing, issue reports say Claude Code's `isolation: worktree` silently no-ops outside a git repo** ([issue #39886](https://github.com/anthropics/claude-code/issues/39886)) and **branches from `origin/main`, not parent's HEAD** ([issue #50850](https://github.com/anthropics/claude-code/issues/50850)). Build accordingly.
+- **Verify the checkout's base commit.** Do not assume a new worktree inherits the parent checkout's current branch or uncommitted state.
 
 Pattern for ticket→PR: worktree created at plan-acceptance time, branch name encodes the ticket ID, orchestrator pushes the branch on success and either deletes the worktree or hands it to a janitor.
 
@@ -225,6 +225,6 @@ Patterns from production deployments not in most pipelines today:
 - **Ticket comment as audit trail.** Post plan summary + diff stats + verifier rubric outcome back to the ticket on completion.
 - **PR description generated from the plan, not the diff.** The diff lies; the plan tells the story.
 - **AC-traceability in the PR body.** Each AC item explicitly mapped to test/code locations.
-- **Repo-aware operating procedure file.** GitHub Copilot Agent's `copilot_instructions.md` pattern; `AGENTS.md` for Codex; `CLAUDE.md` for Claude Code. Explicit ticket-to-PR conventions belong in whichever your harness reads.
+- **Repo-aware operating procedure file.** Put explicit ticket-to-PR conventions in the `AGENTS.md` files the Pi or Codex harness loads. Verify instruction discovery and precedence for the installed platform.
 
 The Pi-ecosystem repo most aligned with the destination is [`roach-pi`'s `autonomous-dev`](https://github.com/tmdgusya/roach-pi) (label-driven GitHub issue worker) — and even its maintainer ships it gated behind `PI_AUTONOMOUS_DEV` with a known-issues doc. That gating itself is a useful pattern: ship behind an env var with a known-issues doc, like roach-pi did.

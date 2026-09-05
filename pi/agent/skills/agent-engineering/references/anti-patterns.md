@@ -80,7 +80,7 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 ### Contradictory instructions in composed system prompts
 
-**What**: Orchestrator composes the system prompt from multiple skill files, plus per-phase prompts, plus user `AGENTS.md`, plus repo `CLAUDE.md`. One says "never X," another says "always X."
+**What**: Orchestrator composes the system prompt from multiple skill files, plus per-phase prompts, plus user and repository `AGENTS.md` files. One says "never X," another says "always X."
 
 **Why it fails**: Astra's stronger instruction following makes conflicting skill and repository guidance consequential; unclear rules can cause unnecessary pauses or scope drift.
 
@@ -230,7 +230,7 @@ Mitigations map to patterns elsewhere in this skill:
 
 **Instead**: Enforce policy in hooks, permission callbacks, tool allow lists, broker scopes, sandboxing, and approval gates. See `operations-safety.md`.
 
-**Citation**: Claude Code hooks/settings docs; Pi extension docs warn that extensions run with full system permissions.
+**Citation**: Pi extension docs warn that extensions run with full system permissions; see `platforms.md` and `operations-safety.md`.
 
 ### No observability or replay
 
@@ -253,30 +253,6 @@ Mitigations map to patterns elsewhere in this skill:
 **Citation**: [Tests-First Agent Loop](https://medium.com/@Micheal-Lanham/stop-burning-tokens-the-tests-first-agent-loop-that-cuts-thrash-by-50-d66bd62a948e).
 
 ## Platform-specific gotchas
-
-### Claude Code: hooks exit code 1 doesn't block
-
-**What**: Hook returns exit code 1 expecting to block; orchestrator continues anyway.
-
-**Why it fails**: Exit 1 is observability only. Exit 2 blocks.
-
-**Citation**: [Hooks reference](https://docs.claude.com/en/docs/claude-code/hooks); [dev.to "5 Hook Mistakes"](https://dev.to/yurukusa/5-claude-code-hook-mistakes-that-silently-break-your-safety-net-58l3).
-
-### Claude Code: settings.json silently broken on JSON syntax error
-
-**What**: A trailing comma or stray quote in `settings.json` disables the entire file. Hooks don't fire. No warning.
-
-**Instead**: Validate `settings.json` as part of CI.
-
-**Citation**: [Claude Lab — Hooks Not Firing troubleshooting](https://claudelab.net/en/articles/claude-code/claude-code-hooks-not-firing-troubleshooting).
-
-### Claude Code: subagent worktrees branch from `origin/main`
-
-**What**: At the time of writing, issue reports say `isolation: worktree` subagents run against `origin/main`, not the parent's HEAD.
-
-**Why it fails**: Workflows that assume the subagent inherits parent's branch state break.
-
-**Citation**: [Issue #50850](https://github.com/anthropics/claude-code/issues/50850).
 
 ### Pi: ESM module exports can't be `mock.method`'d
 
