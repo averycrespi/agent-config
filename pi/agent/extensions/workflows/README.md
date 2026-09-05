@@ -44,6 +44,10 @@ export async function run() {
 }
 ```
 
+`run()` must return its final value. For ordinary results use `return results`; for verified results use `return await report(results, { gate: () => verdict })`. `report()` is an asynchronous gate, not an output emitter. Calling it without returning the result does not supply the workflow's output. Use `return null` for an intentional empty result.
+
+Both `validate` and `run` reject obvious straight-line `run()` bodies with no value-returning statement (including bare `return;`), and direct unshadowed `report()` calls with missing options or a literal options object missing `gate`, before any agents launch. These are conservative syntax checks, not full control-flow or type analysis: complex branches, dynamic options, spreads, and shadowed helper names remain runtime-validated. A successful validation does not prove every execution path returns a value or every gate is callable.
+
 ## Script globals
 
 | Global                              | Contract                                                                                                                                                                                     |
@@ -60,7 +64,7 @@ export async function run() {
 
 Workflow options cannot name agents, select exact models or effort, request raw tools/extensions/environment, or rely on hidden defaults. The host routes every request through the subagents extension's centralized capability/profile policy and live model registry.
 
-Retries are clamped to 0–2. A valid positive `timeoutMs` shorter than the configured default applies to every retry attempt for that logical call. Structured output uses `{ output: { schema } }` and resolves to the validated value.
+Retries are clamped to 0–2. A valid positive `timeoutMs` shorter than the configured default applies to every retry attempt for that logical call. Structured output uses `{ output: { schema } }` and resolves to the validated value. Prefer it for research and fan-in boundaries that need machine-readable results; validated structured successes may be retained after abnormal termination, unlike successful prose. See Logging and retained output for retention limits.
 
 ## Saved workflows
 
@@ -186,7 +190,8 @@ Recovery files share the subagent diagnostic pool's seven-day lazy retention and
 - `workflow must call agent() or verify()`: add a direct syntactic call.
 - `agent intent/capabilities/profile...`: provide every required execution field explicitly.
 - `agent_policy_rejected`: inspect `/subagents-config` for capability, profile, model, or configured-effort policy.
-- `workflow_missing_result`: return a value; use `null` for an intentional empty result.
+- `run() must return a result` / `workflow_missing_result`: return a value from `run()` itself, not only a nested callback; use `null` for an intentional empty result. Complex missing-return paths are detected at runtime.
+- `report() requires options with a callable gate`: use `return await report(value, { gate: () => verdict })`; for ungated output, simply `return value`.
 - Saved workflow invalid/unknown: inspect `workflow list`, `/workflows-list`, and strict filename/metadata identity.
 - Retry only transient read-only calls; policy, cap, budget, timeout, cancellation, and permanent schema failures are not retry classes.
 

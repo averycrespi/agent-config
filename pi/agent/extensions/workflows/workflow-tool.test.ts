@@ -135,6 +135,56 @@ test("tool validates input combinations without persisting or running", async ()
   assert.equal(persists, 0);
 });
 
+test("preflight rejects result-contract mistakes before persistence or agent launch", async () => {
+  const h = harness();
+  let persists = 0;
+  let launches = 0;
+  mock.method(_runSubagent, "fn", async () => {
+    launches += 1;
+    return successfulOutcome();
+  });
+  try {
+    registerWorkflowTool(h.pi as any, undefined, {
+      persistScript: async () => {
+        persists += 1;
+        return "/tmp/unexpected";
+      },
+    });
+    for (const action of ["validate", "run"]) {
+      for (const ending of [
+        "report(results);",
+        "log(results);",
+        "return;",
+        "return report(results, {});",
+      ]) {
+        const result = await h.tool.execute(
+          "bad-result",
+          {
+            action,
+            script: `export const meta = { name: "bad-result", description: "test" };
+export async function run() {
+ const results = await parallelSettled([() => agent("inspect", { intent: "inspect", capabilities: [], profile: "fast" })]);
+ ${ending}
+}`,
+          },
+          undefined,
+          undefined,
+          h.context,
+        );
+        assert.equal(result.details.validationError, true);
+        assert.match(
+          result.content[0].text,
+          /run\(\) must return|report\(\) requires/,
+        );
+      }
+    }
+    assert.equal(persists, 0);
+    assert.equal(launches, 0);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
 test("tool validates a saved or inline workflow without execution", async () => {
   const h = harness();
   registerWorkflowTool(h.pi as any);

@@ -87,6 +87,62 @@ function isSpawningCall(node: ts.CallExpression): boolean {
   );
 }
 
+function hasReportBinding(node: ts.Node): boolean {
+  if (
+    (ts.isVariableDeclaration(node) ||
+      ts.isParameter(node) ||
+      ts.isBindingElement(node) ||
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isClassExpression(node)) &&
+    node.name &&
+    ts.isIdentifier(node.name) &&
+    node.name.text === "report"
+  )
+    return true;
+  return ts.forEachChild(node, hasReportBinding) ?? false;
+}
+
+function checkReportOptions(node: ts.CallExpression): void {
+  if (node.arguments.some(ts.isSpreadElement)) return;
+  const options = node.arguments[1];
+  if (
+    !options ||
+    (ts.isObjectLiteralExpression(options) &&
+      options.properties.every(
+        (prop) =>
+          !ts.isSpreadAssignment(prop) &&
+          prop.name !== undefined &&
+          !ts.isComputedPropertyName(prop.name) &&
+          !(ts.isIdentifier(prop.name) || ts.isStringLiteralLike(prop.name)
+            ? prop.name.text === "gate"
+            : false),
+      ))
+  )
+    fail(
+      "report() requires options with a callable gate; use return await report(value, { gate: () => verdict })",
+    );
+}
+
+function checkRunResult(body: ts.ConciseBody | undefined): void {
+  if (!body || !ts.isBlock(body)) return;
+  // Only diagnose straight-line fall-through; runtime owns control-flow and value validation.
+  if (
+    body.statements.every(
+      (statement) =>
+        ts.isVariableStatement(statement) ||
+        ts.isExpressionStatement(statement) ||
+        ts.isFunctionDeclaration(statement) ||
+        ts.isEmptyStatement(statement) ||
+        (ts.isReturnStatement(statement) && !statement.expression),
+    )
+  )
+    fail(
+      "run() must return a result; use return results, return await report(results, { gate: () => verdict }), or return null",
+    );
+}
+
 export function parseWorkflowScript(script: string): ParsedWorkflow {
   const source = ts.createSourceFile(
     "workflow.mjs",
@@ -102,6 +158,8 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
     fail("script must start with: export const meta = { name, description }");
 
   let hasSpawningCall = false;
+  // Conservatively skip helper-specific checks if the name is bound anywhere in user code.
+  const reportIsShadowed = hasReportBinding(source);
 
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node)) {
@@ -110,6 +168,13 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
     if (ts.isExportDeclaration(node)) fail("re-exports are not allowed");
     if (ts.isCallExpression(node)) {
       if (isSpawningCall(node)) hasSpawningCall = true;
+      if (
+        !reportIsShadowed &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "report"
+      ) {
+        checkReportOptions(node);
+      }
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword)
         fail("dynamic import is not allowed");
       if (
@@ -139,6 +204,25 @@ export function parseWorkflowScript(script: string): ParsedWorkflow {
   for (const statement of source.statements) visit(statement);
   if (!hasSpawningCall)
     fail("workflow must call agent() or verify() at least once");
+
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name?.text === "run") {
+      checkRunResult(statement.body);
+    }
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          ts.isIdentifier(declaration.name) &&
+          declaration.name.text === "run" &&
+          declaration.initializer &&
+          (ts.isArrowFunction(declaration.initializer) ||
+            ts.isFunctionExpression(declaration.initializer))
+        ) {
+          checkRunResult(declaration.initializer.body);
+        }
+      }
+    }
+  }
 
   const replacements: Array<{ start: number; end: number; text: string }> = [
     {

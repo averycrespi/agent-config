@@ -223,6 +223,7 @@ export function registerWorkflowTool(
 
 Use action \"list\" for current reusable definitions, action \"validate\" with exactly one of script/name without execution, or action \"run\" with exactly one of script/name and optional args.
 Scripts must start with literal metadata: export const meta = { name: \"...\", description: \"...\" }.
+run() must return its final value: return results, or return await report(results, { gate: () => verdict }). report() is an async gate, not an output emitter; return null for an intentional empty result.
 Use the globals agent(prompt, { intent, capabilities, profile, output?, retries?, timeoutMs? }), verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy; write-filesystem and exec-shell are rejected. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
@@ -232,11 +233,11 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "Call workflow with action list when a reusable saved workflow may apply.",
       "Use workflow for deterministic fan-out/fan-in research, review, or audit work where several isolated subagents can run under one script.",
       "Do not use workflow for workspace mutation; write-filesystem and exec-shell are rejected, so use only explicitly justified read-mostly capabilities.",
-      "Write scripts with `export const meta = { name, description }` as the first statement and `export async function run() { ... }` for the main body.",
+      "Write scripts with `export const meta = { name, description }` as the first statement and `export async function run() { ... }` for the main body. Return its final value; use `return results` or `return null` for an intentional empty result.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
       "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
-      "Use `agent(prompt, { output: { schema } })` when workflow fan-in needs machine-readable subagent results instead of Markdown text.",
-      "Use `verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? })`; it resolves { ok, reasons }. Gate a report with `report(value, { gate: () => verdict })`, where the callable gate returns true or an object with `ok: true` to pass.",
+      "Use `agent(prompt, { output: { schema } })` for machine-readable research and fan-in boundaries. Validated structured successes may be retained after abnormal termination; successful prose is not retained in recovery artifacts.",
+      "Use `verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? })`; it resolves { ok, reasons }. Return a gated result with `return await report(value, { gate: () => verdict })`, where the callable gate returns true or an object with `ok: true` to pass. `report()` is asynchronous and requires the gate; it is not an output emitter.",
       "Treat `budget` as an advisory snapshot only. `workflow_run_cap_exceeded` denies later calls, while `workflow_budget_exceeded` aborts active agents and prevents retries or new spawns.",
       "Every agent and verify call must set a self-contained intent, explicit capabilities (including []), and profile.",
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",

@@ -6,7 +6,7 @@
 
 - `config.ts` owns workflow-only timeout, concurrency, budgets, visibility, and saved-store settings. It diagnoses removed workflow tier settings.
 - `store.ts` safely inventories and resolves bounded saved definitions.
-- `parser.ts` validates literal metadata, deterministic syntax, and a direct `agent()`/`verify()` call.
+- `parser.ts` validates literal metadata, deterministic syntax, a direct `agent()`/`verify()` call, and obvious result-contract mistakes before agent admission.
 - `sandbox-source.ts` exposes deterministic globals and transports explicit intent/capabilities/profile over IPC.
 - `runtime.ts` owns sandbox lifecycle, RPC admission, retries, timeouts, cancellation, ledgers, structured output, recovery records, and sanitized `runSubagent()` calls.
 - `workflow-tool.ts` implements list/validate/run, source persistence, progress, final spillover, and abnormal recovery persistence.
@@ -25,7 +25,9 @@ Cross-extension imports remain limited to `../subagents/api.ts`.
 
 The workflow child starts with an empty environment, Node permission mode, no filesystem/network/child-process/worker/addon/inspector grants, and string code generation disabled. It receives only cloneable args, cwd, normalized concurrency, advisory budget snapshots, and deterministic globals. `process` is hidden and randomness/clocks are unavailable.
 
-The parser is defense in depth. It rejects imports, re-exports, dynamic import, `require`, direct privileged globals/APIs, nondeterminism, and scripts without a direct `agent()` or `verify()` call. The runtime fails closed when required Node flags are unsupported.
+The parser is defense in depth. It rejects imports, re-exports, dynamic import, `require`, direct privileged globals/APIs, nondeterminism, and scripts without a direct `agent()` or `verify()` call. Result preflight deliberately checks only straight-line top-level `run` function bodies with no value-returning statement and direct `report()` calls with statically missing gate options. Nested callback returns cannot satisfy the outer result contract. Any user binding named `report` disables helper-specific checks conservatively; spreads, computed properties, dynamic options, and complex control flow remain runtime concerns. Do not turn this into a general JavaScript type or control-flow checker. Runtime result and gate validation remain authoritative.
+
+The runtime fails closed when required Node flags are unsupported.
 
 RPC remains untrusted. Host admission reconstructs only required execution policy, retry/timeout, and validated output contracts. A first terminal event closes admission; the host then drains every admitted call before returning or throwing so counts and recovery cannot race detached work.
 
