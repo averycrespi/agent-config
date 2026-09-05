@@ -186,7 +186,55 @@ After that failed read, ask the agent to write its complete response as Markdown
 
 ## Manage Git worktrees
 
-Treat explicit requests to create, open, list, remove, or otherwise manage a Git worktree as Herdr requests. Follow the global `AGENTS.md` for checkout location and normalization policy. Use `herdr worktree` commands so linked checkouts are represented as Herdr workspaces and grouped beneath their parent repository in the sidebar; do not substitute bare `git worktree` or generic `herdr workspace` commands.
+Treat explicit requests to create, open, list, remove, or otherwise manage a Git worktree as Herdr requests. This section owns the worktree procedure. Use `herdr worktree` commands so linked checkouts are represented as Herdr workspaces and grouped beneath their parent repository in the sidebar; do not substitute bare `git worktree` or generic `herdr workspace` commands. Purpose-specific workflows may impose stricter base-commit, branch, identity, and cleanup requirements.
+
+### Discover the parent and target
+
+Require the `HERDR_ENV=1` check above before inspecting or controlling worktrees, and inspect `herdr --help` plus the installed `herdr worktree` command group. Use the installed syntax rather than guessing flags or probing mutating commands.
+
+Before creating or opening a worktree, run:
+
+```bash
+herdr worktree list --cwd <path-inside-repo>
+```
+
+Read the parent checkout and workspace identifiers from its JSON. Resolve the intended linked checkout from observed state for open or remove operations; stop on ambiguous or conflicting identities.
+
+### Choose the branch and checkout path
+
+Follow the globally available branch-naming and upstream-tracking rules. Do not assume creating or switching a branch establishes upstream tracking.
+
+Put new linked checkouts at `$HOME/worktrees/<repo-slug>/<branch-slug>`:
+
+- Derive `<repo-slug>` from the primary repository basename.
+- Derive `<branch-slug>` from the full branch name.
+- Normalize each by lowercasing, replacing every run of non-ASCII-alphanumeric characters (including `/`) with `-`, and trimming leading or trailing `-`.
+
+Inspect the filesystem and listed worktrees before creation. Never overwrite an occupied path or conflicting checkout. Opening an existing linked checkout is registration, not creation: verify that it belongs to the intended parent rather than treating its existing path as a creation collision.
+
+### Create or open
+
+Create using the installed equivalent of:
+
+```bash
+herdr worktree create --cwd <parent-checkout> --branch <branch> --path <normalized-path> --no-focus
+```
+
+This creates and opens the checkout as a Herdr workspace beneath its parent repository. Preserve focus unless the user explicitly asked to switch context.
+
+Register an existing linked checkout with `herdr worktree open` against the discovered parent repository. Inspect the installed open syntax to select the existing checkout and preserve focus; do not substitute a generic workspace creation command.
+
+Read resulting workspace identifiers from JSON, then rerun `herdr worktree list --cwd <parent-checkout>` to verify the parent, linked path, and workspace association. Use `git -C <linked-path> status -sb` to verify branch and tracking state before reporting success. If a later step fails, report retained resources and the failed step; do not perform destructive rollback as a recovery shortcut.
+
+### Remove and verify
+
+Require explicit removal authority and inspect current worktree and workspace state to identify the exact target. Preserve unrelated work and follow any stricter workflow cleanup prerequisites. Remove using the workspace ID returned by Herdr:
+
+```bash
+herdr worktree remove --workspace <workspace-id>
+```
+
+Do not use `herdr workspace close` as a substitute for checkout removal, force removal to bypass safeguards, or manually delete the checkout to recover from an error. After removal, rerun the parent's worktree list and inspect the target path and workspace inventory to confirm the linked checkout and its workspace were removed. Report any partial result or mismatch instead of claiming success.
 
 ## Safety and coordination rules
 

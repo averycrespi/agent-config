@@ -22,7 +22,7 @@ Running `make stow-pi` creates symlinks from `pi/agent/` into `~/.pi/agent/`. Ed
 
 The Herdr integration has three distinct ownership boundaries:
 
-- Repository-owned skills (`herdr` and `spin-out`) teach agents how to inspect and control Herdr sessions and manage Herdr-backed worktrees.
+- The repository-owned [`herdr` skill](agent/skills/herdr/SKILL.md#manage-git-worktrees) owns worktree-management procedures, including discovery, checkout paths, focus, removal, and verification. `spin-out` adds the purpose-specific delegation workflow.
 - The repository-owned `ask-user` extension emits balanced `herdr:blocked` events while an interactive question is open.
 - Herdr owns the generated `herdr-agent-state.ts` lifecycle bridge. It reports Pi session identity and `working`, `blocked`, and `idle` state to the current Herdr pane.
 
