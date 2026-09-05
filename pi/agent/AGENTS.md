@@ -18,6 +18,13 @@
 - Run deterministic checks such as typecheck, lint, tests, or focused scripts before dispatching LLM reviewers when practical. Pass them first or report their failures and gaps in the reviewer brief.
 - Keep verification and fix loops bounded. If deterministic checks or reviewer feedback repeat without meaningful progress, stop and report known issues with the evidence gathered.
 
+## Testing and Verification Evidence
+
+- For behavior changes, require proportionate, regression-capable automated coverage when a meaningful test seam exists. Assert observable outcomes that would fail if the behavior regressed; reject shallow tests that merely mirror implementation details or verify mocks behave as configured.
+- For bug fixes, strongly prefer reproducing the failure before repair and retaining the minimized reproduction as a regression test. If reliable reproduction or automated coverage is impractical, record why and what was tried, use the strongest available deterministic evidence, and disclose the remaining gap.
+- Before reporting completion, run focused checks for the changed behavior and relevant broader deterministic checks, including all repository-required checks. Preserve existing review and CI requirements; explicitly report failed or unrun checks and material verification gaps.
+- Choose test-first sequencing when it materially improves confidence. Skipping it requires neither user approval nor a workflow exception. Never revert correct production changes solely because their tests were written afterward.
+
 ## Session Handoffs
 
 - When continuing prior work in a repository, inspect `.handoffs/` at the repository root and read the relevant handoff before acting. Prefer a handoff named by the user; otherwise use the newest one that matches the work. Verify its claims against current workspace state.

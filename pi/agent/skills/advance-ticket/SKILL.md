@@ -41,7 +41,7 @@ Inspect the ticket, repository instructions, relevant code, and existing tests. 
 
 ### `implementing`
 
-Implement the next coherent acceptance-criterion slice. Use test-driven development for meaningful logic. Run focused checks, then create one logical commit for file-changing work. Record a checkpoint with the outcome and commit. When all acceptance criteria are implemented, progress to `verifying`.
+Implement the next coherent acceptance-criterion slice. Follow the global testing and verification evidence policy and repository-required checks. Run focused checks, then create one logical commit for file-changing work. Record a checkpoint with the outcome and commit. When all acceptance criteria are implemented, progress to `verifying`.
 
 ### `verifying`
 

@@ -129,7 +129,7 @@ Use the task attempt count at invocation start as the repair baseline. Historica
 
 Treat one plan task as one tracked implementation scope. Implement it directly in the main session without writable delegation or untracked subtasks. If it is too broad for one bounded invocation, stop as blocked and report that the Ready plan needs finer task packets.
 
-Before editing, inspect relevant source, tests, documentation, and the current staged, unstaged, and untracked workspace state. Preserve unrelated work and never modify `.design/plans/`, `.design/runs/`, `.git/`, or other protected workflow state except through the helper. Use test-driven development for meaningful logic and make only changes required by the task contract.
+Before editing, inspect relevant source, tests, documentation, and the current staged, unstaged, and untracked workspace state. Preserve unrelated work and never modify `.design/plans/`, `.design/runs/`, `.git/`, or other protected workflow state except through the helper. Follow the global testing and verification evidence policy and repository-required checks; make only changes required by the task contract.
 
 Use read-only subagents only when bounded research or diagnosis would materially reduce main-session context or provide useful isolation. Their output is advisory: inspect cited artifacts directly before relying on it. Never delegate implementation, repair, verification, acceptance evaluation, run-state mutation, evidence, decisions, commits, or external writes.
 
@@ -152,7 +152,7 @@ node <helper> evidence-add \
   --exit-code 0
 ```
 
-Other evidence kinds are `artifact`, `inspection`, and `manual`. Use `--path` for relevant repository artifacts. Task evidence may optionally name criteria when it directly proves them, but milestone gates own final criterion coverage. Never paste raw logs, secrets, large diffs, or command output into evidence. Expected red-phase test failures are not acceptance evidence.
+Other evidence kinds are `artifact`, `inspection`, and `manual`. Use `--path` for relevant repository artifacts. Task evidence may optionally name criteria when it directly proves them, but milestone gates own final criterion coverage. Never paste raw logs, secrets, large diffs, or command output into evidence. Expected failures used to validate a regression test do not prove implementation acceptance.
 
 After recording evidence, create one logical verified checkpoint commit for the completed task when it changed files. Inspect the staged diff, stage only task-owned files by name, follow repository commit-message policy, and never include run artifacts, unrelated changes, or likely secrets. Never create an empty commit and never push. If a commit hook fails, diagnose and repair the task within the bounded repair process; never bypass the hook or mark the task complete without the required checkpoint.
 

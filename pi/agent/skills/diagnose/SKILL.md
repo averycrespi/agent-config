@@ -9,7 +9,7 @@ Use a feedback-loop-first debugging discipline. Do not guess from code inspectio
 
 ## Core rule
 
-Build a fast, deterministic, agent-runnable pass/fail loop before fixing. If no loop can be built, say what was tried and ask for the missing artifact or access.
+Strongly prefer a fast, deterministic, agent-runnable pass/fail loop before fixing. If reliable reproduction is impractical, record what was tried and why, then use the strongest available deterministic evidence to test the diagnosis and repair. Ask for missing artifacts or access only when their absence prevents a justified fix; disclose any remaining verification gap.
 
 ## Process
 
@@ -28,11 +28,11 @@ Try the narrowest reliable signal that reproduces the reported symptom:
 
 Sharpen the loop until it is specific, repeatable, and as fast as practical. Assert the reported symptom, not merely "does not crash".
 
-Do not move on until the loop fails in the expected way. For nondeterministic bugs, increase reproduction rate enough to debug against.
+When reproduction is feasible, confirm the loop fails for the reported symptom. For nondeterministic bugs, try to increase the reproduction rate within bounded attempts; otherwise use the evidence-backed fallback above rather than forcing a failing run.
 
 ### 2. Reproduce and pin the symptom
 
-Run the loop and confirm:
+Run the loop when available and confirm:
 
 - it matches the user's reported failure, not a nearby failure
 - it reproduces reliably enough for diagnosis
@@ -62,24 +62,19 @@ For performance bugs, measure first: establish a baseline timing/profile/query p
 
 ### 5. Fix with a regression check
 
-If a correct test seam exists:
+Apply the smallest evidence-backed fix and add proportionate regression-capable automated coverage when a meaningful seam exists. Prefer retaining the minimized reproduction as a test, and validate that it detects the real bug pattern. Choose test-first sequencing when it improves confidence; do not require literal failing-test-before-fix ordering or revert correct code to manufacture it.
 
-1. turn the minimized repro into a failing regression test
-2. watch it fail for the right reason
-3. apply the smallest fix
-4. watch the regression test pass
-5. rerun the original feedback loop
-
-If no correct seam exists, state that explicitly. Avoid adding a shallow test that cannot fail for the real bug pattern.
+Run the regression check and original feedback loop when available. If reliable reproduction or a correct automated seam is impractical, explain why and use the strongest available deterministic evidence. Avoid adding a shallow test that cannot detect the real bug pattern.
 
 ### 6. Cleanup and report
 
 Before declaring done:
 
-- rerun the original repro loop and confirm it no longer fails
-- run the regression check, or document why no correct seam exists
+- rerun the original repro loop when available and confirm the outcome, or document the fallback evidence and remaining uncertainty
+- run the regression check, or document why reliable automated coverage is impractical
+- run relevant broader deterministic checks and all repository-required checks; disclose failed or unrun checks
 - remove `[DEBUG-...]` instrumentation
 - delete throwaway harnesses or move them only if they are intentionally retained
-- report the winning hypothesis and the evidence that proved it
+- report the supported diagnosis, verification evidence, and any unresolved uncertainty
 
 If the diagnosis reveals architectural friction, such as no test seam or tangled callers, recommend a follow-up after the fix is verified.
