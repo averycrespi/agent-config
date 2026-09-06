@@ -69,13 +69,17 @@ async function init(f) {
   return ticketState({ ...f.input, action: "init" });
 }
 async function read(f) {
-  return ticketState({ cwd: f.cwd, ticketId, action: "status" });
+  return ticketState({
+    cwd: f.cwd,
+    ticketId: f.input.ticketId,
+    action: "status",
+  });
 }
 async function mutate(f, request) {
   const s = await read(f);
   return ticketState({
     cwd: f.cwd,
-    ticketId,
+    ticketId: f.input.ticketId,
     runId: s.runId,
     owner: s.owner,
     expectedRevision: s.revision,
@@ -84,7 +88,11 @@ async function mutate(f, request) {
   });
 }
 async function snap(f) {
-  return ticketState({ cwd: f.cwd, ticketId, action: "snapshot" });
+  return ticketState({
+    cwd: f.cwd,
+    ticketId: f.input.ticketId,
+    action: "snapshot",
+  });
 }
 async function checks(f) {
   return mutate(f, {
@@ -1749,5 +1757,701 @@ test("malformed scanned metadata digest is rejected atomically", async (t) => {
       metadataHash: `sha256:${"0".repeat(64)}`,
     }),
     /scanned metadata/,
+  );
+});
+
+async function publishedFixture(f, complete = false) {
+  await init(f);
+  await checks(f);
+  await safety(f);
+  await mutate(f, {
+    action: "publication",
+    pr: await pr(f),
+    confirmed: true,
+    metadataHash,
+  });
+  await review(f, [], [], complete);
+  await mutate(f, {
+    action: "evidence",
+    kind: "ci",
+    fingerprint: (await snap(f)).fingerprint,
+    head: (await snap(f)).head,
+    passed: true,
+    summary: "27 exact-head CI checks passed",
+  });
+  if (complete)
+    await mutate(f, {
+      action: "handoff",
+      pr: await pr(f, false),
+      confirmed: true,
+      planeState: "Review",
+      summary: "Reviewed delivery",
+    });
+}
+async function acceptanceRequest(f, waivedPrerequisites, successor) {
+  const s = await read(f);
+  return {
+    action: "accept_merged",
+    acceptance: {
+      source: "user",
+      instruction: "Accept the merged review exception; settle this delivery",
+      reference: "current user message",
+      ticketId: s.ticketId,
+      runId: s.runId,
+      acceptMerged: true,
+      waivedPrerequisites,
+    },
+    pr: { ...(await pr(f)), merged: true },
+    mergeConfirmed: true,
+    mergeEvidence: "Broker reread exact merged source head and PR identity",
+    noLiveWriter: true,
+    ...(successor ? { successor } : {}),
+  };
+}
+async function settleAccepted(f) {
+  const s = await read(f);
+  const observations = {
+    mergeConfirmed: true,
+    mergedHead: s.humanAcceptance.pr.head,
+    prUrl: s.humanAcceptance.pr.url,
+  };
+  await mutate(f, {
+    action: "external",
+    operation: "settle",
+    key: "plane-done",
+    intent: "Set exact ticket Done",
+    outcome: "pending",
+    summary: "Reread Plane before effect",
+    ...observations,
+  });
+  await mutate(f, {
+    action: "external",
+    operation: "settle",
+    key: "plane-done",
+    intent: "Set exact ticket Done",
+    outcome: "confirmed",
+    summary: "Reread Plane Done",
+    ...observations,
+  });
+  return mutate(f, {
+    action: "settle",
+    confirmed: true,
+    planeState: "Done",
+    ...observations,
+  });
+}
+
+test("human acceptance preserves incomplete review, open findings and consumed repairs without reopening publication", async (t) => {
+  const f = await fixture(t, true);
+  await publishedFixture(f);
+  await review(f, [blocker()], [], true);
+  await mutate(f, {
+    action: "begin_repair",
+    repairPlan: "Retained historical repair",
+  });
+  await checks(f);
+  await review(f, [], [], false);
+  await mutate(f, {
+    action: "checkpoint",
+    status: "blocked",
+    blocker: "Historical review qualifications",
+    progress: "Human merged",
+    nextAction: "Reconcile disposition",
+  });
+  const before = await read(f);
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "settle" }),
+    /not authorized/,
+  );
+  const request = await acceptanceRequest(f, [
+    "completed-delivery",
+    "independent-review",
+  ]);
+  const accepted = await mutate(f, request);
+  for (const field of [
+    "status",
+    "snapshot",
+    "evidence",
+    "review",
+    "findings",
+    "repairCount",
+    "repairs",
+    "pr",
+    "contract",
+    "authorization",
+    "externalWrites",
+  ])
+    assert.deepEqual(accepted[field], before[field], field);
+  assert.equal(accepted.review.complete, false);
+  assert.equal(accepted.findings[0].disposition, "open");
+  assert.equal(accepted.repairCount, 1);
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "promote" }),
+    /settlement\/cleanup only/,
+  );
+  await assert.rejects(mutate(f, request), /already disposed/);
+  await assert.rejects(
+    mutate(f, {
+      action: "settle",
+      mergeConfirmed: true,
+      mergedHead: "a".repeat(40),
+      prUrl: before.pr.url,
+      confirmed: true,
+      planeState: "Done",
+    }),
+    /exact confirmed merged/,
+  );
+  const done = await settleAccepted(f);
+  assert.equal(done.status, "done");
+  for (const field of [
+    "review",
+    "findings",
+    "repairs",
+    "evidence",
+    "pr",
+    "contract",
+  ])
+    assert.deepEqual(done[field], before[field], field);
+});
+
+test("missing, external, ambiguous and mismatched acceptance fail atomically", async (t) => {
+  const f = await fixture(t, true);
+  await publishedFixture(f);
+  const valid = await acceptanceRequest(f, [
+    "completed-delivery",
+    "independent-review",
+  ]);
+  const bytes = await readFile(f.file, "utf8");
+  for (const change of [
+    { acceptance: undefined },
+    { acceptance: { ...valid.acceptance, source: "ticket" } },
+    { acceptance: { ...valid.acceptance, instruction: "" } },
+    { acceptance: { ...valid.acceptance, reference: "" } },
+    { acceptance: { ...valid.acceptance, acceptMerged: false } },
+    { acceptance: { ...valid.acceptance, runId: "other" } },
+    {
+      acceptance: {
+        ...valid.acceptance,
+        ticketId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      },
+    },
+    { acceptance: { ...valid.acceptance, waivedPrerequisites: [] } },
+    { pr: { ...valid.pr, url: "https://github.com/example/project/pull/9" } },
+    { pr: { ...valid.pr, head: "a".repeat(40) } },
+    { pr: { ...valid.pr, base: "other" } },
+    { mergeConfirmed: false },
+    { noLiveWriter: false },
+  ]) {
+    await assert.rejects(mutate(f, { ...valid, ...change }));
+    assert.equal(await readFile(f.file, "utf8"), bytes);
+  }
+});
+
+async function sharedMergedFixture(t) {
+  const first = await fixture(t, true);
+  first.input.authorization.operations.push("settle", "cleanup");
+  await publishedFixture(first, true);
+  const prior = await read(first);
+  await writeFile(join(first.cwd, "code.js"), "export const value = 2;\n");
+  git(first.cwd, "add", "code.js");
+  git(first.cwd, "commit", "-qm", "fix: authorized successor");
+  const secondId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const second = {
+    ...first,
+    file: join(first.cwd, ".pi", "tickets", secondId, "state.json"),
+    input: {
+      ...first.input,
+      ticketId: secondId,
+      identifier: "ABC-2",
+      runId: "run-2",
+      owner: "owner-2",
+    },
+  };
+  await publishedFixture(second);
+  await mutate(second, {
+    action: "checkpoint",
+    status: "blocked",
+    blocker: "Cleanup failed before settlement",
+    progress: "Merged; Plane Done observed",
+    nextAction: "Record acceptance",
+  });
+  return { first, second, prior };
+}
+
+test("shared PR supersession binds successor identity without rebinding old verification or inventing transitions", async (t) => {
+  const { first, second, prior } = await sharedMergedFixture(t);
+  await assert.rejects(
+    mutate(first, {
+      action: "gate",
+      operation: "settle",
+      mergeConfirmed: true,
+      mergedHead: (await snap(first)).head,
+    }),
+    /passing required checks/,
+  );
+  const successor = {
+    ticketId: second.input.ticketId,
+    runId: second.input.runId,
+    priorHead: prior.pr.head,
+    mergedHead: (await snap(first)).head,
+    authorizationEvidence:
+      "User explicitly authorized successor on the same PR",
+  };
+  const request = await acceptanceRequest(
+    first,
+    [
+      "required-checks",
+      "independent-review",
+      "published-head",
+      "delivery-snapshot",
+    ],
+    successor,
+  );
+  for (const change of [
+    { successor: undefined },
+    { successor: { ...successor, runId: "wrong" } },
+    { successor: { ...successor, authorizationEvidence: "" } },
+  ])
+    await assert.rejects(mutate(first, { ...request, ...change }));
+  const accepted = await mutate(first, request);
+  assert.deepEqual(accepted.pr, prior.pr);
+  assert.deepEqual(accepted.evidence, prior.evidence);
+  assert.deepEqual(accepted.snapshot, prior.snapshot);
+  assert.equal(accepted.status, "awaiting_human");
+  await settleAccepted(first);
+  const secondBefore = await read(second);
+  await mutate(
+    second,
+    await acceptanceRequest(second, [
+      "completed-delivery",
+      "independent-review",
+    ]),
+  );
+  await settleAccepted(second);
+  assert.deepEqual((await read(second)).review, secondBefore.review);
+  assert.equal((await read(first)).status, "done");
+  assert.equal((await read(second)).status, "done");
+});
+
+async function cleanupRequest(t, fixtures) {
+  const archiveDir = await mkdtemp(join(tmpdir(), "ticket-cleanup-"));
+  t.after(() => rm(archiveDir, { recursive: true, force: true }));
+  return {
+    action: "prepare_cleanup",
+    archiveDir,
+    cleanupId: "cleanup-1",
+    key: "remove-shared-checkout",
+    intent:
+      "Remove exact fixture checkout/workspace without force; retain branch",
+    cleanupAuthorization: {
+      source: "user",
+      removeCheckout: true,
+      instruction: "Cleanup these settled tickets",
+      reference: "fresh user message",
+    },
+    tickets: await Promise.all(
+      fixtures.map(async (f) => {
+        const s = await read(f);
+        return {
+          ticketId: s.ticketId,
+          runId: s.runId,
+          owner: s.owner,
+          expectedRevision: s.revision,
+          contractHash: `sha256:${createHash("sha256").update(s.contract).digest("hex")}`,
+          planeState: "Done",
+        };
+      }),
+    ),
+    noLiveWriter: true,
+    noUnpushedWork: true,
+    prDispositionKnown: true,
+    noUniqueIgnoredWork: true,
+    evidencePreserved: true,
+    safetyEvidence:
+      "Fresh process inventory, clean Git, retained merged head, no unique ignored data, all PR/Plane dispositions reread",
+  };
+}
+function journalRequest(j, archiveDir, action) {
+  return {
+    action,
+    archiveDir,
+    cleanupId: j.cleanupId,
+    expectedRevision: j.revision,
+    key: j.key,
+    intent: j.intent,
+    identities: j.records.map((s) => ({
+      ticketId: s.ticketId,
+      runId: s.runId,
+      owner: s.owner,
+    })),
+  };
+}
+async function settledLocal(t) {
+  const f = await fixture(t);
+  f.input.authorization.operations.push("settle", "cleanup");
+  await init(f);
+  await checks(f);
+  await mutate(f, {
+    action: "handoff",
+    planeState: "In Progress",
+    summary: "Complete",
+  });
+  await mutate(f, { action: "settle", planeState: "Done", confirmed: true });
+  return f;
+}
+
+test("durable cleanup preserves every shared ticket and confirms after source checkout disappears", async (t) => {
+  const { first, second, prior } = await sharedMergedFixture(t);
+  await mutate(
+    first,
+    await acceptanceRequest(
+      first,
+      [
+        "required-checks",
+        "independent-review",
+        "published-head",
+        "delivery-snapshot",
+      ],
+      {
+        ticketId: second.input.ticketId,
+        runId: second.input.runId,
+        priorHead: prior.pr.head,
+        mergedHead: (await snap(first)).head,
+        authorizationEvidence: "Explicit successor authorization",
+      },
+    ),
+  );
+  await settleAccepted(first);
+  await mutate(
+    second,
+    await acceptanceRequest(second, [
+      "completed-delivery",
+      "independent-review",
+    ]),
+  );
+  await settleAccepted(second);
+  const request = await cleanupRequest(t, [first, second]);
+  const handoff = join(
+    first.cwd,
+    ".pi",
+    "tickets",
+    first.input.ticketId,
+    "handoff.md",
+  );
+  await writeFile(handoff, "Retained recovery evidence\n");
+  const bytes = await readFile(first.file);
+  await assert.rejects(
+    mutate(first, { ...request, tickets: request.tickets.slice(0, 1) }),
+    /identity mismatch/,
+  );
+  const j = await mutate(first, request);
+  assert.equal(j.records.length, 2);
+  assert.deepEqual(await readFile(first.file), bytes);
+  const handoffFile = j.files.find((file) => file.path.endsWith("handoff.md"));
+  assert.equal(
+    await readFile(
+      join(request.archiveDir, "evidence", handoffFile.digest.slice(7)),
+      "utf8",
+    ),
+    "Retained recovery evidence\n",
+  );
+  await assert.rejects(mutate(first, request), /reread before retry/);
+  await assert.rejects(
+    ticketState({
+      ...journalRequest(j, request.archiveDir, "cleanup_confirm"),
+      removed: true,
+      inventoryEvidence: "Not removed",
+    }),
+    /checkout absence/,
+  );
+  // Simulate removal only inside an isolated temporary fixture, never a live worktree.
+  await rm(first.cwd, { recursive: true });
+  const reread = await ticketState({
+    action: "cleanup_status",
+    archiveDir: request.archiveDir,
+    cleanupId: j.cleanupId,
+  });
+  assert.equal(reread.outcome, "pending");
+  const confirmed = await ticketState({
+    ...journalRequest(reread, request.archiveDir, "cleanup_confirm"),
+    removed: true,
+    inventoryEvidence:
+      "Fresh inventory has no fixture workspace or worktree; path absent",
+  });
+  assert.equal(confirmed.outcome, "confirmed");
+  assert.deepEqual(confirmed.files, j.files);
+  assert.equal(
+    (
+      await ticketState({
+        ...journalRequest(confirmed, request.archiveDir, "cleanup_confirm"),
+        removed: true,
+        inventoryEvidence: "Reread already confirmed removal",
+      })
+    ).revision,
+    confirmed.revision,
+  );
+});
+
+test("cleanup refuses live, dirty, unique, unpreserved, in-progress and mismatched work; retry is bounded and reread first", async (t) => {
+  const f = await settledLocal(t);
+  const request = await cleanupRequest(t, [f]);
+  for (const field of [
+    "noLiveWriter",
+    "noUnpushedWork",
+    "prDispositionKnown",
+    "noUniqueIgnoredWork",
+    "evidencePreserved",
+  ])
+    await assert.rejects(
+      mutate(f, { ...request, [field]: false }),
+      /unpreserved evidence/,
+    );
+  await assert.rejects(
+    mutate(f, {
+      ...request,
+      cleanupAuthorization: {
+        ...request.cleanupAuthorization,
+        source: "ticket",
+      },
+    }),
+    /user cleanup/,
+  );
+  await assert.rejects(
+    mutate(f, { ...request, archiveDir: join(f.cwd, ".pi") }),
+    /survive outside/,
+  );
+  await assert.rejects(
+    mutate(f, {
+      ...request,
+      tickets: [{ ...request.tickets[0], runId: "wrong" }],
+    }),
+    /identity mismatch/,
+  );
+  await writeFile(join(f.cwd, "unsaved"), "unique");
+  await assert.rejects(mutate(f, request), /clean checkout/);
+  await rm(join(f.cwd, "unsaved"));
+  await writeFile(join(f.cwd, ".git", "MERGE_HEAD"), (await snap(f)).head);
+  await assert.rejects(mutate(f, request), /in-progress Git/);
+  await rm(join(f.cwd, ".git", "MERGE_HEAD"));
+  const j = await mutate(f, request);
+  const retry = {
+    ...request,
+    ...journalRequest(j, request.archiveDir, "cleanup_retry"),
+    effectAbsent: true,
+    inventoryEvidence:
+      "Fresh inventory proves exact checkout remains; no removal happened",
+  };
+  await assert.rejects(
+    ticketState({ ...retry, effectAbsent: false }),
+    /proven absence/,
+  );
+  await assert.rejects(
+    ticketState({ ...retry, noLiveWriter: false }),
+    /unpreserved evidence/,
+  );
+  await assert.rejects(
+    ticketState({ ...retry, identities: [] }),
+    /CAS or ticket/,
+  );
+  await writeFile(
+    join(f.cwd, ".pi", "tickets", ticketId, "new-evidence"),
+    "not yet archived",
+  );
+  await assert.rejects(ticketState(retry), /state\/evidence changed/);
+  await rm(join(f.cwd, ".pi", "tickets", ticketId, "new-evidence"));
+  const retried = await ticketState(retry);
+  assert.equal(retried.retries, 1);
+  await assert.rejects(ticketState(retry), /CAS/);
+  await assert.rejects(
+    ticketState({ ...retry, expectedRevision: retried.revision }),
+    /unused retry/,
+  );
+});
+
+test("already removed archived pending cleanup is adopted without modifying old state or inventing a receipt", async (t) => {
+  const f = await settledLocal(t);
+  const request = await cleanupRequest(t, [f]);
+  const sourceDirectory = await mkdtemp(join(tmpdir(), "old-cleanup-archive-"));
+  t.after(() => rm(sourceDirectory, { recursive: true, force: true }));
+  const state = await read(f);
+  // Sanitized legacy helper record: removal preceded durable journal support.
+  state.externalWrites.push({
+    operation: "cleanup",
+    key: "old-removal",
+    intent: "Remove exact old checkout, retain branch",
+    outcome: "pending",
+    evidence: "Original safety gates passed",
+  });
+  const bytes = JSON.stringify(state);
+  await writeFile(join(sourceDirectory, "state.json"), bytes);
+  await writeFile(
+    join(sourceDirectory, "handoff.md"),
+    "Byte-preserved handoff",
+  );
+  const adopt = {
+    action: "adopt_cleanup",
+    archiveDir: request.archiveDir,
+    cleanupId: "adopt-1",
+    sourceDirectory,
+    ticketId,
+    runId: state.runId,
+    owner: state.owner,
+    contract: state.contract,
+    expectedRevision: state.revision,
+    sourceDigest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    key: "old-removal",
+    intent: "Remove exact old checkout, retain branch",
+    cleanupAuthorization: request.cleanupAuthorization,
+    planeState: "Done",
+    prDispositionKnown: true,
+    recoveryEvidence:
+      "Exact archived state/handoff bytes and old removal receipt verified against fresh inventory",
+  };
+  await assert.rejects(ticketState(adopt), /already removed/);
+  await rm(f.cwd, { recursive: true });
+  await assert.rejects(
+    ticketState({ ...adopt, sourceDigest: `sha256:${"0".repeat(64)}` }),
+    /digest mismatch/,
+  );
+  await assert.rejects(
+    ticketState({ ...adopt, key: "different" }),
+    /original cleanup intent/,
+  );
+  const journal = await ticketState(adopt);
+  assert.equal(journal.outcome, "pending");
+  assert.equal(journal.recovered, true);
+  await assert.rejects(
+    ticketState({
+      ...journalRequest(journal, request.archiveDir, "cleanup_retry"),
+      effectAbsent: true,
+    }),
+    /pending original intent/,
+  );
+  const confirmed = await ticketState({
+    ...journalRequest(journal, request.archiveDir, "cleanup_confirm"),
+    removed: true,
+    inventoryEvidence:
+      "Authoritative inventory confirms exact old checkout removed, branch retained",
+  });
+  assert.equal(confirmed.outcome, "confirmed");
+  assert.equal(
+    await readFile(join(sourceDirectory, "state.json"), "utf8"),
+    bytes,
+  );
+  const retainedState = confirmed.files.find(
+    (file) => file.path === "state.json",
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(
+        join(request.archiveDir, "evidence", retainedState.digest.slice(7)),
+        "utf8",
+      ),
+    ).externalWrites[0].outcome,
+    "pending",
+  );
+});
+
+test("CLI cleanup streams aggregate evidence and uses compact scope claims for near-limit multi-ticket contracts", async (t) => {
+  const f = await fixture(t);
+  f.input.contract = "x".repeat(100000);
+  f.input.authorization.operations.push("settle", "cleanup");
+  const fixtures = [];
+  for (const uuid of [
+    ticketId,
+    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+  ]) {
+    const member = {
+      ...f,
+      input: {
+        ...f.input,
+        ticketId: uuid,
+        runId: `run-${fixtures.length}`,
+        owner: `owner-${fixtures.length}`,
+      },
+    };
+    await init(member);
+    await checks(member);
+    await mutate(member, {
+      action: "handoff",
+      planeState: "In Progress",
+      summary: "Complete",
+    });
+    await mutate(member, {
+      action: "settle",
+      confirmed: true,
+      planeState: "Done",
+    });
+    fixtures.push(member);
+  }
+  for (let i = 0; i < 24; i++)
+    await writeFile(
+      join(f.cwd, ".pi", "tickets", ticketId, `evidence-${i}`),
+      `${i}`.padEnd(250000, "x"),
+    );
+  const request = await cleanupRequest(t, fixtures);
+  const s = await read(fixtures[0]);
+  const cli = (input) => {
+    const result = spawnSync(
+      process.execPath,
+      [join(import.meta.dirname, "ticket-state.js")],
+      { input: JSON.stringify(input), encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return JSON.parse(result.stdout).result;
+  };
+  const journal = cli({
+    ...request,
+    cwd: f.cwd,
+    ticketId,
+    runId: s.runId,
+    owner: s.owner,
+    expectedRevision: s.revision,
+    contract: s.contract,
+  });
+  assert.equal(journal.records.length, 3);
+  assert.ok(
+    journal.files.reduce((total, file) => total + file.size, 0) >
+      4 * 1024 * 1024,
+  );
+  assert.ok(Buffer.byteLength(JSON.stringify(journal)) < 30000);
+  for (const file of journal.files) {
+    const retained = await readFile(
+      join(request.archiveDir, "evidence", file.digest.slice(7)),
+    );
+    assert.deepEqual(
+      retained,
+      await readFile(join(f.cwd, ".pi", "tickets", file.path)),
+    );
+  }
+  const retried = cli({
+    ...request,
+    ...journalRequest(journal, request.archiveDir, "cleanup_retry"),
+    effectAbsent: true,
+    inventoryEvidence:
+      "Exact fixture still present; effect absent; safety rechecked",
+  });
+  assert.equal(retried.retries, 1);
+  await rm(f.cwd, { recursive: true });
+  const confirmed = cli({
+    ...journalRequest(retried, request.archiveDir, "cleanup_confirm"),
+    removed: true,
+    inventoryEvidence: "Reread exact fixture removal after interruption",
+  });
+  assert.equal(confirmed.outcome, "confirmed");
+  const blob = join(
+    request.archiveDir,
+    "evidence",
+    confirmed.files[0].digest.slice(7),
+  );
+  await writeFile(blob, "corrupted");
+  await assert.rejects(
+    ticketState({
+      action: "cleanup_status",
+      archiveDir: request.archiveDir,
+      cleanupId: confirmed.cleanupId,
+    }),
+    /digest mismatch/,
   );
 });

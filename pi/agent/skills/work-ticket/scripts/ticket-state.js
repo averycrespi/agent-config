@@ -396,6 +396,7 @@ function invalidate(s, current) {
   s.snapshot = current;
 }
 function permitted(s, op) {
+  if (op === "settle" && s.humanAcceptance) return;
   requireThat(
     s.authorization.operations.includes(op),
     `${op} is not authorized`,
@@ -471,7 +472,17 @@ function gate(s, operation, observations = {}) {
     );
   } else {
     permitted(s, operation);
-    if (operation === "settle") {
+    if (operation === "settle" && s.humanAcceptance) {
+      requireThat(
+        s.status !== "done" &&
+          s.status !== "canceled" &&
+          observations.mergeConfirmed === true &&
+          observations.mergedHead === s.humanAcceptance.pr.head &&
+          observations.prUrl === s.humanAcceptance.pr.url &&
+          observations.currentHead === s.humanAcceptance.pr.head,
+        "accepted settlement requires the exact confirmed merged PR/head",
+      );
+    } else if (operation === "settle") {
       requireThat(
         ["local_complete", "awaiting_human"].includes(s.status),
         "settlement requires completed delivery before external writes",
@@ -508,6 +519,108 @@ function gate(s, operation, observations = {}) {
     }
   }
 }
+async function acceptMerged(p, s, r, current) {
+  requireThat(
+    !s.humanAcceptance && !["done", "canceled"].includes(s.status),
+    "delivery already disposed",
+  );
+  const a = r.acceptance;
+  requireThat(
+    a?.source === "user" &&
+      a.ticketId === s.ticketId &&
+      a.runId === s.runId &&
+      a.acceptMerged === true,
+    "explicit applicable user acceptance with ticket/run identity is required",
+  );
+  text(a.instruction, "actual user instruction");
+  text(a.reference, "user instruction reference");
+  requireThat(
+    r.noLiveWriter === true,
+    "acceptance reconciliation requires no live writer",
+  );
+  const pr = r.pr;
+  requireThat(
+    s.pr &&
+      pr &&
+      pr.url === s.pr.url &&
+      pr.url.startsWith(
+        `https://github.com/${s.assignment.repository}/pull/`,
+      ) &&
+      /^\d+$/.test(pr.url.split("/").at(-1)) &&
+      pr.branch === s.assignment.branch &&
+      pr.base === s.assignment.targetBranch &&
+      SHA.test(pr.head) &&
+      pr.head === current.head &&
+      pr.merged === true &&
+      r.mergeConfirmed === true,
+    "acceptance requires confirmed merged PR/source/base/current-head identity",
+  );
+  text(r.mergeEvidence, "reread merge evidence");
+  if (s.pr.head !== pr.head) {
+    const successor = r.successor;
+    requireThat(
+      successor &&
+        successor.ticketId !== s.ticketId &&
+        successor.priorHead === s.pr.head &&
+        successor.mergedHead === pr.head,
+      "superseding head requires explicit successor relationship",
+    );
+    const other = await readState(
+      join(p.store, successor.ticketId, "state.json"),
+      successor.ticketId,
+    );
+    requireThat(
+      other.runId === successor.runId &&
+        other.assignment.root === p.root &&
+        other.assignment.repository === s.assignment.repository &&
+        other.assignment.branch === pr.branch &&
+        other.assignment.targetBranch === pr.base &&
+        other.pr?.url === pr.url &&
+        other.pr.head === pr.head,
+      "successor ticket/run/PR identity mismatch",
+    );
+    text(successor.authorizationEvidence, "explicit successor authorization");
+    git(p.root, "merge-base", "--is-ancestor", s.pr.head, pr.head);
+  } else
+    requireThat(r.successor === undefined, "unexpected successor relationship");
+  const waived = [];
+  if (!["local_complete", "awaiting_human"].includes(s.status))
+    waived.push("completed-delivery");
+  if (
+    !(
+      s.evidence.verification?.passed === true &&
+      s.evidence.verification.fingerprint === current.fingerprint
+    )
+  )
+    waived.push("required-checks");
+  if (
+    !(
+      s.review?.complete &&
+      !s.review.stale &&
+      s.review.fingerprint === current.fingerprint &&
+      !openBlockers(s).length
+    )
+  )
+    waived.push("independent-review");
+  if (s.pr.head !== pr.head) waived.push("published-head");
+  if (s.snapshot.fingerprint !== current.fingerprint)
+    waived.push("delivery-snapshot");
+  requireThat(
+    Array.isArray(a.waivedPrerequisites) &&
+      JSON.stringify([...a.waivedPrerequisites].sort()) ===
+        JSON.stringify(waived.sort()),
+    `explicit acceptance must name exactly the waived prerequisites: ${waived.join(", ")}`,
+  );
+  s.humanAcceptance = {
+    authorization: structuredClone(a),
+    pr: structuredClone(pr),
+    mergeEvidence: r.mergeEvidence,
+    successor: r.successor ? structuredClone(r.successor) : null,
+    priorDelivery: deliveryArchive(s),
+    observedSnapshot: current,
+  };
+}
+
 function apply(s, r) {
   switch (r.action) {
     case "checkpoint":
@@ -787,6 +900,10 @@ function apply(s, r) {
         "invalid external operation",
       );
       gate(s, r.operation, r);
+      requireThat(
+        r.operation !== "cleanup",
+        "use prepare_cleanup and durable cleanup confirmation",
+      );
       const key = text(r.key, "idempotency key", 200);
       const prior = s.externalWrites.find((w) => w.key === key);
       const intent = text(r.intent, "external intent");
@@ -859,7 +976,8 @@ function apply(s, r) {
         "settlement requires confirmed Plane Done",
       );
       requireThat(
-        s.status === "local_complete" ||
+        s.humanAcceptance ||
+          s.status === "local_complete" ||
           (s.status === "awaiting_human" &&
             r.mergedHead === s.pr?.head &&
             s.review?.fingerprint === s.snapshot.fingerprint),
@@ -883,7 +1001,394 @@ function apply(s, r) {
   }
 }
 
+const JOURNAL_LIMIT = 4 * 1024 * 1024;
+function digest(bytes) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+async function absent(path) {
+  try {
+    await lstat(path);
+    return false;
+  } catch (error) {
+    if (error.code === "ENOENT") return true;
+    throw error;
+  }
+}
+async function evidenceBlob(archive, hash) {
+  requireThat(HASH.test(hash), "invalid cleanup evidence digest");
+  await directory(join(archive, "evidence"), false);
+  const file = join(archive, "evidence", hash.slice(7));
+  const stat = await lstat(file);
+  requireThat(
+    stat.isFile() && !stat.isSymbolicLink() && stat.size <= LIMIT,
+    "invalid cleanup evidence file",
+  );
+  const bytes = await readFile(file);
+  requireThat(digest(bytes) === hash, "cleanup evidence digest mismatch");
+  return bytes;
+}
+function cleanupIdentity(s) {
+  return {
+    ticketId: s.ticketId,
+    runId: s.runId,
+    owner: s.owner,
+    revision: s.revision,
+    contractHash: digest(s.contract),
+    status: s.status,
+    assignment: s.assignment,
+  };
+}
+async function archiveFiles(root, archive, prefix = "") {
+  const files = [];
+  for (const entry of await readdir(join(root, prefix), {
+    withFileTypes: true,
+  })) {
+    if (!prefix && entry.name === ".writer.lock") continue;
+    const name = join(prefix, entry.name);
+    requireThat(!entry.isSymbolicLink(), "evidence archive refuses symlinks");
+    if (entry.isDirectory())
+      files.push(...(await archiveFiles(root, archive, name)));
+    else {
+      const stat = await lstat(join(root, name));
+      requireThat(
+        stat.isFile() && stat.size <= LIMIT,
+        "evidence must be bounded regular files",
+      );
+      const bytes = await readFile(join(root, name));
+      const hash = digest(bytes);
+      if (archive) {
+        await directory(join(archive, "evidence"), true);
+        const target = join(archive, "evidence", hash.slice(7));
+        if (await absent(target)) {
+          const temporary = `${target}.${randomUUID()}.tmp`;
+          await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
+          try {
+            await rename(temporary, target);
+          } finally {
+            await rm(temporary, { force: true });
+          }
+        }
+        requireThat(
+          (await evidenceBlob(archive, hash)).equals(bytes),
+          "cleanup evidence copy mismatch",
+        );
+      }
+      files.push({ path: name, size: bytes.length, digest: hash });
+    }
+    requireThat(
+      Buffer.byteLength(JSON.stringify(files)) <= JOURNAL_LIMIT,
+      "cleanup evidence too large",
+    );
+  }
+  return files;
+}
+async function journalPaths(r, sourceRoot) {
+  requireThat(
+    typeof r.archiveDir === "string" && resolve(r.archiveDir) === r.archiveDir,
+    "absolute durable archiveDir required",
+  );
+  const identity = await directory(r.archiveDir, false);
+  requireThat(
+    r.archiveDir !== sourceRoot && !r.archiveDir.startsWith(`${sourceRoot}/`),
+    "cleanup journal must survive outside the removed checkout",
+  );
+  return {
+    root: r.archiveDir,
+    store: r.archiveDir,
+    file: join(r.archiveDir, "cleanup.json"),
+    identities: [identity],
+  };
+}
+async function writeJournal(p, journal) {
+  const content = `${JSON.stringify(journal, null, 2)}\n`;
+  requireThat(
+    Buffer.byteLength(content) <= JOURNAL_LIMIT,
+    "cleanup journal too large",
+  );
+  await assertPaths(p);
+  const temporary = `${p.file}.${randomUUID()}.tmp`;
+  await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
+  try {
+    await assertPaths(p);
+    await rename(temporary, p.file);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+function cleanupAuthority(r) {
+  const a = r.cleanupAuthorization;
+  requireThat(
+    a?.source === "user" && a.removeCheckout === true,
+    "separate explicit user cleanup authorization required",
+  );
+  text(a.instruction, "cleanup user instruction");
+  text(a.reference, "cleanup instruction reference");
+  return structuredClone(a);
+}
+async function cleanupRecords(p, r, current) {
+  requireThat(
+    r.noLiveWriter === true &&
+      r.noUnpushedWork === true &&
+      r.prDispositionKnown === true &&
+      r.noUniqueIgnoredWork === true &&
+      r.evidencePreserved === true,
+    "cleanup requires no live writer, dirty/unique work or unpreserved evidence",
+  );
+  text(
+    r.safetyEvidence,
+    "fresh process/Git/remote/PR/Plane and ignored-file observations",
+  );
+  requireThat(current.clean, "cleanup requires clean checkout");
+  for (const operation of [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+    "rebase-merge",
+    "rebase-apply",
+    "BISECT_LOG",
+  ]) {
+    requireThat(
+      await absent(
+        resolve(
+          p.root,
+          git(p.root, "rev-parse", "--git-path", operation).trim(),
+        ),
+      ),
+      "cleanup refuses an in-progress Git operation",
+    );
+  }
+  requireThat(
+    Array.isArray(r.tickets) && r.tickets.length > 0,
+    "all retained ticket identities required",
+  );
+  const records = [];
+  for (const entry of await readdir(p.store, { withFileTypes: true })) {
+    if (entry.name === ".writer.lock") continue;
+    requireThat(
+      entry.isDirectory() &&
+        !entry.isSymbolicLink() &&
+        TICKET_ID.test(entry.name),
+      "unexpected ticket store entry",
+    );
+    if (!(await readdir(join(p.store, entry.name))).length) continue;
+    const s = await readState(
+      join(p.store, entry.name, "state.json"),
+      entry.name,
+    );
+    const claim = r.tickets.find((item) => item.ticketId === s.ticketId);
+    requireThat(
+      claim &&
+        claim.runId === s.runId &&
+        claim.owner === s.owner &&
+        claim.expectedRevision === s.revision &&
+        claim.contractHash === digest(s.contract) &&
+        s.assignment.root === p.root &&
+        s.assignment.branch === current.branch,
+      "cleanup ticket/run/owner/revision/checkout identity mismatch",
+    );
+    gate({ ...s, snapshot: current }, "cleanup", {
+      ...r,
+      planeState: claim.planeState,
+    });
+    records.push(cleanupIdentity(s));
+  }
+  requireThat(
+    records.length === r.tickets.length,
+    "cleanup must cover each retained ticket exactly once",
+  );
+  return records;
+}
+async function prepareCleanup(p, r, current) {
+  const authorization = cleanupAuthority(r);
+  const records = await cleanupRecords(p, r, current);
+  const archive = await journalPaths(r, p.root);
+  return locked(archive, async () => {
+    requireThat(
+      await absent(archive.file),
+      "cleanup journal exists; reread before retry",
+    );
+    const files = await archiveFiles(p.store, archive.root);
+    const journal = {
+      schemaVersion: 1,
+      cleanupId: id(r.cleanupId),
+      revision: 0,
+      outcome: "pending",
+      retries: 0,
+      sourceRoot: p.root,
+      sourceStore: p.store,
+      snapshot: current,
+      authorization,
+      key: text(r.key, "cleanup idempotency key", 200),
+      intent: text(
+        r.intent,
+        "exact cleanup intent (checkout/workspace; retain branch)",
+      ),
+      safetyEvidence: r.safetyEvidence,
+      records,
+      files,
+      recovered: false,
+    };
+    await writeJournal(archive, journal);
+    return journal;
+  });
+}
+async function cleanupJournal(r) {
+  const p = await journalPaths(r, "\0");
+  return locked(p, async () => {
+    if (r.action === "adopt_cleanup") {
+      requireThat(
+        await absent(p.file),
+        "cleanup journal exists; reread before retry",
+      );
+      const authorization = cleanupAuthority(r);
+      const source = await directory(resolve(r.sourceDirectory), false);
+      const s = await readState(join(source.path, "state.json"), r.ticketId);
+      requireThat(
+        s.runId === r.runId &&
+          s.owner === r.owner &&
+          s.revision === r.expectedRevision &&
+          s.contract === r.contract &&
+          ["done", "canceled"].includes(s.status),
+        "archived settled identity mismatch",
+      );
+      requireThat(
+        digest(await readFile(join(source.path, "state.json"))) ===
+          r.sourceDigest,
+        "archived state digest mismatch",
+      );
+      requireThat(
+        await absent(s.assignment.root),
+        "archive adoption requires already removed checkout",
+      );
+      requireThat(
+        r.archiveDir !== s.assignment.root &&
+          !r.archiveDir.startsWith(`${s.assignment.root}/`),
+        "archive must survive cleanup",
+      );
+      const intent = s.externalWrites.find(
+        (w) => w.operation === "cleanup" && w.key === r.key,
+      );
+      requireThat(
+        intent && intent.intent === r.intent,
+        "archive adoption requires matching original cleanup intent",
+      );
+      permitted(s, "cleanup");
+      requireThat(
+        r.planeState === (s.status === "done" ? "Done" : "Canceled") &&
+          r.prDispositionKnown === true,
+        "archive adoption requires matching Plane and known PR disposition",
+      );
+      const journal = {
+        schemaVersion: 1,
+        cleanupId: id(r.cleanupId),
+        revision: 0,
+        outcome: "pending",
+        retries: 0,
+        sourceRoot: s.assignment.root,
+        authorization,
+        key: r.key,
+        intent: r.intent,
+        records: [cleanupIdentity(s)],
+        files: await archiveFiles(source.path, p.root),
+        recovered: true,
+        recoveryEvidence: text(
+          r.recoveryEvidence,
+          "archive provenance and fresh removal observations",
+        ),
+      };
+      await writeJournal(p, journal);
+      return journal;
+    }
+    const stat = await lstat(p.file);
+    requireThat(
+      stat.isFile() && !stat.isSymbolicLink() && stat.size <= JOURNAL_LIMIT,
+      "invalid cleanup journal file",
+    );
+    const j = JSON.parse(await readFile(p.file, "utf8"));
+    requireThat(
+      j.schemaVersion === 1 &&
+        j.cleanupId === r.cleanupId &&
+        Array.isArray(j.records) &&
+        j.records.length > 0 &&
+        Array.isArray(j.files) &&
+        ["pending", "confirmed"].includes(j.outcome),
+      "cleanup journal identity mismatch",
+    );
+    for (const file of j.files)
+      requireThat(
+        (await evidenceBlob(p.root, file.digest)).length === file.size,
+        "cleanup evidence size mismatch",
+      );
+    if (r.action === "cleanup_status") return j;
+    requireThat(
+      r.expectedRevision === j.revision &&
+        r.key === j.key &&
+        r.intent === j.intent &&
+        JSON.stringify(r.identities) ===
+          JSON.stringify(
+            j.records.map((s) => ({
+              ticketId: s.ticketId,
+              runId: s.runId,
+              owner: s.owner,
+            })),
+          ),
+      "cleanup journal CAS or ticket/run/owner/intent mismatch",
+    );
+    if (r.action === "cleanup_confirm") {
+      requireThat(
+        r.removed === true && (await absent(j.sourceRoot)),
+        "cleanup confirmation requires observed checkout absence",
+      );
+      text(r.inventoryEvidence, "fresh Herdr inventory and removal evidence");
+      if (j.outcome === "confirmed") return j;
+      j.outcome = "confirmed";
+      j.confirmation = r.inventoryEvidence;
+    } else {
+      requireThat(
+        !j.recovered &&
+          j.outcome === "pending" &&
+          j.retries === 0 &&
+          r.effectAbsent === true,
+        "retry requires pending original intent, proven absence and unused retry",
+      );
+      text(
+        r.inventoryEvidence,
+        "fresh inventory proving removal effect absent",
+      );
+      const source = await paths(j.sourceRoot, j.records[0].ticketId);
+      await locked(source, async () => {
+        const current = await snapshot(source.root);
+        requireThat(
+          current.fingerprint === j.snapshot.fingerprint,
+          "cleanup source changed; stop and reconcile",
+        );
+        const records = await cleanupRecords(source, r, current);
+        requireThat(
+          JSON.stringify(records) === JSON.stringify(j.records) &&
+            JSON.stringify(await archiveFiles(source.store)) ===
+              JSON.stringify(j.files),
+          "cleanup state/evidence changed; preserve and reconcile before removal",
+        );
+      });
+      j.retries += 1;
+      j.retryEvidence = r.inventoryEvidence;
+    }
+    j.revision += 1;
+    await writeJournal(p, j);
+    return j;
+  });
+}
+
 export async function ticketState(r) {
+  if (
+    [
+      "cleanup_status",
+      "cleanup_confirm",
+      "cleanup_retry",
+      "adopt_cleanup",
+    ].includes(r.action)
+  )
+    return cleanupJournal(r);
   const p = await paths(r.cwd, r.ticketId, r.action === "init");
   if (r.action === "status") return readState(p.file, r.ticketId);
   if (r.action === "snapshot") return snapshot(p.root);
@@ -965,17 +1470,25 @@ export async function ticketState(r) {
       requireThat(r.owner === s.owner, "checkout belongs to another owner");
     requireThat(
       !TERMINAL.has(s.status) ||
-        ["authorize", "reopen_local", "begin_pr", "settle", "cancel"].includes(
-          r.action,
-        ) ||
+        [
+          "authorize",
+          "reopen_local",
+          "begin_pr",
+          "accept_merged",
+          "prepare_cleanup",
+          "settle",
+          "cancel",
+        ].includes(r.action) ||
         (["external", "gate"].includes(r.action) &&
           ["settle", "cancel", "cleanup"].includes(r.operation)),
       "handoff is sticky; do not resume completed delivery",
     );
     if (
-      !TERMINAL.has(s.status) ||
-      r.operation === "cleanup" ||
-      ["reopen_local", "begin_pr"].includes(r.action)
+      r.action !== "accept_merged" &&
+      !s.humanAcceptance &&
+      (!TERMINAL.has(s.status) ||
+        r.operation === "cleanup" ||
+        ["reopen_local", "begin_pr"].includes(r.action))
     )
       await noOtherWriter(p, s.ticketId);
     if (s.status === "local_complete" && !s.completionAuthorization) {
@@ -1003,9 +1516,34 @@ export async function ticketState(r) {
       await persist(p, s);
       return s;
     }
-    invalidate(s, current);
+    if (r.action === "accept_merged") {
+      await acceptMerged(p, s, r, current);
+      s.revision += 1;
+      await persist(p, s);
+      return s;
+    }
+    if (r.action === "prepare_cleanup") return prepareCleanup(p, r, current);
+    if (s.humanAcceptance) {
+      requireThat(
+        ["authorize", "settle", "gate", "external"].includes(r.action) &&
+          (!["gate", "external"].includes(r.action) ||
+            ["settle", "cleanup"].includes(r.operation)),
+        "human acceptance permits settlement/cleanup only, not renewed delivery",
+      );
+      requireThat(
+        r.contract === s.contract,
+        "accepted delivery scope cannot change",
+      );
+      r = { ...r, currentHead: current.head };
+      // Keep verification bound to its original code, even during settlement.
+      if (r.operation === "cleanup") await noOtherWriter(p, s.ticketId);
+    } else invalidate(s, current);
     if (r.action === "gate") {
-      gate(s, r.operation, r);
+      gate(
+        r.operation === "cleanup" ? { ...s, snapshot: current } : s,
+        r.operation,
+        r,
+      );
       return s;
     }
     apply(s, r);
@@ -1019,9 +1557,19 @@ async function cli() {
   let input = "";
   for await (const chunk of process.stdin) {
     input += chunk;
-    requireThat(Buffer.byteLength(input) <= LIMIT, "request too large");
+    requireThat(Buffer.byteLength(input) <= JOURNAL_LIMIT, "request too large");
   }
   const request = JSON.parse(input);
+  if (
+    ![
+      "prepare_cleanup",
+      "cleanup_status",
+      "cleanup_confirm",
+      "cleanup_retry",
+      "adopt_cleanup",
+    ].includes(request.action)
+  )
+    requireThat(Buffer.byteLength(input) <= LIMIT, "request too large");
   const result = await ticketState(request);
   process.stdout.write(`${JSON.stringify({ result })}\n`);
 }
