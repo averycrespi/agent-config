@@ -487,6 +487,71 @@ test("unfinished authorized implementation continues from review through repair 
   assert.deepEqual(delivered.authorization, progress.authorization);
 });
 
+test("verified slices can commit before ticket completion and invalidate snapshot evidence", async (t) => {
+  const f = await fixture(t);
+  f.input.authorization.operations.push("commit");
+  f.input.authorization.evidence =
+    "User authorizes incremental local implementation commits";
+  await init(f);
+  for (const value of [2, 3]) {
+    await writeFile(join(f.cwd, "code.js"), `export const value = ${value};\n`);
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import assert from 'node:assert/strict'; import {value} from './code.js'; assert.equal(value, ${value});`,
+      ],
+      { cwd: f.cwd },
+    );
+    const verified = await mutate(f, {
+      action: "evidence",
+      kind: "verification",
+      fingerprint: (await snap(f)).fingerprint,
+      passed: true,
+      summary: `Node assertion passed for fixture slice value ${value}; ticket work remains`,
+    });
+    await mutate(f, { action: "gate", operation: "commit" });
+    git(f.cwd, "add", "code.js");
+    git(f.cwd, "commit", "-qm", `test: retain verified fixture slice ${value}`);
+    const head = git(f.cwd, "rev-parse", "HEAD");
+    const progress = await mutate(f, {
+      action: "checkpoint",
+      status: "active",
+      progress: `Committed ${head}; Node assertion verified slice value ${value}`,
+      nextAction: "Continue remaining acceptance work and final review",
+    });
+    assert.equal(progress.snapshot.head, head);
+    assert.notEqual(
+      progress.snapshot.fingerprint,
+      verified.snapshot.fingerprint,
+    );
+    assert.deepEqual(progress.evidence, {});
+    assert.equal(progress.status, "active");
+    assert.equal(progress.plan[0].status, "in_progress");
+    assert.equal(progress.repairCount, 0);
+    assert.ok(!progress.review);
+    await assert.rejects(
+      localHandoffWithoutChecks(f),
+      /passing required checks/,
+    );
+    await assert.rejects(
+      mutate(f, {
+        action: "evidence",
+        kind: "verification",
+        fingerprint: verified.snapshot.fingerprint,
+        passed: true,
+        summary: "Cannot reuse a pre-commit fingerprint",
+      }),
+      /evidence revision mismatch/,
+    );
+  }
+  assert.equal(
+    git(f.cwd, "rev-list", "--count", `${f.input.baseCommit}..HEAD`),
+    "2",
+  );
+});
+
 test("ordinary iteration consumes no review cycles; nonblockers remain visible without repairs", async (t) => {
   const f = await fixture(t);
   await init(f);

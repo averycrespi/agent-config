@@ -25,6 +25,8 @@ All requests include absolute `cwd` and immutable `ticketId`. `status` reads the
 
 Use `checkpoint` for nonterminal progress while authorized work remains; keep status `active` with the next implementation/check/review action when it is safe to proceed. Reserve `waiting`/`blocked` for concrete impediments under the skill's stopping rule, not merely missing in-scope code or evidence still obtainable. A completion-blocking review finding can lead directly to `begin_repair` within the remaining allowance; it does not require a new user request. A checkpoint is not `handoff` or permission to end execution. The helper validates state transitions, not whether the model actually continues.
 
+For incremental local commits, `gate` with `operation: commit` checks authority, not slice correctness or full-ticket completion. Establish the slice's applicable checks and inspect named-file staging separately before committing; do not treat the gate as verification. After the commit, inspect HEAD and working tree and use `checkpoint` to record the commit hash, slice/check coverage, remaining plan, and next action. The changed snapshot clears stored evidence and stales any review; record fresh evidence or justified unchanged-coverage reuse at the new fingerprint before relying on it. Keep unfinished work active and preserve final handoff gates.
+
 For an explicitly requested local follow-up, submit this complete shape with freshly read values (not stale revision numbers); use `contract` for the **stored** baseline and `newContract` for the newly authorized outcome/AC/scope, even when unchanged:
 
 ```json
