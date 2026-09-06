@@ -432,6 +432,61 @@ test("consolidated review repairs consume before editing, persist across process
   assert.equal(s.repairCount, 2);
 });
 
+test("unfinished authorized implementation continues from review through repair to local delivery", async (t) => {
+  const f = await fixture(t);
+  f.input.authorization.operations.push("commit");
+  f.input.authorization.evidence =
+    "User requests implementation and local commits";
+  await init(f);
+  await checks(f);
+  await review(f, [blocker()]);
+  const progress = await mutate(f, {
+    action: "checkpoint",
+    status: "active",
+    progress:
+      "Foundations implemented; review identifies unfinished boundary behavior",
+    nextAction:
+      "Complete authorized boundary behavior in a bounded repair batch",
+  });
+  assert.equal(progress.status, "active");
+  assert.equal(progress.findings[0].disposition, "open");
+  await assert.rejects(localHandoffWithoutChecks(f), /unresolved blockers/);
+
+  const repair = await mutate(f, {
+    action: "begin_repair",
+    repairPlan: "Complete boundary behavior and verify before local delivery",
+  });
+  assert.equal(repair.repairCount, 1);
+  assert.deepEqual(repair.authorization, progress.authorization);
+  await writeFile(join(f.cwd, "code.js"), "export const value = 2;\n");
+  await assert.rejects(localHandoffWithoutChecks(f), /passing required checks/);
+  git(f.cwd, "add", "code.js");
+  git(f.cwd, "commit", "-qm", "fix: complete fixture boundary behavior");
+  await checks(f);
+  await assert.rejects(
+    localHandoffWithoutChecks(f),
+    /unresolved blockers|incomplete review/,
+  );
+  await review(
+    f,
+    [],
+    [
+      {
+        id: "boundary",
+        disposition: "fixed",
+        evidence:
+          "Independent fixture confirmation of completed boundary behavior",
+      },
+    ],
+  );
+  const delivered = await localHandoffWithoutChecks(f);
+  assert.equal(delivered.status, "local_complete");
+  assert.equal(delivered.repairCount, 1);
+  assert.equal(delivered.findings[0].disposition, "fixed");
+  assert.equal(delivered.runId, progress.runId);
+  assert.deepEqual(delivered.authorization, progress.authorization);
+});
+
 test("ordinary iteration consumes no review cycles; nonblockers remain visible without repairs", async (t) => {
   const f = await fixture(t);
   await init(f);

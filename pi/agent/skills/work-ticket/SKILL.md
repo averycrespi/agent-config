@@ -5,7 +5,7 @@ description: Use when implementing, resuming, inspecting, or explicitly settling
 
 # Work Ticket
 
-Own one explicitly selected ticket through its authorized boundary. Use **plan → implement → verify → handoff** as the default working sequence, not a phase machine. Continue until completion, pending external work, required human input, unsafe or blocked progress, or a real execution limit.
+Own one explicitly selected ticket through its authorized boundary. Use **plan → implement → verify → handoff** as the default working sequence, not a phase machine. Continue through implementation, required verification, bounded repairs, applicable independent review, and authorized local or PR delivery. Honor explicit user-requested partial boundaries; do not invent a partial boundary at a milestone.
 
 ## Authority and preflight
 
@@ -39,6 +39,14 @@ After interruption, read existing state and follow recovery before acting. Resum
 
 For every external write, persist a stable key and exact intent first, reread the authoritative surface afterward, and record confirmation. On ambiguity, reread first and retry once only after proving the effect absent. Never repeat a confirmed write or create duplicate PRs/claims.
 
+## Follow-through and stopping
+
+Treat checkpoints, commits, progress reports, and review findings as nonterminal while authorized work remains. Report progress without ending execution or asking the user to say “continue.” Missing in-scope implementation (including producers, integration, or restore paths) is remaining work, not an unavailable prerequisite. Update the plan and continue; a blocker to completion or promotion is not necessarily a blocker to further work.
+
+Stop only at the authorized delivery boundary (including an explicit partial boundary), for a concrete user-input/authorization/conflicting-source/unavailable-prerequisite blocker that prevents safe continuation, or at an applicable configured execution/repair limit. Investigate answerable uncertainty and complete safe independent in-scope work before a blocked handoff. Do not bypass safety or publication gates, expand scope, reset repair consumption, or start/extend Loop to continue.
+
+At every terminal report, give a concise stop classification: `boundary-reached`, `blocked`, or `limit-reached`. Include evidence of the satisfied boundary, the exact missing input/authority, conflicting sources, or unavailable prerequisite, or the configured limit and consumption; name remaining work and the next action. Ordinary unfinished authorized work is not stop evidence. Record progress through `checkpoint`, not successful `handoff`, when the approved completion criteria remain unmet; do not relabel partial progress as sticky local completion.
+
 ## Implement and verify
 
 Implement coherent acceptance-criterion slices in the owning session. Use proportionate regression-capable tests and all repository/ticket-required checks; diagnose repeat failures and stop after bounded attempts without progress. Update existing corresponding documentation when affected. Commit verified, coherent in-scope changes under the implementation authorization before local or PR handoff unless the user excluded commits. Stage files by name and exclude unrelated work, state, handoffs, and secrets. Preserve hooks and safeguards; this authorization does not permit history rewriting.
@@ -47,13 +55,13 @@ Record command outcomes and concrete acceptance evidence against the helper's cu
 
 ## Independent review and bounded repair
 
-Require independent review for PR delivery; for local-only delivery follow repository/user review requirements without importing a PR-only gate. Load [review](../review/SKILL.md) with the patch, canonical criteria, current checks, and gaps. Default to one reviewer, adding lenses only for identified risks. Preserve the full consolidated report. Incomplete review, material ambiguity, or missing required evidence blocks promotion.
+Require independent review for PR delivery; for local-only delivery follow repository/user review requirements without importing a PR-only gate. Load [review](../review/SKILL.md) with the patch, canonical criteria, current checks, and gaps. Default to one reviewer, adding lenses only for identified risks. Preserve the full consolidated report. Incomplete review, material ambiguity, or missing required evidence blocks promotion, not otherwise safe authorized follow-through. Obtain missing checks/review evidence within applicable limits; stop only under the stopping rule above.
 
 Consolidate findings before editing. Blockers need concrete security, correctness, acceptance, compatibility, data-integrity, required-CI, or explicit resource-requirement evidence. Keep style, speculation, and nonblocking suggestions visible without reopening implementation. Never discard or downgrade blockers to reach completion.
 
 Use at most **two automatic review-driven repair cycles** across the run. One consolidated review followed by one repair batch consumes a cycle. Persist `begin_repair` and reread consumption **before editing**. Interruption cannot refund/reset it; resume unfinished batches. Ordinary implementation/test iteration does not consume this allowance.
 
-Repair only authorized blockers, rerun affected and required checks, and request focused confirmation of original blockers, affected boundaries, and repair-induced regressions. Supply earlier findings/report, dispositions, and repair scope in `priorReviewContext`. Require independent evidence before closing blockers. After two cycles, remaining blockers require a blocked handoff; exhaustion is never approval. Already-authorized bounded repairs need no new request; scope expansion does.
+Repair only authorized blockers, rerun affected and required checks, and request focused confirmation of original blockers, affected boundaries, and repair-induced regressions. Supply earlier findings/report, dispositions, and repair scope in `priorReviewContext`. Require independent evidence before closing blockers. After two cycles, remaining blockers require a blocked handoff; exhaustion is never approval. Already-authorized bounded repairs need no new request; scope expansion does. When review identifies unfinished authorized implementation, present and retain the findings as a progress update, then continue that implementation through `begin_repair`, checks, and focused confirmation within the remaining allowance—not an incomplete final report. Do not relabel review-driven work as ordinary iteration to evade the cap.
 
 ## Delivery boundaries and handoff
 
