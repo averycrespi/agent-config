@@ -31,3 +31,70 @@ Create a persistent external archive directory, then call `prepare_cleanup` with
 Load `herdr` and use Herdr for exact linked worktree removal without force. Do not bundle local/remote-branch deletion, archive deletion, or unrelated workspace changes. Reread Herdr/worktree inventory and the removed path, then call `cleanup_confirm` from a surviving directory with fresh journal CAS and identities. The journal, not an unreachable checkout-local pending intent, now owns cleanup confirmation. Report confirmed effects and retained branches/evidence, not merely successful submissions.
 
 If removal did not happen, reread first. `cleanup_retry` permits one retry only after proving the effect absent and repeating all safety checks against unchanged archived source records and files. Do not refund a consumed retry after a crash. If removal happened before confirmation, use `cleanup_status` followed by `cleanup_confirm`; do not retry removal. For a pre-existing removed checkout whose state was archived before this interface, use `adopt_cleanup` and then confirm, preserving the original archive byte-for-byte. See [recovery](recovery.md) for interruption handling.
+
+## Explicit acceptance of an already-merged delivery
+
+Use `accept_merged` with normal delivery CAS/owner/contract fields and:
+
+```json
+{
+  "action": "accept_merged",
+  "acceptance": {
+    "source": "user",
+    "instruction": "Actual applicable user instruction accepting this merged delivery and its exceptions",
+    "reference": "Session/message identifying that instruction",
+    "ticketId": "11111111-2222-3333-4444-555555555555",
+    "runId": "stored-run-id",
+    "acceptMerged": true,
+    "waivedPrerequisites": ["completed-delivery", "independent-review"]
+  },
+  "pr": {
+    "url": "https://github.com/example/project/pull/8",
+    "head": "<full final merged source SHA>",
+    "branch": "avery/abc-1",
+    "base": "main",
+    "merged": true
+  },
+  "mergeConfirmed": true,
+  "mergeEvidence": "Fresh broker reread of the exact PR, source head, branch, base and merge disposition",
+  "noLiveWriter": true
+}
+```
+
+Supply the original instruction, not the example prose. Require explicit acceptance of the listed exceptions; ask if ambiguous. The helper validates structured attestation and consistency, not whether quoted prose truly grants authority. A ticket comment, shaping paragraph, automated report, or observed merge is not a user instruction.
+
+Name **exactly** the applicable waived prerequisites (the helper reports the required set on rejection):
+
+- `completed-delivery`: status is not `local_complete` or `awaiting_human`.
+- `required-checks`: no passing required-check evidence for the current fingerprint.
+- `independent-review`: review is incomplete/stale/not current or material findings remain open.
+- `published-head`: the recorded PR source head differs from the merged source head.
+- `delivery-snapshot`: the retained snapshot differs from the observed checkout snapshot.
+
+For `published-head`, also supply `successor: {ticketId, runId, priorHead, mergedHead, authorizationEvidence}` identifying the explicitly authorized successor retained in the same checkout. Its recorded repository/PR/source/base/head must match the final merged delivery; the prior head must be an ancestor. Never rewrite the predecessor's `pr` or verification to the successor head. A different PR or unverifiable successor is a blocker, not permission to guess a relationship.
+
+`accept_merged` records `humanAcceptance` with authorization, merged identity, successor, observed snapshot and prior delivery archive. It leaves status, scope, authorization, snapshot, evidence, review, findings, repairs and publication history unchanged. It grants only narrow settlement disposition, not coding, review success, publication or cleanup. It can reconcile multiple retained records without reopening any as a writer. Require released writers and independently verified ownership; use the stored owner for each record rather than disguising acceptance as `reconcile` takeover.
+
+After acceptance, `gate`/`external` with operation `settle` and action `settle` require `prUrl`, `mergeConfirmed: true`, and `mergedHead` matching acceptance and current HEAD. `settle` still requires `confirmed: true, planeState: Done`. Preserve pending/confirmed effect keys and reread before retry. Acceptance is single-use; reread `status` after interruption instead of repeating it. Subsequent authorizations cannot change accepted scope or reopen delivery. Default settlement and all publication gates remain strict.
+
+## Durable cleanup journal
+
+Create an empty real directory **outside** the checkout to remove. Prefer a persistent sibling cleanup-archive directory, not temporary storage. Do not put it inside a symlink or the removed checkout. Use one journal for the entire checkout, including every retained ticket. The helper writes `cleanup.json`; its authoritative cleanup outcome is separate from the immutable delivery evidence it contains.
+
+Use `prepare_cleanup` with normal delivery CAS fields for any settled member, plus:
+
+- `archiveDir` (absolute existing durable directory), unique `cleanupId`, stable `key`, exact `intent` identifying checkout/workspace and retained branch.
+- `cleanupAuthorization: {source: "user", instruction, reference, removeCheckout: true}` recording separate applicable user removal authority for the whole checkout.
+- `tickets: [{ticketId, runId, owner, expectedRevision, contractHash, planeState}]` for **every** retained record, each with current CAS, `contractHash` (SHA-256 of exact stored contract UTF-8 bytes, prefixed `sha256:`), and `Done`/`Canceled`. Compact hashes avoid repeating large contracts across the CLI boundary. Each must separately include cleanup authority in its stored authorization. Duplicate, missing, active or mismatched records reject.
+- `noLiveWriter`, `noUnpushedWork`, `prDispositionKnown`, `noUniqueIgnoredWork`, `evidencePreserved` all true, and `safetyEvidence` describing fresh ownership/process, Git/remote retention, ignored-file, PR and Plane observations. These are attestations, never inferred defaults. The helper also checks clean Git and refuses unfinished merge/rebase/cherry-pick/revert/bisect operations.
+
+Preparation copies all file bytes under `.pi/tickets/` (except the transient writer lock), one file at a time, to `archiveDir/evidence/<sha256-hex>`, rereads and verifies each copy, then atomically publishes a pending journal. The manifest retains original relative paths, sizes and digests plus compact ticket identities; full original state and handoff bytes live in the referenced evidence files, not duplicated inside the JSON. Keep the entire archive directory together. A pre-publication interruption may leave unreferenced immutable evidence blobs; after proving the stale helper absent, repeating preparation reuses verified blobs but never overwrites an existing journal. Journal rereads verify referenced evidence before confirmation/retry. It never removes anything or alters delivery records. Preserve evidence elsewhere (including `.handoffs/`, ignored files and nested repositories) separately and verify the copies before asserting `evidencePreserved`/`noUniqueIgnoredWork`. Symlinks, individual files over 256 KiB and manifests/requests over 4 MiB reject; do not prune history to fit. Evidence bytes may exceed 4 MiB in aggregate because they are not embedded in the manifest. No historical review success is required after confirmed settlement. Reread the journal before removal and keep the checkout quiescent. Old `external` cleanup writes now reject with the durable procedure rather than creating an unreachable pending intent.
+
+Journal requests can run from any surviving directory:
+
+- `cleanup_status`: `archiveDir`, `cleanupId`; returns journal, original identities, revision and outcome without requiring Git.
+- `cleanup_confirm`: the same fields plus `expectedRevision`, exact `key`/`intent`, `identities: [{ticketId, runId, owner}]` in returned record order, `removed: true`, and `inventoryEvidence` from fresh Herdr/worktree inventory. Requires actual source-path absence. Atomically confirms the journal; a reread confirmed request is idempotent. Never repeat removal after confirmation.
+- `cleanup_retry`: same journal CAS/identity fields, `effectAbsent: true`, fresh `inventoryEvidence`, and the full preparation `tickets`/safety observations. Only after authoritative reread proves the removal effect absent, and only once. Rechecks live-source identity, snapshot, all states and archived bytes under the checkout lock. Changed evidence/state, dirty/unique work, live writers, confirmed outcome, or exhausted retry reject. On rejection stop and reconcile; never overwrite the old journal to reset retries. A crash after retry consumption does not refund it.
+- `adopt_cleanup`: for an **already removed** checkout with a pre-journal archive only. Supply `archiveDir`, new `cleanupId`, `sourceDirectory` containing the original `state.json` and retained handoff, `sourceDigest` (SHA-256 of exact original state bytes), `ticketId`, `runId`, `owner`, `expectedRevision`, `contract`, exact original cleanup `key`/`intent`, fresh `cleanupAuthorization`, matching `planeState`, `prDispositionKnown: true`, and `recoveryEvidence` establishing archive provenance and fresh removal observations. Requires a settled/canceled record with cleanup authority and a matching original cleanup intent. Copies all source archive files without rewriting them and creates a pending **recoverable** journal; follow with `cleanup_confirm`. Adoption cannot authorize another removal or retry.
+
+Keep journals and source archives until their deletion is separately authorized. A retained old pending entry is historical intent, not the authoritative outcome after journal confirmation. On interruption, use the recovery procedure; do not create an ad hoc receipt or reconstruct missing evidence from memory.

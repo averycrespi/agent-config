@@ -78,12 +78,12 @@ Draft → Ready → In Progress → Review → Done
 
 - **Draft:** the contract may still change. This means a visible project state, not Plane `is_draft`. Prefer a visible state named Draft; otherwise map it to an appropriate visible Backlog or other unstarted state and report the mapping.
 - **Ready:** the contract is ready to implement; this is optional context, not standalone implementation or publication authorization.
-- **In Progress:** one claimed run is executing or paused for recovery.
+- **In Progress:** one claimed run is executing, paused for recovery, or locally complete pending separately authorized delivery/settlement.
 - **Review:** authorized PR delivery reached independent review and required exact-head CI, followed by confirmed review-ready human handoff. Local-only completion leaves In Progress unless separately authorized settlement changes it.
 - **Done:** a human merge and settlement were confirmed.
 - **Canceled:** cancellation was explicitly authorized and confirmed.
 
-This vocabulary does not grant authority to perform a transition. Defer shaping and Ready changes to `shape-ticket`; use `work-ticket` for explicitly authorized implementation, recovery, and terminal operations. Explicit implementation approval may move Draft directly to In Progress when work starts. Creating or setting a ticket Ready does not authorize implementation; implementing does not automatically authorize commits or PR publication. Record any explicitly bundled authority and completion boundary in the local record.
+This vocabulary does not grant authority to perform a transition. Defer shaping and Ready changes to `shape-ticket`; use `work-ticket` for explicitly authorized implementation, recovery, and terminal operations. Explicit implementation approval may move Draft directly to In Progress when work starts. Creating or setting a ticket Ready does not authorize implementation; commit authority follows the invoking workflow (`work-ticket` includes in-scope commits unless excluded), while PR publication requires explicit authorization. Record any explicitly bundled authority and completion boundary in the local record.
 
 ## Portable continuity
 

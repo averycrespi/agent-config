@@ -1,12 +1,10 @@
 # Authorized PR Delivery
 
-Read this procedure completely before preparing or performing PR publication or promotion. Follow the authority and continuity rules in [work-ticket](../SKILL.md) and read [the helper interface](helper.md) before helper calls. This procedure grants no publication authority.
+Follow [work-ticket](../SKILL.md) and [the helper interface](helper.md). Require explicit push/PR authority. Use broker-backed remote Git/GitHub operations with discovered schemas. Resolve the authoritative target tip and complete outgoing range; preserve pre-existing local commits and block before publishing unrelated history. Use a separate source branch with the repository's naming convention and verify tracking rather than assuming it.
 
-## Publish an unchanged local completion
+## Publication after local completion
 
-When the user explicitly requests push/PR delivery after local handoff, use `begin_pr` rather than invent a fresh coding request, reinitialize the run, call `reopen_local`, or edit state directly. `authorize` alone remains insufficient to leave completion. Reread the current helper status and snapshot; inspect actual ticket/Git/PR/owner state and relevant verification/review coverage. Require the same sole owner, unchanged approved scope and completed snapshot, clean separate source branch, Plane In Progress, no actual or recorded PR, and confirmed implementation-only external history. Stop on drift, unresolved writes, or ownership conflicts; this narrow transition cannot take over an owner or reopen PR/Done/Canceled delivery.
-
-Send one JSON request on stdin to `node <absolute-skill-path>/scripts/ticket-state.js`:
+For an explicit push/PR request on an unchanged local completion, reconcile ownership under [recovery](recovery.md) if necessary, then use `begin_pr`. No fresh coding request is needed. Include common CAS/hash fields plus:
 
 ```json
 {
@@ -14,32 +12,30 @@ Send one JSON request on stdin to `node <absolute-skill-path>/scripts/ticket-sta
   "cwd": "/absolute/repository/root",
   "ticketId": "11111111-2222-3333-4444-555555555555",
   "runId": "stored-run-id",
-  "owner": "stored-owner-id",
+  "owner": "current-reconciled-owner",
   "expectedRevision": 34,
-  "contract": "Exact stored approved baseline, unchanged",
-  "publicationEvidence": "Actual user request: push and open a PR, then monitor required CI",
+  "contractHash": "sha256:<64 hex digits from the receipt>",
+  "publicationEvidence": "Actual user request to push and open a PR",
   "fingerprint": "sha256:<64 hex digits from a fresh snapshot>",
-  "observations": "Fresh ticket/files/Git/PR/checks/owner observations, unchanged completed snapshot and scope; prior checks/review remain relevant",
+  "observations": "Fresh ticket/files/Git/PR/checks/ownership observations",
   "planeState": "In Progress",
   "noPrConfirmed": true
 }
 ```
 
-Replace example values with freshly observed values, not historical revision numbers. Both delivery-time and current implement/commit authority are required and retained for the existing scope; only publication authority is newly requested. The operation drops settlement/cancellation/cleanup authority, archives prior completion as `prDelivery`, and preserves run, owner, assignment, plan, findings/dispositions, local follow-up history, external-write keys, and consumed repairs. It sets boundary `pr` and status `active`, increments revision once, and performs no push or other external write. It also accepts an already recorded PR authorization on `local_complete` when all other conditions hold, without requiring a second `authorize` call.
+Require unchanged completed snapshot and contract, clean separate source branch, no actual/recorded PR, no prior PR transition, no competing writer, and confirmed implementation-only external history. Current and delivery-time implementation/commit authority must both exist; later authorization cannot retroactively supply missing delivery-time permission. For old records lacking `completionAuthorization`, independently establish the retained authorization's provenance; stop on conflict rather than inventing history.
 
-The helper stores `completionAuthorization` at local handoff and preserves it across terminal `authorize` calls; `prDelivery` retains that delivery-time authority separately from the latest pre-transition `authorization`. A real `reopen_local` clears this marker so the next local handoff records its own authority. For older records without the marker, the helper captures existing authorization before the first terminal mutation. Independently establish that this legacy authority matches the completed delivery; the helper cannot reconstruct authority overwritten by an older helper. Stop if that historical evidence is unavailable or conflicting rather than adding post-handoff commit authority to satisfy the prerequisite.
+The operation archives the prior delivery in `prDelivery`, adds publish authority, drops settlement/cancellation/cleanup authority, and returns active. It preserves history, findings, ownership, and consumed repair allowance. It performs no external write. Use the returned receipt; after interruption recover active state rather than repeating `begin_pr`.
 
-Reread status after success. Passing verification and existing review remain revision-bound and reusable only for unchanged relevant scope; missing/stale/incomplete review still blocks promotion. Safety and CI evidence are always cleared: perform fresh outgoing-history/metadata scans and record required exact-head CI after publishing. Use checkpoint to record publication progress or CI waiting; after interruption use ordinary recovery, not another `begin_pr`. Exhausted repair consumption remains exhausted: monitoring CI or obtaining review does not consume a repair, but a newly discovered blocker still cannot trigger a third automatic review-repair cycle. Handoff remains blocked until all required evidence passes. No new coding scope, merge, deployment, settlement, cancellation, or cleanup is authorized by this transition.
+**Reevaluate evidence for the expanded boundary.** Transition clears current checks/safety/CI and stales review even at unchanged HEAD. Historical local evidence remains in the archive; obtain or explicitly justify applicable check coverage and perform a new scope-aware initial review, including newly required qualifications. Local completeness never certifies remote/native/release requirements. Publication does not add repair cycles or authorize new coding scope.
 
 ## Publication gates
 
-Before any push, preserve the fail-closed publication-safety gate:
+1. Require a clean tree, correct source/base identity, and passing applicable required checks. Inspect the complete outgoing commit history, messages, paths, and patches—not only the final diff.
+2. Prepare public-safe PR metadata. Require installed `gitleaks`; inspect its help and scan complete outgoing history and exact proposed title/body, with redaction where supported. Check repository public-content rules for private details, credentials, proprietary content, state/handoffs, local paths, and personal data.
+3. Stop before push if scanning is unavailable, fails, finds secrets, or cannot cover the evidence. Deleting a secret in a later commit does not remove it from history; history repair needs explicit authority. Record `evidence` with `kind: safety`, current `fingerprint`, `passed`, concrete `summary`, `historyScanned`, `metadataScanned`, and `publicContentChecked` all true, and `metadataHash` (SHA-256 of exact title/body bytes).
+4. Gate `publish`, persist exact external intent, then push only the assigned branch (with tracking for a new branch) and create/update one draft PR. Reread head/source/base/open/draft and scanned metadata. Record `publication` with `pr: {url, head, branch, base, open: true, draft: true}`, `confirmed: true`, matching `metadataHash`.
+5. Obtain independent review and required CI for the final published head. Record CI `evidence` with current `fingerprint`, exact `head`, `passed`, and `summary`. Pending CI means waiting; failed/unknown CI, missing applicable evidence, or unresolved blockers prevent promotion. Review limitations outside this boundary stay visible without becoming blanket waivers. Republished changes need affected checks and focused review unless scope expanded.
+6. Gate `promote`, mark ready, and reread exact PR identity. Move Plane to Review only after review and required CI pass; reread Plane. Record `handoff` with `summary`, confirmed non-draft `pr`, `confirmed: true`, and `planeState: Review`.
 
-1. Require a clean tree, correct source/base identity, and passing required checks. Inspect the **complete outgoing commit history**, every message, path, and patch—not only the final diff. Include all commits that would be published, including pre-existing outgoing history.
-2. Prepare a public-safe PR title/body. Require locally installed `gitleaks`, inspect its installed help, and successfully scan the complete outgoing history and proposed PR metadata, with redaction where supported. Check the same evidence against repository public-content guidance: no private organizations, projects, teams, URLs, credentials, proprietary content, tracked handoffs/state, local paths, personal data, or non-generic examples.
-3. If the scanner is unavailable, errors, cannot cover the scope, reports findings, or evidence is oversized/uncertain, **stop before push**. Removing a committed secret in a later commit is insufficient; history repair requires explicit authorization. Record the scan commands/results and hash of the exact scanned title/body as safety evidence.
-4. Gate publication through the helper, record the intended external write, then use broker-backed operations to push only the assigned branch with tracking for a new branch and create/update one draft PR. Reread and confirm exact head, source, base, open/draft status, and scanned metadata before recording publication. Never copy raw Plane comments/URLs, local state, paths, or workspace IDs into public metadata.
-5. Obtain independent review and required CI for the final head. Pending CI means wait and record the next action, not completion. Failed/unknown/ambiguous required CI blocks promotion. Reuse passing evidence only for unchanged relevant state; republished changes require affected checks and focused review.
-6. Gate promotion, mark the PR ready, then reread exact head/source/base/open/non-draft identity. Move Plane to Review only after independent review and exact-head CI pass, reread Plane, and record the handoff. Never promote with unresolved blockers or incomplete required checks.
-
-For every external write, persist a stable key and exact intent before calling, then reread the authoritative surface and record confirmation. On ambiguous outcomes, reread first; retry once only after proving the effect absent. Reconcile pending entries after interruption. Do not repeat a confirmed write, create a second PR/claim, or present local evidence as remote confirmation.
+For every remote write, persist a stable key and exact intent before execution, reread the authoritative surface afterward, and record confirmation. On ambiguity, reread first and retry once only after proving the effect absent. Never duplicate a confirmed PR/claim or present local evidence as remote confirmation. If repairs are exhausted, obtain evidence or report blockers; do not silently extend the allowance.

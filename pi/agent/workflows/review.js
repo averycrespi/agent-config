@@ -107,6 +107,17 @@ const findingSchema = {
   },
 };
 
+const gapSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["code", "detail"],
+  properties: {
+    code: { type: "string" },
+    detail: { type: "string" },
+    requirementId: { type: "string" },
+  },
+};
+
 const findingBatchOutput = {
   schema: {
     type: "object",
@@ -116,15 +127,7 @@ const findingBatchOutput = {
       findings: { type: "array", items: findingSchema },
       gaps: {
         type: "array",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["code", "detail"],
-          properties: {
-            code: { type: "string" },
-            detail: { type: "string" },
-          },
-        },
+        items: gapSchema,
       },
     },
   },
@@ -152,7 +155,7 @@ const adjudicationOutput = {
           },
         },
       },
-      gaps: { type: "array", items: { type: "string" } },
+      gaps: { type: "array", items: gapSchema },
     },
   },
 };
@@ -197,6 +200,85 @@ function boundedStrings(value, maxItems, maxChars) {
     .filter(Boolean);
 }
 
+function validateScope(value) {
+  if (value === undefined) return null;
+  const scope = record(value);
+  if (
+    !scope ||
+    !hasOnlyKeys(scope, ["boundary", "requirements"]) ||
+    !stringArray([scope.boundary], 1, 100) ||
+    !/^[a-zA-Z0-9_-]+$/.test(scope.boundary) ||
+    !Array.isArray(scope.requirements) ||
+    !scope.requirements.length ||
+    scope.requirements.length > 50
+  ) {
+    throw new Error(
+      "Review input requires a bounded deliveryScope boundary and requirements",
+    );
+  }
+  const ids = new Set();
+  for (const requirement of scope.requirements) {
+    if (
+      !record(requirement) ||
+      !hasOnlyKeys(requirement, ["id", "description", "requiredFor"]) ||
+      !stringArray([requirement.id], 1, 100) ||
+      !/^[a-zA-Z0-9_-]+$/.test(requirement.id) ||
+      ids.has(requirement.id) ||
+      !stringArray([requirement.description], 1, 1_000) ||
+      !stringArray(requirement.requiredFor, 10, 100) ||
+      !requirement.requiredFor.length ||
+      requirement.requiredFor.some(
+        (boundary) => !/^[a-zA-Z0-9_-]+$/.test(boundary),
+      )
+    ) {
+      throw new Error("Review input contains an invalid evidence requirement");
+    }
+    ids.add(requirement.id);
+  }
+  if (
+    !scope.requirements.some((item) =>
+      item.requiredFor.includes(scope.boundary),
+    )
+  ) {
+    throw new Error(
+      "Review input boundary must have declared evidence requirements",
+    );
+  }
+  return {
+    boundary: scope.boundary,
+    requirements: scope.requirements.map((item) => ({
+      ...item,
+      description: boundedText(item.description, 1_000),
+      requiredFor: [...new Set(item.requiredFor)],
+    })),
+  };
+}
+
+function normalizeGap(value) {
+  if (typeof value === "string")
+    return { detail: boundedText(value, 1_000) || "Unspecified coverage gap" };
+  if (!record(value) || !boundedText(value.detail, 1_000))
+    return { detail: "Unusable coverage gap" };
+  return {
+    detail: `${boundedText(value.code, 100) || "gap"}: ${boundedText(value.detail, 1_000)}`,
+    requirementId: value.requirementId,
+  };
+}
+
+function qualification(input, requirementId) {
+  const requirement = input.deliveryScope?.requirements.find(
+    (item) => item.id === requirementId,
+  );
+  return requirement &&
+    !requirement.requiredFor.includes(input.deliveryScope.boundary)
+    ? requirement
+    : null;
+}
+
+function scopeInstructions() {
+  return "Evaluate evidence against deliveryScope and the authoritative acceptance criteria. Its requirements declare where each independently required check is needed; never invent exemptions or waive repository/user requirements. Compare this inventory with the authoritative required checks. Flag omitted required checks or aggregate requirements that conflate independently required checks as blocking gaps without requirementId. For a gap confined to one declared requirement, include its exact requirementId. Omit requirementId for unclassified gaps, incomplete review execution, or uncertainty about scope; those remain blocking. A qualification outside the current boundary remains visible, not a claim that its checks passed. Flag incorrect scope declarations as blocking gaps without requirementId. On expanded scope, evaluate all newly applicable requirements; prior local completeness is insufficient.";
+}
+
 function validateInput(value) {
   const input = record(value);
   if (!input) throw new Error("Review input must be an object");
@@ -213,6 +295,7 @@ function validateInput(value) {
       "riskTags",
       "requestedLenses",
       "reviewMode",
+      "deliveryScope",
     ])
   ) {
     throw new Error("Review input contains unknown fields");
@@ -227,6 +310,26 @@ function validateInput(value) {
     throw new Error(
       "Review input confirmation requires original blockers and repair scope",
     );
+  }
+  const deliveryScope = validateScope(input.deliveryScope);
+  const knownGaps = input.knownGaps ?? [];
+  const validRequirement = (id) =>
+    id === undefined ||
+    deliveryScope?.requirements.some((item) => item.id === id);
+  if (
+    !Array.isArray(knownGaps) ||
+    knownGaps.length > 50 ||
+    knownGaps.some((gap) =>
+      typeof gap === "string"
+        ? !stringArray([gap], 1, 1_000)
+        : !record(gap) ||
+          !hasOnlyKeys(gap, ["code", "detail", "requirementId"]) ||
+          !stringArray([gap.code], 1, 100) ||
+          !stringArray([gap.detail], 1, 1_000) ||
+          !validRequirement(gap.requirementId),
+    )
+  ) {
+    throw new Error("Review input contains an invalid known gap");
   }
   const target = record(input.target);
   if (
@@ -257,7 +360,6 @@ function validateInput(value) {
     ["acceptanceCriteria", 50, 1_000],
     ["changedFiles", 200, 500],
     ["priorReviewContext", 50, 1_000],
-    ["knownGaps", 50, 1_000],
     ["riskTags", 30, 100],
     ["requestedLenses", 10, 100],
   ]) {
@@ -276,11 +378,19 @@ function validateInput(value) {
       throw new Error(`Review input requested unknown lens: ${lens}`);
     }
   }
+  const checkedRequirements = new Set();
   for (const check of input.checks) {
     const item = record(check);
     if (
       !item ||
-      !hasOnlyKeys(item, ["name", "status", "summary", "artifactPath"]) ||
+      !hasOnlyKeys(item, [
+        "name",
+        "status",
+        "summary",
+        "artifactPath",
+        "requirementId",
+      ]) ||
+      !validRequirement(item.requirementId) ||
       typeof item.name !== "string" ||
       !item.name.trim() ||
       item.name.length > 200 ||
@@ -293,12 +403,21 @@ function validateInput(value) {
     ) {
       throw new Error("Review input contains an invalid check result");
     }
+    if (item.requirementId !== undefined) {
+      if (checkedRequirements.has(item.requirementId)) {
+        throw new Error(
+          "Review input requires one check per requirement; declare independently required checks separately",
+        );
+      }
+      checkedRequirements.add(item.requirementId);
+    }
   }
   return {
     target: {
       kind: target.kind,
       label: boundedText(target.label, 300),
     },
+    deliveryScope,
     reviewMode: input.reviewMode ?? "initial",
     objective: boundedText(input.objective, 2_000),
     acceptanceCriteria: boundedStrings(input.acceptanceCriteria, 50, 1_000),
@@ -309,9 +428,10 @@ function validateInput(value) {
       status: check.status,
       summary: boundedText(check.summary, 1_000),
       artifactPath: boundedText(check.artifactPath, 1_000),
+      ...(check.requirementId ? { requirementId: check.requirementId } : {}),
     })),
     priorReviewContext: boundedStrings(input.priorReviewContext, 50, 1_000),
-    knownGaps: boundedStrings(input.knownGaps, 50, 1_000),
+    knownGaps: knownGaps.map(normalizeGap),
     riskTags: boundedStrings(input.riskTags, 30, 100).map((item) =>
       item.toLowerCase(),
     ),
@@ -337,13 +457,18 @@ function selectedLenses(input) {
 }
 
 function confirmationScope(input) {
-  return input.reviewMode === "confirmation"
-    ? "This is focused confirmation, not unrestricted fresh review. Check original blockers and dispositions in priorReviewContext, affected boundaries, and repair-induced regressions. Do not reopen unrelated implementation or solicit new style changes. Preserve unresolved original blockers with evidence."
-    : "Review the supplied target against its acceptance criteria.";
+  return (
+    scopeInstructions() +
+    "\n\n" +
+    (input.reviewMode === "confirmation"
+      ? "This is focused confirmation, not unrestricted fresh review. Check original blockers and dispositions in priorReviewContext, affected boundaries, and repair-induced regressions. Do not reopen unrelated implementation or solicit new style changes. Preserve unresolved original blockers with evidence."
+      : "Review the supplied target against its acceptance criteria.")
+  );
 }
 
 function reviewPrompt(lens, input) {
   const context = {
+    deliveryScope: input.deliveryScope,
     target: input.target,
     objective: input.objective,
     acceptanceCriteria: input.acceptanceCriteria,
@@ -448,6 +573,7 @@ function groupExactDuplicates(candidates) {
 
 function adjudicationPrompt(input, groupedCandidates) {
   const context = {
+    deliveryScope: input.deliveryScope,
     target: input.target,
     objective: input.objective,
     acceptanceCriteria: input.acceptanceCriteria,
@@ -530,7 +656,12 @@ function adjudicate(value, groupedCandidates) {
     valid: true,
     confirmed,
     needsHuman,
-    gaps: boundedStrings(value.gaps, MAX_GAPS_PER_STAGE, 1_000),
+    gaps: [
+      ...value.gaps.slice(0, MAX_GAPS_PER_STAGE).map(normalizeGap),
+      ...(value.gaps.length > MAX_GAPS_PER_STAGE
+        ? ["Adjudicator gaps were truncated"]
+        : []),
+    ],
   };
 }
 
@@ -576,9 +707,45 @@ function renderReport(input, lenses, completed, confirmed, needsHuman, gaps) {
     (check) => check.status === "failed",
   );
   const notRunChecks = input.checks.filter(
-    (check) => check.status === "not-run",
+    (check) =>
+      check.status === "not-run" && !qualification(input, check.requirementId),
   );
-  const uniqueGaps = uniqueStrings(gaps);
+  const blocking = [];
+  const limitations = [];
+  for (const value of gaps) {
+    const gap = typeof value === "string" ? normalizeGap(value) : value;
+    const requirement = qualification(input, gap.requirementId);
+    if (requirement)
+      limitations.push(
+        `${gap.detail} (required for: ${requirement.requiredFor.join(", ")})`,
+      );
+    else blocking.push(gap.detail);
+  }
+  for (const check of input.checks.filter(
+    (item) => item.status === "not-run",
+  )) {
+    const requirement = qualification(input, check.requirementId);
+    if (requirement)
+      limitations.push(
+        `${check.name}: not-run — ${check.summary} (required for: ${requirement.requiredFor.join(", ")})`,
+      );
+    else blocking.push(`${check.name}: required or unclassified check not run`);
+  }
+  for (const requirement of input.deliveryScope?.requirements ?? []) {
+    if (
+      requirement.requiredFor.includes(input.deliveryScope.boundary) &&
+      !input.checks.some(
+        (check) =>
+          check.requirementId === requirement.id && check.status === "passed",
+      )
+    ) {
+      blocking.push(
+        `${requirement.id}: missing passing evidence for ${requirement.description}`,
+      );
+    }
+  }
+  const uniqueGaps = uniqueStrings(blocking);
+  const qualificationLimitations = uniqueStrings(limitations);
   const incomplete =
     completed < lenses.length ||
     input.checks.length === 0 ||
@@ -600,6 +767,8 @@ function renderReport(input, lenses, completed, confirmed, needsHuman, gaps) {
     `# Review: ${input.target.label}`,
     "",
     `Outcome: ${outcome}`,
+    "",
+    `Delivery boundary: ${input.deliveryScope?.boundary ?? "supplied target (unclassified gaps block)"}`,
     "",
     "## Deterministic checks",
   ];
@@ -646,11 +815,21 @@ function renderReport(input, lenses, completed, confirmed, needsHuman, gaps) {
     `- ${completed}/${lenses.length} reviewer lenses completed.`,
     `- ${input.changedFiles.length} changed file${input.changedFiles.length === 1 ? "" : "s"} declared.`,
     "",
-    "## Known gaps",
+    "## Blocking evidence gaps",
   );
   if (uniqueGaps.length === 0) lines.push("None.");
   else for (const gap of uniqueGaps) lines.push(`- ${gap}`);
-  return lines.join("\n");
+  lines.push("", "## Qualification limitations");
+  if (qualificationLimitations.length === 0) lines.push("None.");
+  else for (const gap of qualificationLimitations) lines.push(`- ${gap}`);
+  return {
+    report: lines.join("\n"),
+    complete: !incomplete && failedChecks.length === 0,
+    outcome,
+    deliveryScope: input.deliveryScope,
+    blockingGaps: uniqueGaps,
+    qualificationLimitations,
+  };
 }
 
 export async function run() {
@@ -685,10 +864,7 @@ export async function run() {
       gaps.push(`Reviewer ${lens.name} gaps were truncated`);
     }
     for (const gap of settled.value.gaps.slice(0, MAX_GAPS_PER_STAGE)) {
-      const detail = boundedText(gap.detail, 1_000);
-      if (detail) {
-        gaps.push(`${boundedText(gap.code, 100) || lens.name}: ${detail}`);
-      }
+      gaps.push(normalizeGap(gap));
     }
     for (
       let findingIndex = 0;

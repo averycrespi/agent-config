@@ -1,10 +1,436 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+// @ts-expect-error Plain-JavaScript skill helper has no TypeScript declaration.
+import { ticketState } from "../skills/work-ticket/scripts/ticket-state.js";
 import test from "node:test";
 import { parseWorkflowScript } from "../extensions/workflows/parser.ts";
 import { runWorkflow } from "../extensions/workflows/runtime.ts";
 
 const workflowFile = new URL("./review.js", import.meta.url);
+const localScope = {
+  boundary: "local",
+  requirements: [
+    {
+      id: "tests",
+      description: "Required local regression suite",
+      requiredFor: ["local", "pr"],
+    },
+    {
+      id: "qualification",
+      description: "Native and remote qualification",
+      requiredFor: ["pr"],
+    },
+  ],
+};
+
+test("scoped qualification remains visible without blocking local handoff; expansion requires it", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "review-ticket-scope-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+  git("init", "-q", "--initial-branch=main");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Test");
+  await writeFile(join(cwd, "code.js"), "export const value = 1;\n");
+  git("add", "code.js");
+  git("commit", "-qm", "test: initialize fixture");
+  const identity = { cwd, ticketId: "11111111-2222-3333-4444-555555555555" };
+  let state = await ticketState({
+    ...identity,
+    action: "init",
+    identifier: "ABC-1",
+    runId: "run-1",
+    owner: "owner-1",
+    contract: "Local behavior; native and remote qualification excluded",
+    repository: "example/project",
+    targetBranch: "main",
+    baseCommit: git("rev-parse", "HEAD"),
+    authorization: {
+      operations: ["implement", "commit"],
+      boundary: "local",
+      evidence: "User requests local implementation",
+    },
+    plan: [
+      { step: "Fix behavior", verification: "Local tests", status: "done" },
+    ],
+  });
+  const mutate = async (request: Record<string, unknown>) => {
+    state = await ticketState({
+      ...identity,
+      runId: state.runId,
+      owner: state.owner,
+      expectedRevision: state.revision,
+      contract: state.contract,
+      ...request,
+    });
+    return state;
+  };
+  await mutate({
+    action: "evidence",
+    kind: "verification",
+    fingerprint: state.snapshot.fingerprint,
+    passed: true,
+    summary: "Required local checks passed",
+  });
+  for (const boundary of ["pr", "local"]) {
+    const result = await runWorkflow(await loadWorkflow(), {
+      cwd,
+      args: validArgs({
+        deliveryScope: { ...localScope, boundary },
+        checks: [
+          {
+            name: "tests",
+            requirementId: "tests",
+            status: "passed",
+            summary: "Required local checks passed",
+          },
+          {
+            name: "Native and remote qualification",
+            requirementId: "qualification",
+            status: "not-run",
+            summary: "Outside the authorized local delivery",
+          },
+        ],
+        knownGaps: [
+          {
+            code: "qualification",
+            detail: "Native and remote qualification not performed",
+            requirementId: "qualification",
+          },
+        ],
+      }),
+      spawnAgent: async () =>
+        structured({
+          findings: [],
+          gaps: [
+            {
+              code: "platform",
+              detail:
+                "Local confirmation closes the sole code finding, not platform qualification",
+              requirementId: "qualification",
+            },
+          ],
+        }),
+    });
+    const output = result.result as ReviewResult;
+    assert.equal(output.complete, boundary === "local");
+    assert.equal(
+      output.outcome,
+      boundary === "local" ? "no material findings" : "incomplete",
+    );
+    assert.match(output.report, /Native and remote qualification/);
+    assert.match(output.report, /## Qualification limitations/);
+    assert.equal(output.blockingGaps.length > 0, boundary === "pr");
+    await mutate({
+      action: "review",
+      fingerprint: state.snapshot.fingerprint,
+      independent: true,
+      complete: output.complete,
+      summary: output.report,
+      findings: [],
+      resolutions: [],
+    });
+    if (boundary === "pr") {
+      await assert.rejects(
+        mutate({
+          action: "handoff",
+          planeState: "In Progress",
+          summary: "Incomplete qualification",
+        }),
+        /incomplete review/,
+      );
+    } else {
+      await mutate({
+        action: "handoff",
+        planeState: "In Progress",
+        summary: "Local acceptance verified; qualification remains disclosed",
+      });
+      assert.equal(state.status, "local_complete");
+    }
+  }
+});
+
+test("required and unclassified gaps fail closed; requirement omissions cannot waive checks", async () => {
+  for (const overrides of [
+    {
+      checks: [
+        {
+          name: "tests",
+          requirementId: "tests",
+          status: "not-run",
+          summary: "Missing",
+        },
+      ],
+    },
+    {
+      checks: [
+        {
+          name: "other",
+          status: "passed",
+          summary: "Does not cover required tests",
+        },
+      ],
+    },
+    { knownGaps: ["Unclassified coverage gap"] },
+    {
+      knownGaps: [
+        {
+          code: "required",
+          detail: "Missing required evidence",
+          requirementId: "tests",
+        },
+      ],
+    },
+  ]) {
+    const result = await runWorkflow(await loadWorkflow(), {
+      cwd: "/repo",
+      args: validArgs({
+        deliveryScope: localScope,
+        checks: [
+          {
+            name: "tests",
+            requirementId: "tests",
+            status: "passed",
+            summary: "Passed",
+          },
+        ],
+        ...overrides,
+      }),
+      spawnAgent: async () => structured({ findings: [], gaps: [] }),
+    });
+    assert.equal((result.result as ReviewResult).complete, false);
+    assert.equal((result.result as ReviewResult).outcome, "incomplete");
+  }
+});
+
+test("each independently required check needs its own passing evidence; aggregate mappings reject", async () => {
+  const scope = {
+    boundary: "local",
+    requirements: [
+      {
+        id: "tests",
+        description: "Required regression suite",
+        requiredFor: ["local"],
+      },
+      { id: "lint", description: "Required lint", requiredFor: ["local"] },
+    ],
+  };
+  const checks = [
+    {
+      name: "tests",
+      requirementId: "tests",
+      status: "passed",
+      summary: "Tests passed; lint omitted",
+    },
+  ];
+  const incomplete = await runWorkflow(await loadWorkflow(), {
+    cwd: "/repo",
+    args: validArgs({ deliveryScope: scope, checks }),
+    spawnAgent: async () => structured({ findings: [], gaps: [] }),
+  });
+  assert.equal((incomplete.result as ReviewResult).complete, false);
+  assert.match(
+    (incomplete.result as ReviewResult).blockingGaps.join("\n"),
+    /lint: missing passing evidence/,
+  );
+  await assert.rejects(
+    runWorkflow(await loadWorkflow(), {
+      cwd: "/repo",
+      args: validArgs({
+        deliveryScope: scope,
+        checks: [
+          ...checks,
+          {
+            name: "lint",
+            requirementId: "tests",
+            status: "passed",
+            summary: "Invalid aggregate mapping",
+          },
+        ],
+      }),
+      spawnAgent: async () => {
+        throw new Error("must reject before launch");
+      },
+    }),
+    /one check per requirement/,
+  );
+  const complete = await runWorkflow(await loadWorkflow(), {
+    cwd: "/repo",
+    args: validArgs({
+      deliveryScope: scope,
+      checks: [
+        ...checks,
+        {
+          name: "lint",
+          requirementId: "lint",
+          status: "passed",
+          summary: "Lint passed",
+        },
+      ],
+    }),
+    spawnAgent: async () => structured({ findings: [], gaps: [] }),
+  });
+  assert.equal((complete.result as ReviewResult).complete, true);
+});
+
+test("qualification cannot hide failed checks, reviewer failures, malformed gaps or unresolved findings", async () => {
+  for (const scenario of [
+    "failed-check",
+    "failed-reviewer",
+    "malformed-gap",
+    "invented-requirement",
+    "finding",
+  ]) {
+    const result = await runWorkflow(await loadWorkflow(), {
+      cwd: "/repo",
+      args: validArgs({
+        deliveryScope: localScope,
+        checks: [
+          {
+            name: "tests",
+            requirementId: "tests",
+            status: "passed",
+            summary: "Passed",
+          },
+          {
+            name: "qualification",
+            requirementId: "qualification",
+            status: scenario === "failed-check" ? "failed" : "not-run",
+            summary: "Disclosed qualification",
+          },
+        ],
+      }),
+      spawnAgent: async () =>
+        scenario === "failed-reviewer"
+          ? failed("Unavailable")
+          : structured({
+              findings: scenario === "finding" ? [finding()] : [],
+              gaps:
+                scenario === "malformed-gap"
+                  ? [{ code: "empty", detail: "" }]
+                  : scenario === "invented-requirement"
+                    ? [
+                        {
+                          code: "unknown",
+                          detail: "Missing evidence",
+                          requirementId: "invented",
+                        },
+                      ]
+                    : [],
+            }),
+    });
+    const output = result.result as ReviewResult;
+    assert.equal(
+      output.outcome,
+      ["finding", "failed-check"].includes(scenario)
+        ? "findings"
+        : "incomplete",
+    );
+    assert.equal(output.complete, scenario === "finding");
+  }
+});
+
+test("adjudicator qualifications use the same scope rules and all stages receive requirements", async () => {
+  const result = await runWorkflow(await loadWorkflow(), {
+    cwd: "/repo",
+    args: validArgs({
+      deliveryScope: localScope,
+      checks: [
+        {
+          name: "tests",
+          requirementId: "tests",
+          status: "passed",
+          summary: "Passed",
+        },
+      ],
+      requestedLenses: ["architecture"],
+    }),
+    spawnAgent: async (request) => {
+      const context = JSON.parse(
+        request.prompt
+          .split("Prepared review context:\n")[1]
+          .split("\n\nCandidate groups:")[0],
+      );
+      assert.deepEqual(context.deliveryScope, localScope);
+      assert.match(request.prompt, /never invent exemptions/i);
+      if (request.intent === "Adjudicate review findings")
+        return structured({
+          dispositions: [
+            {
+              candidateIds: ["independent-1"],
+              status: "rejected",
+              reason: "Unsupported candidate",
+            },
+          ],
+          gaps: [
+            {
+              code: "platform",
+              detail: "Remote qualification remains unperformed",
+              requirementId: "qualification",
+            },
+          ],
+        });
+      return structured({
+        findings: request.intent === "Review independent" ? [finding()] : [],
+        gaps: [],
+      });
+    },
+  });
+  const output = result.result as ReviewResult;
+  assert.equal(output.complete, true);
+  assert.equal(output.blockingGaps.length, 0);
+  assert.match(
+    output.qualificationLimitations.join("\n"),
+    /Remote qualification remains unperformed/,
+  );
+});
+
+test("scope validation rejects invented exemptions before launch", async () => {
+  for (const overrides of [
+    { deliveryScope: { ...localScope, boundary: "release" } },
+    {
+      deliveryScope: {
+        ...localScope,
+        requirements: [{ id: "tests", description: "tests", requiredFor: [] }],
+      },
+    },
+    {
+      deliveryScope: localScope,
+      checks: [
+        {
+          name: "tests",
+          status: "passed",
+          summary: "ok",
+          requirementId: "invented",
+        },
+      ],
+    },
+    { knownGaps: [{ code: "x", detail: "not important", blocking: false }] },
+  ]) {
+    await assert.rejects(
+      runWorkflow(await loadWorkflow(), {
+        cwd: "/repo",
+        args: validArgs(overrides),
+        spawnAgent: async () => {
+          throw new Error("must not launch");
+        },
+      }),
+      /review input/i,
+    );
+  }
+});
+
+type ReviewResult = {
+  report: string;
+  complete: boolean;
+  outcome: string;
+  deliveryScope: unknown;
+  blockingGaps: string[];
+  qualificationLimitations: string[];
+};
 
 async function loadWorkflow() {
   return parseWorkflowScript(await readFile(workflowFile, "utf8"));
@@ -151,14 +577,26 @@ test("review runs one independent reviewer without mandatory adjudication", asyn
     assert.match(request.prompt, /\/tmp\/review\.patch/);
     assert.match(request.prompt, /12 passed/);
   }
-  assert.match(result.result as string, /^# Review: current changes/m);
-  assert.match(result.result as string, /Outcome: no material findings/);
-  assert.match(result.result as string, /tests: passed — 12 passed/);
   assert.match(
-    result.result as string,
+    (result.result as ReviewResult).report,
+    /^# Review: current changes/m,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
+    /Outcome: no material findings/,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
+    /tests: passed — 12 passed/,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
     /No material findings in the supplied evidence/,
   );
-  assert.doesNotMatch(result.result as string, /ready to merge/i);
+  assert.doesNotMatch(
+    (result.result as ReviewResult).report,
+    /ready to merge/i,
+  );
 });
 
 test("review deterministically adds only requested or risk-selected optional lenses", async () => {
@@ -270,12 +708,24 @@ test("optional lenses adjudicate immutable grouped candidates once", async () =>
   assert.equal(adjudicator.intent, "Adjudicate review findings");
   assert.deepEqual(adjudicator.capabilities, ["read-filesystem"]);
   assert.equal(adjudicator.profile, "strong");
-  assert.match(result.result as string, /## Major findings/);
-  assert.match(result.result as string, /Incorrect boundary handling/);
-  assert.doesNotMatch(result.result as string, /Invented replacement finding/);
-  assert.match(result.result as string, /src\/example\.ts:12/);
-  assert.match(result.result as string, /Valid input fails at runtime/);
-  assert.doesNotMatch(result.result as string, /Rejected candidate/);
+  assert.match((result.result as ReviewResult).report, /## Major findings/);
+  assert.match(
+    (result.result as ReviewResult).report,
+    /Incorrect boundary handling/,
+  );
+  assert.doesNotMatch(
+    (result.result as ReviewResult).report,
+    /Invented replacement finding/,
+  );
+  assert.match((result.result as ReviewResult).report, /src\/example\.ts:12/);
+  assert.match(
+    (result.result as ReviewResult).report,
+    /Valid input fails at runtime/,
+  );
+  assert.doesNotMatch(
+    (result.result as ReviewResult).report,
+    /Rejected candidate/,
+  );
 });
 
 test("review preserves partial results and marks failed core coverage incomplete", async () => {
@@ -290,14 +740,17 @@ test("review preserves partial results and marks failed core coverage incomplete
   });
 
   assert.equal(result.settledBranchFailureCount, 1);
-  assert.match(result.result as string, /Outcome: incomplete/);
-  assert.match(result.result as string, /0\/1 reviewer lenses completed/);
+  assert.match((result.result as ReviewResult).report, /Outcome: incomplete/);
   assert.match(
-    result.result as string,
+    (result.result as ReviewResult).report,
+    /0\/1 reviewer lenses completed/,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
     /Reviewer independent failed: provider unavailable/,
   );
   assert.doesNotMatch(
-    result.result as string,
+    (result.result as ReviewResult).report,
     /No material findings in the supplied evidence/,
   );
 });
@@ -330,11 +783,23 @@ test("review fails adjudication semantics closed into needs-human findings", asy
     },
   });
 
-  assert.match(result.result as string, /Outcome: incomplete/);
-  assert.match(result.result as string, /## Needs human judgment/);
-  assert.match(result.result as string, /Incorrect boundary handling/);
-  assert.match(result.result as string, /too many candidate IDs/);
-  assert.match(result.result as string, /did not disposition every candidate/);
+  assert.match((result.result as ReviewResult).report, /Outcome: incomplete/);
+  assert.match(
+    (result.result as ReviewResult).report,
+    /## Needs human judgment/,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
+    /Incorrect boundary handling/,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
+    /too many candidate IDs/,
+  );
+  assert.match(
+    (result.result as ReviewResult).report,
+    /did not disposition every candidate/,
+  );
 });
 
 test("review distinguishes deterministic failures and missing check evidence", async () => {
@@ -358,13 +823,19 @@ test("review distinguishes deterministic failures and missing check evidence", a
       spawnAgent: async () => structured({ findings: [], gaps: [] }),
     });
     assert.match(
-      result.result as string,
+      (result.result as ReviewResult).report,
       new RegExp(`Outcome: ${scenario.outcome}`),
     );
     if (scenario.present)
-      assert.match(result.result as string, new RegExp(scenario.present));
+      assert.match(
+        (result.result as ReviewResult).report,
+        new RegExp(scenario.present),
+      );
     if (scenario.absent)
-      assert.doesNotMatch(result.result as string, new RegExp(scenario.absent));
+      assert.doesNotMatch(
+        (result.result as ReviewResult).report,
+        new RegExp(scenario.absent),
+      );
   }
 });
 
@@ -408,10 +879,16 @@ test("review bounds hostile structured-output collections before adjudication an
     },
   });
 
-  assert.match(result.result as string, /review-gap-50: gap 50/);
-  assert.doesNotMatch(result.result as string, /review-gap-51: gap 51/);
-  assert.match(result.result as string, /adjudicator gap 50/);
-  assert.doesNotMatch(result.result as string, /adjudicator gap 51/);
+  assert.match((result.result as ReviewResult).report, /review-gap-50: gap 50/);
+  assert.doesNotMatch(
+    (result.result as ReviewResult).report,
+    /review-gap-51: gap 51/,
+  );
+  assert.match((result.result as ReviewResult).report, /adjudicator gap 50/);
+  assert.doesNotMatch(
+    (result.result as ReviewResult).report,
+    /adjudicator gap 51/,
+  );
 });
 
 test("review bounds and terminal-sanitizes model-derived findings", async () => {
@@ -444,8 +921,8 @@ test("review bounds and terminal-sanitizes model-derived findings", async () => 
     },
   });
 
-  assert.doesNotMatch(result.result as string, /\u001b|\[31m/);
-  assert.ok((result.result as string).length < 8_000);
+  assert.doesNotMatch((result.result as ReviewResult).report, /\u001b|\[31m/);
+  assert.ok((result.result as ReviewResult).report.length < 8_000);
 });
 
 test("single-reviewer findings need no adjudicator and suggestions do not block", async () => {
@@ -469,10 +946,13 @@ test("single-reviewer findings need no adjudicator and suggestions do not block"
     });
     assert.equal(launches, 1);
     assert.match(
-      result.result as string,
+      (result.result as ReviewResult).report,
       new RegExp(`Outcome: ${scenario.outcome}`),
     );
-    assert.match(result.result as string, /Incorrect boundary handling/);
+    assert.match(
+      (result.result as ReviewResult).report,
+      /Incorrect boundary handling/,
+    );
   }
 });
 
@@ -524,5 +1004,5 @@ test("focused confirmation carries original blockers and repair boundaries throu
       },
     ]);
   }
-  assert.match(result.result as string, /Outcome: findings/);
+  assert.match((result.result as ReviewResult).report, /Outcome: findings/);
 });

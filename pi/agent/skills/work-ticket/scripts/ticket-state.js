@@ -211,6 +211,14 @@ async function readState(file, ticketId) {
   requireThat(state.ticketId === ticketId, "state ticket identity mismatch");
   return state;
 }
+function repairLimit(s) {
+  return (
+    2 + (s.repairExtensions ?? []).reduce((sum, item) => sum + item.cycles, 0)
+  );
+}
+function scopeHash(s) {
+  return digest(JSON.stringify([s.contract, s.authorization.boundary]));
+}
 function validate(s) {
   requireThat(
     s?.schemaVersion === 1 && Number.isInteger(s.revision) && s.revision >= 0,
@@ -229,7 +237,27 @@ function validate(s) {
   authority(s.authorization);
   plan(s.plan);
   requireThat(
-    Number.isInteger(s.repairCount) && s.repairCount >= 0 && s.repairCount <= 2,
+    s.contractHash === undefined || s.contractHash === digest(s.contract),
+    "invalid contract hash",
+  );
+  requireThat(
+    s.repairExtensions === undefined ||
+      (Array.isArray(s.repairExtensions) &&
+        s.repairExtensions.every(
+          (item) =>
+            Number.isInteger(item.cycles) &&
+            item.cycles > 0 &&
+            item.cycles <= 2 &&
+            HASH.test(item.contractHash) &&
+            typeof item.evidence === "string" &&
+            item.evidence.trim(),
+        )),
+    "invalid repair extensions",
+  );
+  requireThat(
+    Number.isInteger(s.repairCount) &&
+      s.repairCount >= 0 &&
+      s.repairCount <= repairLimit(s),
     "invalid repair count",
   );
   requireThat(
@@ -313,6 +341,88 @@ async function snapshot(root) {
     clean: !git(root, "status", "--porcelain", "--untracked-files=all").trim(),
   };
 }
+async function contentFingerprint(root) {
+  const names = [
+    ...new Set(
+      git(
+        root,
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        ".",
+        ":(exclude).pi/tickets",
+        ":(exclude).ticket-run",
+      )
+        .split("\0")
+        .filter(Boolean),
+    ),
+  ].sort();
+  const hash = createHash("sha256");
+  for (const name of names) {
+    const file = join(root, name);
+    if (await absent(file)) continue;
+    const stat = await lstat(file);
+    requireThat(
+      (stat.isFile() || stat.isSymbolicLink()) && stat.size <= 16 * 1024 * 1024,
+      "content reuse requires bounded regular files or symlinks; rerun checks for unsupported artifacts",
+    );
+    hash.update(
+      JSON.stringify([
+        name,
+        stat.isSymbolicLink() ? "symlink" : "file",
+        stat.mode & 0o111,
+      ]),
+    );
+    hash.update(
+      digest(
+        stat.isSymbolicLink() ? await readlink(file) : await readFile(file),
+      ),
+    );
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+async function reuseEvidence(p, s, r, current) {
+  const reuse = r.reuseEvidence;
+  if (reuse === undefined) return null;
+  requireThat(
+    r.action === "checkpoint" &&
+      reuse &&
+      (reuse.verification === true || reuse.review === true),
+    "evidence reuse requires an explicit checkpoint selection",
+  );
+  const justification = text(
+    reuse.justification,
+    "unchanged check inputs/environment and review coverage justification",
+  );
+  requireThat(
+    current.clean && current.head !== s.snapshot.head,
+    "content reuse requires a clean new commit",
+  );
+  git(p.root, "merge-base", "--is-ancestor", s.snapshot.head, current.head);
+  const content = await contentFingerprint(p.root);
+  const retained = {};
+  for (const kind of ["verification", "review"]) {
+    if (reuse[kind] !== true) continue;
+    const prior = kind === "review" ? s.review : s.evidence.verification;
+    requireThat(
+      prior &&
+        prior.fingerprint === s.snapshot.fingerprint &&
+        prior.contentFingerprint === content &&
+        prior.scopeHash === scopeHash(s) &&
+        (kind === "review" ? prior.complete && !prior.stale : prior.passed),
+      "reuse requires opted-in passing evidence with unchanged content and scope",
+    );
+    retained[kind] = {
+      ...prior,
+      fingerprint: current.fingerprint,
+      reuse: { fromFingerprint: prior.fingerprint, justification },
+    };
+  }
+  return retained;
+}
 async function locked(p, fn) {
   const lock = join(p.store, ".writer.lock");
   await mkdir(lock).catch((error) => {
@@ -337,6 +447,7 @@ async function locked(p, fn) {
   }
 }
 async function persist(p, s) {
+  s.contractHash = digest(s.contract);
   validate(s);
   const content = `${JSON.stringify(s, null, 2)}\n`;
   requireThat(
@@ -385,6 +496,7 @@ function deliveryArchive(s) {
     review: s.review,
     findings: s.findings,
     repairCount: s.repairCount,
+    repairExtensions: s.repairExtensions ?? [],
     reconciliation: s.reconciliation ?? null,
   });
 }
@@ -405,6 +517,8 @@ function permitted(s, op) {
 function verified(s) {
   requireThat(
     s.evidence.verification?.fingerprint === s.snapshot.fingerprint &&
+      (s.evidence.verification.scopeHash === undefined ||
+        s.evidence.verification.scopeHash === scopeHash(s)) &&
       s.evidence.verification.passed === true,
     "current revision requires passing required checks",
   );
@@ -418,6 +532,8 @@ function reviewed(s) {
     s.review &&
       !s.review.stale &&
       s.review.fingerprint === s.snapshot.fingerprint &&
+      (s.review.scopeHash === undefined ||
+        s.review.scopeHash === scopeHash(s)) &&
       s.review.complete &&
       !openBlockers(s).length,
     "current revision requires complete independent review without blockers",
@@ -639,14 +755,25 @@ function apply(s, r) {
           ? null
           : text(r.blocker, "blocker or waiting condition");
       break;
-    case "authorize":
+    case "authorize": {
+      const previousScope = scopeHash(s);
+      const nextContract = text(
+        r.newContract ?? r.contract ?? s.contract,
+        "authorized scope baseline",
+        100000,
+      );
+      requireThat(
+        !TERMINAL.has(s.status) || nextContract === s.contract,
+        "completed scope changes require an explicitly authorized follow-up",
+      );
       s.authorization = authority(r.authorization);
-      if (r.contract !== s.contract) {
-        s.contract = text(r.contract, "authorized scope baseline", 100000);
+      s.contract = nextContract;
+      if (scopeHash(s) !== previousScope && !TERMINAL.has(s.status)) {
         s.evidence = {};
         if (s.review) s.review.stale = true;
       }
       break;
+    }
     case "reopen_local": {
       requireThat(
         s.status === "local_complete" &&
@@ -681,6 +808,26 @@ function apply(s, r) {
       const observations = text(r.observations, "follow-up reconciliation");
       s.localFollowups ??= [];
       s.localFollowups.push(deliveryArchive(s));
+      if (r.additionalRepairCycles !== undefined) {
+        const extension = r.additionalRepairCycles;
+        requireThat(
+          nextContract !== s.contract &&
+            Number.isInteger(extension?.cycles) &&
+            extension.cycles > 0 &&
+            extension.cycles <= 2,
+          "additional repairs require new follow-up scope and one or two explicitly authorized cycles",
+        );
+        s.repairExtensions ??= [];
+        s.repairExtensions.push({
+          cycles: extension.cycles,
+          evidence: text(
+            extension.evidence,
+            "explicit additional repair authorization",
+          ),
+          contractHash: digest(nextContract),
+          revision: s.revision,
+        });
+      }
       s.authorization = authorization;
       delete s.completionAuthorization;
       s.contract = nextContract;
@@ -718,7 +865,6 @@ function apply(s, r) {
         r.planeState === "In Progress" && r.noPrConfirmed === true,
         "begin_pr requires fresh Plane In Progress and no-PR observations",
       );
-      verified(s);
       requireThat(
         !openBlockers(s).length,
         "unresolved blockers prevent PR transition",
@@ -734,8 +880,8 @@ function apply(s, r) {
         boundary: "pr",
         evidence: publicationEvidence,
       };
-      delete s.evidence.safety;
-      delete s.evidence.ci;
+      s.evidence = {};
+      if (s.review) s.review.stale = true;
       s.reconciliation = { observations, fingerprint: r.fingerprint };
       s.status = "active";
       s.blocker = null;
@@ -784,6 +930,10 @@ function apply(s, r) {
         );
       s.evidence[r.kind] = {
         fingerprint: r.fingerprint,
+        scopeHash: scopeHash(s),
+        ...(r.contentFingerprint
+          ? { contentFingerprint: r.contentFingerprint }
+          : {}),
         passed: r.passed,
         summary: text(r.summary, "evidence summary"),
         ...(r.kind === "safety"
@@ -793,7 +943,6 @@ function apply(s, r) {
       break;
     }
     case "review": {
-      verified(s);
       requireThat(
         r.fingerprint === s.snapshot.fingerprint &&
           r.independent === true &&
@@ -844,12 +993,16 @@ function apply(s, r) {
       }
       s.review = {
         fingerprint: r.fingerprint,
+        scopeHash: scopeHash(s),
+        ...(r.contentFingerprint
+          ? { contentFingerprint: r.contentFingerprint }
+          : {}),
         complete: r.complete,
         stale: false,
         summary: text(r.summary, "review evidence"),
         sequence: (s.review?.sequence ?? 0) + 1,
       };
-      if (openBlockers(s).length && s.repairCount === 2) {
+      if (openBlockers(s).length && s.repairCount >= repairLimit(s)) {
         s.status = "blocked";
         s.blocker =
           "Review repair allowance exhausted; remaining blockers require human handoff";
@@ -860,13 +1013,13 @@ function apply(s, r) {
     case "begin_repair":
       permitted(s, "implement");
       requireThat(
-        s.review &&
-          !s.review.stale &&
-          s.review.complete &&
-          openBlockers(s).length,
-        "repair requires consolidated complete review with blockers",
+        s.review && !s.review.stale && openBlockers(s).length,
+        "repair requires current consolidated review with blockers",
       );
-      requireThat(s.repairCount < 2, "review repair allowance exhausted");
+      requireThat(
+        s.repairCount < repairLimit(s),
+        "review repair allowance exhausted",
+      );
       requireThat(
         !s.repairs.some((r) => r.reviewSequence === s.review.sequence),
         "repair batch already consumed; resume the recorded batch",
@@ -1457,9 +1610,15 @@ export async function ticketState(r) {
       current.head,
     );
     requireThat(
-      r.action === "authorize" || r.contract === s.contract,
+      r.contractHash !== undefined
+        ? r.contractHash === digest(s.contract) &&
+            (r.contract === undefined ||
+              r.action === "authorize" ||
+              r.contract === s.contract)
+        : r.action === "authorize" || r.contract === s.contract,
       "ticket scope drift requires explicit authorization",
     );
+    const previousOwner = s.owner;
     if (r.action === "reconcile" && r.owner !== s.owner) {
       requireThat(
         r.previousOwnerReleased === true,
@@ -1472,6 +1631,7 @@ export async function ticketState(r) {
       !TERMINAL.has(s.status) ||
         [
           "authorize",
+          "reconcile",
           "reopen_local",
           "begin_pr",
           "accept_merged",
@@ -1494,6 +1654,27 @@ export async function ticketState(r) {
     if (s.status === "local_complete" && !s.completionAuthorization) {
       // Preserve legacy completion authority before a terminal authorize can replace it.
       s.completionAuthorization = structuredClone(s.authorization);
+    }
+    if (r.action === "reconcile" && TERMINAL.has(s.status)) {
+      requireThat(
+        !s.humanAcceptance &&
+          ["local_complete", "awaiting_human"].includes(s.status),
+        "settled or accepted delivery cannot acquire a new delivery owner",
+      );
+      await noOtherWriter(p, s.ticketId);
+      s.ownershipTransfers ??= [];
+      s.ownershipTransfers.push({
+        revision: s.revision,
+        previousOwner,
+        owner: s.owner,
+        observations: text(
+          r.observations,
+          "fresh ownership and delivery observations",
+        ),
+      });
+      s.revision += 1;
+      await persist(p, s);
+      return s;
     }
     if (r.action === "begin_pr") {
       requireThat(
@@ -1531,13 +1712,32 @@ export async function ticketState(r) {
         "human acceptance permits settlement/cleanup only, not renewed delivery",
       );
       requireThat(
-        r.contract === s.contract,
+        (r.contract === undefined || r.contract === s.contract) &&
+          (r.newContract === undefined || r.newContract === s.contract),
         "accepted delivery scope cannot change",
       );
       r = { ...r, currentHead: current.head };
       // Keep verification bound to its original code, even during settlement.
       if (r.operation === "cleanup") await noOtherWriter(p, s.ticketId);
-    } else invalidate(s, current);
+    } else {
+      const retained = await reuseEvidence(p, s, r, current);
+      invalidate(s, current);
+      if (retained?.verification)
+        s.evidence.verification = retained.verification;
+      if (retained?.review) s.review = retained.review;
+    }
+    requireThat(
+      r.contentFingerprint === undefined,
+      "content fingerprints are computed by the helper, not caller supplied",
+    );
+    if (r.contentIndependent === true) {
+      requireThat(
+        (r.action === "evidence" && r.kind === "verification") ||
+          r.action === "review",
+        "content-independent reuse applies only to verification or review",
+      );
+      r = { ...r, contentFingerprint: await contentFingerprint(p.root) };
+    }
     if (r.action === "gate") {
       gate(
         r.operation === "cleanup" ? { ...s, snapshot: current } : s,

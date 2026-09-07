@@ -10,7 +10,7 @@ Use the saved `review` workflow as the review engine. Prepare evidence and prese
 ## Prepare evidence
 
 1. Resolve the target as `working-tree`, `branch`, `commit-range`, `pull-request`, `document`, or `other`. Default an unqualified Git-workspace request to the current working tree. Ask only when materially different targets remain plausible after inspection.
-2. Derive the objective and acceptance criteria from the user request, ticket, plan, or task context; do not invent requirements.
+2. Derive the objective, acceptance criteria, delivery boundary, and evidence requirements from the user request, ticket, repository instructions, and task context. Do not invent requirements or exemptions. Declare which boundaries require each qualification.
 3. Collect changed files using local Git for local targets or broker-backed GitHub for remote PRs, not direct `gh` or remote Git commands.
 4. Create a temporary patch or review artifact outside the workspace. Code-change review requires a patch/diff artifact unless impossible; record absence as a known gap.
 5. Include specific readable instruction files, specifications, plans, and ticket evidence as context. List current files separately; record deleted or unreadable artifacts as gaps.
@@ -21,11 +21,11 @@ Run repository-mandated or target-relevant deterministic checks before review wh
 
 ## Invoke the workflow
 
-Read [the workflow input contract](references/workflow-input.md) completely before invocation. Supply the target, patch/context paths, canonical criteria, honest check evidence, and gaps. Use focused `confirmation` after authorized repairs, with the original findings, dispositions, and affected boundaries.
+Read [the workflow input contract](references/workflow-input.md) completely before invocation. Supply the target, patch/context paths, canonical criteria, delivery scope, honest check evidence, and gaps. Use focused `confirmation` after authorized repairs within unchanged scope, with original findings and dispositions. When scope or delivery boundary expands, use `initial` review against all applicable requirements; previous local completeness is not expanded qualification.
 
 ## Present findings
 
-Treat workflow health and review outcome separately. Report agent/branch failures before findings. The workflow's deterministic Markdown is the authoritative report; retain it in full without silently omitting, downgrading, rewriting, or re-adjudicating findings.
+Treat workflow health and review outcome separately. Report agent/branch failures before findings. The workflow returns structured `complete`, `outcome`, `deliveryScope`, `blockingGaps`, `qualificationLimitations`, and deterministic Markdown `report`. Retain the full report without silently omitting, downgrading, rewriting, or re-adjudicating findings. Use `complete` rather than parsing prose when recording review completeness; findings and checks remain separate gates.
 
 For a short report, present it directly. For a long report, make the complete unchanged report accessible at a specific file path (use a temporary artifact outside the workspace if no report file exists) and provide a concise summary. Before repairs, the presentation must expose:
 
@@ -34,7 +34,7 @@ For a short report, present it directly. For a long report, make the complete un
 - unrun required checks, material coverage limitations, and known gaps;
 - confirmed nonblocking suggestions, which may be grouped, with full details retained in the report.
 
-Never claim clean/ready when the outcome is `incomplete`, checks failed or were not run, candidates need human judgment, or gaps are material. No material findings is a conclusion limited to the supplied evidence and coverage.
+Never claim clean/ready when review is incomplete, a check failed, required or unclassified checks were not run, candidates need human judgment, or blocking evidence gaps remain. A declared qualification outside the current delivery boundary remains visible but does not prevent local completeness. Missing requirement references and uncertain scope remain blocking; do not waive required evidence by labeling it nonblocking. No material findings is limited to the supplied scope and coverage.
 
 Critical/major findings block only with concrete security, correctness, acceptance, compatibility, data-integrity, required-CI, or explicit resource-requirement evidence. Unsupported blocking categories and needs-human findings require resolution, not silent downgrading. Keep nonblocking suggestions visible without reopening implementation.
 
@@ -42,4 +42,4 @@ Critical/major findings block only with concrete security, correctness, acceptan
 
 Read [the repair procedure](references/repair.md) completely **before editing**. Present the findings and retain the full report first. Perform already-authorized bounded repairs without redundant approval; otherwise offer to fix blockers and wait for authorization.
 
-Allow at most **two review-driven repair batches**, preserving consumption and original findings across interruption. Ticket work must persist `begin_repair` before edits. Confirm original blockers and repair-induced regressions independently, preserving required checks. Scope expansion requires authorization. Findings presentation is nonterminal during authorized implementation: continue repairable in-scope blockers within the remaining allowance without asking the user to continue. Stop with a blocked handoff when the allowance is exhausted or a concrete blocker prevents safe authorized repair, never treat either as approval. Preserve explicit review-only or partial-delivery requests.
+Default to **two review-driven repair batches**, preserving consumption and original findings across interruption. Ticket work must persist `begin_repair` before edits; `work-ticket` supports explicitly authorized additive cycles for genuinely new local follow-up scope. An incomplete review may supply actionable repair findings without authorizing delivery. Confirm original blockers and repair-induced regressions independently, preserving required checks. Scope expansion requires authorization. Findings presentation is nonterminal during authorized implementation: continue repairable in-scope blockers within the remaining allowance without asking the user to continue. Stop with a blocked handoff when the allowance is exhausted or a concrete blocker prevents safe authorized repair, never treat either as approval. Preserve explicit review-only or partial-delivery requests.

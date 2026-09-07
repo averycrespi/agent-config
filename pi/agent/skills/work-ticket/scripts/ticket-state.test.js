@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmod,
   mkdtemp,
   mkdir,
   readFile,
@@ -148,6 +149,220 @@ async function pr(f, draft = true) {
     open: true,
   };
 }
+
+test("hash-bound mutation receipts support consecutive CAS writes without rereading", async (t) => {
+  const f = await fixture(t);
+  let s = await init(f);
+  const request = {
+    cwd: f.cwd,
+    ticketId,
+    runId: s.runId,
+    owner: s.owner,
+    expectedRevision: s.revision,
+    contractHash: s.contractHash,
+    action: "checkpoint",
+    progress: "Implementation progressing",
+    nextAction: "Verify",
+  };
+  s = await ticketState(request);
+  assert.equal(s.revision, 1);
+  await assert.rejects(ticketState(request), /revision conflict/);
+  await assert.rejects(
+    ticketState({
+      ...request,
+      expectedRevision: s.revision,
+      contractHash: `sha256:${"0".repeat(64)}`,
+    }),
+    /scope drift/,
+  );
+  const next = await ticketState({
+    ...request,
+    expectedRevision: s.revision,
+    action: "authorize",
+    newContract: "Explicit new scope",
+    authorization: {
+      ...s.authorization,
+      evidence: "User authorizes new scope",
+    },
+  });
+  assert.notEqual(next.contractHash, s.contractHash);
+  assert.equal(next.contract, "Explicit new scope");
+  assert.deepEqual(next, await read(f));
+});
+
+test("opted-in evidence survives a content-equivalent commit, but not content, hooks, or scope changes", async (t) => {
+  for (const variant of [
+    "equivalent",
+    "changed",
+    "executable",
+    "untracked",
+    "scope",
+    "no-opt-in",
+  ]) {
+    const f = await fixture(t);
+    f.input.authorization.operations.push("commit");
+    await init(f);
+    await writeFile(join(f.cwd, "code.js"), "export const value = 2;\n");
+    const verified = await mutate(f, {
+      action: "evidence",
+      kind: "verification",
+      fingerprint: (await snap(f)).fingerprint,
+      passed: true,
+      summary: "Regression suite passed",
+      contentIndependent: variant !== "no-opt-in",
+    });
+    await mutate(f, {
+      action: "review",
+      fingerprint: verified.snapshot.fingerprint,
+      independent: true,
+      complete: true,
+      summary: "Independent full patch review",
+      findings: [],
+      resolutions: [],
+      contentIndependent: true,
+    });
+    if (variant === "changed")
+      await writeFile(join(f.cwd, "code.js"), "export const value = 3;\n");
+    if (variant === "untracked")
+      await writeFile(join(f.cwd, "extra.js"), "extra\n");
+    if (variant === "executable") await chmod(join(f.cwd, "code.js"), 0o755);
+    git(f.cwd, "add", "code.js");
+    if (variant === "untracked") git(f.cwd, "add", "extra.js");
+    git(f.cwd, "commit", "-qm", "test: commit verified slice");
+    if (variant === "scope")
+      await mutate(f, {
+        action: "authorize",
+        contract: "Expanded acceptance criteria",
+        authorization: f.input.authorization,
+      });
+    const request = {
+      action: "checkpoint",
+      progress: "Committed verified slice",
+      nextAction: "Handoff",
+      reuseEvidence: {
+        verification: true,
+        review: true,
+        justification:
+          "Same check inputs, environment and patch coverage; inspected hook result",
+      },
+    };
+    if (variant === "equivalent") {
+      const s = await mutate(f, request);
+      assert.equal(s.evidence.verification.fingerprint, s.snapshot.fingerprint);
+      assert.equal(s.review.stale, false);
+      assert.notEqual(s.snapshot.fingerprint, verified.snapshot.fingerprint);
+      assert.equal(
+        s.evidence.verification.reuse.fromFingerprint,
+        verified.snapshot.fingerprint,
+      );
+      assert.equal(
+        (await localHandoffWithoutChecks(f)).status,
+        "local_complete",
+      );
+    } else {
+      const bytes = await readFile(f.file, "utf8");
+      await assert.rejects(mutate(f, request), /reuse requires/);
+      assert.equal(await readFile(f.file, "utf8"), bytes);
+      await assert.rejects(
+        localHandoffWithoutChecks(f),
+        /passing required checks/,
+      );
+    }
+  }
+});
+
+test("terminal owner reconciliation preserves delivery evidence before an authorized follow-up", async (t) => {
+  const f = await fixture(t);
+  await init(f);
+  const completed = await localHandoff(f);
+  await assert.rejects(
+    mutate(f, {
+      action: "reconcile",
+      owner: "owner-2",
+      observations: "New session",
+    }),
+    /previous owner/,
+  );
+  const reconciled = await mutate(f, {
+    action: "reconcile",
+    owner: "owner-2",
+    previousOwnerReleased: true,
+    observations:
+      "Prior session released; ticket, files, Git and no PR reconciled",
+  });
+  assert.equal(reconciled.status, "local_complete");
+  assert.deepEqual(reconciled.evidence, completed.evidence);
+  assert.deepEqual(reconciled.snapshot, completed.snapshot);
+  assert.equal(reconciled.ownershipTransfers[0].previousOwner, "owner-1");
+  await assert.rejects(
+    mutate(f, {
+      action: "checkpoint",
+      progress: "Unsolicited edits",
+      nextAction: "Continue",
+    }),
+    /sticky/,
+  );
+  const reopened = await followup(f);
+  assert.equal(reopened.owner, "owner-2");
+  assert.equal(reopened.status, "active");
+  assert.deepEqual(reopened.localFollowups[0].evidence, completed.evidence);
+});
+
+test("new follow-up scope can add explicitly authorized repairs without resetting consumed cycles", async (t) => {
+  const f = await fixture(t);
+  await init(f);
+  for (const name of ["first", "second"]) {
+    await review(f, [blocker(name)], [], false);
+    await mutate(f, {
+      action: "begin_repair",
+      repairPlan: "Fix actionable blocker from incomplete review",
+    });
+    await review(
+      f,
+      [],
+      [
+        {
+          id: name,
+          disposition: "fixed",
+          evidence: "Independent confirmation",
+        },
+      ],
+    );
+  }
+  await localHandoff(f);
+  const extension = {
+    cycles: 1,
+    evidence:
+      "User explicitly grants one additional repair batch for new follow-up scope",
+  };
+  await assert.rejects(
+    followup(f, { newContract: contract, additionalRepairCycles: extension }),
+    /new follow-up scope/,
+  );
+  await assert.rejects(
+    followup(f, { additionalRepairCycles: { cycles: 1, evidence: "" } }),
+    /authorization/,
+  );
+  const s = await followup(f, { additionalRepairCycles: extension });
+  assert.equal(s.repairCount, 2);
+  assert.equal(s.repairExtensions[0].cycles, 1);
+  await review(f, [blocker("third")], [], false);
+  await mutate(f, {
+    action: "begin_repair",
+    repairPlan: "Explicit additional batch",
+  });
+  const resumed = await mutate(f, {
+    action: "reconcile",
+    observations: "Interrupted third batch; retained all consumption",
+  });
+  assert.equal(resumed.repairCount, 3);
+  await review(f);
+  await assert.rejects(
+    mutate(f, { action: "begin_repair", repairPlan: "No fourth batch" }),
+    /exhausted/,
+  );
+  await assert.rejects(localHandoffWithoutChecks(f), /passing required checks/);
+});
 
 test("initial plan survives a fresh CLI process; exclusion is local, idempotent and preserves entries", async (t) => {
   const f = await fixture(t);
@@ -399,7 +614,7 @@ test("consolidated review repairs consume before editing, persist across process
   assert.equal((await read(f)).repairCount, 1);
   await assert.rejects(
     mutate(f, { action: "begin_repair", repairPlan: "same batch" }),
-    /consolidated complete review|already consumed/,
+    /current consolidated review|already consumed/,
   );
   await checks(f);
   await review(f);
@@ -587,16 +802,19 @@ test("ordinary iteration consumes no review cycles; nonblockers remain visible w
   assert.equal(s.status, "local_complete");
   assert.equal(s.repairCount, 0);
   assert.equal(s.findings.length, 1);
-  await assert.rejects(
-    mutate(f, { action: "reconcile", observations: "restart" }),
-    /sticky/,
-  );
+  const reconciled = await mutate(f, {
+    action: "reconcile",
+    observations: "Inspect completed delivery without restarting",
+  });
+  assert.equal(reconciled.status, "local_complete");
+  assert.deepEqual(reconciled.evidence, s.evidence);
 });
 
-test("review requires prior checks; unsupported blockers and partial resolutions reject atomically", async (t) => {
+test("review intake permits missing checks; delivery, unsupported blockers and partial resolutions remain gated", async (t) => {
   const f = await fixture(t);
   await init(f);
-  await assert.rejects(review(f, [blocker()]), /passing required checks/);
+  await review(f, [], [], false);
+  await assert.rejects(localHandoffWithoutChecks(f), /passing required checks/);
   await checks(f);
   await assert.rejects(
     review(f, [{ ...blocker(), category: "style" }]),
@@ -1126,7 +1344,7 @@ test("local reopen rejects invalid authority, stale requests and owner/scope con
     authorization: f.input.authorization,
   });
   assert.equal((await read(f)).status, "local_complete");
-  for (const action of ["reconcile", "checkpoint"])
+  for (const action of ["checkpoint"])
     await assert.rejects(
       mutate(f, { action, observations: "No implicit restart" }),
       /sticky/,
@@ -1214,6 +1432,8 @@ test("local reopen preserves stronger PR and settlement safeguards and unresolve
           action: "authorize",
           authorization: { ...f.input.authorization, boundary: "local" },
         });
+        await checks(f);
+        await review(f);
         await localHandoff(f);
       } else {
         await mutate(f, {
@@ -1342,7 +1562,6 @@ test("completed local delivery can publish with exhausted repairs, preserving hi
     "externalWrites",
     "localFollowups",
     "snapshot",
-    "review",
   ])
     assert.deepEqual(s[key], old[key]);
   for (const key of [
@@ -1355,8 +1574,19 @@ test("completed local delivery can publish with exhausted repairs, preserving hi
     "repairCount",
   ])
     assert.deepEqual(s.prDelivery[key], old[key]);
-  assert.deepEqual(s.evidence.verification, old.evidence.verification);
+  assert.deepEqual(s.evidence, {});
+  assert.equal(s.review.stale, true);
   await assert.rejects(beginPr(f), /requires local completion/);
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "publish" }),
+    /passing required checks/,
+  );
+  await checks(f);
+  await assert.rejects(
+    mutate(f, { action: "gate", operation: "promote" }),
+    /safety evidence/,
+  );
+  await review(f);
   await assert.rejects(
     mutate(f, { action: "gate", operation: "publish" }),
     /safety evidence/,
@@ -1507,6 +1737,7 @@ test("begin_pr drops stale publication evidence and unrelated authority without 
   assert.equal(s.evidence.safety, undefined);
   assert.equal(s.evidence.ci, undefined);
   assert.equal(s.review, null);
+  await checks(f);
   await safety(f);
   await mutate(f, {
     action: "publication",
@@ -1665,6 +1896,7 @@ test("begin_pr retains one-writer, branch and terminal lifecycle exclusions", as
           boundary: "pr",
         },
       });
+      await checks(f);
       await safety(f);
       await mutate(f, {
         action: "publication",
@@ -1716,12 +1948,19 @@ test("begin_pr retains one-writer, branch and terminal lifecycle exclusions", as
         action: "authorize",
         authorization: { ...f.input.authorization, operations: ["implement"] },
       });
-    if (variant === "scope-drift")
-      await mutate(f, {
-        action: "authorize",
-        contract: "Different approved scope",
-        authorization: f.input.authorization,
-      });
+    if (variant === "scope-drift") {
+      const bytes = await readFile(f.file, "utf8");
+      await assert.rejects(
+        mutate(f, {
+          action: "authorize",
+          contract: "Different approved scope",
+          authorization: f.input.authorization,
+        }),
+        /explicitly authorized follow-up/,
+      );
+      assert.equal(await readFile(f.file, "utf8"), bytes);
+      continue;
+    }
     const bytes = await readFile(f.file, "utf8");
     await assert.rejects(beginPr(f));
     assert.equal(await readFile(f.file, "utf8"), bytes);
