@@ -56,16 +56,16 @@ Do not introduce modules, cycles, initiatives, epics, workflow labels, automatic
 
 ## Information placement
 
-| Information                                     | Authoritative location                     |
-| ----------------------------------------------- | ------------------------------------------ |
-| Binding outcome and acceptance criteria         | Work-item title and description            |
-| Repository, target branch, and verification     | Work-item description                      |
-| Cross-ticket architecture and background        | Plane Page, nonbinding                     |
-| Blocking dependency                             | Native relationship                        |
-| Optional readiness context and active run claim | Work-item comments                         |
-| Human-visible lifecycle                         | Work-item state                            |
-| Authorized scope, plan, progress, and evidence  | Local `.pi/tickets/<ticket-id>/state.json` |
-| Code, verification, review, and merge evidence  | Git and pull request                       |
+| Information                                     | Authoritative location                                          |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| Binding outcome and acceptance criteria         | Work-item title and description                                 |
+| Repository, target branch, and verification     | Work-item description                                           |
+| Cross-ticket architecture and background        | Plane Page, nonbinding                                          |
+| Blocking dependency                             | Native relationship                                             |
+| Optional readiness context and active run claim | Work-item comments                                              |
+| Human-visible lifecycle                         | Work-item state                                                 |
+| Authorized scope, plan, progress, and evidence  | Local `<git-common-dir>/pi-ticket-checkpoints/<ticket-id>.json` |
+| Code, verification, review, and merge evidence  | Git and pull request                                            |
 
 ## Ticket-delivery lifecycle
 
@@ -79,7 +79,7 @@ Draft → Ready → In Progress → Review → Done
 - **Draft:** the contract may still change. This means a visible project state, not Plane `is_draft`. Prefer a visible state named Draft; otherwise map it to an appropriate visible Backlog or other unstarted state and report the mapping.
 - **Ready:** the contract is ready to implement; this is optional context, not standalone implementation or publication authorization.
 - **In Progress:** one claimed run is executing, paused for recovery, or locally complete pending separately authorized delivery/settlement.
-- **Review:** authorized PR delivery reached independent review and required exact-head CI, followed by confirmed review-ready human handoff. Local-only completion leaves In Progress unless separately authorized settlement changes it.
+- **Review:** authorized PR delivery reached independent review and required exact-head CI, followed by confirmed review-ready human handoff. Applicable explicit exceptions remain disclosed under the invoking workflow; they do not make failed checks pass. Local-only completion leaves In Progress unless separately authorized settlement changes it.
 - **Done:** a human merge and settlement were confirmed.
 - **Canceled:** cancellation was explicitly authorized and confirmed.
 

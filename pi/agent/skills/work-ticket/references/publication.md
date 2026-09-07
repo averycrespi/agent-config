@@ -1,41 +1,41 @@
-# Authorized PR Delivery
+# PR Delivery and CI
 
-Follow [work-ticket](../SKILL.md) and [the helper interface](helper.md). Require explicit push/PR authority. Use broker-backed remote Git/GitHub operations with discovered schemas. Resolve the authoritative target tip and complete outgoing range; preserve pre-existing local commits and block before publishing unrelated history. Use a separate source branch with the repository's naming convention and verify tracking rather than assuming it.
+Follow [work-ticket](../SKILL.md) and [the checkpoint interface](helper.md). Use discovered broker schemas for authenticated Git/GitHub operations. Respect the explicit delivery boundary: review-ready PR delivery includes bounded monitoring and corrective pushes; draft-only or publication-only instructions do not silently expand that authority.
 
-## Publication after local completion
+## Review before publication
 
-For an explicit push/PR request on an unchanged local completion, reconcile ownership under [recovery](recovery.md) if necessary, then use `begin_pr`. No fresh coding request is needed. Include common CAS/hash fields plus:
+1. Resolve correct source/base and full outgoing history. Preserve unrelated commits. Complete applicable required local checks and independent review of the intended PR scope before the first push.
+2. Use the review workflow's existing evidence boundaries: set `deliveryScope.boundary` to `pre-publication`, declare each local requirement for `pre-publication` and `pr`, and declare remote CI for `pr` only. Supply remote CI honestly as `not-run`, with a downstream-qualification explanation. Cover the full canonical acceptance criteria; do not omit requirements to manufacture a complete review. A review complete at this boundary is not delivery readiness.
+3. Repair consolidated blockers within the review allowance and obtain focused confirmation. Preserve full reports, covered revision/scope, findings, and check references. Reuse review when its content and requirements remain covered; publishing an unchanged reviewed commit does not require duplicate review. A new boundary label alone is not a code change. Reevaluate coverage for expanded scope, changed code, merge resolutions, or newly required qualification.
+4. Inspect complete outgoing commit history, messages, paths, patches, and proposed PR metadata for publication safety. Run installed `gitleaks` against history and exact title/body, inspect supported flags, and honor repository public-content rules. Preserve history/metadata scan coverage for corrective pushes too; reuse unchanged coverage only with concrete evidence. Missing/failed safety qualification blocks by default. A scoped user exception can change only an overridable skill policy, never higher-priority secret/data rules or tool approvals.
+5. If publication lacks authority, stop with **User: approve pushing and opening the PR**. Otherwise record the exact pending effect, push only the assigned branch, and create/update one draft PR. Confirm authoritative head/source/base/open/draft and public-safe metadata; retain tracking and PR identity. Reread ambiguous outcomes before retrying; retry once only after proving the effect absent and still authorized.
 
-```json
-{
-  "action": "begin_pr",
-  "cwd": "/absolute/repository/root",
-  "ticketId": "11111111-2222-3333-4444-555555555555",
-  "runId": "stored-run-id",
-  "owner": "current-reconciled-owner",
-  "expectedRevision": 34,
-  "contractHash": "sha256:<64 hex digits from the receipt>",
-  "publicationEvidence": "Actual user request to push and open a PR",
-  "fingerprint": "sha256:<64 hex digits from a fresh snapshot>",
-  "observations": "Fresh ticket/files/Git/PR/checks/ownership observations",
-  "planeState": "In Progress",
-  "noPrConfirmed": true
-}
-```
+## Monitor automatically within the boundary
 
-Require unchanged completed snapshot and contract, clean separate source branch, no actual/recorded PR, no prior PR transition, no competing writer, and confirmed implementation-only external history. Current and delivery-time implementation/commit authority must both exist; later authorization cannot retroactively supply missing delivery-time permission. For old records lacking `completionAuthorization`, independently establish the retained authorization's provenance; stop on conflict rather than inventing history.
+After publishing, start `ci watch` for the exact PR source head and required-check inventory, then check immediately. Resolve applicable required checks from repository/ticket requirements and authoritative settings where accessible. Empty results are not success. Normalize only the latest applicable attempts from the full broker response, including pagination; retain observation references. Do not guess that a skipped or neutral result satisfies a requirement. If checks have not registered yet, continue bounded observation only with evidence that they are expected; do not submit missing checks as passed. Unresolvable required coverage is a blocker.
 
-The operation archives the prior delivery in `prDelivery`, adds publish authority, drops settlement/cancellation/cleanup authority, and returns active. It preserves history, findings, ownership, and consumed repair allowance. It performs no external write. Use the returned receipt; after interruption recover active state rather than repeating `begin_pr`.
+Use the existing **Loop** as the initial scheduler, with `delay_seconds: 60` and one polling batch per continuation. This publication procedure authorizes that bounded loop only within an authorized monitoring boundary. Inspect the shared loop first; do not commandeer an unrelated loop. Use finite continuation/runtime ceilings and respect configured limits; these are additional ceilings, not the CI waiting clock. Do not clear/restart Loop to evade limits.
 
-**Reevaluate evidence for the expanded boundary.** Transition clears current checks/safety/CI and stales review even at unchanged HEAD. Historical local evidence remains in the archive; obtain or explicitly justify applicable check coverage and perform a new scope-aware initial review, including newly required qualifications. Local completeness never certifies remote/native/release requirements. Publication does not add repair cycles or authorize new coding scope.
+On each continuation:
 
-## Publication gates
+1. Inspect the compact monitor receipt/status and whether the next poll is due. At a due poll, use `ci pause` before broker calls so active observation time is excluded.
+2. Reread PR identity/head and required checks. Unexpected head changes stop automatic writes: reconcile ownership and new content rather than overwrite another actor. A wrong-head observation is blocked, not a request to reset watch to that head.
+3. Submit `ci observe` with concrete evidence. `waiting` permits the next delayed continuation; `repair` starts diagnosis only within authority and remaining allowance; `blocked` or `limit` stops automatic continuation; `passed` permits final readiness assessment.
 
-1. Require a clean tree, correct source/base identity, and passing applicable required checks. Inspect the complete outgoing commit history, messages, paths, and patches—not only the final diff.
-2. Prepare public-safe PR metadata. Require installed `gitleaks`; inspect its help and scan complete outgoing history and exact proposed title/body, with redaction where supported. Check repository public-content rules for private details, credentials, proprietary content, state/handoffs, local paths, and personal data.
-3. Stop before push if scanning is unavailable, fails, finds secrets, or cannot cover the evidence. Deleting a secret in a later commit does not remove it from history; history repair needs explicit authority. Record `evidence` with `kind: safety`, current `fingerprint`, `passed`, concrete `summary`, `historyScanned`, `metadataScanned`, and `publicContentChecked` all true, and `metadataHash` (SHA-256 of exact title/body bytes).
-4. Gate `publish`, persist exact external intent, then push only the assigned branch (with tracking for a new branch) and create/update one draft PR. Reread head/source/base/open/draft and scanned metadata. Record `publication` with `pr: {url, head, branch, base, open: true, draft: true}`, `confirmed: true`, matching `metadataHash`.
-5. Obtain independent review and required CI for the final published head. Record CI `evidence` with current `fingerprint`, exact `head`, `passed`, and `summary`. Pending CI means waiting; failed/unknown CI, missing applicable evidence, or unresolved blockers prevent promotion. Review limitations outside this boundary stay visible without becoming blanket waivers. Republished changes need affected checks and focused review unless scope expanded.
-6. Gate `promote`, mark ready, and reread exact PR identity. Move Plane to Review only after review and required CI pass; reread Plane. Record `handoff` with `summary`, confirmed non-draft `pr`, `confirmed: true`, and `planeState: Review`.
+Default cumulative waiting allowance is **30 minutes across all heads and resumes**, excluding active polling, diagnosis, and repair. The monitor computes elapsed time; the model does not supply it. An interrupted open waiting interval counts toward consumption. Permit one final observation at exhaustion, then stop if still pending. The user may explicitly add waiting allowance, never silently reset it. A deliberate stop awaiting user action pauses monitoring and records the next actor/action.
 
-For every remote write, persist a stable key and exact intent before execution, reread the authoritative surface afterward, and record confirmation. On ambiguity, reread first and retry once only after proving the effect absent. Never duplicate a confirmed PR/claim or present local evidence as remote confirmation. If repairs are exhausted, obtain evidence or report blockers; do not silently extend the allowance.
+Loop operates only while Pi is active, and restoration does not automatically resume it. Recovery reconciles state and authority before resuming. This first implementation still invokes the parent model for each polling batch; it is not a background or zero-token watcher. A future deterministic broker watcher can supply the same normalized observations without changing ticket policy.
+
+## Diagnose and repair red CI
+
+Pause/stop Loop during repair. Read failed-job logs and diagnose before editing; a red status alone is not an actionable bug. Treat infrastructure/permissions/secrets and unrelated failures as blockers unless explicitly authorized to address them. Do not weaken checks or acceptance criteria to obtain green. At most one justified, authorized infrastructure rerun is allowed; record its pending effect and confirmation, then continue observing within the same wait allowance. Preserve the rerun reference across recovery.
+
+For an in-scope failure with corrective-push authority, begin a stable `ci` repair batch before editing. Default allowance is **two batches**. Each batch includes diagnosis-driven edits, regression and required checks, focused independent review, commit, safety checks, and corrective push. If confirmation requires another edit batch, finish the current batch and consume the next CI batch—not both CI and pre-publication review allowances. Merely observing or confirming consumes no repair batch. Resume the active batch after interruption without charging twice.
+
+Review the repair before pushing. Prior-head CI failures remain in diagnostic history; candidate-head remote CI is honestly downstream/not-run, not falsely passed or a prerequisite for reviewing its own fix. Broaden review only for new scope or affected risks. After confirmed push, `ci watch` the new head with `previousHead`; retain waiting and repair consumption. Resume the same Loop only within its remaining ceilings.
+
+## Promotion and handoff
+
+Before promotion, reread exact PR head and required CI, verify applicable review/local evidence still covers the delivered change, and resolve blockers or record specific user-accepted exceptions. Do not infer readiness from `complete` alone or from stale CI. Mark ready and move Plane to Review only within authority and after normal qualification passes, or under clearly recorded applicable exceptions. Confirm both effects.
+
+Stop with **Human reviewer: review and merge**. For waiting exhaustion name **User: authorize additional monitoring allowance or take over**; for repair exhaustion name **User: assess the diagnosis and authorize additional repair or take over**. Keep incomplete/failed/waived evidence visible. PR creation alone is not completion of a review-ready delivery request.

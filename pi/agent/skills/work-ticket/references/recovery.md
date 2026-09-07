@@ -1,40 +1,55 @@
-# Ticket Recovery
+# Recovery and Follow-up
 
-Follow [work-ticket](../SKILL.md) and [the helper interface](helper.md). Read existing state, then reconcile actual ticket, files, Git, ownership, PR, checks, and pending effects before acting. Preserve the run, plan, findings, unfinished repair batch, and consumed allowance. A state record is not proof of a live process, user consent, or a remote effect.
+Read the [checkpoint interface](helper.md). Reconcile the actual ticket, checkout/branch, pending external actions, PR head, checks, review coverage, and writer liveness before resuming. Preserve evidence, unresolved findings, consumed allowances, and an active repair's ID. Checkpoint text is not proof of user consent, process absence, or a remote effect.
 
-## Resume and transfer ownership
+## Resume or transfer
 
-Use `reconcile` with common CAS/hash fields and concrete `observations`. A changed owner additionally requires `previousOwnerReleased: true`, established from actual session/process or release evidence. Cross-check portable claims and other checkout writers. Stop on malformed state, conflicting identity, or unresolved ownership; never initialize another attempt to bypass recovery.
+Read `status`. Continue as the recorded owner only after verifying that this is the same session/checkout. A different session uses `claim` with the previous owner, actual transfer instruction, and observed release/absence evidence. A user resume request can authorize takeover of a proven inactive predecessor; a still-live competing writer requires coordination, not an assertion that it disappeared. Explicit relocation also names the previous checkout. Preserve the old revision/scope on evidence references; a claim never makes old checks current.
 
-Active reconciliation observes the current snapshot and invalidates stale evidence. For `local_complete` or `awaiting_human`, reconciliation may transfer ownership but preserves completion, original snapshot/evidence, findings, and authority. It records ownership history and does not authorize edits or publication. Reopening PR, Done, Canceled, or human-accepted delivery is not supported. Before subsequent actions, use fresh snapshots: terminal reconciliation preserves historical evidence, not a claim that current files are unchanged.
+For authorized follow-up, update scope/authorization/plan and next action with `checkpoint`. No `reopen_local`, terminal status, scope hash, or PR transition is required. Do not infer new implementation, publication, or cleanup authority from a historical completion or a casual resume of inspection. Reevaluate affected evidence and obtain new review only where scope, content, or applicable requirements are no longer covered. Additional budgets need explicit additive user authorization through `override`.
 
-Reuse checks only for unchanged applicable inputs and scope. Use the helper's explicit content-independent reuse path only for eligible commits; otherwise obtain fresh evidence. Scope expansion requires reevaluation even when files did not change.
+A malformed checkpoint or identity conflict needs diagnosis and concrete recovery, not deletion or an unrestricted bypass. For a stale helper lock, prove the recorded process absent before removing that lock alone. Preserve corrupt bytes before any explicitly authorized repair and reconstruct facts from authoritative artifacts, never fabricate passing evidence.
 
-## Explicit local follow-up
+## Legacy adoption
 
-An actual user request for additional implementation after local handoff authorizes a follow-up; ordinary resume, reconciliation, or unsolicited review suggestions do not. Reconcile ownership first if the previous session has released it, then use `reopen_local` with common CAS/hash fields and:
+The new helper does not execute schema-v1 delivery gates or mutate `.pi/tickets/<uuid>/state.json`, `.ticket-run/`, or existing cleanup archives. On `status` showing missing new state, inspect any existing legacy records and other writers before initialization. Stop old wrappers; reread the new interface.
 
-- `newContract`: newly authorized outcome/AC/evidence requirements, even if unchanged;
-- `authorization: {operations, boundary: "local", evidence}` containing `implement` and optional `commit`, not unrelated operations;
-- replacement `plan`, current `fingerprint`, fresh `observations`;
-- `planeState: In Progress`, `noPrConfirmed: true` from authoritative inspection.
+After explicit authorized recovery, initialize a compact checkpoint using fresh scope, authority, next action, and references to retained original records/reports. Supply:
 
-Require local completion, no recorded or actual PR, confirmed implementation-only external history, and no competing writer. This archives the previous delivery and returns active with fresh scope/authority. It preserves run, findings, consumed repairs, external history, and prior deliveries; it clears current evidence and stales review. Use the returned receipt before editing. Do not delete state or switch to untracked coding to evade completion.
+```json
+{
+  "recovery": {
+    "instruction": "Actual instruction authorizing recovery of this delivery",
+    "reference": "Retained legacy state and reconciliation artifact location",
+    "reviewUsed": 2,
+    "ciUsed": 0,
+    "waitingMs": 0,
+    "effectsReconciled": true,
+    "repairs": {
+      "review": {
+        "batches": [
+          {
+            "id": "original-first",
+            "plan": "Retained completed attempt reference"
+          },
+          {
+            "id": "original-second",
+            "plan": "Retained interrupted attempt reference"
+          }
+        ],
+        "active": "original-second"
+      }
+    }
+  }
+}
+```
 
-Default repair allowance remains two cycles across the run. For genuinely new follow-up scope, an explicit user instruction may add one or two cycles using `additionalRepairCycles: {cycles, evidence}` on `reopen_local`. The helper requires a changed contract and retains the addition with its scope hash and authorization. Additional coding authority alone does not grant additional cycles. Never refund consumption or extend configured runtime limits through this operation.
+These are observed consumed amounts, not arbitrary defaults. The helper refuses refunding the legacy review count. Account for historical extensions, pending/active repairs, CI waiting, infrastructure reruns, accepted exceptions, and all pending effects from surviving evidence. For a kind with an unfinished repair, supply `repairs.review` or `repairs.ci` with all retained `{id, plan}` batches and its original `active` ID. Batch count must equal the corresponding consumed amount; IDs must be unique and active must name one of them (or be `null`). Resume with that same ID/plan, then finish without charging again. Kinds without supplied identities retain consumed counts as completed synthetic batches; never use that fallback for an unfinished attempt. Explicitly restore any previously authorized remaining allowance with a scoped addition, rather than resetting used amounts. If old CI consumption or authorization is unknown, disclose the uncertainty and obtain an explicit bounded recovery allowance; do not invent zero consumption. Record previously accepted exceptions and their actual authority before relying on them.
 
-For explicit publication of an unchanged local completion, use `begin_pr` under [publication](publication.md), not a fabricated coding follow-up. Publication adds no repair allowance.
+Reconcile legacy pending effects before adoption. If an effect happened, retain its authoritative confirmation; if absent, retain the unresolved next action and require reread before retry. Existing bytes remain unchanged. Before removing a checkout, copy and verify legacy records and referenced artifacts into a persistent external archive as described in [settlement](settlement.md).
 
-## Interrupted effects and helper failures
+## Interrupted publication and CI
 
-Reread the authoritative external surface before resolving pending writes. Confirm observed effects; retry once only after proving the effect absent and still authorized. Do not repeat confirmed claims, PRs, or lifecycle changes.
+Reread the authoritative external surface before retrying an effect, whether or not a local pending marker survives. Confirm observed effects; retry once only after proving absence and authorization. Never duplicate a PR merely because the prior response was lost.
 
-After a helper crash, inspect the exact `.pi/tickets/.writer.lock/owner.json`; prove its process absent before removing that stale lock alone. Never delete ticket state to get unstuck. Use the same rule for archive locks.
-
-## Settlement and cleanup recovery
-
-Read [settlement](settlement.md) for already-merged acceptance and all cleanup requests. Reread `humanAcceptance` after interruption instead of repeating it or manufacturing successful review evidence.
-
-Retain `archiveDir` and `cleanupId` outside the removal target. After interrupted cleanup, use `cleanup_status`, verify the archived identities/evidence, and inspect fresh Herdr inventory and source-path existence. If already removed, confirm the journal; if already confirmed, report it without repeating removal. If removal provably did not happen, `cleanup_retry` requires fresh safety checks and unchanged source evidence and permits only one retry.
-
-Use `adopt_cleanup` only for an already removed checkout with original byte-preserved legacy evidence, as documented in settlement. Missing evidence, recreated paths, changed ownership, or ambiguous effects require a blocked handoff, not reconstructed success. Keep archives until deletion is separately authorized.
+Read persisted monitoring state and allowances before using Loop. An open waiting interval counts across interruption; a paused repair interval does not. Resume pending observation with `ci wait`, or finish the already-started repair. Reconcile current PR head before new writes. Neither new heads nor session restarts replenish budgets or configured Loop limits. An exhausted allowance requires an explicit addition and an actionable user handoff; “resume” alone is not an unlimited extension.

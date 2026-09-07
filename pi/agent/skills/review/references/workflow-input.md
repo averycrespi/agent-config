@@ -8,7 +8,7 @@ Pass a strict object with:
 
 - `target`: supported `kind` (`working-tree`, `branch`, `commit-range`, `pull-request`, `document`, `other`) and concise `label`;
 - `objective`, `acceptanceCriteria`, `changedFiles`, non-empty `contextPaths` including the generated patch for code review;
-- `deliveryScope`: current `boundary` and evidence `requirements: [{id, description, requiredFor}]`. Derive these from user/repository/ticket authority, not convenience. Each requirement names all applicable boundaries; include at least one requirement applicable now. IDs use letters, digits, underscores, or hyphens;
+- `deliveryScope`: current evidence `boundary` and `requirements: [{id, description, requiredFor}]`. The evidence boundary is distinct from the user's authorized delivery boundary. Derive these from authoritative criteria and the caller's actual evidence scope, not convenience. Boundary names are opaque caller-defined labels, not workflow phases. Each requirement names all applicable boundaries; include at least one requirement applicable now. IDs use letters, digits, underscores, or hyphens;
 - `checks`: `{name, status, summary, artifactPath?, requirementId?}`. Status is honestly `passed`, `failed`, or `not-run`. Reference the declared requirement that the check covers;
 - `knownGaps`: strings (always blocking), or `{code, detail, requirementId?}`. Reference a requirement only if the entire gap is confined to it;
 - `reviewMode`: `initial` (default) or `confirmation`; confirmation requires `priorReviewContext` containing original blockers, dispositions, repair scope, and affected boundaries;
@@ -69,10 +69,12 @@ Respect limits: 30 context paths, 200 changed files, 50 acceptance criteria/chec
 
 ## Output and reuse
 
-The workflow returns `{report, complete, outcome, deliveryScope, blockingGaps, qualificationLimitations}`. `report` is the full authoritative Markdown; retain and present it under the review skill. `complete` describes required coverage/execution, not absence of code findings: a complete review can have blocking findings. `outcome` is `findings`, `incomplete`, `non-blocking suggestions`, or `no material findings`. Never use `complete` alone as approval. Preserve findings and failed checks separately in ticket state.
+The workflow returns `{report, complete, outcome, deliveryScope, blockingGaps, qualificationLimitations}`. `report` is the full authoritative Markdown; retain and present it under the review skill. `complete` describes required coverage/execution, not absence of code findings: a complete review can have blocking findings. `outcome` is `findings`, `incomplete`, `non-blocking suggestions`, or `no material findings`. Never use `complete` alone as approval. Preserve findings and failed checks separately in the caller's continuity record.
 
 Reviewer and adjudicator schemas use `{code, detail, requirementId?}` for gaps. The workflow classifies them against the same prepared scope, preserves limitations, and fails unclassified gaps closed. Infrastructure failures cannot be declared optional.
 
-When the boundary or requirements expand, prepare a new `initial` review with updated scope and all newly applicable evidence. Do not reuse an earlier complete result just because the commit is unchanged. Ticket scope/contract updates and local-to-PR transition invalidate current delivery evidence; retained local checks may inform fresh evidence only where coverage is independently unchanged.
+Assess the full supplied change and criteria even when some qualifications fall outside this review's evidence scope. The caller owns scheduling, readiness decisions, persistence, repair allowances, and exceptions; this workflow only assesses evidence and returns findings and coverage limitations.
+
+Reuse an earlier review only when content, scope, and applicable requirements remain covered. A new boundary label alone does not require another model review. New scope, affected code, or uncovered requirements require a scope-aware `initial` review; focused confirmation covers authorized repairs within existing scope. Keep evidence bound to the revision and scope it actually covered. Caller-accepted exceptions do not change the factual incomplete/failed result; keep dispositions separate rather than falsifying checks or reclassifying requirements.
 
 If input validation rejects before launch, correct packaging and retry once. Do not rerun because findings are inconvenient. Use focused confirmation only after authorized repairs within unchanged scope.

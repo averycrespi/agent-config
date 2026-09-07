@@ -276,7 +276,7 @@ function qualification(input, requirementId) {
 }
 
 function scopeInstructions() {
-  return "Evaluate evidence against deliveryScope and the authoritative acceptance criteria. Its requirements declare where each independently required check is needed; never invent exemptions or waive repository/user requirements. Compare this inventory with the authoritative required checks. Flag omitted required checks or aggregate requirements that conflate independently required checks as blocking gaps without requirementId. For a gap confined to one declared requirement, include its exact requirementId. Omit requirementId for unclassified gaps, incomplete review execution, or uncertainty about scope; those remain blocking. A qualification outside the current boundary remains visible, not a claim that its checks passed. Flag incorrect scope declarations as blocking gaps without requirementId. On expanded scope, evaluate all newly applicable requirements; prior local completeness is insufficient.";
+  return "Evaluate evidence against deliveryScope and the authoritative acceptance criteria. Its requirements declare where each independently required check is needed; never invent exemptions or waive repository/user requirements. Compare this inventory with the authoritative required checks. Flag omitted required checks or aggregate requirements that conflate independently required checks as blocking gaps without requirementId. For a gap confined to one declared requirement, include its exact requirementId. Omit requirementId for unclassified gaps, incomplete review execution, or uncertainty about scope; those remain blocking. A qualification outside the current boundary remains visible, not a claim that its checks passed. Flag incorrect scope declarations as blocking gaps without requirementId. On expanded scope, evaluate all newly applicable requirements; prior local completeness is insufficient. Boundary names are opaque caller-defined evidence scopes, not workflow phases. Assess the full supplied change and acceptance criteria; the caller owns scheduling and readiness decisions. Review coverage is not delivery readiness. Caller-accepted exceptions do not turn failed checks, incomplete review, or findings into passing evidence.";
 }
 
 function validateInput(value) {
@@ -768,7 +768,8 @@ function renderReport(input, lenses, completed, confirmed, needsHuman, gaps) {
     "",
     `Outcome: ${outcome}`,
     "",
-    `Delivery boundary: ${input.deliveryScope?.boundary ?? "supplied target (unclassified gaps block)"}`,
+    `Evidence boundary: ${input.deliveryScope?.boundary ?? "supplied target (unclassified gaps block)"}`,
+    "Review coverage is not delivery readiness; downstream qualification and accepted exceptions remain separate.",
     "",
     "## Deterministic checks",
   ];

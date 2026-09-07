@@ -1,61 +1,70 @@
-# Ticket State Helper
+# Checkpoint Helper
 
-Read this common interface before using `node <absolute-skill-path>/scripts/ticket-state.js`. Send one JSON request on stdin; never interpolate ticket prose into shell arguments. Responses are `{result: ...}` or `{error: ...}` with nonzero exit on failure. A successful mutation returns the committed state and revision: use it as the receipt for the next local request. Reread after interruption, conflict, or uncertain execution, not after every successful mutation. Remote effects always require authoritative observation.
+Run `node <absolute-skill-path>/scripts/ticket-state.js` with one JSON object on stdin. Use a quoted heredoc, never interpolate ticket prose into shell arguments. No generated Python/Node wrapper, caller CAS revision, contract hash, snapshot, or lifecycle gate is needed. Requests/results are bounded to 64 KiB. Success returns `{result: ...}`; failure returns `{error: ...}` and exits nonzero without partially updating the record.
 
-## Common requests
+## Common fields and storage
 
-Use absolute repository-root `cwd` and immutable Plane `ticketId` (UUID). `status` reads existing state without mutation; `snapshot` observes Git without updating evidence. After initialization, include `runId`, `owner`, caller-observed `expectedRevision`, and `contractHash` from the latest receipt. The helper never silently refreshes a stale revision. Exact stored `contract` remains accepted instead of its hash for older callers. For an old receipt lacking the hash, use its stored contract until the next mutation returns a hash.
+Supply absolute repository-root `cwd` and immutable Plane UUID `ticketId`. Mutations also need `owner`: use the current session UUID, not a shared display name. `status` needs no owner and never creates state. Records live at `<git-common-dir>/pi-ticket-checkpoints/<ticketId>.json`, outside tracked files and normally outside a removable linked checkout. A surviving checkout of the same repository can read them after linked-checkout removal. Removing the primary repository still requires an external archive.
+
+Mutation responses contain only the saved path, next actor/action, repair counts, and compact CI disposition. `status` returns the full checkpoint or `{missing: true, legacy: <path or null>}`. Read full state after interruption, conflict, or uncertainty—not after each successful save. No user settings or retained diagnostic logs; records have owner-only permissions and remain until separately authorized deletion. They may contain user instruction excerpts and artifact paths: never include secrets or transcripts.
+
+## Initialize and checkpoint
 
 ```json
 {
-  "action": "checkpoint",
+  "action": "init",
   "cwd": "/absolute/repository/root",
   "ticketId": "11111111-2222-3333-4444-555555555555",
-  "runId": "stored-run-id",
-  "owner": "stored-owner-id",
-  "expectedRevision": 4,
-  "contractHash": "sha256:<64 hex digits from the receipt>",
-  "progress": "Regression reproduced and implementation updated",
-  "nextAction": "Run required checks and independent review"
+  "owner": "current-session-uuid",
+  "patch": {
+    "scope": "Canonical ticket reference and concise agreed scope",
+    "authorization": "Actual user request and authorized local/PR boundary",
+    "plan": "Reproduce; implement; verify; review",
+    "next": { "actor": "agent", "action": "Reproduce the reported failure" }
+  }
 }
 ```
 
-| Action         | Additional fields                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `init`         | `identifier`, opaque `runId`/`owner`, `contract` (outcome/AC/scope and evidence requirements), `repository`, `targetBranch`, full `baseCommit`, optional `isolation`, `authorization: {operations, boundary, evidence}`, `plan: [{step, verification, status}]`. Include `implement` and `commit` unless commits were excluded; `publish`, `settle`, `cancel`, `cleanup` need separate authority. Boundary is `local` or `pr`; PR needs commit/publish. |
-| `checkpoint`   | `progress`, `nextAction`, optional `plan`, optional `status: active/waiting/blocked` and `blocker` when not active. Optional `reuseEvidence` below.                                                                                                                                                                                                                                                                                                     |
-| `authorize`    | Fresh `authorization` and optional `newContract`. With hash CAS, `newContract` changes the baseline; legacy callers can supply new prose in `contract`. Changed scope/boundary invalidates active evidence. Terminal authorization does not reopen delivery or change completed scope; retained evidence remains bound to its original scope.                                                                                                           |
-| `evidence`     | `kind: verification/safety/ci`, fresh `fingerprint`, boolean `passed`, concrete `summary`. Verification may opt into `contentIndependent`. See publication for safety/CI fields.                                                                                                                                                                                                                                                                        |
-| `review`       | Current `fingerprint`, `independent: true`, boolean `complete`, `summary`, new `findings: [{id, blocking, category, evidence}]`, and `resolutions: [{id, disposition: fixed/not-applicable, evidence}]`. Optionally `contentIndependent`. Retain existing finding IDs instead of resubmitting them.                                                                                                                                                     |
-| `begin_repair` | `repairPlan`; consumes a cycle before editing. Requires current consolidated review with open blockers, not necessarily complete review or passing checks. Resume an already-consumed batch after interruption.                                                                                                                                                                                                                                         |
-| `gate`         | `operation: commit/publish/promote/settle/cancel/cleanup`; checks stored authority/evidence without performing the operation. Commit gate checks authority, not slice correctness.                                                                                                                                                                                                                                                                      |
-| `external`     | Stable `key`, `operation: implement/publish/promote/settle/cancel`, exact `intent`, `outcome: pending/confirmed`, `summary` of observations. Cleanup uses the separate external journal.                                                                                                                                                                                                                                                                |
-| `handoff`      | `summary`, `planeState: In Progress` for local. PR additionally requires confirmed non-draft PR identity and Plane Review; see publication.                                                                                                                                                                                                                                                                                                             |
+`checkpoint` uses the same identity fields plus a partial `patch`. Allowed fields:
 
-Record incomplete/adverse review evidence even when checks fail. Use the review workflow's structured `complete` result for the current scope; retain its full report and all findings. Complete review is not passing verification, and recording a finding is not delivery approval. Handoff and promotion still require passing applicable checks, resolved blockers, and complete current recorded review.
+| Field                                        | Contents                                                                                                         |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `scope`, `authorization`, `plan`, `progress` | Concise nonempty text; scope changes describe actual authorization                                               |
+| `blocker`                                    | Text or `null`                                                                                                   |
+| `next`                                       | `{actor, action}`; always concrete                                                                               |
+| `evidenceRefs`, `findingRefs`                | Arrays of concise artifact references, including covered revision/scope and outcome; appended without duplicates |
+| `pr`                                         | PR reference or `null`                                                                                           |
 
-## Evidence and commits
+Do not mark old evidence current merely by saving a new checkpoint. Record fixes/acceptance as new references; retain original failures. Updating scope, committing, or following up never erases evidence or repairs. These are observations for the agent to evaluate, not publication approval fields.
 
-Record verification against a fresh snapshot after observing command results. Include applicable evidence requirements in the contract. Any active scope/boundary change invalidates checks/review, including local-to-PR transition at unchanged HEAD. Reevaluate newly applicable requirements; do not silently relabel local evidence as full delivery evidence.
+## Small supported operations
 
-By default, HEAD/diff/untracked changes clear evidence and stale review. To reuse across a content-equivalent commit:
+| Action     | Additional fields and behavior                                                                                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `release`  | Relinquish checkout ownership without deleting evidence or pending effects                                                                                                                                                                                  |
+| `claim`    | `previousOwner`, actual user `instruction`, fresh writer-absence/release `evidence`; `previousCheckout` when explicitly relocating. Retains evidence and all consumed allowances. Reconcile actual processes first; a stored owner is not proof of liveness |
+| `repair`   | `kind: review/ci`, `operation: begin`, stable `id`, concise `plan`; consumes once before edits. Identical retries do not recharge or reopen a finished batch. `operation: finish` with the active ID ends the attempt, without certifying success           |
+| `override` | `override: {id, requirement, scope, action, instruction, reference}`. Records an actual scoped user exception without changing check/review facts. Stable identical IDs are idempotent                                                                      |
+| `external` | `operation: begin`, stable `id`, exact `target`, `intent` before a consequential write. `operation: confirm`, same `id`, authoritative observation `reference` clears pending intent and keeps one last receipt                                             |
+| `ci`       | Monitor operations below; no network access or sleeping inside the helper                                                                                                                                                                                   |
 
-1. Set `contentIndependent: true` when recording verification or review only if it is independent of commit metadata. The helper computes a content digest; it does not accept a caller-supplied digest.
-2. After committing, inspect hook results and relevant environment/coverage. Use `checkpoint` with `reuseEvidence: {verification: true, review: true, justification: "..."}` selecting only the evidence being reused.
-3. The helper requires a clean descendant commit, identical non-ignored tracked/untracked file content and executable modes, matching scope, and opted-in passing/current evidence. It rebinds selected evidence with provenance; safety and CI are never reused this way.
+Override allowance additions also supply `budget: review/ci/wait` and positive integer `additional` (batches for repair, milliseconds for waiting). Preserve consumed amounts. Waiting additions require an existing monitor. Scope changes, claims, pushes, and resumes do not grant new allowances.
 
-Digest support excludes submodules/special artifacts and files over 16 MiB; rerun checks rather than forcing reuse. Ignored dependencies, external services, Git metadata, and environment are not covered by the digest: the justification must establish unchanged relevant inputs. Stage files by name; a helper gate never replaces staged-diff inspection or required checks. No mandatory commit frequency applies.
+Reconcile pending effects before beginning a different one. Reread authoritative state before retrying remote operations, even if no pending marker exists: the compact helper is not a complete remote idempotency ledger. Confirmed receipt retries are harmless; never replay the actual effect just to get a receipt. `external confirm` remains available to the recorded owner from a surviving repository checkout after release/removal.
 
-## Operation-specific procedures
+## CI timing and observations
 
-Read only the applicable procedure before its operation:
+The separate `scripts/ci-monitor.js` module owns deterministic timing/classification; the checkpoint only persists its small record. Broker access and scheduling remain with the calling session. `ci` requests use:
 
-- [Recovery](recovery.md): `reconcile`, ownership transfer, `reopen_local`, explicit follow-up repair additions, stale locks.
-- [Publication](publication.md): `begin_pr`, safety/CI evidence, `publication`, PR handoff.
-- [Settlement and cleanup](settlement.md): `settle`, `cancel`, `accept_merged`, durable cleanup journal requests.
+- `operation: watch`, canonical GitHub `pr`, full source `head`, nonempty `required` check-name array. First watch uses a 30-minute waiting allowance. A newly published head also needs `previousHead`; it retains consumption and the required inventory. Repeating watch never resets time or results. A legitimate changed PR or required-check inventory also needs `previousPr` and concrete `reconciliation` evidence (plus `previousHead`); this retains allowances and clears stale observations. Do not change the inventory merely to hide a failed requirement or accepted exception.
+- `operation: pause` immediately before polling, diagnosis, repair, or a deliberate user handoff; charges the open wait and pauses its clock. Do not pause merely because a scheduled continuation or session interruption is about to wait.
+- `operation: observe`, `observation: {head, requirementsKnown, checks: [{name, state}], reference}`. Normalize current broker observations to `passed/pending/failed/canceled/unknown`. Resolve duplicate names/attempts before submitting. Missing, canceled, inaccessible, ambiguous, or wrong-head evidence never passes. A failed required check yields `repair`; it is not a diagnosis or repair authorization.
+- `operation: wait` resumes a previously observed pending wait. Polls are due after 60 seconds; `nextPollAt` is returned in receipts. An open wait counts across session interruption. Polling/diagnosis/repair while paused does not consume waiting.
 
-## Storage and limitations
+At exhausted waiting allowance, a final due observation may establish success; pending results yield `limit` and cannot start another automatic wait. The session stops its Loop on that result. Extending requires a scoped user override; it never changes CI evidence. See [publication](publication.md) for the complete polling/repair and stop contract.
 
-State lives in locally Git-excluded `.pi/tickets/`; initialization installs the exclusion without modifying tracked `.gitignore` and refuses existing attempts/other active owners. All writes are atomic and bounded to 256 KiB; records include append-only delivery and repair history. Never prune history to evade limits. Files are owner-only. No user configuration or separate retained logs.
+## Recovery and boundaries
 
-Cleanup archives and original evidence survive outside the removable checkout, with no automatic deletion; see settlement for sizes and retention. Never include secrets or transcripts. Locks/CAS/atomic rename protect cooperative callers, not hostile processes or every power-loss case. The helper checks consistency, not the truth of authorization, liveness, check results, or remote attestations, and cannot intercept arbitrary shell/broker writes.
+Read [recovery](recovery.md) for legacy adoption and integrity conflicts. Schema-v1 `.pi/tickets/` records and cleanup archives are never rewritten automatically. Old `gate`, `begin_pr`, `reopen_local`, and settlement actions are retired; read this interface instead of retrying old wrappers.
+
+Atomic writes and a short-lived store lock protect cooperative helper calls. Wrong owner, wrong checkout/branch, another active ticket owner, malformed data, or symlinked storage reject. A scoped override does not bypass integrity checks. If a helper crashed, inspect `<git-common-dir>/pi-ticket-checkpoints/.writer.lock/owner.json` and prove its process absent before removing that lock alone. Never delete checkpoints to get unstuck. This is not protection against hostile filesystem mutation or an enforcement boundary for arbitrary shell/broker actions.

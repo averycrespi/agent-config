@@ -46,7 +46,7 @@ What "threading AC through every phase" means concretely:
 
 Format: Gherkin (Given/When/Then) is the most common, but any structured `{id, criterion, verifies_via}` works. The `verifies_via` field is what makes the criterion testable rather than aspirational.
 
-In this repo, `shape-ticket` defines acceptance criteria in the canonical Plane ticket contract. `work-ticket` maps them to implementation and verification while one local `.pi/tickets/<ticket-id>/state.json` retains the working plan, progress, authorization, and revision-bound evidence without a phase cursor. Separately, the general-purpose `goal` extension requires concrete evidence before marking an objective complete.
+In this repo, `shape-ticket` defines acceptance criteria in the canonical Plane ticket contract. `work-ticket` maps them to implementation and verification while one compact checkpoint under `<git-common-dir>/pi-ticket-checkpoints/` retains the working plan, progress, authorization, evidence references, scoped exceptions, and consumed allowances. It does not require a delivery-state machine. Separately, the general-purpose `goal` extension requires concrete evidence before marking an objective complete.
 
 ## Localization
 
@@ -91,7 +91,7 @@ Maps to `ralph-meets-rex`'s "planner can reject upfront" pattern, applied betwee
 
 `roach-pi` runs 5 lenses × 2 seeds = 10 reviewers. `ruizrica/agent-pi` runs 5 lenses. Several high-performing SWE-bench scaffolds use multiple review/evaluation passes.
 
-Cap fix-loops at **2 rounds**. Without a cap, verifiers nitpick on style indefinitely. Sticky completion: once a phase reaches `done`, no edge out — failing checks become "known issues" in the report.
+Cap fix-loops at **2 rounds**. Without a cap, verifiers nitpick on style indefinitely. Sticky completion prevents automatic reopening for unsolicited improvements; explicitly authorized follow-ups or scoped exceptions preserve history and consumed allowances. Failed checks remain failed evidence even when the user accepts an exception.
 
 ## GPT-5.6 model-managed delegation
 
@@ -168,7 +168,7 @@ The important part is the prompt shape: tell subagents to read `<workflowDir>/PL
 
 `roach-pi` uses this pattern with a shared diff artifact. `pi-coordination` shows the same idea in a different form: a large context document plus a smaller synthesized meta-prompt.
 
-For crash-safe execution, pair these artifacts with a durable state machine: current phase, attempt count, completed task IDs, commit/diff handles, gate results, reviewer findings, and cleanup handles. See `operations-safety.md` for resume and rollback rules.
+For recovery, retain only state that cannot safely be reconstructed: intent, ownership, evidence references, consumed allowances, pending consequential effects, and next action. Add a durable phase machine only when demonstrated failure modes require it; artifact persistence alone does not justify one. See `operations-safety.md` for resume and rollback rules.
 
 ## Diff budgets and idle-iteration kill switches
 
@@ -196,7 +196,7 @@ Do:
 
 - Use validated machine-readable completion signals (JSON schemas or parsed tagged outputs).
 - Cap fix loops at 2 rounds by default, then record remaining findings as known issues.
-- Make completion sticky — no edge out of `done`.
+- Prevent automatic reopening after completion; allow explicit follow-up and scoped user exceptions without erasing evidence or consumed allowances.
 - Halt instead of skip on first task failure (`ralph-meets-rex` halts at `human_intervention_required`; `roach-pi` halts after 3 clarification rounds).
 
 ## The single richest source of patterns

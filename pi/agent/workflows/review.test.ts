@@ -1,10 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-// @ts-expect-error Plain-JavaScript skill helper has no TypeScript declaration.
-import { ticketState } from "../skills/work-ticket/scripts/ticket-state.js";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { parseWorkflowScript } from "../extensions/workflows/parser.ts";
 import { runWorkflow } from "../extensions/workflows/runtime.ts";
@@ -26,60 +21,24 @@ const localScope = {
   ],
 };
 
-test("scoped qualification remains visible without blocking local handoff; expansion requires it", async (t) => {
-  const cwd = await mkdtemp(join(tmpdir(), "review-ticket-scope-"));
-  t.after(() => rm(cwd, { recursive: true, force: true }));
-  const git = (...args: string[]) =>
-    execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
-  git("init", "-q", "--initial-branch=main");
-  git("config", "user.email", "test@example.com");
-  git("config", "user.name", "Test");
-  await writeFile(join(cwd, "code.js"), "export const value = 1;\n");
-  git("add", "code.js");
-  git("commit", "-qm", "test: initialize fixture");
-  const identity = { cwd, ticketId: "11111111-2222-3333-4444-555555555555" };
-  let state = await ticketState({
-    ...identity,
-    action: "init",
-    identifier: "ABC-1",
-    runId: "run-1",
-    owner: "owner-1",
-    contract: "Local behavior; native and remote qualification excluded",
-    repository: "example/project",
-    targetBranch: "main",
-    baseCommit: git("rev-parse", "HEAD"),
-    authorization: {
-      operations: ["implement", "commit"],
-      boundary: "local",
-      evidence: "User requests local implementation",
+test("caller-defined evidence scopes retain deferred qualifications without hiding required gaps", async () => {
+  const requirements = [
+    {
+      id: "tests",
+      description: "Required local regression suite",
+      requiredFor: ["portable", "platform"],
     },
-    plan: [
-      { step: "Fix behavior", verification: "Local tests", status: "done" },
-    ],
-  });
-  const mutate = async (request: Record<string, unknown>) => {
-    state = await ticketState({
-      ...identity,
-      runId: state.runId,
-      owner: state.owner,
-      expectedRevision: state.revision,
-      contract: state.contract,
-      ...request,
-    });
-    return state;
-  };
-  await mutate({
-    action: "evidence",
-    kind: "verification",
-    fingerprint: state.snapshot.fingerprint,
-    passed: true,
-    summary: "Required local checks passed",
-  });
-  for (const boundary of ["pr", "local"]) {
+    {
+      id: "qualification",
+      description: "Native platform qualification",
+      requiredFor: ["platform"],
+    },
+  ];
+  for (const boundary of ["portable", "platform"]) {
     const result = await runWorkflow(await loadWorkflow(), {
-      cwd,
+      cwd: process.cwd(),
       args: validArgs({
-        deliveryScope: { ...localScope, boundary },
+        deliveryScope: { boundary, requirements },
         checks: [
           {
             name: "tests",
@@ -91,7 +50,7 @@ test("scoped qualification remains visible without blocking local handoff; expan
             name: "Native and remote qualification",
             requirementId: "qualification",
             status: "not-run",
-            summary: "Outside the authorized local delivery",
+            summary: "Native qualification is outside the portable assessment",
           },
         ],
         knownGaps: [
@@ -116,40 +75,19 @@ test("scoped qualification remains visible without blocking local handoff; expan
         }),
     });
     const output = result.result as ReviewResult;
-    assert.equal(output.complete, boundary === "local");
+    assert.equal(output.complete, boundary === "portable");
     assert.equal(
       output.outcome,
-      boundary === "local" ? "no material findings" : "incomplete",
+      boundary === "portable" ? "no material findings" : "incomplete",
     );
+    assert.match(output.report, /Review coverage is not delivery readiness/);
     assert.match(output.report, /Native and remote qualification/);
     assert.match(output.report, /## Qualification limitations/);
-    assert.equal(output.blockingGaps.length > 0, boundary === "pr");
-    await mutate({
-      action: "review",
-      fingerprint: state.snapshot.fingerprint,
-      independent: true,
-      complete: output.complete,
-      summary: output.report,
-      findings: [],
-      resolutions: [],
-    });
-    if (boundary === "pr") {
-      await assert.rejects(
-        mutate({
-          action: "handoff",
-          planeState: "In Progress",
-          summary: "Incomplete qualification",
-        }),
-        /incomplete review/,
-      );
-    } else {
-      await mutate({
-        action: "handoff",
-        planeState: "In Progress",
-        summary: "Local acceptance verified; qualification remains disclosed",
-      });
-      assert.equal(state.status, "local_complete");
-    }
+    assert.equal(output.blockingGaps.length > 0, boundary === "platform");
+    assert.equal(
+      output.qualificationLimitations.length > 0,
+      boundary === "portable",
+    );
   }
 });
 

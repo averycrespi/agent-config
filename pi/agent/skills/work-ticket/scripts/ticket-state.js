@@ -1,1784 +1,562 @@
 #!/usr/bin/env node
-
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
-  appendFile,
   lstat,
   mkdir,
   readFile,
-  readlink,
   realpath,
   readdir,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { updateMonitor, validateMonitor } from "./ci-monitor.js";
 
-const LIMIT = 256 * 1024;
+const LIMIT = 64 * 1024;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/;
-const TICKET_ID =
-  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const SHA = /^[a-f0-9]{40}$/;
-const HASH = /^sha256:[a-f0-9]{64}$/;
-const TERMINAL = new Set([
-  "local_complete",
-  "awaiting_human",
-  "done",
-  "canceled",
-]);
-const OPERATIONS = [
-  "implement",
-  "commit",
-  "publish",
-  "settle",
-  "cancel",
-  "cleanup",
+const FIELDS = [
+  "scope",
+  "authorization",
+  "plan",
+  "progress",
+  "blocker",
+  "next",
+  "evidenceRefs",
+  "findingRefs",
+  "pr",
 ];
-const BLOCKERS = new Set([
-  "security",
-  "correctness",
-  "acceptance",
-  "compatibility",
-  "data-integrity",
-  "required-CI",
-  "resource-requirement",
-]);
-
-function requireThat(condition, message) {
-  if (!condition) throw new Error(message);
+function need(ok, message) {
+  if (!ok) throw new Error(message);
 }
-function text(value, name, max = 4000) {
-  requireThat(
-    typeof value === "string" &&
-      value.trim() &&
-      value.length <= max &&
-      !/[\u0000-\u0008\u000b-\u001f\u007f]/.test(value),
-    `invalid ${name}`,
+function text(s, label, max = 4000) {
+  need(
+    typeof s === "string" &&
+      s.trim() &&
+      s.length <= max &&
+      !/[\u0000-\u0008\u000b-\u001f\u007f]/.test(s),
+    `invalid ${label}`,
   );
-  return value;
+  return s;
 }
-function id(value) {
-  requireThat(
-    typeof value === "string" && ID.test(value),
-    "invalid immutable ticket or owner ID",
-  );
-  return value;
+function id(s) {
+  need(typeof s === "string" && ID.test(s), "invalid owner/action ID");
+  return s;
+}
+function integer(n) {
+  need(Number.isSafeInteger(n) && n >= 0, "invalid nonnegative counter");
+  return n;
 }
 function git(root, ...args) {
   return execFileSync("git", ["-C", root, ...args], {
     encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
-  });
+    maxBuffer: LIMIT,
+  }).trim();
 }
-function authority(value) {
-  requireThat(
-    value &&
-      Array.isArray(value.operations) &&
-      value.operations.includes("implement") &&
-      value.operations.every((op) => OPERATIONS.includes(op)),
-    "invalid authorized operations",
-  );
-  requireThat(
-    ["local", "pr"].includes(value.boundary),
-    "invalid completion boundary",
-  );
-  requireThat(
-    value.boundary !== "pr" ||
-      (value.operations.includes("publish") &&
-        value.operations.includes("commit")),
-    "PR delivery requires explicit commit and publication authority",
-  );
-  return {
-    operations: [...new Set(value.operations)],
-    boundary: value.boundary,
-    evidence: text(value.evidence, "authorization evidence"),
-  };
-}
-function plan(value) {
-  requireThat(
-    Array.isArray(value) && value.length > 0 && value.length <= 40,
-    "working plan is required",
-  );
-  return value.map((item) => {
-    requireThat(
-      ["todo", "in_progress", "done", "blocked"].includes(item.status),
-      "invalid plan status",
-    );
-    return {
-      step: text(item.step, "plan step"),
-      verification: text(item.verification, "plan verification"),
-      status: item.status,
-    };
-  });
-}
-async function directory(path, create) {
-  if (create)
-    await mkdir(path, { mode: 0o700 }).catch((error) => {
-      if (error.code !== "EEXIST") throw error;
-    });
-  const stat = await lstat(path);
-  requireThat(
-    stat.isDirectory() &&
-      !stat.isSymbolicLink() &&
-      (await realpath(path)) === path,
-    "state path must be a real directory",
-  );
-  return { path, dev: stat.dev, ino: stat.ino };
-}
-async function excludeState(root) {
-  requireThat(
-    !git(root, "ls-files", "--", ".pi/tickets").trim(),
-    "ticket state must never be staged or tracked",
-  );
-  const exclude = resolve(
-    root,
-    git(root, "rev-parse", "--git-path", "info/exclude").trim(),
-  );
-  const parent = resolve(exclude, "..");
-  await directory(parent, true);
-  let content = "";
+async function exists(p) {
   try {
-    const stat = await lstat(exclude);
-    requireThat(
-      stat.isFile() && !stat.isSymbolicLink() && stat.size <= LIMIT,
-      "Git info exclude must be a bounded regular file",
-    );
-    content = await readFile(exclude, "utf8");
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  if (!content.split(/\r?\n/).includes("/.pi/tickets/")) {
-    await appendFile(
-      exclude,
-      `${content && !content.endsWith("\n") ? "\n" : ""}/.pi/tickets/\n`,
-      { mode: 0o600 },
-    );
+    await lstat(p);
+    return true;
+  } catch (e) {
+    if (e.code === "ENOENT") return false;
+    throw e;
   }
 }
-async function paths(cwd, ticketId, create = false) {
-  requireThat(
-    typeof ticketId === "string" && TICKET_ID.test(ticketId),
-    "invalid immutable Plane ticket UUID; do not use the display identifier",
-  );
-  const root = await realpath(resolve(cwd));
-  requireThat(
-    (await realpath(git(root, "rev-parse", "--show-toplevel").trim())) === root,
-    "cwd must be the repository root",
-  );
-  if (create) await excludeState(root);
-  const identities = [];
-  for (const path of [
-    join(root, ".pi"),
-    join(root, ".pi", "tickets"),
-    join(root, ".pi", "tickets", ticketId),
-  ])
-    identities.push(await directory(path, create));
-  const store = join(root, ".pi", "tickets");
-  requireThat(
-    !git(root, "ls-files", "--", ".pi/tickets").trim(),
-    "ticket state must never be staged or tracked",
-  );
-  git(
-    root,
-    "check-ignore",
-    "--quiet",
-    "--",
-    `.pi/tickets/${ticketId}/state.json`,
-  );
-  return { root, store, file: join(store, ticketId, "state.json"), identities };
-}
-async function assertPaths(p) {
-  for (const prior of p.identities) {
-    const current = await directory(prior.path, false);
-    requireThat(
-      current.dev === prior.dev && current.ino === prior.ino,
-      "state directory changed during operation",
-    );
-  }
-}
-async function readState(file, ticketId) {
-  const stat = await lstat(file);
-  requireThat(
-    stat.isFile() && !stat.isSymbolicLink() && stat.size <= LIMIT,
-    "state must be a bounded regular file",
-  );
-  const state = JSON.parse(await readFile(file, "utf8"));
-  validate(state);
-  requireThat(state.ticketId === ticketId, "state ticket identity mismatch");
-  return state;
-}
-function repairLimit(s) {
-  return (
-    2 + (s.repairExtensions ?? []).reduce((sum, item) => sum + item.cycles, 0)
+async function directory(p, create = false) {
+  if (create)
+    await mkdir(p, { mode: 0o700 }).catch((e) => {
+      if (e.code !== "EEXIST") throw e;
+    });
+  const s = await lstat(p);
+  need(
+    s.isDirectory() && !s.isSymbolicLink() && (await realpath(p)) === p,
+    "checkpoint directory must be real, not a symlink",
   );
 }
-function scopeHash(s) {
-  return digest(JSON.stringify([s.contract, s.authorization.boundary]));
+async function jsonFile(p) {
+  const s = await lstat(p);
+  need(
+    s.isFile() && !s.isSymbolicLink() && s.size <= LIMIT,
+    "checkpoint must be a bounded regular file",
+  );
+  return JSON.parse(await readFile(p, "utf8"));
 }
 function validate(s) {
-  requireThat(
-    s?.schemaVersion === 1 && Number.isInteger(s.revision) && s.revision >= 0,
-    "invalid ticket state schema or revision",
+  need(
+    s?.schemaVersion === 2 && UUID.test(s.ticketId),
+    "invalid checkpoint schema/identity",
   );
-  requireThat(TICKET_ID.test(s.ticketId), "invalid immutable ticket UUID");
-  id(s.runId);
+  integer(s.revision);
   id(s.owner);
-  text(s.identifier, "ticket identifier");
-  text(s.contract, "scope baseline", 100000);
-  requireThat(
-    ["active", "blocked", "waiting", ...TERMINAL].includes(s.status) &&
-      !("phase" in s),
-    "invalid ticket status or phase cursor",
+  need(
+    isAbsolute(s.checkout) && typeof s.released === "boolean",
+    "invalid checkout ownership",
   );
-  authority(s.authorization);
-  plan(s.plan);
-  requireThat(
-    s.contractHash === undefined || s.contractHash === digest(s.contract),
-    "invalid contract hash",
-  );
-  requireThat(
-    s.repairExtensions === undefined ||
-      (Array.isArray(s.repairExtensions) &&
-        s.repairExtensions.every(
-          (item) =>
-            Number.isInteger(item.cycles) &&
-            item.cycles > 0 &&
-            item.cycles <= 2 &&
-            HASH.test(item.contractHash) &&
-            typeof item.evidence === "string" &&
-            item.evidence.trim(),
-        )),
-    "invalid repair extensions",
-  );
-  requireThat(
-    Number.isInteger(s.repairCount) &&
-      s.repairCount >= 0 &&
-      s.repairCount <= repairLimit(s),
-    "invalid repair count",
-  );
-  requireThat(
-    Array.isArray(s.findings) &&
-      Array.isArray(s.repairs) &&
-      s.repairs.length === s.repairCount &&
-      Array.isArray(s.externalWrites),
-    "invalid findings, repairs or external writes",
-  );
-  requireThat(
-    s.assignment &&
-      /^[\w.-]+\/[\w.-]+$/.test(s.assignment.repository) &&
-      SHA.test(s.assignment.baseCommit) &&
-      typeof s.assignment.branch === "string" &&
-      typeof s.assignment.targetBranch === "string",
-    "invalid repository assignment",
-  );
-  requireThat(
-    s.snapshot &&
-      SHA.test(s.snapshot.head) &&
-      HASH.test(s.snapshot.fingerprint),
-    "invalid revision snapshot",
-  );
-  text(s.progress, "progress");
-  text(s.nextAction, "next action");
-  requireThat(s.evidence && typeof s.evidence === "object", "invalid evidence");
-}
-async function snapshot(root) {
-  const head = git(root, "rev-parse", "HEAD").trim();
-  const branch = git(root, "symbolic-ref", "--short", "HEAD").trim();
-  const digest = createHash("sha256")
-    .update(head)
-    .update(
-      git(
-        root,
-        "diff",
-        "HEAD",
-        "--binary",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--",
-        ".",
-        ":(exclude).pi/tickets",
-        ":(exclude).ticket-run",
-      ),
-    );
-  const untracked = git(
-    root,
-    "ls-files",
-    "--others",
-    "--exclude-standard",
-    "-z",
-    "--",
-    ".",
-    ":(exclude).ticket-run",
-  )
-    .split("\0")
-    .filter(Boolean)
-    .sort();
-  for (const name of untracked) {
-    const file = join(root, name);
-    const stat = await lstat(file);
-    requireThat(
-      stat.isFile() || stat.isSymbolicLink(),
-      "unsupported untracked artifact",
-    );
-    requireThat(
-      stat.size <= 16 * 1024 * 1024,
-      "untracked artifact too large to fingerprint",
-    );
-    digest
-      .update(JSON.stringify([name, stat.mode]))
-      .update(
-        stat.isSymbolicLink() ? await readlink(file) : await readFile(file),
-      );
+  text(s.branch, "branch");
+  for (const key of ["scope", "authorization", "plan", "progress"])
+    text(s[key], key);
+  if (s.blocker !== null) text(s.blocker, "blocker");
+  text(s.next?.actor, "next actor", 200);
+  text(s.next?.action, "next action");
+  for (const key of ["evidenceRefs", "findingRefs"]) {
+    need(Array.isArray(s[key]), `invalid ${key}`);
+    s[key].forEach((x) => text(x, key, 2000));
   }
-  return {
-    head,
-    branch,
-    fingerprint: `sha256:${digest.digest("hex")}`,
-    clean: !git(root, "status", "--porcelain", "--untracked-files=all").trim(),
-  };
-}
-async function contentFingerprint(root) {
-  const names = [
-    ...new Set(
-      git(
-        root,
-        "ls-files",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-        "-z",
-        "--",
-        ".",
-        ":(exclude).pi/tickets",
-        ":(exclude).ticket-run",
-      )
-        .split("\0")
-        .filter(Boolean),
-    ),
-  ].sort();
-  const hash = createHash("sha256");
-  for (const name of names) {
-    const file = join(root, name);
-    if (await absent(file)) continue;
-    const stat = await lstat(file);
-    requireThat(
-      (stat.isFile() || stat.isSymbolicLink()) && stat.size <= 16 * 1024 * 1024,
-      "content reuse requires bounded regular files or symlinks; rerun checks for unsupported artifacts",
+  if (s.pr !== null) text(s.pr, "PR reference", 2000);
+  need(Array.isArray(s.overrides), "invalid overrides");
+  for (const o of s.overrides) {
+    id(o.id);
+    for (const k of [
+      "requirement",
+      "scope",
+      "action",
+      "instruction",
+      "reference",
+    ])
+      text(o[k], k);
+  }
+  for (const kind of ["review", "ci"]) {
+    const b = s.repairs?.[kind];
+    integer(b?.limit);
+    need(
+      Array.isArray(b.batches) && b.batches.length <= b.limit,
+      "invalid repair allowance",
     );
-    hash.update(
-      JSON.stringify([
-        name,
-        stat.isSymbolicLink() ? "symlink" : "file",
-        stat.mode & 0o111,
-      ]),
-    );
-    hash.update(
-      digest(
-        stat.isSymbolicLink() ? await readlink(file) : await readFile(file),
-      ),
+    b.batches.forEach((x) => {
+      id(x.id);
+      text(x.plan, "repair plan");
+    });
+    need(
+      new Set(b.batches.map((x) => x.id)).size === b.batches.length &&
+        (b.active === null || b.batches.some((x) => x.id === b.active)),
+      "invalid repair identity",
     );
   }
-  return `sha256:${hash.digest("hex")}`;
-}
-async function reuseEvidence(p, s, r, current) {
-  const reuse = r.reuseEvidence;
-  if (reuse === undefined) return null;
-  requireThat(
-    r.action === "checkpoint" &&
-      reuse &&
-      (reuse.verification === true || reuse.review === true),
-    "evidence reuse requires an explicit checkpoint selection",
-  );
-  const justification = text(
-    reuse.justification,
-    "unchanged check inputs/environment and review coverage justification",
-  );
-  requireThat(
-    current.clean && current.head !== s.snapshot.head,
-    "content reuse requires a clean new commit",
-  );
-  git(p.root, "merge-base", "--is-ancestor", s.snapshot.head, current.head);
-  const content = await contentFingerprint(p.root);
-  const retained = {};
-  for (const kind of ["verification", "review"]) {
-    if (reuse[kind] !== true) continue;
-    const prior = kind === "review" ? s.review : s.evidence.verification;
-    requireThat(
-      prior &&
-        prior.fingerprint === s.snapshot.fingerprint &&
-        prior.contentFingerprint === content &&
-        prior.scopeHash === scopeHash(s) &&
-        (kind === "review" ? prior.complete && !prior.stale : prior.passed),
-      "reuse requires opted-in passing evidence with unchanged content and scope",
-    );
-    retained[kind] = {
-      ...prior,
-      fingerprint: current.fingerprint,
-      reuse: { fromFingerprint: prior.fingerprint, justification },
-    };
-  }
-  return retained;
-}
-async function locked(p, fn) {
-  const lock = join(p.store, ".writer.lock");
-  await mkdir(lock).catch((error) => {
-    if (error.code === "EEXIST")
-      throw new Error(
-        "checkout state is locked by another helper; inspect owner before recovery",
-      );
-    throw error;
-  });
-  const token = randomUUID();
-  await writeFile(
-    join(lock, "owner.json"),
-    JSON.stringify({ pid: process.pid, token }),
-    { flag: "wx", mode: 0o600 },
-  );
-  try {
-    return await fn();
-  } finally {
-    await assertPaths(p);
-    const owner = JSON.parse(await readFile(join(lock, "owner.json"), "utf8"));
-    if (owner.token === token) await rm(lock, { recursive: true });
-  }
-}
-async function persist(p, s) {
-  s.contractHash = digest(s.contract);
-  validate(s);
-  const content = `${JSON.stringify(s, null, 2)}\n`;
-  requireThat(
-    Buffer.byteLength(content) <= LIMIT,
-    "state too large; retain concise evidence, not transcripts",
-  );
-  await assertPaths(p);
-  const temporary = `${p.file}.${randomUUID()}.tmp`;
-  await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
-  try {
-    await assertPaths(p);
-    await rename(temporary, p.file);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
-async function noOtherWriter(p, ticketId) {
-  for (const entry of await readdir(p.store, { withFileTypes: true })) {
-    if (entry.name === ".writer.lock" || entry.name === ticketId) continue;
-    requireThat(
-      entry.isDirectory() && !entry.isSymbolicLink() && ID.test(entry.name),
-      "unexpected ticket store entry",
-    );
-    const entryPath = join(p.store, entry.name);
-    if ((await readdir(entryPath)).length === 0) continue;
-    const other = await readState(join(entryPath, "state.json"), entry.name);
-    requireThat(
-      TERMINAL.has(other.status),
-      `checkout already owned by ticket ${other.ticketId}`,
-    );
-  }
-}
-function deliveryArchive(s) {
-  return structuredClone({
-    revision: s.revision,
-    owner: s.owner,
-    contract: s.contract,
-    authorization: s.authorization,
-    completionAuthorization: s.completionAuthorization ?? s.authorization,
-    plan: s.plan,
-    progress: s.progress,
-    nextAction: s.nextAction,
-    blocker: s.blocker,
-    snapshot: s.snapshot,
-    evidence: s.evidence,
-    review: s.review,
-    findings: s.findings,
-    repairCount: s.repairCount,
-    repairExtensions: s.repairExtensions ?? [],
-    reconciliation: s.reconciliation ?? null,
-  });
-}
-function invalidate(s, current) {
-  if (s.snapshot.fingerprint !== current.fingerprint) {
-    s.evidence = {};
-    if (s.review) s.review.stale = true;
-  }
-  s.snapshot = current;
-}
-function permitted(s, op) {
-  if (op === "settle" && s.humanAcceptance) return;
-  requireThat(
-    s.authorization.operations.includes(op),
-    `${op} is not authorized`,
-  );
-}
-function verified(s) {
-  requireThat(
-    s.evidence.verification?.fingerprint === s.snapshot.fingerprint &&
-      (s.evidence.verification.scopeHash === undefined ||
-        s.evidence.verification.scopeHash === scopeHash(s)) &&
-      s.evidence.verification.passed === true,
-    "current revision requires passing required checks",
-  );
-}
-function openBlockers(s) {
-  return s.findings.filter((f) => f.blocking && f.disposition === "open");
-}
-function reviewed(s) {
-  verified(s);
-  requireThat(
-    s.review &&
-      !s.review.stale &&
-      s.review.fingerprint === s.snapshot.fingerprint &&
-      (s.review.scopeHash === undefined ||
-        s.review.scopeHash === scopeHash(s)) &&
-      s.review.complete &&
-      !openBlockers(s).length,
-    "current revision requires complete independent review without blockers",
-  );
-}
-function publicationGate(s) {
-  permitted(s, "publish");
-  verified(s);
-  requireThat(
-    s.authorization.boundary === "pr",
-    "publication requires PR completion boundary",
-  );
-  requireThat(
-    s.assignment.branch !== s.assignment.targetBranch && s.snapshot.clean,
-    "publication requires a clean separate source branch",
-  );
-  requireThat(
-    s.evidence.safety?.fingerprint === s.snapshot.fingerprint &&
-      s.evidence.safety.passed === true,
-    "publication requires outgoing-history and metadata safety evidence",
-  );
-}
-function prIdentity(s, pr) {
-  requireThat(
-    pr &&
-      typeof pr.url === "string" &&
-      pr.url.startsWith(
-        `https://github.com/${s.assignment.repository}/pull/`,
-      ) &&
-      /^\d+$/.test(pr.url.split("/").at(-1)),
-    "invalid PR identity",
-  );
-  requireThat(
-    pr.head === s.snapshot.head &&
-      pr.branch === s.assignment.branch &&
-      pr.base === s.assignment.targetBranch &&
-      pr.open === true,
-    "PR head/source/base/open identity mismatch",
-  );
-  if (s.pr) requireThat(s.pr.url === pr.url, "PR identity changed");
-}
-function gate(s, operation, observations = {}) {
-  if (operation === "publish") publicationGate(s);
-  else if (operation === "promote") {
-    publicationGate(s);
-    reviewed(s);
-    requireThat(
-      s.pr?.head === s.snapshot.head &&
-        s.evidence.ci?.fingerprint === s.snapshot.fingerprint &&
-        s.evidence.ci.passed === true,
-      "promotion requires published exact-head passing CI",
-    );
-  } else {
-    permitted(s, operation);
-    if (operation === "settle" && s.humanAcceptance) {
-      requireThat(
-        s.status !== "done" &&
-          s.status !== "canceled" &&
-          observations.mergeConfirmed === true &&
-          observations.mergedHead === s.humanAcceptance.pr.head &&
-          observations.prUrl === s.humanAcceptance.pr.url &&
-          observations.currentHead === s.humanAcceptance.pr.head,
-        "accepted settlement requires the exact confirmed merged PR/head",
-      );
-    } else if (operation === "settle") {
-      requireThat(
-        ["local_complete", "awaiting_human"].includes(s.status),
-        "settlement requires completed delivery before external writes",
-      );
-      verified(s);
-      if (s.status === "awaiting_human") {
-        reviewed(s);
-        requireThat(
-          observations.mergeConfirmed === true &&
-            observations.mergedHead === s.pr?.head &&
-            s.pr?.head === s.snapshot.head,
-          "settlement requires confirmed reviewed merged head before external writes",
-        );
-      }
-    } else if (operation === "cleanup") {
-      requireThat(
-        ["done", "canceled"].includes(s.status),
-        "cleanup requires settled or canceled delivery",
-      );
-      requireThat(
-        s.snapshot.clean &&
-          observations.noLiveWriter === true &&
-          observations.noUnpushedWork === true &&
-          observations.prDispositionKnown === true &&
-          observations.planeState ===
-            (s.status === "done" ? "Done" : "Canceled"),
-        "cleanup requires clean checkout, no live writer or unpushed work, known PR disposition and matching Plane state",
-      );
-    } else if (operation === "cancel") {
-      requireThat(
-        !["done", "canceled"].includes(s.status),
-        "terminal settlement cannot be canceled again",
-      );
+  for (const e of [s.pendingEffect, s.lastEffect])
+    if (e !== null) {
+      id(e?.id);
+      text(e.target, "external target");
+      text(e === s.pendingEffect ? e.intent : e.reference, "external evidence");
     }
+  if (s.monitor !== null) validateMonitor(s.monitor);
+  integer(s.recoveredWaitingMs);
+}
+function checkpoint(s, patch) {
+  need(
+    patch && typeof patch === "object" && !Array.isArray(patch),
+    "checkpoint patch required",
+  );
+  for (const [key, value] of Object.entries(patch)) {
+    need(FIELDS.includes(key), `checkpoint cannot change ${key}`);
+    if (["evidenceRefs", "findingRefs"].includes(key)) {
+      need(Array.isArray(value), `invalid ${key}`);
+      s[key] = [...new Set([...s[key], ...value])];
+    } else s[key] = value;
   }
 }
-async function acceptMerged(p, s, r, current) {
-  requireThat(
-    !s.humanAcceptance && !["done", "canceled"].includes(s.status),
-    "delivery already disposed",
-  );
-  const a = r.acceptance;
-  requireThat(
-    a?.source === "user" &&
-      a.ticketId === s.ticketId &&
-      a.runId === s.runId &&
-      a.acceptMerged === true,
-    "explicit applicable user acceptance with ticket/run identity is required",
-  );
-  text(a.instruction, "actual user instruction");
-  text(a.reference, "user instruction reference");
-  requireThat(
-    r.noLiveWriter === true,
-    "acceptance reconciliation requires no live writer",
-  );
-  const pr = r.pr;
-  requireThat(
-    s.pr &&
-      pr &&
-      pr.url === s.pr.url &&
-      pr.url.startsWith(
-        `https://github.com/${s.assignment.repository}/pull/`,
-      ) &&
-      /^\d+$/.test(pr.url.split("/").at(-1)) &&
-      pr.branch === s.assignment.branch &&
-      pr.base === s.assignment.targetBranch &&
-      SHA.test(pr.head) &&
-      pr.head === current.head &&
-      pr.merged === true &&
-      r.mergeConfirmed === true,
-    "acceptance requires confirmed merged PR/source/base/current-head identity",
-  );
-  text(r.mergeEvidence, "reread merge evidence");
-  if (s.pr.head !== pr.head) {
-    const successor = r.successor;
-    requireThat(
-      successor &&
-        successor.ticketId !== s.ticketId &&
-        successor.priorHead === s.pr.head &&
-        successor.mergedHead === pr.head,
-      "superseding head requires explicit successor relationship",
-    );
-    const other = await readState(
-      join(p.store, successor.ticketId, "state.json"),
-      successor.ticketId,
-    );
-    requireThat(
-      other.runId === successor.runId &&
-        other.assignment.root === p.root &&
-        other.assignment.repository === s.assignment.repository &&
-        other.assignment.branch === pr.branch &&
-        other.assignment.targetBranch === pr.base &&
-        other.pr?.url === pr.url &&
-        other.pr.head === pr.head,
-      "successor ticket/run/PR identity mismatch",
-    );
-    text(successor.authorizationEvidence, "explicit successor authorization");
-    git(p.root, "merge-base", "--is-ancestor", s.pr.head, pr.head);
-  } else
-    requireThat(r.successor === undefined, "unexpected successor relationship");
-  const waived = [];
-  if (!["local_complete", "awaiting_human"].includes(s.status))
-    waived.push("completed-delivery");
-  if (
-    !(
-      s.evidence.verification?.passed === true &&
-      s.evidence.verification.fingerprint === current.fingerprint
-    )
-  )
-    waived.push("required-checks");
-  if (
-    !(
-      s.review?.complete &&
-      !s.review.stale &&
-      s.review.fingerprint === current.fingerprint &&
-      !openBlockers(s).length
-    )
-  )
-    waived.push("independent-review");
-  if (s.pr.head !== pr.head) waived.push("published-head");
-  if (s.snapshot.fingerprint !== current.fingerprint)
-    waived.push("delivery-snapshot");
-  requireThat(
-    Array.isArray(a.waivedPrerequisites) &&
-      JSON.stringify([...a.waivedPrerequisites].sort()) ===
-        JSON.stringify(waived.sort()),
-    `explicit acceptance must name exactly the waived prerequisites: ${waived.join(", ")}`,
-  );
-  s.humanAcceptance = {
-    authorization: structuredClone(a),
-    pr: structuredClone(pr),
-    mergeEvidence: r.mergeEvidence,
-    successor: r.successor ? structuredClone(r.successor) : null,
-    priorDelivery: deliveryArchive(s),
-    observedSnapshot: current,
-  };
-}
-
 function apply(s, r) {
   switch (r.action) {
     case "checkpoint":
-      if (r.plan !== undefined) s.plan = plan(r.plan);
-      s.progress = text(r.progress, "progress");
-      s.nextAction = text(r.nextAction, "next action");
-      if (r.status !== undefined) {
-        requireThat(
-          ["active", "waiting", "blocked"].includes(r.status),
-          "invalid checkpoint status",
-        );
-        s.status = r.status;
-      }
-      s.blocker =
-        s.status === "active"
-          ? null
-          : text(r.blocker, "blocker or waiting condition");
+      checkpoint(s, r.patch);
       break;
-    case "authorize": {
-      const previousScope = scopeHash(s);
-      const nextContract = text(
-        r.newContract ?? r.contract ?? s.contract,
-        "authorized scope baseline",
-        100000,
-      );
-      requireThat(
-        !TERMINAL.has(s.status) || nextContract === s.contract,
-        "completed scope changes require an explicitly authorized follow-up",
-      );
-      s.authorization = authority(r.authorization);
-      s.contract = nextContract;
-      if (scopeHash(s) !== previousScope && !TERMINAL.has(s.status)) {
-        s.evidence = {};
-        if (s.review) s.review.stale = true;
-      }
+    case "release":
+      s.released = true;
       break;
-    }
-    case "reopen_local": {
-      requireThat(
-        s.status === "local_complete" &&
-          s.authorization.boundary === "local" &&
-          !s.pr,
-        "reopen_local requires local completion without a recorded PR",
+    case "repair": {
+      need(
+        ["review", "ci"].includes(r.kind),
+        "repair kind must be review or ci",
       );
-      requireThat(
-        s.externalWrites.every(
-          (w) => w.operation === "implement" && w.outcome === "confirmed",
-        ),
-        "reopen_local requires confirmed implementation-only external history",
-      );
-      requireThat(
-        r.planeState === "In Progress" && r.noPrConfirmed === true,
-        "reopen_local requires fresh Plane In Progress and no-PR observations",
-      );
-      const authorization = authority(r.authorization);
-      requireThat(
-        authorization.boundary === "local" &&
-          authorization.operations.every((op) =>
-            ["implement", "commit"].includes(op),
-          ),
-        "reopen_local accepts only explicit local implementation/commit authority",
-      );
-      const nextContract = text(
-        r.newContract,
-        "follow-up scope baseline",
-        100000,
-      );
-      const nextPlan = plan(r.plan);
-      const observations = text(r.observations, "follow-up reconciliation");
-      s.localFollowups ??= [];
-      s.localFollowups.push(deliveryArchive(s));
-      if (r.additionalRepairCycles !== undefined) {
-        const extension = r.additionalRepairCycles;
-        requireThat(
-          nextContract !== s.contract &&
-            Number.isInteger(extension?.cycles) &&
-            extension.cycles > 0 &&
-            extension.cycles <= 2,
-          "additional repairs require new follow-up scope and one or two explicitly authorized cycles",
+      const b = s.repairs[r.kind];
+      id(r.id);
+      if (r.operation === "begin") {
+        text(r.plan, "repair plan");
+        const prior = b.batches.find((x) => x.id === r.id);
+        if (prior) {
+          need(prior.plan === r.plan, "repair ID conflicts with prior plan");
+          break;
+        }
+        need(b.active === null, "finish or resume the active repair batch");
+        need(
+          b.batches.length < b.limit,
+          "repair allowance exhausted; record an explicit user override with an additive allowance",
         );
-        s.repairExtensions ??= [];
-        s.repairExtensions.push({
-          cycles: extension.cycles,
-          evidence: text(
-            extension.evidence,
-            "explicit additional repair authorization",
-          ),
-          contractHash: digest(nextContract),
-          revision: s.revision,
-        });
-      }
-      s.authorization = authorization;
-      delete s.completionAuthorization;
-      s.contract = nextContract;
-      s.plan = nextPlan;
-      s.evidence = {};
-      if (s.review) s.review.stale = true;
-      s.reconciliation = { observations, fingerprint: r.fingerprint };
-      s.status = "active";
-      s.blocker = null;
-      s.progress =
-        "Explicitly authorized local follow-up; prior delivery archived";
-      s.nextAction =
-        "Implement the follow-up plan and record fresh verification evidence";
-      break;
-    }
-    case "begin_pr": {
-      requireThat(
-        s.status === "local_complete" && !s.pr && !s.prDelivery,
-        "begin_pr requires local completion without prior PR delivery",
-      );
-      permitted(s, "implement");
-      permitted(s, "commit");
-      requireThat(
-        s.completionAuthorization?.operations.includes("implement") &&
-          s.completionAuthorization.operations.includes("commit"),
-        "begin_pr requires implementation/commit authority at local completion",
-      );
-      requireThat(
-        s.externalWrites.every(
-          (w) => w.operation === "implement" && w.outcome === "confirmed",
-        ),
-        "begin_pr requires confirmed implementation-only external history",
-      );
-      requireThat(
-        r.planeState === "In Progress" && r.noPrConfirmed === true,
-        "begin_pr requires fresh Plane In Progress and no-PR observations",
-      );
-      requireThat(
-        !openBlockers(s).length,
-        "unresolved blockers prevent PR transition",
-      );
-      const publicationEvidence = text(
-        r.publicationEvidence,
-        "explicit push/PR authorization evidence",
-      );
-      const observations = text(r.observations, "PR delivery reconciliation");
-      s.prDelivery = deliveryArchive(s);
-      s.authorization = {
-        operations: ["implement", "commit", "publish"],
-        boundary: "pr",
-        evidence: publicationEvidence,
-      };
-      s.evidence = {};
-      if (s.review) s.review.stale = true;
-      s.reconciliation = { observations, fingerprint: r.fingerprint };
-      s.status = "active";
-      s.blocker = null;
-      s.progress =
-        "Explicitly authorized publication of the unchanged local delivery";
-      s.nextAction =
-        "Scan outgoing history and PR metadata, then follow publication and exact-head review/CI gates";
-      break;
-    }
-    case "reconcile":
-      text(r.observations, "ticket/files/Git/PR/check reconciliation");
-      s.reconciliation = {
-        observations: r.observations,
-        fingerprint: s.snapshot.fingerprint,
-      };
-      s.status = "active";
-      s.blocker = null;
-      break;
-    case "evidence": {
-      requireThat(
-        ["verification", "safety", "ci"].includes(r.kind) &&
-          typeof r.passed === "boolean",
-        "invalid evidence kind or outcome",
-      );
-      requireThat(
-        r.fingerprint === s.snapshot.fingerprint,
-        "evidence revision mismatch",
-      );
-      if (r.kind === "safety") {
-        permitted(s, "publish");
-        requireThat(
-          r.historyScanned === true &&
-            r.metadataScanned === true &&
-            r.publicContentChecked === true,
-          "complete outgoing-history and metadata scans are required",
-        );
-        requireThat(
-          HASH.test(r.metadataHash),
-          "metadataHash must be a SHA-256 digest of scanned title/body bytes",
-        );
-      }
-      if (r.kind === "ci")
-        requireThat(
-          s.pr?.head === s.snapshot.head && r.head === s.snapshot.head,
-          "CI head mismatch",
-        );
-      s.evidence[r.kind] = {
-        fingerprint: r.fingerprint,
-        scopeHash: scopeHash(s),
-        ...(r.contentFingerprint
-          ? { contentFingerprint: r.contentFingerprint }
-          : {}),
-        passed: r.passed,
-        summary: text(r.summary, "evidence summary"),
-        ...(r.kind === "safety"
-          ? { metadataHash: text(r.metadataHash, "scanned PR metadata hash") }
-          : {}),
-      };
-      break;
-    }
-    case "review": {
-      requireThat(
-        r.fingerprint === s.snapshot.fingerprint &&
-          r.independent === true &&
-          typeof r.complete === "boolean",
-        "independent review revision/completeness required",
-      );
-      requireThat(
-        Array.isArray(r.findings) &&
-          r.findings.length <= 100 &&
-          Array.isArray(r.resolutions),
-        "consolidated findings and resolutions required",
-      );
-      const resolved = new Set();
-      for (const resolution of r.resolutions) {
-        const finding = s.findings.find((f) => f.id === resolution.id);
-        requireThat(
-          finding &&
-            finding.disposition === "open" &&
-            !resolved.has(finding.id) &&
-            ["fixed", "not-applicable"].includes(resolution.disposition),
-          "invalid finding resolution",
-        );
-        finding.disposition = resolution.disposition;
-        finding.resolution = text(
-          resolution.evidence,
-          "independent resolution evidence",
-        );
-        resolved.add(finding.id);
-      }
-      for (const f of r.findings) {
-        id(f.id);
-        requireThat(
-          typeof f.blocking === "boolean" &&
-            (!f.blocking || BLOCKERS.has(f.category)),
-          "blocker requires a supported violation category",
-        );
-        requireThat(
-          !s.findings.some((old) => old.id === f.id),
-          "finding ID already exists; retain open findings or supply resolutions",
-        );
-        s.findings.push({
-          id: f.id,
-          blocking: f.blocking,
-          category: text(f.category, "category"),
-          evidence: text(f.evidence, "finding evidence"),
-          disposition: "open",
-        });
-      }
-      s.review = {
-        fingerprint: r.fingerprint,
-        scopeHash: scopeHash(s),
-        ...(r.contentFingerprint
-          ? { contentFingerprint: r.contentFingerprint }
-          : {}),
-        complete: r.complete,
-        stale: false,
-        summary: text(r.summary, "review evidence"),
-        sequence: (s.review?.sequence ?? 0) + 1,
-      };
-      if (openBlockers(s).length && s.repairCount >= repairLimit(s)) {
-        s.status = "blocked";
-        s.blocker =
-          "Review repair allowance exhausted; remaining blockers require human handoff";
-        s.nextAction = s.blocker;
-      }
-      break;
-    }
-    case "begin_repair":
-      permitted(s, "implement");
-      requireThat(
-        s.review && !s.review.stale && openBlockers(s).length,
-        "repair requires current consolidated review with blockers",
-      );
-      requireThat(
-        s.repairCount < repairLimit(s),
-        "review repair allowance exhausted",
-      );
-      requireThat(
-        !s.repairs.some((r) => r.reviewSequence === s.review.sequence),
-        "repair batch already consumed; resume the recorded batch",
-      );
-      s.repairCount += 1;
-      s.repairs.push({
-        reviewSequence: s.review.sequence,
-        findings: openBlockers(s).map((f) => f.id),
-        plan: text(r.repairPlan, "repair plan"),
-        fingerprint: s.snapshot.fingerprint,
-      });
-      s.nextAction =
-        "Complete the recorded repair batch, rerun affected checks, then focused confirmation review";
-      s.evidence = {};
-      s.review.stale = true;
-      break;
-    case "external": {
-      requireThat(
-        ["pending", "confirmed"].includes(r.outcome),
-        "invalid external write outcome",
-      );
-      requireThat(
-        [
-          "publish",
-          "promote",
-          "settle",
-          "cancel",
-          "cleanup",
-          "implement",
-        ].includes(r.operation),
-        "invalid external operation",
-      );
-      gate(s, r.operation, r);
-      requireThat(
-        r.operation !== "cleanup",
-        "use prepare_cleanup and durable cleanup confirmation",
-      );
-      const key = text(r.key, "idempotency key", 200);
-      const prior = s.externalWrites.find((w) => w.key === key);
-      const intent = text(r.intent, "external intent");
-      if (prior) {
-        requireThat(
-          prior.operation === r.operation && prior.intent === intent,
-          "external write key conflicts with prior intent",
-        );
-        requireThat(
-          !(prior.outcome === "confirmed" && r.outcome === "pending"),
-          "confirmed external write must not be repeated",
-        );
-        prior.outcome = r.outcome;
-        prior.evidence = text(r.summary, "external evidence");
-      } else
-        s.externalWrites.push({
-          key,
-          operation: r.operation,
-          intent,
-          outcome: r.outcome,
-          evidence: text(r.summary, "external evidence"),
-        });
-      break;
-    }
-    case "publication":
-      publicationGate(s);
-      prIdentity(s, r.pr);
-      requireThat(
-        r.pr.draft === true &&
-          r.confirmed === true &&
-          r.metadataHash === s.evidence.safety.metadataHash,
-        "publication requires reread draft PR and scanned metadata",
-      );
-      s.pr = structuredClone(r.pr);
-      break;
-    case "handoff":
-      verified(s);
-      requireThat(
-        !openBlockers(s).length &&
-          (!s.review || (!s.review.stale && s.review.complete)),
-        "unresolved blockers or incomplete review prevent handoff",
-      );
-      if (s.authorization.boundary === "pr") {
-        gate(s, "promote");
-        prIdentity(s, r.pr);
-        requireThat(
-          r.pr.draft === false &&
-            r.confirmed === true &&
-            r.planeState === "Review",
-          "handoff requires confirmed ready PR and Plane Review",
-        );
-        s.pr = structuredClone(r.pr);
-        s.status = "awaiting_human";
+        b.batches.push({ id: r.id, plan: r.plan });
+        b.active = r.id;
       } else {
-        requireThat(
-          r.planeState === "In Progress",
-          "local completion leaves Plane In Progress",
+        need(
+          r.operation === "finish" && b.active === r.id,
+          "repair batch is not active",
         );
-        s.status = "local_complete";
-        s.completionAuthorization = structuredClone(s.authorization);
+        b.active = null;
       }
-      s.progress = text(r.summary, "handoff evidence");
-      s.nextAction =
-        "Human handoff; no further execution authorized by completion";
       break;
-    case "settle":
-      gate(s, "settle", r);
-      requireThat(
-        r.confirmed === true && r.planeState === "Done",
-        "settlement requires confirmed Plane Done",
+    }
+    case "override": {
+      const o = r.override;
+      need(o && typeof o === "object", "scoped user override required");
+      need(
+        Object.keys(o).every((k) =>
+          [
+            "id",
+            "requirement",
+            "scope",
+            "action",
+            "instruction",
+            "reference",
+            "budget",
+            "additional",
+          ].includes(k),
+        ),
+        "unknown override field",
       );
-      requireThat(
-        s.humanAcceptance ||
-          s.status === "local_complete" ||
-          (s.status === "awaiting_human" &&
-            r.mergedHead === s.pr?.head &&
-            s.review?.fingerprint === s.snapshot.fingerprint),
-        "settlement requires local completion or confirmed reviewed merged head",
-      );
-      s.status = "done";
-      s.nextAction = "Cleanup only with separate authority";
+      id(o.id);
+      for (const k of [
+        "requirement",
+        "scope",
+        "action",
+        "instruction",
+        "reference",
+      ])
+        text(o[k], k);
+      const prior = s.overrides.find((x) => x.id === o.id);
+      if (prior) {
+        need(
+          JSON.stringify(prior) === JSON.stringify(o),
+          "override ID conflicts with prior instruction",
+        );
+        break;
+      }
+      if (o.budget !== undefined) {
+        need(
+          ["review", "ci", "wait"].includes(o.budget) &&
+            integer(o.additional) > 0,
+          "override requires a positive allowance addition",
+        );
+        if (o.budget === "wait") {
+          need(s.monitor, "start monitoring before extending its allowance");
+          s.monitor = updateMonitor(s.monitor, {
+            operation: "extend",
+            additionalMs: o.additional,
+          });
+        } else s.repairs[o.budget].limit += o.additional;
+      } else
+        need(o.additional === undefined, "allowance addition needs a budget");
+      s.overrides.push(structuredClone(o));
       break;
-    case "cancel":
-      gate(s, "cancel", r);
-      requireThat(
-        r.confirmed === true && r.planeState === "Canceled",
-        "cancellation requires confirmed Plane Canceled",
+    }
+    case "external": {
+      id(r.id);
+      if (r.operation === "begin") {
+        const effect = {
+          id: r.id,
+          target: text(r.target, "external target"),
+          intent: text(r.intent, "external intent"),
+        };
+        need(
+          s.lastEffect?.id !== r.id,
+          "effect already confirmed; reread authoritative surface",
+        );
+        need(
+          !s.pendingEffect ||
+            JSON.stringify(s.pendingEffect) === JSON.stringify(effect),
+          "reconcile pending effect before another external action",
+        );
+        s.pendingEffect = effect;
+      } else {
+        need(r.operation === "confirm", "unknown external operation");
+        text(r.reference, "external observation");
+        if (!s.pendingEffect && s.lastEffect?.id === r.id) break;
+        need(
+          s.pendingEffect?.id === r.id,
+          "pending external identity mismatch",
+        );
+        s.lastEffect = {
+          id: r.id,
+          target: s.pendingEffect.target,
+          reference: r.reference,
+        };
+        s.pendingEffect = null;
+      }
+      break;
+    }
+    case "ci":
+      need(
+        r.operation !== "extend",
+        "use a scoped user override to extend CI waiting",
       );
-      s.status = "canceled";
-      s.blocker = text(r.reason, "cancellation reason");
-      s.nextAction = "Cleanup only with separate authority";
+      s.monitor = updateMonitor(s.monitor, {
+        ...r,
+        waitUsedMs: s.recoveredWaitingMs,
+      });
       break;
     default:
-      throw new Error(`unknown action: ${r.action}`);
+      throw new Error(
+        "unknown action; read work-ticket/references/helper.md for the checkpoint interface (legacy delivery gates are retired)",
+      );
   }
-}
-
-const JOURNAL_LIMIT = 4 * 1024 * 1024;
-function digest(bytes) {
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
-async function absent(path) {
-  try {
-    await lstat(path);
-    return false;
-  } catch (error) {
-    if (error.code === "ENOENT") return true;
-    throw error;
-  }
-}
-async function evidenceBlob(archive, hash) {
-  requireThat(HASH.test(hash), "invalid cleanup evidence digest");
-  await directory(join(archive, "evidence"), false);
-  const file = join(archive, "evidence", hash.slice(7));
-  const stat = await lstat(file);
-  requireThat(
-    stat.isFile() && !stat.isSymbolicLink() && stat.size <= LIMIT,
-    "invalid cleanup evidence file",
-  );
-  const bytes = await readFile(file);
-  requireThat(digest(bytes) === hash, "cleanup evidence digest mismatch");
-  return bytes;
-}
-function cleanupIdentity(s) {
-  return {
-    ticketId: s.ticketId,
-    runId: s.runId,
-    owner: s.owner,
-    revision: s.revision,
-    contractHash: digest(s.contract),
-    status: s.status,
-    assignment: s.assignment,
-  };
-}
-async function archiveFiles(root, archive, prefix = "") {
-  const files = [];
-  for (const entry of await readdir(join(root, prefix), {
-    withFileTypes: true,
-  })) {
-    if (!prefix && entry.name === ".writer.lock") continue;
-    const name = join(prefix, entry.name);
-    requireThat(!entry.isSymbolicLink(), "evidence archive refuses symlinks");
-    if (entry.isDirectory())
-      files.push(...(await archiveFiles(root, archive, name)));
-    else {
-      const stat = await lstat(join(root, name));
-      requireThat(
-        stat.isFile() && stat.size <= LIMIT,
-        "evidence must be bounded regular files",
-      );
-      const bytes = await readFile(join(root, name));
-      const hash = digest(bytes);
-      if (archive) {
-        await directory(join(archive, "evidence"), true);
-        const target = join(archive, "evidence", hash.slice(7));
-        if (await absent(target)) {
-          const temporary = `${target}.${randomUUID()}.tmp`;
-          await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
-          try {
-            await rename(temporary, target);
-          } finally {
-            await rm(temporary, { force: true });
-          }
-        }
-        requireThat(
-          (await evidenceBlob(archive, hash)).equals(bytes),
-          "cleanup evidence copy mismatch",
-        );
-      }
-      files.push({ path: name, size: bytes.length, digest: hash });
-    }
-    requireThat(
-      Buffer.byteLength(JSON.stringify(files)) <= JOURNAL_LIMIT,
-      "cleanup evidence too large",
-    );
-  }
-  return files;
-}
-async function journalPaths(r, sourceRoot) {
-  requireThat(
-    typeof r.archiveDir === "string" && resolve(r.archiveDir) === r.archiveDir,
-    "absolute durable archiveDir required",
-  );
-  const identity = await directory(r.archiveDir, false);
-  requireThat(
-    r.archiveDir !== sourceRoot && !r.archiveDir.startsWith(`${sourceRoot}/`),
-    "cleanup journal must survive outside the removed checkout",
-  );
-  return {
-    root: r.archiveDir,
-    store: r.archiveDir,
-    file: join(r.archiveDir, "cleanup.json"),
-    identities: [identity],
-  };
-}
-async function writeJournal(p, journal) {
-  const content = `${JSON.stringify(journal, null, 2)}\n`;
-  requireThat(
-    Buffer.byteLength(content) <= JOURNAL_LIMIT,
-    "cleanup journal too large",
-  );
-  await assertPaths(p);
-  const temporary = `${p.file}.${randomUUID()}.tmp`;
-  await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
-  try {
-    await assertPaths(p);
-    await rename(temporary, p.file);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
-function cleanupAuthority(r) {
-  const a = r.cleanupAuthorization;
-  requireThat(
-    a?.source === "user" && a.removeCheckout === true,
-    "separate explicit user cleanup authorization required",
-  );
-  text(a.instruction, "cleanup user instruction");
-  text(a.reference, "cleanup instruction reference");
-  return structuredClone(a);
-}
-async function cleanupRecords(p, r, current) {
-  requireThat(
-    r.noLiveWriter === true &&
-      r.noUnpushedWork === true &&
-      r.prDispositionKnown === true &&
-      r.noUniqueIgnoredWork === true &&
-      r.evidencePreserved === true,
-    "cleanup requires no live writer, dirty/unique work or unpreserved evidence",
-  );
-  text(
-    r.safetyEvidence,
-    "fresh process/Git/remote/PR/Plane and ignored-file observations",
-  );
-  requireThat(current.clean, "cleanup requires clean checkout");
-  for (const operation of [
-    "MERGE_HEAD",
-    "CHERRY_PICK_HEAD",
-    "REVERT_HEAD",
-    "rebase-merge",
-    "rebase-apply",
-    "BISECT_LOG",
-  ]) {
-    requireThat(
-      await absent(
-        resolve(
-          p.root,
-          git(p.root, "rev-parse", "--git-path", operation).trim(),
-        ),
-      ),
-      "cleanup refuses an in-progress Git operation",
-    );
-  }
-  requireThat(
-    Array.isArray(r.tickets) && r.tickets.length > 0,
-    "all retained ticket identities required",
-  );
-  const records = [];
-  for (const entry of await readdir(p.store, { withFileTypes: true })) {
-    if (entry.name === ".writer.lock") continue;
-    requireThat(
-      entry.isDirectory() &&
-        !entry.isSymbolicLink() &&
-        TICKET_ID.test(entry.name),
-      "unexpected ticket store entry",
-    );
-    if (!(await readdir(join(p.store, entry.name))).length) continue;
-    const s = await readState(
-      join(p.store, entry.name, "state.json"),
-      entry.name,
-    );
-    const claim = r.tickets.find((item) => item.ticketId === s.ticketId);
-    requireThat(
-      claim &&
-        claim.runId === s.runId &&
-        claim.owner === s.owner &&
-        claim.expectedRevision === s.revision &&
-        claim.contractHash === digest(s.contract) &&
-        s.assignment.root === p.root &&
-        s.assignment.branch === current.branch,
-      "cleanup ticket/run/owner/revision/checkout identity mismatch",
-    );
-    gate({ ...s, snapshot: current }, "cleanup", {
-      ...r,
-      planeState: claim.planeState,
-    });
-    records.push(cleanupIdentity(s));
-  }
-  requireThat(
-    records.length === r.tickets.length,
-    "cleanup must cover each retained ticket exactly once",
-  );
-  return records;
-}
-async function prepareCleanup(p, r, current) {
-  const authorization = cleanupAuthority(r);
-  const records = await cleanupRecords(p, r, current);
-  const archive = await journalPaths(r, p.root);
-  return locked(archive, async () => {
-    requireThat(
-      await absent(archive.file),
-      "cleanup journal exists; reread before retry",
-    );
-    const files = await archiveFiles(p.store, archive.root);
-    const journal = {
-      schemaVersion: 1,
-      cleanupId: id(r.cleanupId),
-      revision: 0,
-      outcome: "pending",
-      retries: 0,
-      sourceRoot: p.root,
-      sourceStore: p.store,
-      snapshot: current,
-      authorization,
-      key: text(r.key, "cleanup idempotency key", 200),
-      intent: text(
-        r.intent,
-        "exact cleanup intent (checkout/workspace; retain branch)",
-      ),
-      safetyEvidence: r.safetyEvidence,
-      records,
-      files,
-      recovered: false,
-    };
-    await writeJournal(archive, journal);
-    return journal;
-  });
-}
-async function cleanupJournal(r) {
-  const p = await journalPaths(r, "\0");
-  return locked(p, async () => {
-    if (r.action === "adopt_cleanup") {
-      requireThat(
-        await absent(p.file),
-        "cleanup journal exists; reread before retry",
-      );
-      const authorization = cleanupAuthority(r);
-      const source = await directory(resolve(r.sourceDirectory), false);
-      const s = await readState(join(source.path, "state.json"), r.ticketId);
-      requireThat(
-        s.runId === r.runId &&
-          s.owner === r.owner &&
-          s.revision === r.expectedRevision &&
-          s.contract === r.contract &&
-          ["done", "canceled"].includes(s.status),
-        "archived settled identity mismatch",
-      );
-      requireThat(
-        digest(await readFile(join(source.path, "state.json"))) ===
-          r.sourceDigest,
-        "archived state digest mismatch",
-      );
-      requireThat(
-        await absent(s.assignment.root),
-        "archive adoption requires already removed checkout",
-      );
-      requireThat(
-        r.archiveDir !== s.assignment.root &&
-          !r.archiveDir.startsWith(`${s.assignment.root}/`),
-        "archive must survive cleanup",
-      );
-      const intent = s.externalWrites.find(
-        (w) => w.operation === "cleanup" && w.key === r.key,
-      );
-      requireThat(
-        intent && intent.intent === r.intent,
-        "archive adoption requires matching original cleanup intent",
-      );
-      permitted(s, "cleanup");
-      requireThat(
-        r.planeState === (s.status === "done" ? "Done" : "Canceled") &&
-          r.prDispositionKnown === true,
-        "archive adoption requires matching Plane and known PR disposition",
-      );
-      const journal = {
-        schemaVersion: 1,
-        cleanupId: id(r.cleanupId),
-        revision: 0,
-        outcome: "pending",
-        retries: 0,
-        sourceRoot: s.assignment.root,
-        authorization,
-        key: r.key,
-        intent: r.intent,
-        records: [cleanupIdentity(s)],
-        files: await archiveFiles(source.path, p.root),
-        recovered: true,
-        recoveryEvidence: text(
-          r.recoveryEvidence,
-          "archive provenance and fresh removal observations",
-        ),
-      };
-      await writeJournal(p, journal);
-      return journal;
-    }
-    const stat = await lstat(p.file);
-    requireThat(
-      stat.isFile() && !stat.isSymbolicLink() && stat.size <= JOURNAL_LIMIT,
-      "invalid cleanup journal file",
-    );
-    const j = JSON.parse(await readFile(p.file, "utf8"));
-    requireThat(
-      j.schemaVersion === 1 &&
-        j.cleanupId === r.cleanupId &&
-        Array.isArray(j.records) &&
-        j.records.length > 0 &&
-        Array.isArray(j.files) &&
-        ["pending", "confirmed"].includes(j.outcome),
-      "cleanup journal identity mismatch",
-    );
-    for (const file of j.files)
-      requireThat(
-        (await evidenceBlob(p.root, file.digest)).length === file.size,
-        "cleanup evidence size mismatch",
-      );
-    if (r.action === "cleanup_status") return j;
-    requireThat(
-      r.expectedRevision === j.revision &&
-        r.key === j.key &&
-        r.intent === j.intent &&
-        JSON.stringify(r.identities) ===
-          JSON.stringify(
-            j.records.map((s) => ({
-              ticketId: s.ticketId,
-              runId: s.runId,
-              owner: s.owner,
-            })),
-          ),
-      "cleanup journal CAS or ticket/run/owner/intent mismatch",
-    );
-    if (r.action === "cleanup_confirm") {
-      requireThat(
-        r.removed === true && (await absent(j.sourceRoot)),
-        "cleanup confirmation requires observed checkout absence",
-      );
-      text(r.inventoryEvidence, "fresh Herdr inventory and removal evidence");
-      if (j.outcome === "confirmed") return j;
-      j.outcome = "confirmed";
-      j.confirmation = r.inventoryEvidence;
-    } else {
-      requireThat(
-        !j.recovered &&
-          j.outcome === "pending" &&
-          j.retries === 0 &&
-          r.effectAbsent === true,
-        "retry requires pending original intent, proven absence and unused retry",
-      );
-      text(
-        r.inventoryEvidence,
-        "fresh inventory proving removal effect absent",
-      );
-      const source = await paths(j.sourceRoot, j.records[0].ticketId);
-      await locked(source, async () => {
-        const current = await snapshot(source.root);
-        requireThat(
-          current.fingerprint === j.snapshot.fingerprint,
-          "cleanup source changed; stop and reconcile",
-        );
-        const records = await cleanupRecords(source, r, current);
-        requireThat(
-          JSON.stringify(records) === JSON.stringify(j.records) &&
-            JSON.stringify(await archiveFiles(source.store)) ===
-              JSON.stringify(j.files),
-          "cleanup state/evidence changed; preserve and reconcile before removal",
-        );
-      });
-      j.retries += 1;
-      j.retryEvidence = r.inventoryEvidence;
-    }
-    j.revision += 1;
-    await writeJournal(p, j);
-    return j;
-  });
 }
 
 export async function ticketState(r) {
-  if (
-    [
-      "cleanup_status",
-      "cleanup_confirm",
-      "cleanup_retry",
-      "adopt_cleanup",
-    ].includes(r.action)
-  )
-    return cleanupJournal(r);
-  const p = await paths(r.cwd, r.ticketId, r.action === "init");
-  if (r.action === "status") return readState(p.file, r.ticketId);
-  if (r.action === "snapshot") return snapshot(p.root);
-  return locked(p, async () => {
-    const current = await snapshot(p.root);
+  need(
+    r && typeof r === "object" && !Array.isArray(r),
+    "JSON request object required",
+  );
+  need(
+    typeof r.cwd === "string" && isAbsolute(r.cwd) && UUID.test(r.ticketId),
+    "absolute repository cwd and immutable Plane ticket UUID required",
+  );
+  const root = await realpath(r.cwd);
+  need(
+    (await realpath(git(root, "rev-parse", "--show-toplevel"))) === root,
+    "cwd must be a repository root",
+  );
+  const common = await realpath(
+    resolve(root, git(root, "rev-parse", "--git-common-dir")),
+  );
+  const store = join(common, "pi-ticket-checkpoints");
+  const file = join(store, `${r.ticketId}.json`);
+  const legacy = join(root, ".pi", "tickets", r.ticketId, "state.json");
+  if (r.action === "status" && !(await exists(store)))
+    return { missing: true, legacy: (await exists(legacy)) ? legacy : null };
+  await directory(store, r.action !== "status");
+  if (r.action === "status") {
+    if (!(await exists(file)))
+      return { missing: true, legacy: (await exists(legacy)) ? legacy : null };
+    const s = await jsonFile(file);
+    validate(s);
+    need(s.ticketId === r.ticketId, "ticket identity mismatch");
+    return s;
+  }
+  id(r.owner);
+  const lock = join(store, ".writer.lock");
+  await mkdir(lock, { mode: 0o700 }).catch((e) => {
+    if (e.code === "EEXIST")
+      throw new Error(
+        `checkpoint writer lock exists: ${lock}; inspect process before removing this lock only`,
+      );
+    throw e;
+  });
+  try {
+    await writeFile(
+      join(lock, "owner.json"),
+      JSON.stringify({ pid: process.pid, owner: r.owner }),
+      { flag: "wx", mode: 0o600 },
+    );
+    let s;
     if (r.action === "init") {
-      await noOtherWriter(p, r.ticketId);
-      try {
-        await lstat(p.file);
-        throw new Error(
-          "ticket attempt already exists; inspect and reconcile instead",
-        );
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
+      need(
+        !(await exists(file)),
+        "checkpoint exists; read status, do not initialize again",
+      );
+      let recovered = 0;
+      if (await exists(join(root, ".pi", "tickets"))) {
+        await directory(join(root, ".pi"));
+        await directory(join(root, ".pi", "tickets"));
+        if ((await readdir(join(root, ".pi", "tickets"))).length)
+          need(
+            r.recovery,
+            "legacy state exists; explicit recovery of prior writers and allowances is required",
+          );
       }
-      const s = {
-        schemaVersion: 1,
+      if (await exists(legacy)) {
+        await directory(join(root, ".pi", "tickets", r.ticketId));
+        const oldStat = await lstat(legacy);
+        need(
+          oldStat.isFile() &&
+            !oldStat.isSymbolicLink() &&
+            oldStat.size <= 256 * 1024,
+          "legacy state must be a bounded regular file",
+        );
+        const old = JSON.parse(await readFile(legacy, "utf8"));
+        need(old.ticketId === r.ticketId, "legacy ticket identity mismatch");
+        need(
+          r.recovery,
+          "legacy state exists; explicit recovery with retained allowances and pending effects is required",
+        );
+        recovered = integer(old.repairCount);
+      }
+      const recovery = r.recovery;
+      if (recovery) {
+        text(recovery.reference, "retained recovery evidence");
+        text(recovery.instruction, "recovery authority");
+        need(
+          integer(recovery.reviewUsed) >= recovered,
+          "recovery cannot refund review repairs",
+        );
+        integer(recovery.ciUsed);
+        integer(recovery.waitingMs);
+        need(
+          recovery.reviewUsed <= 1000 && recovery.ciUsed <= 1000,
+          "recovery counters exceed compact checkpoint capacity",
+        );
+        need(
+          recovery.effectsReconciled === true,
+          "reconcile all legacy pending effects before checkpoint adoption",
+        );
+      }
+      const repairs = Object.fromEntries(
+        ["review", "ci"].map((kind) => {
+          const used = recovery?.[`${kind}Used`] ?? 0;
+          const retained = recovery?.repairs?.[kind];
+          if (retained !== undefined)
+            need(
+              Array.isArray(retained?.batches) &&
+                retained.batches.length === used,
+              "retained repair count must match consumed allowance",
+            );
+          return [
+            kind,
+            {
+              limit: Math.max(2, used),
+              active: retained === undefined ? null : retained.active,
+              batches:
+                retained === undefined
+                  ? Array.from({ length: used }, (_, i) => ({
+                      id: `retained-${i + 1}`,
+                      plan: recovery.reference,
+                    }))
+                  : structuredClone(retained.batches),
+            },
+          ];
+        }),
+      );
+      s = {
+        schemaVersion: 2,
         revision: 0,
         ticketId: r.ticketId,
-        identifier: text(r.identifier, "identifier"),
-        runId: id(r.runId),
-        owner: id(r.owner),
-        contract: text(r.contract, "scope baseline", 100000),
-        authorization: authority(r.authorization),
-        assignment: {
-          repository: text(r.repository, "repository"),
-          root: p.root,
-          branch: current.branch,
-          targetBranch: text(r.targetBranch, "target branch"),
-          baseCommit: r.baseCommit,
-          isolation: r.isolation ?? null,
-        },
-        status: "active",
-        plan: plan(r.plan),
-        progress: "Initial repository inspection and working plan recorded",
-        nextAction: "Implement the working plan within the authorized boundary",
+        owner: r.owner,
+        checkout: root,
+        branch: git(root, "symbolic-ref", "--short", "HEAD"),
+        released: false,
+        scope: "",
+        authorization: "",
+        plan: "",
+        progress: "Checkpoint initialized",
         blocker: null,
-        snapshot: current,
-        evidence: {},
-        review: null,
-        findings: [],
-        repairs: [],
-        repairCount: 0,
+        next: null,
+        evidenceRefs: recovery ? [recovery.reference] : [],
+        findingRefs: [],
         pr: null,
-        externalWrites: [],
+        repairs,
+        overrides: [],
+        pendingEffect: null,
+        lastEffect: null,
+        monitor: null,
+        recoveredWaitingMs: recovery?.waitingMs ?? 0,
       };
-      requireThat(SHA.test(r.baseCommit), "invalid base commit");
-      git(p.root, "merge-base", "--is-ancestor", r.baseCommit, current.head);
-      await persist(p, s);
-      return s;
-    }
-    const s = await readState(p.file, r.ticketId);
-    requireThat(
-      r.runId === s.runId && r.expectedRevision === s.revision,
-      "run identity or revision conflict",
-    );
-    requireThat(
-      s.assignment.root === p.root && s.assignment.branch === current.branch,
-      "checkout/branch identity drift",
-    );
-    git(
-      p.root,
-      "merge-base",
-      "--is-ancestor",
-      s.assignment.baseCommit,
-      current.head,
-    );
-    requireThat(
-      r.contractHash !== undefined
-        ? r.contractHash === digest(s.contract) &&
-            (r.contract === undefined ||
-              r.action === "authorize" ||
-              r.contract === s.contract)
-        : r.action === "authorize" || r.contract === s.contract,
-      "ticket scope drift requires explicit authorization",
-    );
-    const previousOwner = s.owner;
-    if (r.action === "reconcile" && r.owner !== s.owner) {
-      requireThat(
-        r.previousOwnerReleased === true,
-        "prove previous owner is absent before takeover",
-      );
-      s.owner = id(r.owner);
-    } else
-      requireThat(r.owner === s.owner, "checkout belongs to another owner");
-    requireThat(
-      !TERMINAL.has(s.status) ||
-        [
-          "authorize",
-          "reconcile",
-          "reopen_local",
-          "begin_pr",
-          "accept_merged",
-          "prepare_cleanup",
-          "settle",
-          "cancel",
-        ].includes(r.action) ||
-        (["external", "gate"].includes(r.action) &&
-          ["settle", "cancel", "cleanup"].includes(r.operation)),
-      "handoff is sticky; do not resume completed delivery",
-    );
-    if (
-      r.action !== "accept_merged" &&
-      !s.humanAcceptance &&
-      (!TERMINAL.has(s.status) ||
-        r.operation === "cleanup" ||
-        ["reopen_local", "begin_pr"].includes(r.action))
-    )
-      await noOtherWriter(p, s.ticketId);
-    if (s.status === "local_complete" && !s.completionAuthorization) {
-      // Preserve legacy completion authority before a terminal authorize can replace it.
-      s.completionAuthorization = structuredClone(s.authorization);
-    }
-    if (r.action === "reconcile" && TERMINAL.has(s.status)) {
-      requireThat(
-        !s.humanAcceptance &&
-          ["local_complete", "awaiting_human"].includes(s.status),
-        "settled or accepted delivery cannot acquire a new delivery owner",
-      );
-      await noOtherWriter(p, s.ticketId);
-      s.ownershipTransfers ??= [];
-      s.ownershipTransfers.push({
-        revision: s.revision,
-        previousOwner,
-        owner: s.owner,
-        observations: text(
-          r.observations,
-          "fresh ownership and delivery observations",
-        ),
-      });
-      s.revision += 1;
-      await persist(p, s);
-      return s;
-    }
-    if (r.action === "begin_pr") {
-      requireThat(
-        r.fingerprint === current.fingerprint &&
-          current.fingerprint === s.snapshot.fingerprint &&
-          current.clean &&
-          s.assignment.branch !== s.assignment.targetBranch,
-        "begin_pr requires unchanged completed snapshot and clean separate source branch",
-      );
-    }
-    if (["reopen_local", "begin_pr"].includes(r.action)) {
-      requireThat(
-        r.fingerprint === current.fingerprint,
-        "follow-up revision mismatch",
-      );
-      // Archive the completed delivery before snapshot invalidation drops its evidence.
-      apply(s, r);
-      invalidate(s, current);
-      s.revision += 1;
-      await persist(p, s);
-      return s;
-    }
-    if (r.action === "accept_merged") {
-      await acceptMerged(p, s, r, current);
-      s.revision += 1;
-      await persist(p, s);
-      return s;
-    }
-    if (r.action === "prepare_cleanup") return prepareCleanup(p, r, current);
-    if (s.humanAcceptance) {
-      requireThat(
-        ["authorize", "settle", "gate", "external"].includes(r.action) &&
-          (!["gate", "external"].includes(r.action) ||
-            ["settle", "cleanup"].includes(r.operation)),
-        "human acceptance permits settlement/cleanup only, not renewed delivery",
-      );
-      requireThat(
-        (r.contract === undefined || r.contract === s.contract) &&
-          (r.newContract === undefined || r.newContract === s.contract),
-        "accepted delivery scope cannot change",
-      );
-      r = { ...r, currentHead: current.head };
-      // Keep verification bound to its original code, even during settlement.
-      if (r.operation === "cleanup") await noOtherWriter(p, s.ticketId);
+      checkpoint(s, r.patch);
     } else {
-      const retained = await reuseEvidence(p, s, r, current);
-      invalidate(s, current);
-      if (retained?.verification)
-        s.evidence.verification = retained.verification;
-      if (retained?.review) s.review = retained.review;
+      s = await jsonFile(file);
+      validate(s);
+      need(s.ticketId === r.ticketId, "ticket identity mismatch");
+      if (r.action === "claim") {
+        need(r.previousOwner === s.owner, "previous owner mismatch");
+        text(r.instruction, "ownership transfer instruction");
+        text(r.evidence, "released/absent prior writer evidence");
+        if (root !== s.checkout)
+          need(
+            r.previousCheckout === s.checkout,
+            "explicit previous checkout required for relocation",
+          );
+        s.owner = r.owner;
+        s.released = false;
+        s.checkout = root;
+        s.branch = git(root, "symbolic-ref", "--short", "HEAD");
+        s.evidenceRefs.push(`Ownership: ${r.instruction}; ${r.evidence}`);
+      } else {
+        need(
+          s.owner === r.owner,
+          "checkpoint belongs to another owner; use explicit claim after reconciling writer absence",
+        );
+        const confirming = r.action === "external" && r.operation === "confirm";
+        need(
+          confirming ||
+            (!s.released &&
+              root === s.checkout &&
+              git(root, "symbolic-ref", "--short", "HEAD") === s.branch),
+          "checkout/branch or released ownership conflict; reconcile with claim",
+        );
+        apply(s, r);
+      }
     }
-    requireThat(
-      r.contentFingerprint === undefined,
-      "content fingerprints are computed by the helper, not caller supplied",
-    );
-    if (r.contentIndependent === true) {
-      requireThat(
-        (r.action === "evidence" && r.kind === "verification") ||
-          r.action === "review",
-        "content-independent reuse applies only to verification or review",
-      );
-      r = { ...r, contentFingerprint: await contentFingerprint(p.root) };
-    }
-    if (r.action === "gate") {
-      gate(
-        r.operation === "cleanup" ? { ...s, snapshot: current } : s,
-        r.operation,
-        r,
-      );
-      return s;
-    }
-    apply(s, r);
+    if (!s.released)
+      for (const entry of await readdir(store)) {
+        if (entry === ".writer.lock" || entry === `${r.ticketId}.json`)
+          continue;
+        need(
+          /^[a-f0-9-]{36}\.json$/.test(entry),
+          "unexpected checkpoint store entry; inspect before proceeding",
+        );
+        const other = await jsonFile(join(store, entry));
+        validate(other);
+        need(
+          other.released ||
+            other.checkout !== s.checkout ||
+            other.ticketId === s.ticketId,
+          "checkout has another ticket owner; release or reconcile it first",
+        );
+      }
     s.revision += 1;
-    await persist(p, s);
-    return s;
-  });
+    validate(s);
+    const bytes = JSON.stringify(s, null, 2) + "\n";
+    need(
+      Buffer.byteLength(bytes) <= LIMIT,
+      "checkpoint too large; retain artifact references rather than transcripts",
+    );
+    await directory(store);
+    const temporary = `${file}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
+      await rename(temporary, file);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+    return {
+      saved: true,
+      file,
+      next: s.next,
+      repairs: Object.fromEntries(
+        Object.entries(s.repairs).map(([k, b]) => [
+          k,
+          { used: b.batches.length, limit: b.limit, active: b.active },
+        ]),
+      ),
+      ci: s.monitor
+        ? {
+            head: s.monitor.head,
+            disposition: s.monitor.disposition,
+            waitUsedMs: s.monitor.waitUsedMs,
+            waitLimitMs: s.monitor.waitLimitMs,
+            nextPollAt: s.monitor.nextPollAt,
+          }
+        : null,
+    };
+  } finally {
+    await rm(lock, { recursive: true });
+  }
 }
 
 async function cli() {
   let input = "";
   for await (const chunk of process.stdin) {
     input += chunk;
-    requireThat(Buffer.byteLength(input) <= JOURNAL_LIMIT, "request too large");
+    need(Buffer.byteLength(input) <= LIMIT, "request too large");
   }
-  const request = JSON.parse(input);
-  if (
-    ![
-      "prepare_cleanup",
-      "cleanup_status",
-      "cleanup_confirm",
-      "cleanup_retry",
-      "adopt_cleanup",
-    ].includes(request.action)
-  )
-    requireThat(Buffer.byteLength(input) <= LIMIT, "request too large");
-  const result = await ticketState(request);
-  process.stdout.write(`${JSON.stringify({ result })}\n`);
+  process.stdout.write(
+    JSON.stringify({ result: await ticketState(JSON.parse(input)) }) + "\n",
+  );
 }
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(await realpath(process.argv[1])).href
 ) {
-  cli().catch((error) => {
-    process.stdout.write(`${JSON.stringify({ error: error.message })}\n`);
+  cli().catch((e) => {
+    process.stdout.write(JSON.stringify({ error: e.message }) + "\n");
     process.exitCode = 1;
   });
 }
