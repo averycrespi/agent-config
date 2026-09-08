@@ -97,6 +97,7 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `goal`              | Fork-safe goals, bounded auto-run, and conservative evidence-backed completion                          |
 | `loop`              | Shared targetless bounded continuation controlled by agents, users, skills, and extensions              |
 | `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                       |
+| `mcp-gateway`       | Opt-in gateway-only trial with three meta-tools, compact discovery, and protected credential files      |
 | `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
 | `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
 | `structured-output` | Schema-backed final output tool, no-op unless configured                                                |

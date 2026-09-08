@@ -75,6 +75,8 @@ GitHub Actions runs these checks for pull requests and pushes to `main`.
 
 The main integration point is the **MCP broker**: a credentials-holding proxy that lets sandboxed agents use authenticated external services without holding secrets directly. In Pi, the [`mcp-broker`](pi/agent/extensions/mcp-broker/) extension exposes broker-backed tools through `mcp_search`, `mcp_describe`, and `mcp_call`, and guards direct `gh` or remote-git usage when broker tools are preferred.
 
+The [`mcp-gateway`](pi/agent/extensions/mcp-gateway/) extension provides an opt-in, separate-session trial of the companion MCP Gateway with the same three meta-tools, a compact namespace summary, and protected credential-file authentication. It leaves the broker and existing subagent integration unchanged pending live validation and a later cutover.
+
 `agent-tools` also includes a sandbox manager (`sb`) for isolated agent runs. It is relevant to Pi as an outer isolation layer: this Pi config adds workflow guidance and broker preferences, but it does not implement shell command restrictions itself.
 
 ## Notes
