@@ -265,14 +265,11 @@ test("parallel spawn is atomic when a required capability extension is unavailab
     return okOutcome();
   });
   mock.method(_resolveExtensions, "fn", async ([extension]: string[]) =>
-    extension === "mcp-broker" ? [] : [`/extensions/${extension}`],
+    extension === "mcp-gateway" ? [] : [`/extensions/${extension}`],
   );
   try {
     const result = await runParallelSpawn(
-      [
-        valid(),
-        valid({ intent: "Broker lookup", capabilities: ["read-broker"] }),
-      ],
+      [valid(), valid({ intent: "MCP lookup", capabilities: ["read-mcp"] })],
       config,
       { ...ctx, cwd: dir },
       "call",
@@ -283,7 +280,7 @@ test("parallel spawn is atomic when a required capability extension is unavailab
     assert.equal(result.details.validationError, true);
     assert.match(
       result.content[0]!.text,
-      /required capability extension is unavailable: mcp-broker/,
+      /required capability extension is unavailable: mcp-gateway/,
     );
   } finally {
     mock.restoreAll();

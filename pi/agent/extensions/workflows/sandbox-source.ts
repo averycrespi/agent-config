@@ -182,6 +182,7 @@ async function agent(prompt, options = {}) {
   if (typeof options.intent !== "string" || !options.intent.trim()) throw new Error("agent intent must be a non-empty string");
   if (!Array.isArray(options.capabilities) || options.capabilities.some((value) => typeof value !== "string")) throw new Error("agent capabilities must be an explicit string array");
   if (options.capabilities.some((value) => value === "write-filesystem" || value === "exec-shell")) throw new Error("mutable capabilities are not allowed in read-mostly workflows");
+  if (options.capabilities.some((value) => !["read-filesystem", "read-mcp", "read-web"].includes(value))) throw new Error("unknown workflow capability");
   if (typeof options.profile !== "string" || !options.profile.trim()) throw new Error("agent profile must be a non-empty string");
   const requestId = nextRequestId++;
   const message = { type: "agent", requestId, prompt, intent: options.intent, capabilities: options.capabilities, profile: options.profile, output: options.output, retries: options.retries, timeoutMs: options.timeoutMs };

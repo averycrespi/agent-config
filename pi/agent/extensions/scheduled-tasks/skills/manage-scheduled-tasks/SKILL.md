@@ -38,7 +38,7 @@ env:
 executionShell: bash-login
 timeoutMinutes: 30
 precheck:
-  script: network-and-broker.sh
+  script: network-and-gateway.sh
   timeoutSeconds: 15
   skipExitCodes: [78]
 catchup: false
@@ -55,15 +55,15 @@ Follow these constraints:
 - Keep new or uncertain tasks `enabled: false` unless the user explicitly asks to schedule them.
 - Enabled tasks require a five-field cron `schedule`, an absolute existing `cwd`, and a non-empty body.
 - Keep `tools` as an explicit allowlist. If omitted, the extension's configured `defaultTools` apply.
-- When a task uses MCP broker tools (`mcp_search`, `mcp_describe`, or `mcp_call`), also include readonly filesystem tools `read`, `ls`, `find`, and `grep` unless there is a specific reason not to. Broker results can spill large outputs to local files, and scheduled runs need these tools to inspect spillover paths and local diagnostics.
+- When a task uses MCP Gateway tools (`mcp_search`, `mcp_describe`, or `mcp_call`), also include readonly filesystem tools `read`, `ls`, `find`, and `grep` unless there is a specific reason not to. Gateway results can spill large outputs to local files, and scheduled runs need these tools to inspect spillover paths and local diagnostics.
 - Set `catchup: true` only when one coalesced make-up run is useful after downtime; missed occurrences are not replayed one-by-one and global config caps catchups per tick. Active scheduled runs are also capped globally by `maxConcurrentScheduledRuns`.
-- Use `precheck` when a task should skip cleanly unless a condition is met, such as internet access, VPN, or MCP broker availability. Put reusable scripts in `<rootDir>/scripts/`; `precheck.script` is a relative path under that directory, not the project `cwd`, and absolute paths or `..` segments are rejected. Prechecks run with process `cwd` set to the task `cwd`, default to `interpreter: bash`, `args: []`, `timeoutSeconds: 30`, and `skipExitCodes: [78]`, and use exit `0` to continue, a configured skip code to mark the run `skipped`, and other failures to mark the run `failed`. Do not use inline shell snippets in task Markdown.
+- Use `precheck` when a task should skip cleanly unless a condition is met, such as internet access, VPN, or MCP Gateway availability. Put reusable scripts in `<rootDir>/scripts/`; `precheck.script` is a relative path under that directory, not the project `cwd`, and absolute paths or `..` segments are rejected. Prechecks run with process `cwd` set to the task `cwd`, default to `interpreter: bash`, `args: []`, `timeoutSeconds: 30`, and `skipExitCodes: [78]`, and use exit `0` to continue, a configured skip code to mark the run `skipped`, and other failures to mark the run `failed`. Do not use inline shell snippets in task Markdown.
 - Set `handoff: true` only when cross-run memory is useful. The `scheduled_task_handoff` tool is added automatically for scheduled child runs.
 - Write task prompts to be idempotent where practical: inspect current external state before creating tickets, branches, reports, deployments, or other irreversible changes, because crash recovery may retry work and cron-style systems cannot promise exact-once execution.
 - Use `envFiles` for dotenv-style bulk environment defaults. Relative env file paths resolve against `cwd`, and listed files are required in v1.
 - Use inline `env` for explicit overrides; inline `env` wins over `envFiles`, and scheduled-run marker variables win over both.
 - Use `executionShell: bash-login` only when the task needs bash login startup files for development environment setup; omit it for direct Pi execution. Task env is present when bash starts, but shell startup files may change it.
-- Do not put secrets in `env` or env files; child processes and run logs can expose values.
+- Do not put secrets in `env` or env files; child processes and run logs can expose values. Supply `MCP_GATEWAY_AGENT_TOKEN` in the scheduler's process environment and select its trusted endpoint via global Pi settings or `MCP_GATEWAY_ENDPOINT`. Restart the scheduler launcher after environment changes. Missing credentials, denied access and unavailable gateways fail without interactive approval; do not poll grants or automatically replay an uncertain invocation.
 - Use only simple YAML supported by the extension: scalars, arrays with `- item`, inline arrays such as `skipExitCodes: [78]`, and one-level object maps such as `env:` and `precheck:`.
 
 ## Safety boundaries

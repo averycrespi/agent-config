@@ -79,7 +79,7 @@ env:
 executionShell: bash-login
 timeoutMinutes: 30
 precheck:
-  script: network-and-broker.sh
+  script: network-and-gateway.sh
   timeoutSeconds: 15
   skipExitCodes: [78]
 catchup: true
@@ -108,6 +108,12 @@ Rules:
 Validation distinguishes errors from warnings. Errors include invalid frontmatter, unsafe IDs, missing bodies, missing enabled-task `schedule` or `cwd`, invalid cron expressions, invalid `tools`, invalid `envFiles`, missing/unreadable/invalid enabled-task env files, invalid `env`, invalid `executionShell`, invalid `timeoutMinutes`, invalid `precheck`, missing/unreadable enabled-task precheck scripts, invalid `catchup`, missing deterministic scheduler CLI prerequisites, and invalid configured command/default-tool values. Warnings include disabled tasks, missing disabled-task env files or precheck scripts, missing descriptions, missing handoff files, default tool fallback, sensitive-looking env keys, and PATH-dependent commands.
 
 Use `/scheduled-tasks-doctor [task-id]` or `scheduled_tasks({ "action": "validate", "task_id": "..." })` for each changed task after a coherent edit batch, before enabling or manually running it. Revalidate after fixes or subsequent changes; individual edits within one batch do not each need a validation call. Explicit debugging of a failing task may use the manual-run exception described by the bundled skill.
+
+## MCP Gateway tasks
+
+Scheduled Pi processes load MCP Gateway normally. Include `mcp_search`, `mcp_describe`, `mcp_call`, and read-only filesystem tools (`read`, `ls`, `find`, `grep`) in the task allowlist so results and spilled output can be inspected. Select the exact trusted `/mcp` endpoint through global Pi settings or `MCP_GATEWAY_ENDPOINT`; supply `MCP_GATEWAY_AGENT_TOKEN` in the scheduler's process environment, never task Markdown, settings JSON, `cronEnvironment`, or command arguments. See the [gateway migration guide](../mcp-gateway/README.md#migration-and-qualification) for local configuration changes and restart requirements.
+
+A precheck such as `network-and-gateway.sh` is a user-provided script, not bundled here. It should check bounded reachability/discovery using current gateway semantics, suppress credential output, and return a configured skip code when the dependency is unavailable. Do not use retired approval endpoints or poll grants. Missing credentials, denied access and unavailable gateways produce bounded MCP errors without interactive approval; task prompts should stop and report them rather than retry uncertain invocations. The task-level timeout also bounds the child process. Cron does not inherit an interactive shell's token automatically: configure the authorized launcher environment and restart it separately.
 
 ## Commands
 

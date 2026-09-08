@@ -23,12 +23,11 @@ export const CAPABILITY_GRANTS: Readonly<Record<Capability, CapabilityGrant>> =
     "exec-shell": {
       tools: ["bash"],
     },
-    "read-broker": {
+    "read-mcp": {
       tools: ["mcp_search", "mcp_describe", "mcp_call", "read"],
-      extensions: ["mcp-broker"],
+      extensions: ["mcp-gateway"],
       env: {
-        MCP_BROKER_READONLY: "1",
-        MCP_BROKER_APPROVAL_MODE: "reject",
+        MCP_GATEWAY_READONLY: "1",
       },
     },
     "read-web": {

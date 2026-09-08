@@ -15,7 +15,7 @@ The harness combines a simple development loop with tools that keep work scoped,
 - **Implement and verify** directly for authorized local work, or use the ticket workflow for prepared delivery. Keep evidence and checks proportionate to the change.
 - **Review** changes against the authorized delivery scope with `review`, combining repository context, deterministic checks, and independent analysis while retaining qualification limitations.
 
-For Plane-native delivery, `plane` defines safe broker access, `shape-ticket` prepares a verifiable contract, and `work-ticket` owns one selected ticket through its authorized local or PR boundary. A compact checkpoint under the Git common directory retains intent, evidence references, ownership, repair allowances, and the next actor/action—without delivery-state gates or model-authored CAS wrappers. Local implementation includes in-scope commits unless excluded. PR delivery runs local checks and independent review before publication, then bounded CI monitoring and repair before promotion. The initial scheduler uses Loop at 60-second intervals with a cumulative 30-minute waiting allowance and two CI repair batches, separate from two pre-publication review repairs. This is session-bound polling, not a background watcher. Scoped explicit user exceptions and additive allowances preserve failed/incomplete evidence rather than falsifying success. Legacy records are preserved and require explicit recovery; settlement, cancellation, merge, and cleanup retain their own authority and integrity checks.
+For Plane-native delivery, `plane` defines safe gateway access, `shape-ticket` prepares a verifiable contract, and `work-ticket` owns one selected ticket through its authorized local or PR boundary. A compact checkpoint under the Git common directory retains intent, evidence references, ownership, repair allowances, and the next actor/action—without delivery-state gates or model-authored CAS wrappers. Local implementation includes in-scope commits unless excluded. PR delivery runs local checks and independent review before publication, then bounded CI monitoring and repair before promotion. The initial scheduler uses Loop at 60-second intervals with a cumulative 30-minute waiting allowance and two CI repair batches, separate from two pre-publication review repairs. This is session-bound polling, not a background watcher. Scoped explicit user exceptions and additive allowances preserve failed/incomplete evidence rather than falsifying success. Legacy records are preserved and require explicit recovery; settlement, cancellation, merge, and cleanup retain their own authority and integrity checks.
 
 ### Choosing an orchestration primitive
 
@@ -46,7 +46,7 @@ Custom TypeScript extensions under [`pi/agent/extensions/`](pi/agent/extensions/
 
 - **Work tracking and automation:** loops, goals, TODOs, and scheduled tasks
 - **Delegation and orchestration:** isolated subagents, saved workflows, and structured output
-- **External access:** broker-backed services and web research
+- **External access:** gateway-backed services and web research
 - **Interaction and context:** user prompts, context reporting, compact tool output, and TUI status information
 
 See [`pi/README.md`](pi/README.md) for the complete extension and skill catalog.
@@ -73,11 +73,9 @@ GitHub Actions runs these checks for pull requests and pushes to `main`.
 
 [`agent-tools`](https://github.com/averycrespi/agent-tools) provides external utilities that complement this configuration repo.
 
-The main integration point is the **MCP broker**: a credentials-holding proxy that lets sandboxed agents use authenticated external services without holding secrets directly. In Pi, the [`mcp-broker`](pi/agent/extensions/mcp-broker/) extension exposes broker-backed tools through `mcp_search`, `mcp_describe`, and `mcp_call`, and guards direct `gh` or remote-git usage when broker tools are preferred.
+The main integration point is **MCP Gateway**: a governed external-access service. Pi's [`mcp-gateway`](pi/agent/extensions/mcp-gateway/) extension exposes `mcp_search`, `mcp_describe`, and `mcp_call` by default, with compact namespace discovery, environment-only agent-token authentication, and advisory guidance for direct `gh` and remote-git commands. Direct subagents and workflow children use `read-mcp` for annotation-filtered access; gateway policy remains authoritative. See the extension's migration guidance before updating existing local settings and scheduled tasks.
 
-The [`mcp-gateway`](pi/agent/extensions/mcp-gateway/) extension provides an opt-in, separate-session trial of the companion MCP Gateway with the same three meta-tools, a compact namespace summary, and environment-token authentication. It leaves the broker and existing subagent integration unchanged pending live validation and a later cutover.
-
-`agent-tools` also includes a sandbox manager (`sb`) for isolated agent runs. It is relevant to Pi as an outer isolation layer: this Pi config adds workflow guidance and broker preferences, but it does not implement shell command restrictions itself.
+`agent-tools` also includes a sandbox manager (`sb`) for isolated agent runs. It is relevant to Pi as an outer isolation layer: this Pi config adds workflow guidance and gateway preferences, but it does not implement shell command restrictions itself.
 
 ## Notes
 

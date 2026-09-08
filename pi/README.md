@@ -89,22 +89,21 @@ References: [Herdr remote access](https://herdr.dev/docs/persistence-remote/), [
 
 TypeScript modules that customize the Pi agent. Type-check with `make typecheck`.
 
-| Extension           | Purpose                                                                                                  |
-| ------------------- | -------------------------------------------------------------------------------------------------------- |
-| `ask-user`          | `ask_user` tool for multiple-choice questions                                                            |
-| `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                  |
-| `context-usage`     | `/context-usage` token-blame report for current context-window usage                                     |
-| `goal`              | Fork-safe goals, bounded auto-run, and conservative evidence-backed completion                           |
-| `loop`              | Shared targetless bounded continuation controlled by agents, users, skills, and extensions               |
-| `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                        |
-| `mcp-gateway`       | Opt-in gateway-only trial with three meta-tools, compact discovery, and environment-token authentication |
-| `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state      |
-| `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                         |
-| `structured-output` | Schema-backed final output tool, no-op unless configured                                                 |
-| `subagents`         | Profile-routed isolated child dispatch with explicit read, write, shell, broker, and web capabilities    |
-| `todo`              | Session-persisted TODO tool with a sticky widget                                                         |
-| `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                 |
-| `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows  |
+| Extension           | Purpose                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `ask-user`          | `ask_user` tool for multiple-choice questions                                                           |
+| `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                 |
+| `context-usage`     | `/context-usage` token-blame report for current context-window usage                                    |
+| `goal`              | Fork-safe goals, bounded auto-run, and conservative evidence-backed completion                          |
+| `loop`              | Shared targetless bounded continuation controlled by agents, users, skills, and extensions              |
+| `mcp-gateway`       | Default MCP meta-tools, compact discovery, environment-token authentication, and an advisory bash guard |
+| `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
+| `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
+| `structured-output` | Schema-backed final output tool, no-op unless configured                                                |
+| `subagents`         | Profile-routed isolated child dispatch with explicit read, write, shell, MCP, and web capabilities      |
+| `todo`              | Session-persisted TODO tool with a sticky widget                                                        |
+| `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                |
+| `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows |
 
 Underscore-prefixed directories are libraries imported by sibling extensions, not extensions themselves — pi's extension loader skips them because they have no `index.ts`.
 
@@ -159,11 +158,11 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 Notes:
 
 - Testing policy lives in [the global agent instructions](agent/AGENTS.md#testing-and-verification-evidence): require proportionate regression evidence and focused plus broader checks, while leaving test-first sequencing optional.
-- Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, mcp-broker meta-tools for MCP calls, GPT-5.x-friendly prose).
+- Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, gateway meta-tools for MCP calls, GPT-5.x-friendly prose).
 - `clarify` researches answerable questions and resolves material user-owned decisions. Standalone clarification is read-only; clarification inside authorized work resumes that work without another approval pause. It is optional, not a required ticket phase. `challenge` and explicit-only `simplify` share one assessment procedure with distinct risk and complexity lenses; neither automatically runs both. `review` evaluates changes against their authorized delivery scope and may summarize a long report while retaining the full unchanged report at an accessible path, exposing every blocker, unresolved decision, failed check, and material gap.
 - `work-ticket` loads helper, recovery, publication, and settlement procedures before the corresponding operation; inspection alone does not initialize or mutate state. `review` loads its input contract before invocation and its bounded repair procedure before editing. These references distinguish workflow defaults and scoped user exceptions from ownership, identity, and tool approval boundaries.
 - Wiki ingests, filed answers, and accepted maintenance changes include automatic checkpoints unless the user or vault policy says otherwise. This explicit commit-policy exception does not authorize pushing or unrelated commits.
-- The ticket path uses `plane` for safe broker access, `shape-ticket` for a verifiable contract, and `work-ticket` for one authorized owner. Ready is optional context, not implementation or publication authority. Work can stay in the current checkout; Herdr handles requested or necessary worktree isolation. One `<git-common-dir>/pi-ticket-checkpoints/<immutable-ticket-id>.json` retains concise intent/progress, revision/scope-bound artifact references, ownership, allowances, scoped user exceptions, and the next actor/action. Compact acknowledgments replace full-state receipts and caller CAS/hash bookkeeping. The helper stores continuity, not delivery gates; follow-ups do not need terminal-state transitions. Local completion leaves Plane In Progress unless separately authorized. PR delivery reviews the full candidate before publication, retains history/metadata safety checks, and monitors required CI on the published head before promotion. Session-bound Loop polling uses 60-second intervals and a cumulative 30-minute wait, excluding active observation/repair. Two CI repair batches are separate from two pre-publication review repair batches; explicit user additions never reset consumption. Failed/not-run evidence remains visible under accepted exceptions. Scope/content changes require evidence reevaluation only where coverage changed. Settlement, cancellation, and cleanup need explicit authority and fresh integrity checks. Legacy `.pi/tickets/` state and cleanup archives remain byte-preserved with explicit recovery into the new checkpoint; `.ticket-run/` remains historical only.
+- The ticket path uses `plane` for safe gateway access, `shape-ticket` for a verifiable contract, and `work-ticket` for one authorized owner. Ready is optional context, not implementation or publication authority. Work can stay in the current checkout; Herdr handles requested or necessary worktree isolation. One `<git-common-dir>/pi-ticket-checkpoints/<immutable-ticket-id>.json` retains concise intent/progress, revision/scope-bound artifact references, ownership, allowances, scoped user exceptions, and the next actor/action. Compact acknowledgments replace full-state receipts and caller CAS/hash bookkeeping. The helper stores continuity, not delivery gates; follow-ups do not need terminal-state transitions. Local completion leaves Plane In Progress unless separately authorized. PR delivery reviews the full candidate before publication, retains history/metadata safety checks, and monitors required CI on the published head before promotion. Session-bound Loop polling uses 60-second intervals and a cumulative 30-minute wait, excluding active observation/repair. Two CI repair batches are separate from two pre-publication review repair batches; explicit user additions never reset consumption. Failed/not-run evidence remains visible under accepted exceptions. Scope/content changes require evidence reevaluation only where coverage changed. Settlement, cancellation, and cleanup need explicit authority and fresh integrity checks. Legacy `.pi/tickets/` state and cleanup archives remain byte-preserved with explicit recovery into the new checkpoint; `.ticket-run/` remains historical only.
 - Keep canonical user-facing contracts and architecture decisions in the appropriate existing documentation or explicitly authorized ticket artifacts.
 - Skills adapted from external sources should include bare `ATTRIBUTION` and `LICENSE` files in the skill directory.
 - See the [create-skill](agent/skills/create-skill/SKILL.md) skill when adding new skills.

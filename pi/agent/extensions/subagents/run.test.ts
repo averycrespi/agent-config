@@ -22,7 +22,7 @@ const request = (
 ): RunSubagentRequest => ({
   intent: "Inspect",
   prompt: "Inspect policy",
-  capabilities: ["read-broker", "read-web"],
+  capabilities: ["read-mcp", "read-web"],
   profile: "balanced",
   cwd: "/repo",
   modelRegistry: { find: () => model },
@@ -57,12 +57,11 @@ test("resolver creates an internal invocation from central policy", () => {
       "web_fetch",
     ]);
     assert.deepEqual(result.prepared?.invocation.extensionAllowlist, [
-      "mcp-broker",
+      "mcp-gateway",
       "web-access",
     ]);
     assert.deepEqual(result.prepared?.invocation.env, {
-      MCP_BROKER_READONLY: "1",
-      MCP_BROKER_APPROVAL_MODE: "reject",
+      MCP_GATEWAY_READONLY: "1",
     });
     assert.equal(result.prepared?.invocation.inheritSession, "none");
     assert.equal("systemPrompt" in result.prepared!.invocation, false);

@@ -28,6 +28,47 @@ function api() {
   return { pi, tools, fire, messages };
 }
 
+test("namespace prompts preserve normalized ordering, trust framing, and safety guidance", () => {
+  const prompt = buildGatewayPrompt(
+    [
+      tool("z.a"),
+      tool("a.one.two"),
+      tool("a.other"),
+      tool("unqualified"),
+      tool(".empty"),
+    ],
+    true,
+  );
+  assert.match(
+    prompt,
+    /- \(unqualified\): 2 tools\n- a: 2 tools\n- z: 1 tools/,
+  );
+  assert.match(prompt, /BEGIN UNTRUSTED EXTERNAL MCP NAMESPACE SUMMARY/);
+  assert.match(prompt, /mcp_search.*mcp_describe.*mcp_call/);
+  assert.match(prompt, /Never automatically repeat a call/);
+  assert.match(
+    prompt,
+    /only tools explicitly annotated readOnlyHint=true.*calls recheck discovery/,
+  );
+  assert.doesNotMatch(buildGatewayPrompt([], false), /Read-only mode:/);
+  assert.match(buildGatewayPrompt([], false), /No tools discovered/);
+});
+
+test("aggregate images and invalid image metadata remain spillable text", () => {
+  for (const content of [
+    [1, 2].map(() => ({
+      type: "image",
+      mimeType: "image/png",
+      data: "x".repeat(2_500_001),
+    })),
+    [{ type: "image", mimeType: "image/png".repeat(1000), data: "eA==" }],
+  ]) {
+    assert.ok(
+      normalizeResult({ content }).every((block) => block.type === "text"),
+    );
+  }
+});
+
 test("hundreds of tools produce a compact namespace summary, bounded search, and exact on-demand schema", async (t) => {
   const tools = Array.from({ length: 400 }, (_, i) => ({
     ...tool(`example.action_${String(i).padStart(3, "0")}`),
@@ -247,7 +288,7 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
   }
 });
 
-test("broker-style rows show one header, counts, descriptions, and bounded unframed call previews", async (t) => {
+test("compact rows show one header, counts, descriptions, and bounded unframed call previews", async (t) => {
   const f = await fixture(t, (body, response) =>
     reply(
       response,
@@ -376,17 +417,36 @@ test("advisory guard never blocks bash, leaves local git alone, and steers once 
   for (const command of [
     "git status",
     "git diff",
+    "git remote",
+    "git remote -v",
+    "git remote add origin https://example.com/repo",
+    "git remote get-url origin",
+    "git remote set-url origin https://example.com/repo",
+    "git remote rename origin upstream",
+    "git remote remove origin",
+    "git remote show -n origin",
     "git commit -m 'gh push'",
     "echo 'git push'",
     "rg gh file",
+    "gh-pages-cli deploy",
   ])
     assert.equal(matchCommand(command), undefined);
   for (const command of [
     "gh pr list",
+    "env FOO=1 gh pr list",
+    "builtin gh pr list",
+    "/usr/local/bin/gh pr list",
+    "git --git-dir=/repo/.git pull",
+    "git -C /repo -c color.ui=false --no-pager push",
+    "echo ok | gh pr list",
+    "echo ok\ngit fetch",
     "git -C /repo push",
     "command git --no-pager fetch",
     "FOO=bar gh issue list",
     "echo ok && git pull",
+    "git remote update",
+    "git remote prune origin",
+    "git remote show origin",
   ])
     assert.ok(matchCommand(command));
   const f = await fixture(t, (body, response) =>
@@ -431,4 +491,16 @@ test("advisory guard never blocks bash, leaves local git alone, and steers once 
   });
   await a.fire("tool_result", { toolName: "bash", toolCallId: "three" });
   assert.equal(a.messages.length, 2);
+  const empty = api();
+  f.client.close();
+  registerGuard(empty.pi, f.client);
+  await empty.fire("tool_call", {
+    toolName: "bash",
+    toolCallId: "empty",
+    input: { command: "gh pr list" },
+  });
+  await empty.fire("tool_result", { toolName: "bash", toolCallId: "empty" });
+  assert.equal(empty.messages.length, 1);
+  assert.match(empty.messages[0].content, /mcp_search.*mcp_describe/);
+  assert.doesNotMatch(empty.messages[0].content, /github\./);
 });

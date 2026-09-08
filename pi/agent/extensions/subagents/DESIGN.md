@@ -34,7 +34,7 @@ The local compatibility union includes `max` even though the repository's develo
 
 ## Capability invariants
 
-The only capability names are `read-filesystem`, `write-filesystem`, `exec-shell`, `read-broker`, and `read-web`. Their grants are fixed in `capabilities.ts`. `write-filesystem` grants only `edit` and `write`; read and shell authority remain explicit. `read-broker` forces read-only/reject environment values after inherited process environment. Web and broker include only `read` as a spill-file dependency. Empty capabilities produce no tools or extensions.
+The only capability names are `read-filesystem`, `write-filesystem`, `exec-shell`, `read-mcp`, and `read-web`. Their grants are fixed in `capabilities.ts`. `write-filesystem` grants only `edit` and `write`; read and shell authority remain explicit. `read-mcp` loads the gateway and forces `MCP_GATEWAY_READONLY=1` after inherited process environment. Web and MCP include only `read` as a spill-file dependency. Empty capabilities produce no tools or extensions. Invalid capability ceilings deny all grants with diagnostics; never widen a stale ceiling to defaults.
 
 Direct batch preflight rejects any multi-agent request containing `write-filesystem` or `exec-shell`, and a shared exclusive gate serializes separate mutable calls. This prevents concurrent mutable children but does not sandbox paths or credentials. Saved workflows impose a stricter caller boundary and reject both mutable capabilities. Serialization does not establish user authorization, a compliant execution workflow, or exclusion of parent-session edits. The injected guidance keeps implementation in the owning session by default and permits writable delegation only on explicit user request under the README's execution contract; this is caller policy, not a runtime authorization check.
 
@@ -75,7 +75,7 @@ Environment inheritance is deliberate; `exec-shell` is not a security sandbox an
 
 ## Activity and rendering
 
-Default tool output includes the aggregate `spawn_agents` line and the per-agent progress inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `profile (capabilities)`, maps fixed capabilities to `fs`, `write`, `shell`, `broker`, and `web`, and omits empty capability sets. Expansion adds retained-log paths and secondary errors without replacing or duplicating the default progress rows. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths remain expanded diagnostics.
+Default tool output includes the aggregate `spawn_agents` line and the per-agent progress inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `profile (capabilities)`, maps fixed capabilities to `fs`, `write`, `shell`, `mcp`, and `web`, and omits empty capability sets. Expansion adds retained-log paths and secondary errors without replacing or duplicating the default progress rows. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths remain expanded diagnostics.
 
 ## Recursion, cancellation, and diagnostics
 

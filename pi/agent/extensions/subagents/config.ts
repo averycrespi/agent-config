@@ -172,8 +172,9 @@ export function normalizeSubagentsConfig(
   if (globalCapabilities) {
     normalizedGlobal.allowedCapabilities = globalCapabilities;
   } else if (globalSettings.allowedCapabilities !== undefined) {
+    normalizedGlobal.allowedCapabilities = [];
     warnings.push(
-      "Ignoring invalid global allowedCapabilities; using default.",
+      "Invalid global allowedCapabilities; denying all capabilities. Use current capability names.",
     );
   }
 
@@ -245,8 +246,11 @@ export function normalizeSubagentsConfig(
     CAPABILITIES,
   );
   if (envCapabilities) normalizedEnv.allowedCapabilities = envCapabilities;
-  else if (env[ENV.allowedCapabilities]?.trim()) {
-    warnings.push(`Ignoring invalid ${ENV.allowedCapabilities}.`);
+  else if (env[ENV.allowedCapabilities] !== undefined) {
+    normalizedEnv.allowedCapabilities = [];
+    warnings.push(
+      `Invalid ${ENV.allowedCapabilities}; denying all capabilities. Use current capability names.`,
+    );
   }
 
   for (const envName of [

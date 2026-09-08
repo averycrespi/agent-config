@@ -59,7 +59,7 @@ type Capability =
   | "read-filesystem"
   | "write-filesystem"
   | "exec-shell"
-  | "read-broker"
+  | "read-mcp"
   | "read-web";
 ```
 

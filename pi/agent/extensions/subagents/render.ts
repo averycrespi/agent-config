@@ -94,8 +94,8 @@ function compactCapability(capability: string): string {
       return "write";
     case "exec-shell":
       return "shell";
-    case "read-broker":
-      return "broker";
+    case "read-mcp":
+      return "mcp";
     case "read-web":
       return "web";
     default:
