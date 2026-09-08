@@ -88,7 +88,7 @@ Framed text above **25,000 characters** spills to `${tmpdir()}/pi-extension-spil
 
 Failed calls write small diagnostic logs under `${tmpdir()}/pi-extension-logs/mcp-gateway/`, using the shared logger's owner-only files and lazy seven-day retention. Logs contain only the failure code and optional invocation ID—not arguments, credentials, raw HTTP errors, or result payloads. The returned failure includes a log path when available. No persistent catalog or transport session is stored.
 
-Collapsed tool rows show a bounded summary; expanded rows include counts, diagnostic/spill paths, and up to 30 bounded text lines. Renderers strip terminal control sequences before styling and truncate to available width.
+Tool rows use the broker-style single header: bold tool name, accent query/target, and muted argument names (never argument values) for calls. Successful search results show matching/total counts and a shown count when capped; describe shows a short description; calls preview up to three nonempty output lines with an omitted-line count. Success does not repeat the header or add a completion banner. Running rows show yellow progress, and failures show a red action-specific error with unknown-outcome warnings kept visible. Expanded rows include counts, diagnostic/spill paths, and up to 30 bounded text lines. Renderers strip terminal control sequences before styling and truncate to available width.
 
 ## Advisory bash guard
 

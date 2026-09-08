@@ -194,7 +194,7 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
         args: {
           name: hostile,
           query: hostile,
-          arguments: { secret: "never-render-arguments" },
+          arguments: { [hostile]: "never-render-arguments" },
         },
         state: {},
         invalidate() {},
@@ -230,16 +230,146 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
               .every((line) => visibleWidth(line) <= width),
           );
           const lines = component.render(200).join("\n");
-          assert.match(lines, new RegExp(name));
           assert.doesNotMatch(lines, /\x1b|mgw_agent_|\u202e/);
           if (state === "semantic" || state === "framework")
             assert.match(lines, /failed/);
-          if (state === "success") assert.match(lines, /complete/);
+          if (state === "success")
+            assert.doesNotMatch(
+              lines,
+              /: complete|mcp_search|mcp_describe|mcp_call/,
+            );
+          if (state === "partial")
+            assert.match(lines, /Searching|Describing|Calling/);
           context.lastComponent = component;
         }
       }
     }
   }
+});
+
+test("broker-style rows show one header, counts, descriptions, and bounded unframed call previews", async (t) => {
+  const f = await fixture(t, (body, response) =>
+    reply(
+      response,
+      body,
+      body.method === "tools/list"
+        ? {
+            tools: Array.from({ length: 25 }, (_, i) =>
+              tool(`example.lookup_${i}`),
+            ),
+          }
+        : {
+            content: [{ type: "text", text: "one\n\ntwo\nthree\nfour\nfive" }],
+          },
+    ),
+  );
+  const a = api();
+  registerTools(a.pi, f.client);
+  const colors: string[] = [];
+  const theme: any = {
+    fg: (color: string, text: string) => {
+      colors.push(color);
+      return text;
+    },
+    bold: (text: string) => text,
+  };
+  for (const [name, args, header, expected] of [
+    [
+      "mcp_search",
+      { query: "" },
+      "mcp_search (all)",
+      "20 shown · 25 matches of 25 tools",
+    ],
+    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 matches of 25 tools"],
+    [
+      "mcp_describe",
+      { name: "example.lookup_0" },
+      "mcp_describe example.lookup_0",
+      "Lookup example.lookup_0",
+    ],
+    [
+      "mcp_call",
+      { name: "example.lookup_0", arguments: { query: "secret-value" } },
+      "mcp_call example.lookup_0 (query)",
+      "one\ntwo\nthree\n... +2 more lines",
+    ],
+  ] as const) {
+    const tool = a.tools.get(name);
+    const ctx: any = { args, state: {}, invalidate() {} };
+    const result = await tool.execute("preview", args);
+    assert.equal(
+      tool.renderCall(args, theme, ctx).render(200).join("\n"),
+      header,
+    );
+    assert.equal(
+      tool
+        .renderResult(result, { isPartial: false, expanded: false }, theme, ctx)
+        .render(200)
+        .join("\n"),
+      expected,
+    );
+    const expanded = tool
+      .renderResult(result, { isPartial: false, expanded: true }, theme, ctx)
+      .render(500)
+      .join("\n");
+    assert.match(expanded, /BEGIN UNTRUSTED/);
+    if (name === "mcp_call") {
+      assert.equal(result.details.previewText, "one\ntwo\nthree");
+      assert.equal(result.details.nonEmptyLineCount, 5);
+      assert.match(expanded, /five/);
+      assert.doesNotMatch(expanded, /secret-value/);
+    }
+    if (name === "mcp_describe") assert.match(expanded, /inputSchema/);
+  }
+  assert.ok(colors.includes("accent"));
+  assert.ok(colors.includes("muted"));
+});
+
+test("unknown-outcome warning remains collapsed even when the error preview is long", () => {
+  const renderer = renderers("mcp_call");
+  const theme: any = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+  const context: any = {
+    args: { name: "example.write" },
+    state: {},
+    invalidate() {},
+  };
+  const result: any = {
+    content: [],
+    details: {
+      gatewayError: true,
+      outcomeUnknown: true,
+      summary: "x".repeat(500),
+      invocationId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      logFile: "/tmp/example-log",
+    },
+  };
+  const collapsed = renderer.renderResult!(
+    result,
+    { isPartial: false, expanded: false },
+    theme,
+    context,
+  )
+    .render(100)
+    .join("\n");
+  assert.match(collapsed, /Call failed:/);
+  assert.match(
+    collapsed,
+    /Effects may have occurred. Do not automatically retry./,
+  );
+  assert.doesNotMatch(collapsed, /example-log/);
+  const expanded = renderer.renderResult!(
+    result,
+    { isPartial: false, expanded: true },
+    theme,
+    context,
+  )
+    .render(100)
+    .join("\n");
+  assert.match(expanded, /invocationId: 01ARZ3NDEKTSV4RRFFQ69G5FAV/);
+  assert.match(expanded, /logFile: \/tmp\/example-log/);
 });
 
 test("advisory guard never blocks bash, leaves local git alone, and steers once using visible candidates", async (t) => {
