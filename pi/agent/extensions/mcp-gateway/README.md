@@ -18,6 +18,14 @@ pi --no-extensions -e /absolute/agent-config/pi/agent/extensions/mcp-gateway/ind
 
 Existing `AGENTS.md` and skills may still call this surface a broker until the later cutover. The actual gateway-only tool surface and its behavior apply in the trial; grant tools are not broker approval waits. Keep the ordinary broker session unchanged.
 
+### VM/container forwarding
+
+For a gateway on the host, explicitly configure its trusted forwarding hostname, for example `MCP_GATEWAY_ENDPOINT=http://host.lima.internal:8211/mcp`. The gateway must independently allow that exact Host name with `serve --allowed-host host.lima.internal`; arrange host-to-guest reachability separately. The extension does not rewrite the Host header to bypass gateway checks.
+
+An HTTP hostname selected through global settings or environment is an explicit trust decision about DNS and the entire forwarding path. HTTP provides no confidentiality or server authentication: use it only for trusted local forwarding, and use HTTPS for remote networks. ASCII DNS labels (including single-label names) are accepted; non-loopback IP literals, underscores, empty labels, trailing dots, and numeric final labels are rejected for HTTP. There is no Lima-specific allowlist in the extension.
+
+The companion's stock `serve-demo` launcher currently does not expose `--allowed-host`. For that demo, use a trusted loopback tunnel or run Pi on the same host; configuring a hostname in Pi alone cannot make the demo accept its Host header. A gateway HTTP error after configuration loads is a separate server/reachability issue.
+
 ## Tools and discovery
 
 - `mcp_search({query})` searches names, titles, and descriptions. It returns at most **20** ranked names and short descriptions, with shown/matching/total counts. Empty query returns the first 20 in name order; narrow the query for omitted matches.
@@ -38,7 +46,7 @@ Use `/mcp-gateway-config` to inspect parsed configuration. Invalid endpoint/path
 
 | Field                | Default | Environment override               | Description                                                                                                                                                       |
 | -------------------- | ------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`           | unset   | `MCP_GATEWAY_ENDPOINT`             | Exact `/mcp` URL. HTTPS, or HTTP on numeric IPv4 loopback. No userinfo, query, fragment, or redirects.                                                            |
+| `endpoint`           | unset   | `MCP_GATEWAY_ENDPOINT`             | Exact `/mcp` URL. HTTPS, or HTTP on numeric IPv4 loopback or an explicitly trusted forwarding hostname. No userinfo, query, fragment, or redirects.               |
 | `credentialFile`     | unset   | `MCP_GATEWAY_CREDENTIAL_FILE`      | Absolute path to an owner-only regular file containing one agent bearer. No symlink leaf, relative path, or administrator credential.                             |
 | `readOnly`           | `false` | `MCP_GATEWAY_READONLY`             | Restrict discovery and invocation to explicit `readOnlyHint: true`. Boolean overrides accept `1`/`true` and `0`/`false`. Invalid values fail closed to read-only. |
 | `discoveryTimeoutMs` | `15000` | `MCP_GATEWAY_DISCOVERY_TIMEOUT_MS` | Total discovery deadline, including all pages and one stale-cursor restart. Positive integer up to 300000; invalid values use the default.                        |

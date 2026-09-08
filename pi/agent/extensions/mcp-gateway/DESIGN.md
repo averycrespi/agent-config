@@ -31,7 +31,7 @@ There is exactly one client invocation attempt. Never reuse the broker's session
 
 ## Security boundaries
 
-Bearer files are opened without following a symlink leaf, checked as owner-only regular files, bounded before reading, and accepted only in the agent credential domain. The host endpoint and credential path are paired through trusted global configuration/environment, not merged with project data. HTTPS is required except numeric IPv4 loopback HTTP; arbitrary proxy/redirect destinations cannot acquire the header through client redirection.
+Bearer files are opened without following a symlink leaf, checked as owner-only regular files, bounded before reading, and accepted only in the agent credential domain. The host endpoint and credential path are paired through trusted global configuration/environment, not merged with project data. HTTP accepts numeric IPv4 loopback or an explicitly configured trusted forwarding hostname with Gateway-compatible ASCII DNS labels; hostname selection trusts resolution and the entire local forwarding path, not just its spelling. Non-loopback numeric HTTP remains rejected. Do not substitute the Host header, hard-code Lima aliases, infer gateway Host allowlisting, or accept project-local endpoint overrides. Remote-network confidentiality requires HTTPS. Redirect destinations cannot acquire the header through client redirection.
 
 Annotation filtering is defense in depth, not authorization or an argument-sensitive read-only proof. Missing hints reject in read-only mode. Gateway independently authorizes every call. This extension cannot prevent same-OS-user filesystem/shell tools from accessing readable files and must not claim otherwise.
 

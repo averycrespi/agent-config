@@ -11,6 +11,19 @@ import { fixture, reply, rpcError, TEST_BEARER, tool } from "./fixture.ts";
 
 const invocationId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
+test("explicit HTTP hostname preserves Host and authentication through the real transport", async (t) => {
+  const f = await fixture(t);
+  const endpoint = f.config.endpoint.replace("127.0.0.1", "localhost");
+  f.client.configure({ ...f.config, endpoint });
+  assert.equal((await f.client.listTools())[0].name, "example.lookup");
+  await f.client.callTool("example.lookup", {});
+  assert.equal(f.requests.length, 2);
+  for (const headers of f.headers) {
+    assert.equal(headers.host, new URL(endpoint).host);
+    assert.equal(headers.authorization, `Bearer ${TEST_BEARER}`);
+  }
+});
+
 test("modern HTTP client traverses pagination and sends exact metadata without initialization", async (t) => {
   const f = await fixture(t, (body, response) =>
     reply(

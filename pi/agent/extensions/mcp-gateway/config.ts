@@ -96,6 +96,17 @@ export async function loadGatewayConfig(
   return config;
 }
 
+function isForwardingHostname(hostname: string): boolean {
+  const labels = hostname.split(".");
+  return (
+    hostname.length <= 253 &&
+    labels.every((label) =>
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
+    ) &&
+    !/^\d+$/.test(labels[labels.length - 1])
+  );
+}
+
 export function validateConfig(config: GatewayConfig): string {
   if (!config.endpoint || !config.credentialFile) {
     throw new Error(
@@ -114,7 +125,8 @@ export function validateConfig(config: GatewayConfig): string {
     (url.protocol !== "https:" &&
       !(
         url.protocol === "http:" &&
-        /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(url.hostname)
+        (/^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(url.hostname) ||
+          isForwardingHostname(url.hostname))
       )) ||
     url.username ||
     url.password ||
@@ -123,7 +135,7 @@ export function validateConfig(config: GatewayConfig): string {
     url.pathname !== "/mcp"
   )
     throw new Error(
-      "Gateway endpoint must use HTTPS or numeric IPv4 loopback HTTP, exact /mcp, and no userinfo, query, or fragment.",
+      "Gateway endpoint must use HTTPS, numeric IPv4 loopback HTTP, or an explicitly trusted HTTP forwarding hostname; exact /mcp and no userinfo, query, or fragment.",
     );
   if (
     !isAbsolute(config.credentialFile) ||

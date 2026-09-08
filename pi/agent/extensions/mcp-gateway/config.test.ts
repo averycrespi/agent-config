@@ -55,6 +55,33 @@ test("configuration defaults, environment precedence, booleans, and finite deadl
   );
 });
 
+test("explicit trusted HTTP forwarding hostnames retain endpoint and credential configuration", async (t) => {
+  const f = await fixture(t);
+  const previous = { ...process.env };
+  t.after(() => {
+    process.env = previous;
+  });
+  process.env.PI_CODING_AGENT_DIR = f.dir;
+  process.env.MCP_GATEWAY_ENDPOINT = "http://host.lima.internal:8211/mcp";
+  process.env.MCP_GATEWAY_CREDENTIAL_FILE = "/tmp/creds";
+  const warnings: string[] = [];
+  const loaded = await loadGatewayConfig(f.dir, warnings);
+  assert.equal(loaded.endpoint, "http://host.lima.internal:8211/mcp");
+  assert.equal(loaded.credentialFile, "/tmp/creds");
+  assert.deepEqual(warnings, []);
+  for (const hostname of [
+    "localhost",
+    "gateway.example.com",
+    "HOST.LIMA.INTERNAL",
+    "xn--bcher-kva.example",
+  ]) {
+    assert.equal(
+      validateConfig({ ...f.config, endpoint: `http://${hostname}:8211/mcp` }),
+      `http://${hostname.toLowerCase()}:8211/mcp`,
+    );
+  }
+});
+
 test("unsafe endpoint and credential path configurations are rejected without echoing input", () => {
   const config = {
     ...DEFAULT_CONFIG,
@@ -67,8 +94,15 @@ test("unsafe endpoint and credential path configurations are rejected without ec
     "https://gateway.example.com/mcp",
   );
   for (const endpoint of [
-    "http://example.com/mcp",
-    "http://localhost/mcp",
+    "http://192.0.2.1:8211/mcp",
+    "http://[::1]:8211/mcp",
+    "http://bad_host.example:8211/mcp",
+    "http://host.example.:8211/mcp",
+    "http://-bad.example:8211/mcp",
+    "http://bad-.example:8211/mcp",
+    "http://bad..example:8211/mcp",
+    `http://${"a".repeat(64)}.example:8211/mcp`,
+    `http://${Array(5).fill("a".repeat(60)).join(".")}:8211/mcp`,
     "file:///mcp",
     `https://${TEST_BEARER}@example.com/mcp`,
     `https://example.com/mcp?token=${TEST_BEARER}`,
