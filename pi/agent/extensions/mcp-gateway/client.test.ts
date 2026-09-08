@@ -11,11 +11,20 @@ const invocationId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
 test("stalled discovery times out and invalidates a previously complete cache", async (t) => {
   const f = await fixture(t);
-  f.client.configure({ ...f.config, discoveryTimeoutMs: 50 });
   await f.client.listTools();
   assert.ok(f.client.getCachedTools());
-  f.state.handler = () => {};
-  await assert.rejects(f.client.listTools());
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const received = new Promise<void>((resolve) => {
+    f.state.handler = () => resolve();
+  });
+  const rejected = assert.rejects(
+    f.client.listTools(),
+    (error: unknown) =>
+      error instanceof GatewayError && error.code === "cancelled",
+  );
+  await received;
+  t.mock.timers.tick(f.config.discoveryTimeoutMs);
+  await rejected;
   assert.equal(f.client.getCachedTools(), undefined);
   assert.equal(
     f.requests.filter((request) => request.method === "tools/call").length,
