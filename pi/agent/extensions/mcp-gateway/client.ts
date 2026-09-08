@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
 import {
   DEFAULT_CONFIG,
   validateConfig,
@@ -44,43 +42,6 @@ export function redactCredentials(text: string): string {
     /mgw_(?:agent|admin)_[A-Za-z0-9_-]+/g,
     "[redacted gateway credential]",
   );
-}
-
-async function credential(
-  path: string,
-): Promise<{ bearer: string; identity: string }> {
-  try {
-    const file = await open(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-    try {
-      const info = await file.stat();
-      if (
-        !info.isFile() ||
-        info.size > 4096 ||
-        (info.mode & 0o077) !== 0 ||
-        (process.getuid && info.uid !== process.getuid())
-      )
-        throw new Error();
-      const bytes = Buffer.alloc(4097);
-      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
-      if (bytesRead > 4096) throw new Error();
-      const bearer = bytes.subarray(0, bytesRead).toString("utf8").trim();
-      if (!/^mgw_agent_[A-Za-z0-9_-]{43}$/.test(bearer)) throw new Error();
-      return {
-        bearer,
-        identity: createHash("sha256").update(bearer).digest("hex"),
-      };
-    } finally {
-      await file.close();
-    }
-  } catch {
-    throw new GatewayError(
-      "Cannot read agent credential: use an owner-only regular file containing one mgw_agent_ bearer; symlinks and administrator credentials are rejected.",
-      "credential_error",
-    );
-  }
 }
 
 type DiscoveryBudget = { remainingBytes: number };
@@ -204,7 +165,8 @@ export class GatewayClient {
         "config_error",
       );
     }
-    const { bearer, identity } = await credential(this.config.credentialFile!);
+    const bearer = this.config.agentToken!;
+    const identity = createHash("sha256").update(bearer).digest("hex");
     signal.throwIfAborted();
     if (expectedIdentity && identity !== expectedIdentity) {
       this.cached = undefined;

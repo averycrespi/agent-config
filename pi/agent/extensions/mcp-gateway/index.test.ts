@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
-import { fixture } from "./fixture.ts";
+import { fixture, TEST_BEARER } from "./fixture.ts";
 
 const path = fileURLToPath(new URL("./index.ts", import.meta.url));
 
@@ -13,13 +13,20 @@ test("real Pi loader is inert by default; CLI flag enables tools at session star
     process.env = previous;
   });
   process.env.MCP_GATEWAY_ENDPOINT = f.config.endpoint;
-  process.env.MCP_GATEWAY_CREDENTIAL_FILE = f.credentialFile;
+  process.env.MCP_GATEWAY_AGENT_TOKEN = TEST_BEARER;
   process.env.MCP_GATEWAY_READONLY = "0";
   const loaded = await discoverAndLoadExtensions([path], f.dir, f.dir);
   assert.deepEqual(loaded.errors, []);
   const extension = loaded.extensions[0];
   assert.equal(extension.tools.size, 0);
   assert.ok(extension.commands.has("mcp-gateway-config"));
+  const notifications: string[] = [];
+  await extension.commands.get("mcp-gateway-config")!.handler("", {
+    cwd: f.dir,
+    ui: { notify: (text: string) => notifications.push(text) },
+  } as any);
+  assert.match(notifications.join("\n"), /"agentToken": "\*{8}"/);
+  assert.doesNotMatch(notifications.join("\n"), new RegExp(TEST_BEARER));
   const ctx: any = { cwd: f.dir, hasUI: false };
   const start = async () => {
     for (const handler of extension.handlers.get("session_start") ?? [])
@@ -52,7 +59,11 @@ test("real Pi loader is inert by default; CLI flag enables tools at session star
   const before = extension.handlers.get("before_agent_start")![0] as any;
   const prompt = await before({ systemPrompt: "base" }, ctx);
   assert.match(prompt.systemPrompt, /example: 1 tools/);
-  assert.doesNotMatch(prompt.systemPrompt, /example.lookup/);
+  assert.doesNotMatch(prompt.systemPrompt, /example.lookup|mgw_agent_/);
+  const rotated = `mgw_agent_${Buffer.alloc(32, 2).toString("base64url")}`;
+  process.env.MCP_GATEWAY_AGENT_TOKEN = rotated;
+  await before({ systemPrompt: "base" }, ctx);
+  assert.equal(f.headers.at(-1)!.authorization, `Bearer ${rotated}`);
   for (const handler of extension.handlers.get("session_shutdown") ?? [])
     await (handler as any)({ reason: "quit" }, ctx);
   const beforeCount = f.requests.length;

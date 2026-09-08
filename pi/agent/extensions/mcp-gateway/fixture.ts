@@ -3,7 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
@@ -64,8 +64,6 @@ export function rpcError(
 }
 export async function fixture(t: TestContext, handler?: Handler) {
   const dir = await mkdtemp(join(tmpdir(), "pi-gateway-test-"));
-  const credentialFile = join(dir, "credential");
-  await writeFile(credentialFile, TEST_BEARER, { mode: 0o600 });
   const requests: Request[] = [];
   const headers: IncomingMessage["headers"][] = [];
   const state = {
@@ -99,7 +97,7 @@ export async function fixture(t: TestContext, handler?: Handler) {
   const config = {
     ...DEFAULT_CONFIG,
     endpoint: `http://127.0.0.1:${address.port}/mcp`,
-    credentialFile,
+    agentToken: TEST_BEARER,
   };
   const client = new GatewayClient();
   client.configure(config);
@@ -109,5 +107,5 @@ export async function fixture(t: TestContext, handler?: Handler) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   });
-  return { dir, credentialFile, config, client, requests, headers, state };
+  return { dir, config, client, requests, headers, state };
 }

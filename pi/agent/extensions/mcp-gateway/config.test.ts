@@ -14,7 +14,7 @@ test("configuration defaults, environment precedence, booleans, and finite deadl
   assert.deepEqual(parseConfig({}, {}), DEFAULT_CONFIG);
   const settings = {
     endpoint: "https://example.com/mcp",
-    credentialFile: "/safe/agent",
+    agentToken: "ignored-settings-token",
     readOnly: true,
     callTimeoutMs: 5000,
   };
@@ -55,6 +55,36 @@ test("configuration defaults, environment precedence, booleans, and finite deadl
   );
 });
 
+test("tokens come only from the environment, never settings or legacy file configuration", () => {
+  const settings = {
+    endpoint: "https://example.com/mcp",
+    agentToken: TEST_BEARER,
+    credentialFile: "/unused",
+  };
+  assert.equal(
+    parseConfig(settings, { MCP_GATEWAY_CREDENTIAL_FILE: "/unused" })
+      .agentToken,
+    undefined,
+  );
+  assert.equal(
+    parseConfig(settings, { MCP_GATEWAY_AGENT_TOKEN: ` ${TEST_BEARER} ` })
+      .agentToken,
+    TEST_BEARER,
+  );
+  assert.equal(
+    parseConfig(settings, { MCP_GATEWAY_AGENT_TOKEN: "" }).agentToken,
+    "",
+  );
+  assert.equal("credentialFile" in parseConfig(settings, {}), false);
+  assert.throws(
+    () =>
+      validateConfig(
+        parseConfig(settings, { MCP_GATEWAY_CREDENTIAL_FILE: "/unused" }),
+      ),
+    /MCP_GATEWAY_AGENT_TOKEN/,
+  );
+});
+
 test("explicit trusted HTTP forwarding hostnames retain endpoint and credential configuration", async (t) => {
   const f = await fixture(t);
   const previous = { ...process.env };
@@ -63,11 +93,11 @@ test("explicit trusted HTTP forwarding hostnames retain endpoint and credential 
   });
   process.env.PI_CODING_AGENT_DIR = f.dir;
   process.env.MCP_GATEWAY_ENDPOINT = "http://host.lima.internal:8211/mcp";
-  process.env.MCP_GATEWAY_CREDENTIAL_FILE = "/tmp/creds";
+  process.env.MCP_GATEWAY_AGENT_TOKEN = TEST_BEARER;
   const warnings: string[] = [];
   const loaded = await loadGatewayConfig(f.dir, warnings);
   assert.equal(loaded.endpoint, "http://host.lima.internal:8211/mcp");
-  assert.equal(loaded.credentialFile, "/tmp/creds");
+  assert.equal(loaded.agentToken, TEST_BEARER);
   assert.deepEqual(warnings, []);
   for (const hostname of [
     "localhost",
@@ -82,11 +112,11 @@ test("explicit trusted HTTP forwarding hostnames retain endpoint and credential 
   }
 });
 
-test("unsafe endpoint and credential path configurations are rejected without echoing input", () => {
+test("unsafe endpoint and token configurations are rejected without echoing input", () => {
   const config = {
     ...DEFAULT_CONFIG,
     endpoint: "http://127.0.0.1:8210/mcp",
-    credentialFile: "/safe/agent",
+    agentToken: TEST_BEARER,
   };
   assert.equal(validateConfig(config), config.endpoint);
   assert.equal(
@@ -114,13 +144,18 @@ test("unsafe endpoint and credential path configurations are rejected without ec
       (error: Error) => !error.message.includes(TEST_BEARER),
     );
   }
-  for (const credentialFile of [
-    "relative/file",
-    TEST_BEARER,
-    `/safe/${TEST_BEARER}`,
-    "/safe/\nfile",
-  ])
-    assert.throws(() => validateConfig({ ...config, credentialFile }));
+  for (const agentToken of [
+    undefined,
+    "",
+    "mgw_admin_secret",
+    `${TEST_BEARER}\nheader`,
+    "invalid",
+  ]) {
+    assert.throws(
+      () => validateConfig({ ...config, agentToken }),
+      (error: Error) => !error.message.includes(TEST_BEARER),
+    );
+  }
 });
 
 test("project settings cannot redirect the credential; global parse errors and invalid config do not expose secrets", async (t) => {
@@ -144,17 +179,18 @@ test("project settings cannot redirect the credential; global parse errors and i
     JSON.stringify({
       "extension:mcp-gateway": {
         endpoint: "https://untrusted.example.com/mcp",
-        credentialFile: "/other",
+        agentToken: "untrusted-project-token",
       },
     }),
   );
+  process.env.MCP_GATEWAY_AGENT_TOKEN = TEST_BEARER;
   assert.equal((await loadGatewayConfig(f.dir)).endpoint, f.config.endpoint);
   await writeFile(join(agentDir, "settings.json"), `{ broken ${TEST_BEARER}`);
   const warnings: string[] = [];
   const parsed = await loadGatewayConfig(f.dir, warnings);
   assert.ok(!JSON.stringify({ parsed, warnings }).includes(TEST_BEARER));
   process.env.MCP_GATEWAY_ENDPOINT = `https://${TEST_BEARER}@example.com/mcp`;
-  process.env.MCP_GATEWAY_CREDENTIAL_FILE = f.credentialFile;
+  process.env.MCP_GATEWAY_AGENT_TOKEN = TEST_BEARER;
   assert.ok(
     !JSON.stringify(await loadGatewayConfig(f.dir, warnings)).includes(
       TEST_BEARER,

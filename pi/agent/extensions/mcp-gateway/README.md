@@ -8,9 +8,14 @@ The extension is inert unless Pi starts with `--mcp-gateway`. Even if Stow makes
 
 Start a **new gateway-only session**, excluding auto-discovered extensions:
 
-```sh
+Enter the agent token without placing its value in shell history (Bash):
+
+```bash
+read -r -s -p 'Gateway agent token: ' MCP_GATEWAY_AGENT_TOKEN
+printf '\n'
+export MCP_GATEWAY_AGENT_TOKEN
+
 MCP_GATEWAY_ENDPOINT=http://127.0.0.1:8210/mcp \
-MCP_GATEWAY_CREDENTIAL_FILE=/absolute/protected/agent-bearer \
 pi --no-extensions -e /absolute/agent-config/pi/agent/extensions/mcp-gateway/index.ts --mcp-gateway
 ```
 
@@ -40,23 +45,22 @@ Each response is bounded to **16 MiB**; a discovery operation shares **32 MiB**,
 
 ## Configuration
 
-Use global Pi settings under `extension:mcp-gateway`, or environment overrides. **Project-local extension settings are deliberately ignored**: a project must not redirect a host credential to its own endpoint. The extension uses only the fields below; raw bearer settings and broker aliases are not accepted.
+Use global Pi settings under `extension:mcp-gateway`, or environment overrides, for nonsecret settings. The agent bearer comes **only from `MCP_GATEWAY_AGENT_TOKEN`**; token settings in JSON are ignored. **Project-local extension settings are deliberately ignored**: a project must not redirect a host credential to its own endpoint. `credentialFile` and `MCP_GATEWAY_CREDENTIAL_FILE` are no longer supported and never read; replace them with the token environment variable.
 
-Use `/mcp-gateway-config` to inspect parsed configuration. Invalid endpoint/path values are suppressed from display. Invalid settings JSON is reported without including its contents.
+Use `/mcp-gateway-config` to inspect parsed configuration. The token is masked, and invalid endpoint/token configurations are suppressed from display. Invalid settings JSON is reported without including its contents.
 
-| Field                | Default | Environment override               | Description                                                                                                                                                       |
-| -------------------- | ------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`           | unset   | `MCP_GATEWAY_ENDPOINT`             | Exact `/mcp` URL. HTTPS, or HTTP on numeric IPv4 loopback or an explicitly trusted forwarding hostname. No userinfo, query, fragment, or redirects.               |
-| `credentialFile`     | unset   | `MCP_GATEWAY_CREDENTIAL_FILE`      | Absolute path to an owner-only regular file containing one agent bearer. No symlink leaf, relative path, or administrator credential.                             |
-| `readOnly`           | `false` | `MCP_GATEWAY_READONLY`             | Restrict discovery and invocation to explicit `readOnlyHint: true`. Boolean overrides accept `1`/`true` and `0`/`false`. Invalid values fail closed to read-only. |
-| `discoveryTimeoutMs` | `15000` | `MCP_GATEWAY_DISCOVERY_TIMEOUT_MS` | Total discovery deadline, including all pages and one stale-cursor restart. Positive integer up to 300000; invalid values use the default.                        |
-| `callTimeoutMs`      | `65000` | `MCP_GATEWAY_CALL_TIMEOUT_MS`      | Total invocation deadline, including read-only admission. Positive integer up to 300000; invalid values use the default.                                          |
+| Field                   | Default | Environment override               | Description                                                                                                                                                       |
+| ----------------------- | ------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `endpoint`              | unset   | `MCP_GATEWAY_ENDPOINT`             | Exact `/mcp` URL. HTTPS, or HTTP on numeric IPv4 loopback or an explicitly trusted forwarding hostname. No userinfo, query, fragment, or redirects.               |
+| `agentToken` (env only) | unset   | `MCP_GATEWAY_AGENT_TOKEN`          | One `mgw_agent_` bearer, with surrounding whitespace trimmed. Required; administrator credentials are rejected. Not accepted from settings JSON.                  |
+| `readOnly`              | `false` | `MCP_GATEWAY_READONLY`             | Restrict discovery and invocation to explicit `readOnlyHint: true`. Boolean overrides accept `1`/`true` and `0`/`false`. Invalid values fail closed to read-only. |
+| `discoveryTimeoutMs`    | `15000` | `MCP_GATEWAY_DISCOVERY_TIMEOUT_MS` | Total discovery deadline, including all pages and one stale-cursor restart. Positive integer up to 300000; invalid values use the default.                        |
+| `callTimeoutMs`         | `65000` | `MCP_GATEWAY_CALL_TIMEOUT_MS`      | Total invocation deadline, including read-only admission. Positive integer up to 300000; invalid values use the default.                                          |
 
 ```json
 {
   "extension:mcp-gateway": {
     "endpoint": "http://127.0.0.1:8210/mcp",
-    "credentialFile": "/absolute/protected/agent-bearer",
     "readOnly": false,
     "discoveryTimeoutMs": 15000,
     "callTimeoutMs": 65000
@@ -64,11 +68,13 @@ Use `/mcp-gateway-config` to inspect parsed configuration. Invalid endpoint/path
 }
 ```
 
-Environment values override global settings when set, including blank endpoint/path overrides. Configuration is reloaded at session/agent start; credential files are read **for every HTTP request**, so rotation needs no Pi settings edit. Never put the bearer itself in a shell command, environment variable, Pi settings, prompt, or log. Protect the file and its parent directories from other users. Gateway credentials do not provide administrator authority, but any agent with unrestricted filesystem/shell access under the same OS identity may be able to read the file; this extension is not an OS sandbox.
+Environment values override global settings when set, including blank endpoint overrides. The token has no settings or file fallback; an unset, blank, or malformed token prevents requests. Configuration and token are sampled from Pi's process environment at session/agent start. Token changes abort old operations and clear cached discovery. Changing the parent shell's environment does not update a running Pi process: restart Pi with the new token. `/reload` can only see the environment already available to Pi.
+
+Keep bearer values out of shell history, command arguments, settings JSON, prompts, and logs. Environment variables can be inherited by child processes and inspected by code running in Pi; this is a convenience trade-off, not an OS security boundary. Gateway agent credentials have no administrator authority. Unset `MCP_GATEWAY_AGENT_TOKEN` in your shell when no longer needed.
 
 ## Read-only mode and approvals
 
-Read-only discovery excludes tools whose annotation is missing or not exactly `true`. Before every call, the client refreshes the filtered catalog and rejects names absent from it. Credential identity is pinned across discovery pages and between read-only admission and invocation; rotation mid-operation fails closed rather than combining identities. The next operation can discover with the new credential.
+Read-only discovery excludes tools whose annotation is missing or not exactly `true`. Before every call, the client refreshes the filtered catalog and rejects names absent from it. Credential identity is pinned across discovery pages and between read-only admission and invocation; reconfiguring the token aborts old operations rather than combining identities. The next operation can discover with the new credential.
 
 These checks retain the existing client-side annotation restriction, **not argument-sensitive proof that an operation is read-only**. Gateway grants govern actual authority. A separate restricted principal is not required by this increment. Existing `read-broker` children still use the broker; their migration is out of scope.
 

@@ -1,5 +1,5 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import {
   mergeExtensionConfig,
   parseBooleanEnv,
@@ -9,7 +9,7 @@ import {
 
 export type GatewayConfig = {
   endpoint?: string;
-  credentialFile?: string;
+  agentToken?: string;
   readOnly: boolean;
   discoveryTimeoutMs: number;
   callTimeoutMs: number;
@@ -17,7 +17,7 @@ export type GatewayConfig = {
 
 export const DEFAULT_CONFIG: GatewayConfig = {
   endpoint: undefined,
-  credentialFile: undefined,
+  agentToken: undefined,
   readOnly: false,
   discoveryTimeoutMs: 15_000,
   callTimeoutMs: 65_000,
@@ -37,7 +37,6 @@ export function parseConfig(
   const overrides: Record<string, unknown> = {};
   for (const [field, key] of Object.entries({
     endpoint: "MCP_GATEWAY_ENDPOINT",
-    credentialFile: "MCP_GATEWAY_CREDENTIAL_FILE",
     readOnly: "MCP_GATEWAY_READONLY",
     discoveryTimeoutMs: "MCP_GATEWAY_DISCOVERY_TIMEOUT_MS",
     callTimeoutMs: "MCP_GATEWAY_CALL_TIMEOUT_MS",
@@ -52,10 +51,7 @@ export function parseConfig(
   return {
     endpoint:
       typeof merged.endpoint === "string" ? merged.endpoint.trim() : undefined,
-    credentialFile:
-      typeof merged.credentialFile === "string"
-        ? merged.credentialFile.trim()
-        : undefined,
+    agentToken: env.MCP_GATEWAY_AGENT_TOKEN?.trim(),
     readOnly:
       typeof merged.readOnly === "boolean"
         ? merged.readOnly
@@ -90,8 +86,8 @@ export async function loadGatewayConfig(
     warnings.push(
       error instanceof Error ? error.message : "Invalid gateway configuration.",
     );
-    // Do not render unvalidated endpoint/path values (which could contain secrets).
-    return { ...config, endpoint: undefined, credentialFile: undefined };
+    // Do not render unvalidated endpoint values (which could contain secrets).
+    return { ...config, endpoint: undefined, agentToken: undefined };
   }
   return config;
 }
@@ -108,9 +104,9 @@ function isForwardingHostname(hostname: string): boolean {
 }
 
 export function validateConfig(config: GatewayConfig): string {
-  if (!config.endpoint || !config.credentialFile) {
+  if (!config.endpoint || !config.agentToken) {
     throw new Error(
-      "Configure MCP_GATEWAY_ENDPOINT and MCP_GATEWAY_CREDENTIAL_FILE (or global extension:mcp-gateway settings).",
+      "Configure MCP_GATEWAY_ENDPOINT (or global endpoint settings) and MCP_GATEWAY_AGENT_TOKEN. Credential-file configuration is no longer supported.",
     );
   }
   let url: URL;
@@ -137,13 +133,9 @@ export function validateConfig(config: GatewayConfig): string {
     throw new Error(
       "Gateway endpoint must use HTTPS, numeric IPv4 loopback HTTP, or an explicitly trusted HTTP forwarding hostname; exact /mcp and no userinfo, query, or fragment.",
     );
-  if (
-    !isAbsolute(config.credentialFile) ||
-    /[\x00-\x1f\x7f]/.test(config.credentialFile) ||
-    /mgw_(?:agent|admin)_/.test(config.credentialFile)
-  ) {
+  if (!/^mgw_agent_[A-Za-z0-9_-]{43}$/.test(config.agentToken)) {
     throw new Error(
-      "Gateway credentialFile must be an absolute protected file path, not a bearer value.",
+      "MCP_GATEWAY_AGENT_TOKEN must contain one valid mgw_agent_ bearer; administrator credentials are rejected.",
     );
   }
   return url.href;

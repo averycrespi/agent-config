@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { chmod, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import test from "node:test";
 import {
   GatewayError,
@@ -153,47 +151,39 @@ test("read-only calls refresh admission; missing hints, changed hints, and unava
   assert.equal(f.requests.filter((r) => r.method === "tools/call").length, 1);
 });
 
-test("credential is read on each request; rotation between read-only check and invocation fails closed", async (t) => {
+test("token reconfiguration rotates authentication and aborts an in-flight read-only admission", async (t) => {
   const f = await fixture(t);
   await f.client.listTools();
   const rotated = `mgw_agent_${Buffer.alloc(32, 2).toString("base64url")}`;
-  await writeFile(f.credentialFile, rotated);
+  f.client.configure({ ...f.config, agentToken: rotated });
+  assert.equal(f.client.getCachedTools(), undefined);
   await f.client.callTool("example.lookup", {});
   assert.equal(f.headers[1].authorization, `Bearer ${rotated}`);
   f.client.configure({ ...f.config, readOnly: true });
-  f.state.handler = async (body, response) => {
-    await writeFile(f.credentialFile, TEST_BEARER);
+  f.state.handler = (body, response) => {
+    f.client.configure({ ...f.config, agentToken: rotated, readOnly: true });
     reply(response, body, { tools: [tool()] });
   };
-  await assert.rejects(
-    f.client.callTool("example.lookup", {}),
-    (e: GatewayError) => e.code === "credential_changed",
-  );
+  await assert.rejects(f.client.callTool("example.lookup", {}));
   assert.equal(f.requests.filter((r) => r.method === "tools/call").length, 1);
 });
 
-test("bad credentials, file permissions, and symlinks are rejected without network or secret errors", async (t) => {
+test("missing and malformed environment tokens are rejected without network or secret errors", async (t) => {
   const f = await fixture(t);
   for (const value of [
+    "",
     "mgw_admin_secret",
     "plain-invalid",
     `${TEST_BEARER}\n${TEST_BEARER}`,
     "x".repeat(4097),
   ]) {
-    await writeFile(f.credentialFile, value);
+    f.client.configure({ ...f.config, agentToken: value });
     await assert.rejects(
       f.client.listTools(),
-      (e: Error) => !e.message.includes(value) && e instanceof GatewayError,
+      (e: Error) =>
+        (!value || !e.message.includes(value)) && e instanceof GatewayError,
     );
   }
-  await writeFile(f.credentialFile, TEST_BEARER);
-  await chmod(f.credentialFile, 0o644);
-  await assert.rejects(f.client.listTools(), /owner-only/);
-  await chmod(f.credentialFile, 0o600);
-  const link = join(f.dir, "link");
-  await symlink(f.credentialFile, link);
-  f.client.configure({ ...f.config, credentialFile: link });
-  await assert.rejects(f.client.listTools(), /symlinks/);
   assert.equal(f.requests.length, 0);
 });
 

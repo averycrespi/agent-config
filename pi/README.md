@@ -89,22 +89,22 @@ References: [Herdr remote access](https://herdr.dev/docs/persistence-remote/), [
 
 TypeScript modules that customize the Pi agent. Type-check with `make typecheck`.
 
-| Extension           | Purpose                                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `ask-user`          | `ask_user` tool for multiple-choice questions                                                           |
-| `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                 |
-| `context-usage`     | `/context-usage` token-blame report for current context-window usage                                    |
-| `goal`              | Fork-safe goals, bounded auto-run, and conservative evidence-backed completion                          |
-| `loop`              | Shared targetless bounded continuation controlled by agents, users, skills, and extensions              |
-| `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                       |
-| `mcp-gateway`       | Opt-in gateway-only trial with three meta-tools, compact discovery, and protected credential files      |
-| `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
-| `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                        |
-| `structured-output` | Schema-backed final output tool, no-op unless configured                                                |
-| `subagents`         | Profile-routed isolated child dispatch with explicit read, write, shell, broker, and web capabilities   |
-| `todo`              | Session-persisted TODO tool with a sticky widget                                                        |
-| `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                |
-| `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows |
+| Extension           | Purpose                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `ask-user`          | `ask_user` tool for multiple-choice questions                                                            |
+| `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                  |
+| `context-usage`     | `/context-usage` token-blame report for current context-window usage                                     |
+| `goal`              | Fork-safe goals, bounded auto-run, and conservative evidence-backed completion                           |
+| `loop`              | Shared targetless bounded continuation controlled by agents, users, skills, and extensions               |
+| `mcp-broker`        | MCP broker meta-tools plus a bash guard for direct `gh` and remote-git operations                        |
+| `mcp-gateway`       | Opt-in gateway-only trial with three meta-tools, compact discovery, and environment-token authentication |
+| `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state      |
+| `statusline`        | Single-line footer with cwd, quota, context, model, and thinking                                         |
+| `structured-output` | Schema-backed final output tool, no-op unless configured                                                 |
+| `subagents`         | Profile-routed isolated child dispatch with explicit read, write, shell, broker, and web capabilities    |
+| `todo`              | Session-persisted TODO tool with a sticky widget                                                         |
+| `web-access`        | Web search, fetch, GitHub, and PDF tools                                                                 |
+| `workflows`         | Compound discovery, validation, and foreground execution for reusable user-scoped read-mostly workflows  |
 
 Underscore-prefixed directories are libraries imported by sibling extensions, not extensions themselves — pi's extension loader skips them because they have no `index.ts`.
 
