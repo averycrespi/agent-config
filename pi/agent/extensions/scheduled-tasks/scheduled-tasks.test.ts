@@ -286,12 +286,12 @@ test("precheck script paths stay inside the scheduler scripts directory", async 
   const root = await tempRoot();
   const paths = await ensureRootLayout(root);
   assert.equal(
-    scriptPath(root, "network-and-broker.sh"),
-    join(paths.scripts, "network-and-broker.sh"),
+    scriptPath(root, "network-and-gateway.sh"),
+    join(paths.scripts, "network-and-gateway.sh"),
   );
   assert.equal(
-    scriptPath(root, "checks/network-and-broker.sh"),
-    join(paths.scripts, "checks", "network-and-broker.sh"),
+    scriptPath(root, "checks/network-and-gateway.sh"),
+    join(paths.scripts, "checks", "network-and-gateway.sh"),
   );
   assert.throws(() => scriptPath(root, "/tmp/check.sh"));
   assert.throws(() => scriptPath(root, "../check.sh"));
@@ -342,11 +342,11 @@ test("task Markdown parsing supports bash login execution shell", () => {
 test("task Markdown parsing supports scheduler-owned precheck scripts", () => {
   const parsed = parseTaskMarkdown(
     "/tmp/dependency-audit.md",
-    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nprecheck:\n  script: network-and-broker.sh\n  args: [--provider, github]\n  timeoutSeconds: 15\n  skipExitCodes: [78]\n---\nCheck dependencies.`,
+    `---\nid: dependency-audit\nenabled: true\nschedule: "0 9 * * 1"\ncwd: /tmp\nprecheck:\n  script: network-and-gateway.sh\n  args: [--provider, github]\n  timeoutSeconds: 15\n  skipExitCodes: [78]\n---\nCheck dependencies.`,
   );
   assert.deepEqual(parsed.errors, []);
   assert.deepEqual(parsed.task?.precheck, {
-    script: "network-and-broker.sh",
+    script: "network-and-gateway.sh",
     interpreter: "bash",
     args: ["--provider", "github"],
     timeoutSeconds: 15,

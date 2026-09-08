@@ -9,6 +9,29 @@ import { fixture, reply, rpcError, TEST_BEARER, tool } from "./fixture.ts";
 
 const invocationId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
+test("stalled discovery times out and invalidates a previously complete cache", async (t) => {
+  const f = await fixture(t);
+  await f.client.listTools();
+  assert.ok(f.client.getCachedTools());
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const received = new Promise<void>((resolve) => {
+    f.state.handler = () => resolve();
+  });
+  const rejected = assert.rejects(
+    f.client.listTools(),
+    (error: unknown) =>
+      error instanceof GatewayError && error.code === "cancelled",
+  );
+  await received;
+  t.mock.timers.tick(f.config.discoveryTimeoutMs);
+  await rejected;
+  assert.equal(f.client.getCachedTools(), undefined);
+  assert.equal(
+    f.requests.filter((request) => request.method === "tools/call").length,
+    0,
+  );
+});
+
 test("explicit HTTP hostname preserves Host and authentication through the real transport", async (t) => {
   const f = await fixture(t);
   const endpoint = f.config.endpoint.replace("127.0.0.1", "localhost");
@@ -122,6 +145,10 @@ test("read-only calls refresh admission; missing hints, changed hints, and unava
               tool("example.read", readOnly),
               tool("example.write", false),
               { ...tool("example.unknown"), annotations: undefined },
+              {
+                ...tool("example.truthy"),
+                annotations: { readOnlyHint: "true" },
+              },
             ],
           }
         : { content: [], structuredContent: { ok: true } },
@@ -139,6 +166,7 @@ test("read-only calls refresh admission; missing hints, changed hints, and unava
     "example.read",
     "example.write",
     "example.unknown",
+    "example.truthy",
     "injected.write",
   ])
     await assert.rejects(

@@ -616,10 +616,10 @@ test("spawnSubagent: requested structured output fails when child value is inval
 
 test("spawnSubagent env: options.env overrides process.env, PI_SUBAGENT_DEPTH always wins", async () => {
   const prevDepth = process.env.PI_SUBAGENT_DEPTH;
-  const prevVar = process.env.MCP_BROKER_READONLY;
+  const prevVar = process.env.MCP_GATEWAY_READONLY;
 
   process.env.PI_SUBAGENT_DEPTH = "0";
-  process.env.MCP_BROKER_READONLY = "parent-value";
+  process.env.MCP_GATEWAY_READONLY = "parent-value";
 
   let capturedEnv: NodeJS.ProcessEnv | undefined;
 
@@ -645,7 +645,7 @@ test("spawnSubagent env: options.env overrides process.env, PI_SUBAGENT_DEPTH al
       extensionAllowlist: [],
       cwd: "/tmp",
       env: {
-        MCP_BROKER_READONLY: "caller-value",
+        MCP_GATEWAY_READONLY: "caller-value",
         // Attempt to override PI_SUBAGENT_DEPTH — must be ignored.
         PI_SUBAGENT_DEPTH: "99",
       },
@@ -653,24 +653,24 @@ test("spawnSubagent env: options.env overrides process.env, PI_SUBAGENT_DEPTH al
 
     assert.ok(capturedEnv !== undefined, "spawn was called");
     // options.env overrides process.env
-    assert.equal(capturedEnv!.MCP_BROKER_READONLY, "caller-value");
+    assert.equal(capturedEnv!.MCP_GATEWAY_READONLY, "caller-value");
     // PI_SUBAGENT_DEPTH must be the computed value (0 + 1 = 1), not caller's 99
     assert.equal(capturedEnv!.PI_SUBAGENT_DEPTH, "1");
   } finally {
     stub.mock.restore();
     if (prevDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
     else process.env.PI_SUBAGENT_DEPTH = prevDepth;
-    if (prevVar === undefined) delete process.env.MCP_BROKER_READONLY;
-    else process.env.MCP_BROKER_READONLY = prevVar;
+    if (prevVar === undefined) delete process.env.MCP_GATEWAY_READONLY;
+    else process.env.MCP_GATEWAY_READONLY = prevVar;
   }
 });
 
 test("spawnSubagent env: omitting options.env passes process.env through unchanged", async () => {
   const prevDepth = process.env.PI_SUBAGENT_DEPTH;
-  const prevVar = process.env.MCP_BROKER_READONLY;
+  const prevVar = process.env.MCP_GATEWAY_READONLY;
 
   process.env.PI_SUBAGENT_DEPTH = "0";
-  process.env.MCP_BROKER_READONLY = "parent-value";
+  process.env.MCP_GATEWAY_READONLY = "parent-value";
 
   let capturedEnv: NodeJS.ProcessEnv | undefined;
 
@@ -696,14 +696,14 @@ test("spawnSubagent env: omitting options.env passes process.env through unchang
     });
 
     assert.ok(capturedEnv !== undefined, "spawn was called");
-    assert.equal(capturedEnv!.MCP_BROKER_READONLY, "parent-value");
+    assert.equal(capturedEnv!.MCP_GATEWAY_READONLY, "parent-value");
     assert.equal(capturedEnv!.PI_SUBAGENT_DEPTH, "1");
   } finally {
     stub.mock.restore();
     if (prevDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
     else process.env.PI_SUBAGENT_DEPTH = prevDepth;
-    if (prevVar === undefined) delete process.env.MCP_BROKER_READONLY;
-    else process.env.MCP_BROKER_READONLY = prevVar;
+    if (prevVar === undefined) delete process.env.MCP_GATEWAY_READONLY;
+    else process.env.MCP_GATEWAY_READONLY = prevVar;
   }
 });
 

@@ -7,12 +7,6 @@ import { registerGuard } from "./guard.ts";
 import { registerTools } from "./tools.ts";
 
 export default function (pi: ExtensionAPI) {
-  pi.registerFlag("mcp-gateway", {
-    type: "boolean",
-    default: false,
-    description:
-      "Enable MCP Gateway tools in an isolated session (exclude mcp-broker).",
-  });
   registerConfigCommand(pi, {
     extensionName: "mcp-gateway",
     loadConfig: loadGatewayConfig,
@@ -21,8 +15,7 @@ export default function (pi: ExtensionAPI) {
   const client = new GatewayClient();
   let active = false;
   pi.on("session_start", async (_event, ctx) => {
-    // CLI flags are populated after factories run; Stow may already expose this directory.
-    if (pi.getFlag("mcp-gateway") !== true || active) return;
+    if (active) return;
     if (
       pi
         .getAllTools()
@@ -32,7 +25,7 @@ export default function (pi: ExtensionAPI) {
     ) {
       if (ctx.hasUI)
         ctx.ui.notify(
-          "MCP Gateway not enabled: conflicting MCP tools are loaded. Use --no-extensions -e <gateway-path> --mcp-gateway.",
+          "MCP Gateway not enabled: conflicting MCP tools are loaded. Remove the duplicate MCP provider and restart Pi.",
           "error",
         );
       throw new Error(

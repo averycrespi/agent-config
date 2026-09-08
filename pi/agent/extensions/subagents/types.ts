@@ -5,7 +5,7 @@ export const CAPABILITIES = [
   "read-filesystem",
   "write-filesystem",
   "exec-shell",
-  "read-broker",
+  "read-mcp",
   "read-web",
 ] as const;
 

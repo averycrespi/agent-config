@@ -8,9 +8,9 @@ This repo manages [Pi](https://pi.dev/) agent configuration via [GNU Stow](https
 
 - `pi/agent/` → symlinked to `~/.pi/agent/` (Pi agent extensions, agents, skills)
 
-## Broker Surface
+## MCP Surface
 
-Pi uses the `pi/agent/extensions/mcp-broker/` extension, which exposes the broker through the agent tools `mcp_search`, `mcp_describe`, and `mcp_call`. Keep docs under `pi/` written for that broker extension surface.
+Pi uses `pi/agent/extensions/mcp-gateway/` for authenticated external access through `mcp_search`, `mcp_describe`, and `mcp_call`. Keep operational instructions and documentation under `pi/` aligned with this gateway surface. Installation and changes to running sessions require explicit user authorization.
 
 ## Public Repository Guidelines
 

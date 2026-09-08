@@ -39,7 +39,7 @@ export function validateMonitor(s) {
   );
 }
 
-// Observations are supplied by the broker caller; this module never authenticates or polls.
+// Observations are supplied by the gateway caller; this module never authenticates or polls.
 export function updateMonitor(previous, request, now = Date.now()) {
   requireThat(Number.isSafeInteger(now) && now >= 0, "invalid monitor clock");
   if (previous) validateMonitor(previous);

@@ -106,7 +106,7 @@ The extension writes no retained diagnostic logs.
 
 ## Boundaries and non-goals
 
-- No authenticated GitHub integration; use the MCP broker for authenticated GitHub work.
+- No authenticated GitHub integration; use MCP Gateway for authenticated GitHub work.
 - No recursive crawl or multi-page research orchestration.
 - No browser profiles, cookies, screenshots, interaction, downloads, or arbitrary page scripts supplied by the caller.
 - No guarantee that hosted keyless providers remain free or available.

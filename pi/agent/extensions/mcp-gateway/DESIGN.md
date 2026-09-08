@@ -1,10 +1,10 @@
 # MCP Gateway design
 
-Expose an existing governed MCP Gateway through three stable Pi meta-tools while keeping the current broker untouched. This increment must remain opt-in and independently testable; it is not the cutover mechanism.
+Expose the governed MCP Gateway as Pi's default authenticated external-access surface through three stable meta-tools, including explicitly loaded read-only children.
 
 ## Architecture
 
-- `index.ts` registers the CLI opt-in and config command. CLI flag values are unavailable during initial factory loading, so tool registration is deferred to `session_start`. Refuse activation if another MCP meta-tool is already registered. The default path must remain network-free and tool-inert even when Stow exposes this directory.
+- `index.ts` registers the config command and defers tool activation to `session_start`, when existing tool providers can be inspected. Refuse activation if another MCP meta-tool is already registered. No opt-in flag is required. Factories remain network-free; startup discovery failures must not disable the tools or unrelated Pi use.
 - `config.ts` loads only global settings plus explicit environment overrides through shared config helpers. Project settings cannot redirect a global credential. The token is loaded only from `MCP_GATEWAY_AGENT_TOKEN`, never JSON settings or a credential file. Public endpoint/token validation errors are static and must not echo unvalidated input. Config inspection must mask `agentToken`.
 - `client.ts` owns modern JSON HTTP requests, configured bearer authentication, pagination, read-only admission, cancellation, response limits, safe error projection, and the advisory catalog cache.
 - `catalog.ts` owns bounded keyword discovery and the namespace-count prompt. Do not regenerate a per-tool system-prompt inventory.
@@ -27,7 +27,7 @@ Use the current gateway's implemented `2026-07-28` stateless contract: explicit 
 
 Bound response transfer before JSON parsing and bound aggregate catalog work. Validate the envelope ID and result shape. Decode before credential redaction so JSON escapes cannot hide a bearer echo. Discard raw HTTP problem bodies and arbitrary JSON-RPC error strings; project only closed safe codes, validated gateway invocation IDs (`^[0-7][0-9A-HJKMNP-TV-Z]{25}$`, not UUIDs), and explicit uncertainty. Result shape/transport failures after a call may mean effects occurred.
 
-There is exactly one client invocation attempt. Never reuse the broker's session-looking-error retry heuristic. Cancellation, timeout, credentials changing, gateway restart, grant approval, and unknown outcomes must not create a replay edge. A cancelled request is not evidence that a downstream effect did not occur.
+There is exactly one client invocation attempt. Never infer replay safety from session-looking errors. Cancellation, timeout, credentials changing, gateway restart, grant approval, and unknown outcomes must not create a replay edge. A cancelled request is not evidence that a downstream effect did not occur.
 
 ## Security boundaries
 
@@ -39,6 +39,6 @@ Remote schemas, names, results, and candidate lists remain untrusted. Normalize 
 
 ## Non-goals and change guidance
 
-No approval orchestration, administrator surface, credential provisioning, multi-backend router, deferred tool activation, code composition, legacy negotiation, persistent discovery store, or broker/subagent migration. Do not import broker internals: the temporary parallel implementation must remain removable without changing broker behavior. Shared generic helpers are reusable; avoid extracting a new transport abstraction across incompatible gateway/broker lifecycles.
+No approval orchestration, administrator surface, credential provisioning, multi-backend router, deferred tool activation, code composition, legacy negotiation, or persistent discovery store. Shared generic helpers are reusable. Subagent policy owns `read-mcp` extension selection and forces the read-only environment override at launch; the gateway client owns refreshed annotation admission. Keep those boundaries aligned with workflow admission and scheduled process-environment propagation.
 
-Tests cover actual HTTP envelopes and call counts, stale/invalid pages, rotation/admission, cancellation/shutdown, size limits, safe result conversion, prompt bounds, terminal controls, semantic/framework errors, and the real Pi loader's late flag application. Add tests at the observable boundary for changes to these invariants. Required repository checks and the separately recorded live-session gate remain distinct evidence.
+Tests cover actual HTTP envelopes and call counts, stale/invalid pages, rotation/admission, cancellation/shutdown, size limits, safe result conversion, prompt bounds, terminal controls, semantic/framework errors, and default activation through the real Pi loader. Add tests at the observable boundary for changes to these invariants. Required repository checks and the separately recorded live-session gate remain distinct evidence.

@@ -92,7 +92,7 @@ The shipped workflow accepts a non-empty question and uses exact routing:
 - public-web search: `read-web`, `fast` profile, one retry;
 - extraction and three claim-verification ballots: `read-web`, `strong` profile; extraction retries once.
 
-It scopes up to five facets, extracts up to twelve public HTTPS sources, requires two verification votes plus authoritative/primary evidence or reputable independent secondary publishers, then audits the final cited report. One repair is allowed; a second failed audit rejects the report. Remote content is untrusted data. No branch receives broker, shell, or filesystem-discovery capability from the workflow.
+It scopes up to five facets, extracts up to twelve public HTTPS sources, requires two verification votes plus authoritative/primary evidence or reputable independent secondary publishers, then audits the final cited report. One repair is allowed; a second failed audit rejects the report. Remote content is untrusted data. No branch receives MCP, shell, or filesystem-discovery capability from the workflow.
 
 ### `review`
 
@@ -125,7 +125,7 @@ Supply optional `deliveryScope: {boundary, requirements: [{id, description, requ
 
 Set `reviewMode: "confirmation"` after authorized repairs and provide original blockers, dispositions, repair scope, and affected boundaries in `priorReviewContext`. Confirmation focuses on those blockers, affected boundaries, and repair-induced regressions instead of unrestricted fresh review. `reviewMode` otherwise defaults to `initial`. Use a new `initial` review when scope or requirements expand beyond prior coverage; a boundary label alone does not require duplicate review. The caller owns repair authority, budgets, and persistence. The workflow itself never mutates code or manages repair allowances.
 
-All model calls receive only `read-filesystem`; no review branch gets shell, web, broker, or mutation authority. Repository artifacts, diffs, comments, and prior model output are treated as untrusted evidence. The workflow does not fix findings or loop back into implementation; rerun it against a newly prepared revision after repairs.
+All model calls receive only `read-filesystem`; no review branch gets shell, web, MCP, or mutation authority. Repository artifacts, diffs, comments, and prior model output are treated as untrusted evidence. The workflow does not fix findings or loop back into implementation; rerun it against a newly prepared revision after repairs.
 
 ## Model and capability policy
 
@@ -145,11 +145,11 @@ Failures preserve distinct codes for policy, provider/schema, structured output,
 
 Scripts reject imports, `require`, filesystem/network/process/global/buffer/worker/timer APIs, clocks, randomness, performance counters, and cryptography. Execution uses a separate Node child with an empty environment, permission mode, no filesystem/network/child-process grants, and string code generation disabled. The extension fails closed when required Node flags are unavailable.
 
-The host treats sandbox RPC as untrusted. It validates required execution fields and output schemas, controls retries/timeouts/budgets, and passes only sanitized requests to `runSubagent()`. Both sandbox validation and host admission reject `write-filesystem` and `exec-shell`; workflow children may use only `read-filesystem`, `read-broker`, `read-web`, or no tools.
+The host treats sandbox RPC as untrusted. It validates required execution fields and output schemas, controls retries/timeouts/budgets, and passes only sanitized requests to `runSubagent()`. Both sandbox validation and host admission reject `write-filesystem` and `exec-shell`; workflow children may use only `read-filesystem`, `read-mcp`, `read-web`, or no tools. Unknown and retired capability names are rejected by both boundaries.
 
 ## Rendering
 
-The separate call row is suppressed, and every result starts with one width-truncated header identifying `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Run output shows agent progress by default in chronological start order, with the newest at the bottom, using the shared two-line grammar: status, intent, duration, and tool/token counts first; then profile, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `broker`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
+The separate call row is suppressed, and every result starts with one width-truncated header identifying `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Run output shows agent progress by default in chronological start order, with the newest at the bottom, using the shared two-line grammar: status, intent, duration, and tool/token counts first; then profile, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `mcp`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
 
 ## Configuration
 

@@ -7,10 +7,10 @@ const cases = [
   ["write-filesystem", ["edit", "write"], [], {}],
   ["exec-shell", ["bash"], [], {}],
   [
-    "read-broker",
+    "read-mcp",
     ["mcp_search", "mcp_describe", "mcp_call", "read"],
-    ["mcp-broker"],
-    { MCP_BROKER_READONLY: "1", MCP_BROKER_APPROVAL_MODE: "reject" },
+    ["mcp-gateway"],
+    { MCP_GATEWAY_READONLY: "1" },
   ],
   ["read-web", ["web_search", "web_fetch", "read"], ["web-access"], {}],
 ] as const;
@@ -32,7 +32,7 @@ test("capability unions follow catalog order and deduplicate dependencies", () =
       "read-web",
       "read-filesystem",
       "read-web",
-      "read-broker",
+      "read-mcp",
     ]),
     {
       tools: [
@@ -46,10 +46,9 @@ test("capability unions follow catalog order and deduplicate dependencies", () =
         "web_search",
         "web_fetch",
       ],
-      extensions: ["mcp-broker", "web-access"],
+      extensions: ["mcp-gateway", "web-access"],
       env: {
-        MCP_BROKER_READONLY: "1",
-        MCP_BROKER_APPROVAL_MODE: "reject",
+        MCP_GATEWAY_READONLY: "1",
       },
     },
   );

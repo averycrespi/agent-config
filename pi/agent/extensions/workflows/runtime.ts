@@ -933,8 +933,14 @@ function validateWorkflowCapabilities(
     (capability) =>
       capability === "write-filesystem" || capability === "exec-shell",
   );
-  return mutable
-    ? `capability ${mutable} is not allowed in read-mostly workflows`
+  if (mutable)
+    return `capability ${mutable} is not allowed in read-mostly workflows`;
+  const unknown = capabilities.find(
+    (capability) =>
+      !["read-filesystem", "read-mcp", "read-web"].includes(capability),
+  );
+  return unknown !== undefined
+    ? `unknown workflow capability: ${unknown}`
     : undefined;
 }
 

@@ -33,15 +33,15 @@ Brief each child with one question or task, scope boundaries, relevant context a
 
 Capabilities compose by deterministic catalog order. Tools and extensions are deduplicated.
 
-| Capability         | Effective tools                                  | Extensions   | Additional policy                                                     |
-| ------------------ | ------------------------------------------------ | ------------ | --------------------------------------------------------------------- |
-| `read-filesystem`  | `read`, `ls`, `find`, `grep`                     | none         | Read-only filesystem inspection.                                      |
-| `write-filesystem` | `edit`, `write`                                  | none         | Direct file mutation; does not imply read or shell authority.         |
-| `exec-shell`       | `bash`                                           | none         | Full shell authority; commands can mutate files and systems.          |
-| `read-broker`      | `mcp_search`, `mcp_describe`, `mcp_call`, `read` | `mcp-broker` | Forces `MCP_BROKER_READONLY=1` and `MCP_BROKER_APPROVAL_MODE=reject`. |
-| `read-web`         | `web_search`, `web_fetch`, `read`                | `web-access` | `read` supports known spill-file paths returned by web tools.         |
+| Capability         | Effective tools                                  | Extensions    | Additional policy                                                             |
+| ------------------ | ------------------------------------------------ | ------------- | ----------------------------------------------------------------------------- |
+| `read-filesystem`  | `read`, `ls`, `find`, `grep`                     | none          | Read-only filesystem inspection.                                              |
+| `write-filesystem` | `edit`, `write`                                  | none          | Direct file mutation; does not imply read or shell authority.                 |
+| `exec-shell`       | `bash`                                           | none          | Full shell authority; commands can mutate files and systems.                  |
+| `read-mcp`         | `mcp_search`, `mcp_describe`, `mcp_call`, `read` | `mcp-gateway` | Forces `MCP_GATEWAY_READONLY=1`; refreshed annotation admission before calls. |
+| `read-web`         | `web_search`, `web_fetch`, `read`                | `web-access`  | `read` supports known spill-file paths returned by web tools.                 |
 
-`read-broker` also includes `read` for broker spill files. Neither web nor broker authority implicitly grants `ls`, `find`, or `grep`. Calls receive only requested capabilities, subject to the global ceiling. Custom capability packs are intentionally unsupported.
+`read-mcp` also includes `read` for gateway spill files. Neither web nor MCP authority implicitly grants `ls`, `find`, or `grep`. Calls receive only requested capabilities, subject to the global ceiling. Custom capability packs are intentionally unsupported.
 
 `write-filesystem` and `exec-shell` are mutable authority. Any `spawn_agents` request containing either capability must contain exactly one agent, and a shared exclusive gate serializes mutable children across concurrent tool calls. This is serialization, not sandboxing: file tools are not workspace-root restricted, and shell inherits the parent environment. The gate does not enforce user authorization, workflow prerequisites, or exclusion of parent-session edits; callers remain responsible for those boundaries.
 
@@ -100,11 +100,11 @@ Results use `## <intent>` headings followed by capability/profile metadata. `det
 
 ## UI
 
-Default output shows the `spawn_agents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with the profile, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `write`, `shell`, `broker`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
+Default output shows the `spawn_agents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with the profile, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `write`, `shell`, `mcp`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
 
 ## Configuration
 
-Settings are global/env-only under `extension:subagents`; project settings cannot widen policy. Environment values override valid global settings. Use `/subagents-config` to inspect effective parsed configuration.
+Settings are global/env-only under `extension:subagents`; project settings cannot widen policy. Environment values override global settings. An invalid capability ceiling denies all capabilities with a diagnostic rather than widening to defaults. Replace retired capability names in local settings and launch environments; see the [gateway migration guide](../mcp-gateway/README.md#migration-and-qualification). Use `/subagents-config` to inspect effective parsed configuration.
 
 | Field                   | Default                     | Environment override                | Description                                                           |
 | ----------------------- | --------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
@@ -135,7 +135,7 @@ The shipped routing is a policy choice, not a measured performance improvement. 
       "read-filesystem",
       "write-filesystem",
       "exec-shell",
-      "read-broker",
+      "read-mcp",
       "read-web"
     ]
   }

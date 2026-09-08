@@ -479,7 +479,7 @@ test("CI state persists and requires an explicit, idempotent user allowance addi
       head: watch.head,
       requirementsKnown: true,
       checks: [{ name: "Required", state: "passed" }],
-      reference: "broker check result",
+      reference: "gateway check result",
     },
   });
   assert.equal((await f.status()).monitor.disposition, "passed");

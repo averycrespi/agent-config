@@ -69,7 +69,7 @@ test("parseBooleanEnv reports invalid values without throwing", () => {
 test("maskConfigValue masks configured sensitive fields and preserves unset values", () => {
   const result = maskConfigValue(
     {
-      endpoint: "https://broker.example.com",
+      endpoint: "https://gateway.example.com",
       authToken: "secret-token",
       nested: { authToken: undefined },
     },
@@ -77,7 +77,7 @@ test("maskConfigValue masks configured sensitive fields and preserves unset valu
   );
 
   assert.deepEqual(result, {
-    endpoint: "https://broker.example.com",
+    endpoint: "https://gateway.example.com",
     authToken: "********",
     nested: { authToken: "(unset)" },
   });

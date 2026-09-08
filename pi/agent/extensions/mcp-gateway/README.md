@@ -1,12 +1,12 @@
 # MCP Gateway
 
-Opt-in Pi integration for the companion MCP Gateway. It keeps three stable meta-tools instead of exposing hundreds of upstream schemas. The existing broker remains the default; this extension does not migrate subagents or replace broker instructions.
+Default Pi integration for the companion MCP Gateway. It keeps three stable meta-tools instead of exposing hundreds of upstream schemas. Normal discovery and explicit child loading activate the same integration without an opt-in flag.
 
-## Isolated trial session
+## Startup
 
-The extension is inert unless Pi starts with `--mcp-gateway`. Even if Stow makes the directory discoverable, it registers no MCP tools, prompt summary, or guard without this flag. `/mcp-gateway-config` remains available.
+When installed, start Pi normally. Missing configuration or an unavailable gateway leaves Pi usable; MCP tools report actionable errors. `/mcp-gateway-config` is available for inspection.
 
-Start a **new gateway-only session**, excluding auto-discovered extensions:
+To test a source checkout without installation, start a **new session** with the explicit extension path:
 
 Enter the agent token without placing its value in shell history (Bash):
 
@@ -16,12 +16,10 @@ printf '\n'
 export MCP_GATEWAY_AGENT_TOKEN
 
 MCP_GATEWAY_ENDPOINT=http://127.0.0.1:8210/mcp \
-pi --no-extensions -e /absolute/agent-config/pi/agent/extensions/mcp-gateway/index.ts --mcp-gateway
+pi --no-extensions -e /absolute/agent-config/pi/agent/extensions/mcp-gateway/index.ts
 ```
 
-`--no-extensions` disables discovery but still loads explicit `-e` paths. Explicitly add other extensions only if they do not provide the MCP meta-tools. If a conflicting MCP tool is already registered, gateway startup reports a conflict without replacing it. Do not enable both integrations, rely on load order, or resume a broker-oriented session for the trial. Restart or `/reload` to reload extension code/configuration. No installation or Stow command is required to run the explicit source path.
-
-Existing `AGENTS.md` and skills may still call this surface a broker until the later cutover. The actual gateway-only tool surface and its behavior apply in the trial; grant tools are not broker approval waits. Keep the ordinary broker session unchanged.
+`--no-extensions` disables discovery but still loads explicit `-e` paths. Add other extensions only if they do not provide the MCP meta-tools. A conflicting provider produces a startup error without replacing its tools; remove the duplicate provider and restart rather than relying on load order. No installation or Stow command is required to run the explicit source path.
 
 ### VM/container forwarding
 
@@ -39,7 +37,7 @@ The companion's stock `serve-demo` launcher currently does not expose `--allowed
 
 The prompt contains at most **24 namespaces**, each with its tool count, plus fixed discovery guidance. It never injects the full tool inventory or schemas. Namespace names are bounded to 80 characters. Tool metadata is untrusted data, not instructions or authorization.
 
-Discovery uses modern stateless HTTP MCP **2026-07-28**, not the broker's long-lived SDK session. There is no legacy negotiation or automatic downgrade. Startup, each agent start, search, and describe refresh the paginated catalog. The guard uses only the most recently completed traversal. Failed/incomplete discovery drops the cache. A stale cursor restarts discovery once, within the same deadline; other discovery failures are surfaced without retry.
+Discovery uses modern stateless HTTP MCP **2026-07-28**, without a long-lived SDK session. There is no legacy negotiation or automatic downgrade. Startup, each agent start, search, and describe refresh the paginated catalog. The guard uses only the most recently completed traversal. Failed/incomplete discovery drops the cache. A stale cursor restarts discovery once, within the same deadline; other discovery failures are surfaced without retry.
 
 Each response is bounded to **16 MiB**; a discovery operation shares **32 MiB**, **100 pages**, and **10,000 descriptors** across both attempts, including discarded pages and JSON error bodies. Byte budgets are enforced while consuming the response, before JSON parsing; the chunk that crosses a limit is rejected and the remaining body cancelled. Repeated cursors, duplicate names, malformed descriptors, and over-limit catalogs fail explicitly rather than returning apparent completeness.
 
@@ -76,7 +74,7 @@ Keep bearer values out of shell history, command arguments, settings JSON, promp
 
 Read-only discovery excludes tools whose annotation is missing or not exactly `true`. Before every call, the client refreshes the filtered catalog and rejects names absent from it. Credential identity is pinned across discovery pages and between read-only admission and invocation; reconfiguring the token aborts old operations rather than combining identities. The next operation can discover with the new credential.
 
-These checks retain the existing client-side annotation restriction, **not argument-sensitive proof that an operation is read-only**. Gateway grants govern actual authority. A separate restricted principal is not required by this increment. Existing `read-broker` children still use the broker; their migration is out of scope.
+Direct subagents and workflow children requesting `read-mcp` explicitly load this extension and force `MCP_GATEWAY_READONLY=1` after inherited environment values. They inherit endpoint configuration and the process-environment token, and receive `read` for spill inspection. These checks are **not argument-sensitive proof that an operation is read-only**, nor a credential sandbox. Gateway grants govern actual authority.
 
 Identity and grant-request operations such as `mcp_gateway.create_grant_request` are ordinary MCP tools. Search, describe, and invoke them like any other tool. The extension does not recognize approval-required calls, open an approval UI, poll requests, or replay calls after grants change. Gateway approvals do not execute the motivating operation; any later invocation is explicit.
 
@@ -94,14 +92,18 @@ Framed text above **25,000 characters** spills to `${tmpdir()}/pi-extension-spil
 
 Failed calls write small diagnostic logs under `${tmpdir()}/pi-extension-logs/mcp-gateway/`, using the shared logger's owner-only files and lazy seven-day retention. Logs contain only the failure code and optional invocation ID—not arguments, credentials, raw HTTP errors, or result payloads. The returned failure includes a log path when available. No persistent catalog or transport session is stored.
 
-Tool rows use the broker-style single header: bold tool name, accent query/target, and muted argument names (never argument values) for calls. Successful search results show matching/total counts and a shown count when capped; describe shows a short description; calls preview up to three nonempty output lines with an omitted-line count. Success does not repeat the header or add a completion banner. Running rows show yellow progress, and failures show a red action-specific error with unknown-outcome warnings kept visible. Expanded rows include counts, diagnostic/spill paths, and up to 30 bounded text lines. Renderers strip terminal control sequences before styling and truncate to available width.
+Tool rows use a single header: bold tool name, accent query/target, and muted argument names (never argument values) for calls. Successful search results show matching/total counts and a shown count when capped; describe shows a short description; calls preview up to three nonempty output lines with an omitted-line count. Success does not repeat the header or add a completion banner. Running rows show yellow progress, and failures show a red action-specific error with unknown-outcome warnings kept visible. Expanded rows include counts, diagnostic/spill paths, and up to 30 bounded text lines. Renderers strip terminal control sequences before styling and truncate to available width.
 
 ## Advisory bash guard
 
-Direct `gh` and remote-git operations (`push`, `pull`, `fetch`, `ls-remote`, `remote`) still execute. The guard queues at most one steering hint per turn, with up to three visible candidates. It does not echo the command or arguments into retained hints. Local git is unaffected. Detection is heuristic; false positives never block work.
+Direct `gh` and remote-git operations (`push`, `pull`, `fetch`, `ls-remote`, and networked `remote show/update/prune`) still execute. The guard queues at most one steering hint per turn, with up to three visible candidates. It does not echo the command or arguments into retained hints. Local git is unaffected. Detection is heuristic; false positives never block work.
 
-## Validation and cutover boundary
+## Migration and qualification
 
-Automated tests exercise a deterministic local HTTP fixture and the real Pi extension loader; they are not evidence of live gateway or upstream-service validation. Before cutover, choose the live test environment and record gateway/extension revisions, discovery/describe/safe-call results, ordinary grant-tool behavior, rendering/errors, and any gaps. The isolated demo and a configured real gateway are alternatives; neither is provisioned automatically. Real external mutations need explicit authorization.
+This is a breaking replacement of `mcp-broker`: remove its explicit extension paths, `extension:mcp-broker` settings, and `MCP_BROKER_*` environment values from your local launch configuration. They are not gateway aliases or fallback configuration. Replace `read-broker` with `read-mcp` in local capability ceilings, workflow scripts and prompts; the old capability is rejected. Remove the obsolete `--mcp-gateway` trial flag.
 
-Broker removal, subagent/workflow capability migration, and broad reference updates are a separate increment after live validation. No full replacement is claimed by installing this extension.
+Configure the endpoint in trusted global settings or environment and supply `MCP_GATEWAY_AGENT_TOKEN` only in the process environment. Update private scheduled tasks and their prechecks to gateway semantics; allow `mcp_search`, `mcp_describe`, `mcp_call` and read-only filesystem tools for spill inspection. Do not store tokens in task Markdown or settings JSON. Restart Pi and scheduler launch processes with the intended environment. Existing running sessions are not hot-migrated. Applying installation, private settings/task migration, service changes or deployment requires separate authorization.
+
+If MCP fails, inspect `/mcp-gateway-config`, endpoint reachability and gateway grants; do not restore a compatibility provider or replay an uncertain invocation. Grant requests remain ordinary tools, not held approval calls.
+
+Automated HTTP fixtures and loader tests are not live gateway qualification. Record exact extension and deployed gateway revisions, environment, discovery/describe/safe-call outcomes, read-only exclusion, noninteractive failures and gaps for normal Pi, a direct child, a workflow child and a scheduled run. The isolated demo and a configured real gateway are alternatives; neither is provisioned automatically. Real external mutations require explicit authorization.

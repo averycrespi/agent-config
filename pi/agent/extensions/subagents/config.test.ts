@@ -40,7 +40,7 @@ test("config exposes centralized policy defaults", () => {
     "read-filesystem",
     "write-filesystem",
     "exec-shell",
-    "read-broker",
+    "read-mcp",
     "read-web",
   ]);
   assert.equal("allowedEffortLevels" in DEFAULT_SUBAGENTS_CONFIG, false);
@@ -86,7 +86,7 @@ test("every field has an environment override", () => {
         SUBAGENTS_PROFILE_BALANCED_EFFORT: "medium",
         SUBAGENTS_PROFILE_STRONG_MODEL: "env/s",
         SUBAGENTS_PROFILE_STRONG_EFFORT: "max",
-        SUBAGENTS_ALLOWED_CAPABILITIES: "read-broker,write-filesystem",
+        SUBAGENTS_ALLOWED_CAPABILITIES: "read-mcp,write-filesystem",
       },
     ),
     {
@@ -97,7 +97,7 @@ test("every field has an environment override", () => {
       profileBalancedEffort: "medium",
       profileStrongModel: "env/s",
       profileStrongEffort: "max",
-      allowedCapabilities: ["read-broker", "write-filesystem"],
+      allowedCapabilities: ["read-mcp", "write-filesystem"],
     },
   );
 });
@@ -178,12 +178,27 @@ test("invalid values warn and preserve valid fallback policy", () => {
     value.profileStrongEffort,
     DEFAULT_SUBAGENTS_CONFIG.profileStrongEffort,
   );
-  assert.deepEqual(
-    value.allowedCapabilities,
-    DEFAULT_SUBAGENTS_CONFIG.allowedCapabilities,
-  );
+  assert.deepEqual(value.allowedCapabilities, []);
   assert.match(warnings.join("\n"), /invalid global profileBalancedModel/);
   assert.match(warnings.join("\n"), /invalid global profileStrongEffort/);
+});
+
+test("retired capability ceilings fail closed rather than broadening to defaults", () => {
+  for (const [settings, env] of [
+    [{ allowedCapabilities: ["read-broker"] }, {}],
+    [
+      { allowedCapabilities: ["read-filesystem"] },
+      { SUBAGENTS_ALLOWED_CAPABILITIES: "read-broker" },
+    ],
+    [{}, { SUBAGENTS_ALLOWED_CAPABILITIES: "" }],
+  ] as const) {
+    const warnings: string[] = [];
+    assert.deepEqual(
+      normalizeSubagentsConfig(settings, env, warnings).allowedCapabilities,
+      [],
+    );
+    assert.match(warnings.join("\n"), /denying all capabilities/);
+  }
 });
 
 test("project settings cannot widen global subagent policy", async () => {

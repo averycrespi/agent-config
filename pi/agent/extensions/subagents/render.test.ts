@@ -61,7 +61,7 @@ test("done progress rows split intent stats from compact execution policy", () =
           "read-filesystem",
           "write-filesystem",
           "exec-shell",
-          "read-broker",
+          "read-mcp",
           "read-web",
         ],
       }) as any,
@@ -69,7 +69,7 @@ test("done progress rows split intent stats from compact execution policy", () =
     ),
     [
       "✓ docs · 12s · 2 tool uses · 4.1k tokens",
-      "  balanced (fs, write, shell, broker, web)",
+      "  balanced (fs, write, shell, mcp, web)",
     ],
   );
 });

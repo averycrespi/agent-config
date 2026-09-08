@@ -19,7 +19,18 @@ export function matchCommand(
     .replace(/'[^']*'|"[^"]*"/g, "")
     .split(/&&|\|\||;|\||\n/g)) {
     if (GH.test(segment)) return { namespace: "github", query: segment };
-    if (GIT.test(segment)) return { namespace: "git", query: segment };
+    const git = GIT.exec(segment);
+    if (git) {
+      if (git[1] === "remote") {
+        const args = segment.slice(git[0].length).trim();
+        if (
+          !/^(update|prune|show)\b/.test(args) ||
+          /(?:^|\s)-n(?:\s|$)/.test(args)
+        )
+          continue;
+      }
+      return { namespace: "git", query: segment };
+    }
   }
   return undefined;
 }

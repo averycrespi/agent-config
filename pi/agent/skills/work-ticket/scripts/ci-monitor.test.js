@@ -17,7 +17,7 @@ const observe = (state, overrides = {}) => ({
       { name: "Tests", state },
       { name: "Required", state },
     ],
-    reference: "broker result for current attempt",
+    reference: "gateway result for current attempt",
     ...overrides,
   },
 });
@@ -76,7 +76,7 @@ test("poll cadence, cumulative wait and final observation remain bounded through
   assert.equal(
     s.waitUsedMs,
     POLL_MS,
-    "active broker call did not consume waiting",
+    "active gateway call did not consume waiting",
   );
   s = updateMonitor(s, { operation: "pause" }, WAIT_MS + 10000);
   assert.equal(s.waitUsedMs, WAIT_MS);

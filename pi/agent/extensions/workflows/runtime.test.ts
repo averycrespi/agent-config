@@ -94,6 +94,55 @@ test("agent requires explicit intent, capabilities, and profile", async () => {
   }
 });
 
+test("workflow sandbox rejects retired and unknown capabilities before dispatch", async () => {
+  for (const capability of ["read-broker", "unknown", ""]) {
+    let launched = false;
+    await assert.rejects(
+      runWorkflow(
+        script(
+          `export async function run() { return await agent("x", { intent: "x", capabilities: [${JSON.stringify(capability)}], profile: "balanced" }); }`,
+        ),
+        {
+          cwd: "/tmp",
+          spawnAgent: async () => {
+            launched = true;
+            return { ok: true, text: "unexpected" };
+          },
+        },
+      ),
+      /unknown workflow capability/,
+    );
+    assert.equal(launched, false);
+  }
+});
+
+test("workflow sandbox forwards read-mcp and the host rejects a retired capability", async () => {
+  const seen: string[][] = [];
+  const result = await runWorkflow(
+    script(
+      `export async function run() { return await agent("x", { intent: "x", capabilities: ["read-mcp"], profile: "balanced" }); }`,
+    ),
+    {
+      cwd: "/tmp",
+      spawnAgent: async (value) => {
+        seen.push(value.capabilities);
+        return { ok: true, text: "accepted" };
+      },
+    },
+  );
+  assert.equal(result.result, "accepted");
+  assert.deepEqual(seen, [["read-mcp"]]);
+  const spawn = createWorkflowAgentSpawner({
+    cwd: "/tmp",
+    modelRegistry: registry,
+    logId: "capability-admission",
+  });
+  const rejected = await spawn(
+    request({ capabilities: ["read-broker" as any] }),
+  );
+  assert.equal(rejected.ok, false);
+});
+
 test("verify requires the same explicit execution policy and remains a strict verdict helper", async () => {
   await assert.rejects(
     runWorkflow(

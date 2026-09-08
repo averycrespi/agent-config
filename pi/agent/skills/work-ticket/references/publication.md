@@ -1,6 +1,6 @@
 # PR Delivery and CI
 
-Follow [work-ticket](../SKILL.md) and [the checkpoint interface](helper.md). Use discovered broker schemas for authenticated Git/GitHub operations. Respect the explicit delivery boundary: review-ready PR delivery includes bounded monitoring and corrective pushes; draft-only or publication-only instructions do not silently expand that authority.
+Follow [work-ticket](../SKILL.md) and [the checkpoint interface](helper.md). Use discovered gateway schemas for authenticated Git/GitHub operations. Respect the explicit delivery boundary: review-ready PR delivery includes bounded monitoring and corrective pushes; draft-only or publication-only instructions do not silently expand that authority.
 
 ## Review before publication
 
@@ -12,19 +12,19 @@ Follow [work-ticket](../SKILL.md) and [the checkpoint interface](helper.md). Use
 
 ## Monitor automatically within the boundary
 
-After publishing, start `ci watch` for the exact PR source head and required-check inventory, then check immediately. Resolve applicable required checks from repository/ticket requirements and authoritative settings where accessible. Empty results are not success. Normalize only the latest applicable attempts from the full broker response, including pagination; retain observation references. Do not guess that a skipped or neutral result satisfies a requirement. If checks have not registered yet, continue bounded observation only with evidence that they are expected; do not submit missing checks as passed. Unresolvable required coverage is a blocker.
+After publishing, start `ci watch` for the exact PR source head and required-check inventory, then check immediately. Resolve applicable required checks from repository/ticket requirements and authoritative settings where accessible. Empty results are not success. Normalize only the latest applicable attempts from the full gateway response, including pagination; retain observation references. Do not guess that a skipped or neutral result satisfies a requirement. If checks have not registered yet, continue bounded observation only with evidence that they are expected; do not submit missing checks as passed. Unresolvable required coverage is a blocker.
 
 Use the existing **Loop** as the initial scheduler, with `delay_seconds: 60` and one polling batch per continuation. This publication procedure authorizes that bounded loop only within an authorized monitoring boundary. Inspect the shared loop first; do not commandeer an unrelated loop. Use finite continuation/runtime ceilings and respect configured limits; these are additional ceilings, not the CI waiting clock. Do not clear/restart Loop to evade limits.
 
 On each continuation:
 
-1. Inspect the compact monitor receipt/status and whether the next poll is due. At a due poll, use `ci pause` before broker calls so active observation time is excluded.
+1. Inspect the compact monitor receipt/status and whether the next poll is due. At a due poll, use `ci pause` before gateway calls so active observation time is excluded.
 2. Reread PR identity/head and required checks. Unexpected head changes stop automatic writes: reconcile ownership and new content rather than overwrite another actor. A wrong-head observation is blocked, not a request to reset watch to that head.
 3. Submit `ci observe` with concrete evidence. `waiting` permits the next delayed continuation; `repair` starts diagnosis only within authority and remaining allowance; `blocked` or `limit` stops automatic continuation; `passed` permits final readiness assessment.
 
 Default cumulative waiting allowance is **30 minutes across all heads and resumes**, excluding active polling, diagnosis, and repair. The monitor computes elapsed time; the model does not supply it. An interrupted open waiting interval counts toward consumption. Permit one final observation at exhaustion, then stop if still pending. The user may explicitly add waiting allowance, never silently reset it. A deliberate stop awaiting user action pauses monitoring and records the next actor/action.
 
-Loop operates only while Pi is active, and restoration does not automatically resume it. Recovery reconciles state and authority before resuming. This first implementation still invokes the parent model for each polling batch; it is not a background or zero-token watcher. A future deterministic broker watcher can supply the same normalized observations without changing ticket policy.
+Loop operates only while Pi is active, and restoration does not automatically resume it. Recovery reconciles state and authority before resuming. This first implementation still invokes the parent model for each polling batch; it is not a background or zero-token watcher. A future deterministic gateway watcher can supply the same normalized observations without changing ticket policy.
 
 ## Diagnose and repair red CI
 
