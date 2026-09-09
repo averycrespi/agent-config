@@ -35,7 +35,21 @@ const REJECTION_REASONS = [
 export type RejectionReason = (typeof REJECTION_REASONS)[number];
 const MAX_REJECTION_GUIDANCE_CHARS = 1024;
 
+// Pi loads sibling extensions with separate module caches; constructor identity differs.
+const GATEWAY_ERROR = Symbol.for("pi:mcp-gateway:GatewayError:v1");
+
+export function isGatewayError(error: unknown): error is GatewayError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    GATEWAY_ERROR in error &&
+    error[GATEWAY_ERROR] === true
+  );
+}
+
 export class GatewayError extends Error {
+  readonly [GATEWAY_ERROR] = true;
+
   constructor(
     message: string,
     public readonly code: string = "client_error",

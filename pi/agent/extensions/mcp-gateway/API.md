@@ -9,6 +9,7 @@ Sibling extensions import only `./api.ts` for host-side composition. This API do
 - `provideGatewayAccess(pi, client, isActive)`: gateway-owner registration returning a listener-removal callback. Call it during factory setup and remove it on shutdown; inactive/conflicting providers must not respond.
 - `createGatewayAccess(client)`: binds the same validated-call facade to an explicitly owned client, primarily for fixture integration.
 - `GatewayError`, `redactCredentials`, `sanitizeGatewayText`, `MAX_RESPONSE_BYTES`: the gateway's existing safe error, credential-redaction, display-sanitization, and response-bound contracts.
+- `isGatewayError(error)`: recognizes gateway exceptions across Pi's separately loaded extension module instances using a shared host-only symbol brand. Use this instead of `instanceof GatewayError` across the facade boundary; JSON-shaped error fields alone are not trusted.
 - Types `CallResult` and `GatewayTool`: raw redacted result/descriptor shapes. `CallResult` retains additional provider metadata without inventing or interpreting it.
 
 ```ts
@@ -20,7 +21,7 @@ const result = await gateway.call(name, args, signal, () => {
 });
 ```
 
-Each composed call refreshes discovery under the active client configuration, validates the discovered schema using strict Ajv with standard formats, and pins credential identity through invocation. Draft-07 and explicit draft-2020-12 are supported; unsupported schemas, unknown formats/keywords, async schemas, unresolved external references, and invalid arguments fail closed. No coercion/defaults/schema downloads occur. The gateway independently validates and authorizes the operation. Configured annotation-based read-only restrictions, per-call deadlines, credential rotation, and cancellation remain in force.
+Each composed call refreshes discovery under the active client configuration, validates the discovered schema using strict Ajv with standard formats, and pins credential identity through invocation. Draft-07 and explicit draft-2020-12 are supported, including the string-valued `x-mcp-header` provider annotation. This annotation does not validate arguments or assign headers locally; gateway-owned routing is unchanged. Unsupported schemas, other unknown formats/keywords, async schemas, unresolved external references, and invalid arguments fail closed. No coercion/defaults/schema downloads occur. The gateway independently validates and authorizes the operation. Configured annotation-based read-only restrictions, per-call deadlines, credential rotation, and cancellation remain in force.
 
 `GatewayError` exposes locally generated summary/code, optional validated rejection reason and invocation ID, uncertainty, and optional bounded external guidance. Consumers crossing a model-context boundary must not copy guidance or arbitrary exception messages automatically: those can contain intermediate data. The code-mode consumer forwards only safe failure metadata. Provider `isError` results remain raw data; consumers must retain a host-observed failure separately from guest control flow.
 

@@ -22,6 +22,12 @@ export function validateArguments(
       logger: false,
     });
     addFormats.default(validator);
+    // Provider header-routing metadata is an annotation, not an argument constraint.
+    validator.addKeyword({
+      keyword: "x-mcp-header",
+      schemaType: "string",
+      valid: true,
+    });
     const check = validator.compile(schema);
     if ("$async" in check && check.$async)
       throw new Error("Async schemas are unsupported");

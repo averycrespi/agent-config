@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { fixture, TEST_BEARER } from "../mcp-gateway/fixture.ts";
+import {
+  fixture,
+  reply,
+  rpcError,
+  tool,
+  TEST_BEARER,
+} from "../mcp-gateway/fixture.ts";
 import { createGatewayAccess } from "../mcp-gateway/api.ts";
 import { runCode, _spawn } from "./runtime.ts";
 import { DEFAULT_CONFIG, parseConfig } from "./config.ts";
@@ -206,6 +212,117 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
   assert.equal((r.details as any).codeError, false);
   assert.match(JSON.stringify(r.content), /success/);
   assert.doesNotMatch(JSON.stringify(updates), /success|mgw_agent_/);
+  const rejected = await definition.execute(
+    "loader-invalid-arguments",
+    {
+      source:
+        'try { await mcp.call("example.lookup", {query: 1}); } catch {} return null;',
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal((rejected.details as any).traces[0].code, "invalid_arguments");
+  assert.equal((rejected.details as any).traces[0].dispatched, false);
+  const annotated = {
+    ...tool(),
+    inputSchema: {
+      type: "object",
+      required: ["owner", "repo"],
+      properties: {
+        owner: { type: "string", "x-mcp-header": "owner" },
+        repo: { type: "string", "x-mcp-header": "repo" },
+        fields: {
+          type: "array",
+          items: { type: "string", enum: ["name", "type"] },
+        },
+      },
+    },
+  };
+  f.state.handler = (body, response) =>
+    reply(
+      response,
+      body,
+      body.method === "tools/list"
+        ? { tools: [annotated] }
+        : {
+            content: [
+              { type: "text", text: JSON.stringify(body.params.arguments) },
+            ],
+          },
+    );
+  const composed = await definition.execute(
+    "loader-header-annotations",
+    {
+      source: `return await parallel(["first", "second"].map(repo => async () => {
+      const r = await mcp.call("example.lookup", {owner:"example", repo, fields:["name"]});
+      return JSON.parse(r.content[0].text);
+    }));`,
+    },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal((composed.details as any).status, "success");
+  assert.equal((composed.details as any).succeeded, 2);
+  assert.match(JSON.stringify(composed.content), /first/);
+  assert.match(JSON.stringify(composed.content), /second/);
+  assert.equal(f.requests.filter((r) => r.method === "tools/call").length, 3);
+
+  const invocationId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+  for (const code of [
+    "unsupported_schema",
+    "call_rejected",
+    "outcome_unknown",
+  ]) {
+    const before = f.requests.filter((r) => r.method === "tools/call").length;
+    f.state.handler = (body, response) => {
+      if (body.method === "tools/list")
+        return reply(response, body, {
+          tools: [
+            {
+              ...tool(),
+              ...(code === "unsupported_schema"
+                ? { inputSchema: { unknownConstraint: true } }
+                : {}),
+            },
+          ],
+        });
+      rpcError(
+        response,
+        body,
+        code,
+        { reason: "block", invocationId },
+        "INTERMEDIATE_SECRET",
+      );
+    };
+    const failed = await definition.execute(
+      "loader-errors",
+      {
+        source:
+          'try { await mcp.call("example.lookup", {}); } catch(e) { return {code:e.code, reason:e.reason ?? null, invocationId:e.invocationId ?? null, outcomeUnknown:e.outcomeUnknown}; }',
+      },
+      undefined,
+      undefined,
+      ctx,
+    );
+    const trace = (failed.details as any).traces[0];
+    assert.equal(trace.code, code);
+    assert.equal(trace.dispatched, code !== "unsupported_schema");
+    assert.equal(trace.reason, code === "call_rejected" ? "block" : undefined);
+    assert.equal(
+      trace.invocationId,
+      code === "unsupported_schema" ? undefined : invocationId,
+    );
+    assert.equal(trace.outcomeUnknown, code === "outcome_unknown");
+    assert.equal((failed.details as any).status, "failed");
+    assert.doesNotMatch(JSON.stringify(failed), /INTERMEDIATE_SECRET/);
+    assert.match(JSON.stringify(failed.content), new RegExp(code));
+    assert.equal(
+      f.requests.filter((r) => r.method === "tools/call").length - before,
+      code === "unsupported_schema" ? 0 : 1,
+    );
+  }
   const hook = codeExtension.handlers.get("tool_result")![0] as any;
   assert.deepEqual(
     await hook({ toolName: "code", details: { codeError: true } }, ctx),

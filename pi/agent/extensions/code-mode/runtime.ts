@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import {
-  GatewayError,
+  isGatewayError,
   MAX_RESPONSE_BYTES,
   sanitizeGatewayText,
   type GatewayAccess,
@@ -165,11 +165,10 @@ export function runCode(
             (error) => {
               if (terminal) return;
               trace.state = "failed";
-              trace.code =
-                error instanceof GatewayError
-                  ? safe(error.code)
-                  : "bridge_error";
-              if (error instanceof GatewayError) {
+              trace.code = isGatewayError(error)
+                ? safe(error.code)
+                : "bridge_error";
+              if (isGatewayError(error)) {
                 trace.reason = error.reason;
                 trace.invocationId = error.invocationId;
                 trace.outcomeUnknown = error.outcomeUnknown;

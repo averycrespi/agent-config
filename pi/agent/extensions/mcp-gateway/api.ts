@@ -3,6 +3,7 @@ import { GatewayClient, GatewayError, type CallResult } from "./client.ts";
 import { validateArguments } from "./schema.ts";
 export {
   GatewayError,
+  isGatewayError,
   redactCredentials,
   sanitizeGatewayText,
   MAX_RESPONSE_BYTES,
