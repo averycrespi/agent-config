@@ -31,7 +31,7 @@ The companion's stock `serve-demo` launcher currently does not expose `--allowed
 
 ## Tools and discovery
 
-- `mcp_search({query})` searches names, titles, and descriptions. It returns at most **20** ranked names and short descriptions, with shown/matching/total counts. Empty query returns the first 20 in name order; narrow the query for omitted matches.
+- `mcp_search({query})` searches names, titles, and descriptions. It returns at most **50** ranked names and short descriptions, with shown/matching/total counts. Empty query returns the first 50 in name order; narrow the query for omitted matches. The cap is fixed, with no pagination or configuration.
 - `mcp_describe({name})` returns the exact descriptor, including input schema, optional output schema, and annotations.
 - `mcp_call({name, arguments})` invokes the exact external name using its input schema. Gateway validates arguments and authorizes the call.
 
@@ -99,7 +99,7 @@ Calls are **never automatically replayed**, including after connection failure, 
 
 ## Output and logging
 
-Catalogs, descriptors, and call content are wrapped as untrusted external data. Embedded boundary markers are escaped. Text and supported images are preserved; embedded text resources, audio, resource links, unsupported blocks, and structured content are represented as JSON/text. Structured content stays in the framed result, not duplicated in renderer details. Aggregate image data above **5,000,000 characters** becomes spillable text. Credential-shaped gateway bearers and exact bearer echoes are redacted before responses leave the client.
+Catalogs, descriptors, and call content are wrapped as untrusted external data. Embedded boundary markers are escaped. Text and supported images are preserved; embedded text resources, audio, resource links, unsupported blocks, and structured content are represented as JSON/text. When structured content is present, text blocks that parse as the same JSON value are omitted, ignoring whitespace and object-key order. Structured content is included once; complementary text, different or partially overlapping JSON, and non-text blocks remain. Structured-only results are preserved. Structured content stays in the framed result, not duplicated in renderer details. Aggregate image data above **5,000,000 characters** becomes spillable text. Credential-shaped gateway bearers and exact bearer echoes are redacted before responses leave the client.
 
 Framed text above **25,000 characters** spills to `${tmpdir()}/pi-extension-spillover/`, with a bounded preview framed again. Directories use `0700`, files `0600`; files older than seven days are cleaned lazily. If persistence fails, the original framed content stays inline. Spill files may contain raw tool output (apart from gateway bearer redaction); handle them as sensitive external data. This is not a general secret redactor.
 

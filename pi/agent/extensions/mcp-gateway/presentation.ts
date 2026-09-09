@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import { createManagedLogger } from "../_shared/logging.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
@@ -21,6 +22,18 @@ export function textContent(content: Content): string {
     .join("\n");
 }
 
+function duplicatesStructuredContent(
+  text: string,
+  structuredContent: unknown,
+): boolean {
+  if (structuredContent === undefined) return false;
+  try {
+    return isDeepStrictEqual(JSON.parse(text), structuredContent);
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeResult(result: CallResult): Content {
   const content: Content = [];
   const imageSize = result.content.reduce<number>(
@@ -37,7 +50,8 @@ export function normalizeResult(result: CallResult): Content {
       block.type === "text" &&
       typeof block.text === "string"
     ) {
-      content.push({ type: "text", text: redactCredentials(block.text) });
+      if (!duplicatesStructuredContent(block.text, result.structuredContent))
+        content.push({ type: "text", text: redactCredentials(block.text) });
     } else if (
       record(block) &&
       block.type === "image" &&

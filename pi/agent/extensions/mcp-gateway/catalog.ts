@@ -2,7 +2,7 @@ import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import type { GatewayTool } from "./client.ts";
 import { display } from "./presentation.ts";
 
-export const SEARCH_LIMIT = 20;
+export const SEARCH_LIMIT = 50;
 export function searchTools(
   query: string,
   tools: GatewayTool[],
@@ -55,7 +55,7 @@ export function buildGatewayPrompt(
     ...(entries.length > 24
       ? [`${entries.length - 24} additional namespaces omitted.`]
       : []),
-    "Use mcp_search for tool discovery, mcp_describe for the exact input schema, and mcp_call to invoke. Search returns at most 20 matches; narrow the query for omitted matches.",
+    "Use mcp_search for tool discovery, mcp_describe for the exact input schema, and mcp_call to invoke. Search returns at most 50 matches; narrow the query for omitted matches.",
     "Prefer gateway tools over direct gh or remote-git commands for authenticated external access.",
     "Never automatically repeat a call after cancellation, timeout, or an unknown outcome; downstream effects may have occurred.",
     ...(readOnly

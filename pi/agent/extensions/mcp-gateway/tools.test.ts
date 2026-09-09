@@ -103,10 +103,11 @@ test("hundreds of tools produce a compact namespace summary, bounded search, and
   const result = await a.tools
     .get("mcp_search")
     .execute("search", { query: "" });
-  assert.equal(result.details.shownCount, 20);
+  assert.equal(result.details.shownCount, 50);
   assert.equal(result.details.matchCount, 400);
   assert.match(textContent(result.content), /Additional matches omitted/);
-  assert.doesNotMatch(textContent(result.content), /action_020/);
+  assert.match(textContent(result.content), /action_049/);
+  assert.doesNotMatch(textContent(result.content), /action_050/);
   const selected = await a.tools
     .get("mcp_describe")
     .execute("describe", { name: "example.action_023" });
@@ -287,6 +288,77 @@ test("hostile rejection guidance cannot escape data framing, leak bearers, or hi
   assert.equal(f.requests.length, 1);
 });
 
+test("calls remove equivalent JSON text but preserve complementary mixed content", async (t) => {
+  const structuredContent = { users: [{ id: 1, name: "Ada" }], count: 1 };
+  const summary = "Results may be incomplete";
+  const partial = '{"count":1}';
+  const different = '{"users":[{"id":2,"name":"Ada"}],"count":1}';
+  const image = { type: "image", mimeType: "image/png", data: "aGVsbG8=" };
+  const f = await fixture(t, (body, response) =>
+    reply(response, body, {
+      content: [
+        { type: "text", text: JSON.stringify(structuredContent) },
+        {
+          type: "text",
+          text: ' { "count": 1, "users": [{ "name": "Ada", "id": 1 }] } ',
+        },
+        { type: "text", text: summary },
+        { type: "text", text: partial },
+        { type: "text", text: different },
+        image,
+      ],
+      structuredContent,
+    }),
+  );
+  const a = api();
+  registerTools(a.pi, f.client);
+  const result = await a.tools.get("mcp_call").execute("dedupe", {
+    name: "example.lookup",
+    arguments: {},
+  });
+  assert.equal(result.details.gatewayError, false);
+  const text = textContent(result.content);
+  assert.equal((text.match(/"name"/g) ?? []).length, 2);
+  assert.match(text, /BEGIN UNTRUSTED EXTERNAL MCP TOOL RESULT/);
+  for (const retained of [
+    summary,
+    partial,
+    different,
+    `Structured content:\n${JSON.stringify(structuredContent, null, 2)}`,
+  ])
+    assert.ok(text.includes(retained));
+  assert.deepEqual(
+    result.content.filter((block: any) => block.type === "image"),
+    [image],
+  );
+});
+
+test("normalization preserves structured-only, text-only, and non-equivalent JSON results", () => {
+  const structuredContent = { values: [1, 2] };
+  const structured = {
+    type: "text",
+    text: `Structured content:\n${JSON.stringify(structuredContent, null, 2)}`,
+  };
+  assert.deepEqual(normalizeResult({ content: [], structuredContent }), [
+    structured,
+  ]);
+  const content = [
+    { type: "text", text: JSON.stringify(structuredContent) },
+    { type: "text", text: "Warning: incomplete" },
+  ];
+  assert.deepEqual(normalizeResult({ content }), content);
+  const distinct = [
+    { type: "text", text: '{"values":[2,1]}' },
+    { type: "text", text: '{"values":["1",2]}' },
+    { type: "text", text: '{"values":' },
+    { type: "text", text: "null" },
+  ];
+  assert.deepEqual(normalizeResult({ content: distinct, structuredContent }), [
+    ...distinct,
+    structured,
+  ]);
+});
+
 test("structured, resource, image, audio, and error content retain untrusted framing and bounded previews", async (t) => {
   const f = await fixture(t, (body, response) =>
     reply(response, body, {
@@ -437,7 +509,7 @@ test("compact rows show one header, counts, descriptions, and bounded unframed c
       body,
       body.method === "tools/list"
         ? {
-            tools: Array.from({ length: 25 }, (_, i) =>
+            tools: Array.from({ length: 55 }, (_, i) =>
               tool(`example.lookup_${i}`),
             ),
           }
@@ -461,9 +533,9 @@ test("compact rows show one header, counts, descriptions, and bounded unframed c
       "mcp_search",
       { query: "" },
       "mcp_search (all)",
-      "20 shown · 25 matches of 25 tools",
+      "50 shown · 55 matches of 55 tools",
     ],
-    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 matches of 25 tools"],
+    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 matches of 55 tools"],
     [
       "mcp_describe",
       { name: "example.lookup_0" },
