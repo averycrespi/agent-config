@@ -5,6 +5,7 @@ import { loadGatewayConfig } from "./config.ts";
 import { buildGatewayPrompt } from "./catalog.ts";
 import { registerGuard } from "./guard.ts";
 import { registerTools } from "./tools.ts";
+import { provideGatewayAccess } from "./api.ts";
 
 export default function (pi: ExtensionAPI) {
   registerConfigCommand(pi, {
@@ -14,6 +15,7 @@ export default function (pi: ExtensionAPI) {
   });
   const client = new GatewayClient();
   let active = false;
+  const removeAccess = provideGatewayAccess(pi, client, () => active);
   pi.on("session_start", async (_event, ctx) => {
     if (active) return;
     if (
@@ -43,6 +45,8 @@ export default function (pi: ExtensionAPI) {
     }
   });
   pi.on("session_shutdown", () => {
+    active = false;
+    removeAccess();
     client.close();
   });
   pi.on("before_agent_start", async (event, ctx) => {

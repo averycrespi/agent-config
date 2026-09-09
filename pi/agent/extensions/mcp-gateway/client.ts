@@ -18,6 +18,7 @@ export type GatewayTool = {
   annotations?: Record<string, unknown>;
 };
 export type CallResult = {
+  [key: string]: unknown;
   content: unknown[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
@@ -441,22 +442,35 @@ export class GatewayClient {
     name: string,
     args: Record<string, unknown>,
     signal?: AbortSignal,
+    admission?: {
+      validate: (
+        schema: Record<string, unknown>,
+        args: Record<string, unknown>,
+      ) => void;
+      onDispatch?: () => void;
+    },
   ): Promise<CallResult> {
     return this.operation(signal, this.config.callTimeoutMs, async (active) => {
       let identity: string | undefined;
-      if (this.config.readOnly) {
+      if (this.config.readOnly || admission) {
         const catalog = await this.operation(
           active,
           this.config.discoveryTimeoutMs,
           (s) => this.discover(s),
         );
-        if (!catalog.tools.some((tool) => tool.name === name))
+        const tool = catalog.tools.find((tool) => tool.name === name);
+        if (!tool)
           throw new GatewayError(
-            "Tool is not available in read-only mode.",
-            "read_only_rejected",
+            this.config.readOnly
+              ? "Tool is not available in read-only mode."
+              : "Tool is not available in the current gateway catalog.",
+            this.config.readOnly ? "read_only_rejected" : "unknown_tool",
           );
+        admission?.validate(tool.inputSchema, args);
         identity = catalog.identity;
       }
+      active.throwIfAborted();
+      admission?.onDispatch?.();
       const { value } = await this.request(
         "tools/call",
         { name, arguments: args },

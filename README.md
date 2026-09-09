@@ -10,7 +10,7 @@ Custom extensions under [`pi/agent/extensions/`](pi/agent/extensions/) provide:
 
 - **Work tracking and automation:** loops, TODOs, and scheduled tasks
 - **Delegation and orchestration:** isolated subagents, saved workflows, and structured output
-- **External access:** gateway-backed services and web research
+- **External access:** gateway-backed services, [isolated JavaScript MCP composition](pi/agent/extensions/code-mode/README.md), and web research
 - **Interaction and context:** user prompts, context reporting, compact tool output, and TUI status information
 
 See [`pi/README.md`](pi/README.md) for the complete extension, skill, prompt, and saved-workflow catalog.
