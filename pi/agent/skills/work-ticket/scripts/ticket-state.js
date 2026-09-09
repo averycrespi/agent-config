@@ -13,7 +13,11 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { updateMonitor, validateMonitor } from "./ci-monitor.js";
+import {
+  updateMonitor,
+  validateMonitor,
+  remainingWaitMs,
+} from "./ci-monitor.js";
 
 const LIMIT = 64 * 1024;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -533,6 +537,9 @@ export async function ticketState(r) {
             waitUsedMs: s.monitor.waitUsedMs,
             waitLimitMs: s.monitor.waitLimitMs,
             nextPollAt: s.monitor.nextPollAt,
+            waitRemainingMs: remainingWaitMs(s.monitor),
+            watcher: s.monitor.watcher ?? null,
+            lastWatcher: s.monitor.lastWatcher ?? null,
           }
         : null,
     };

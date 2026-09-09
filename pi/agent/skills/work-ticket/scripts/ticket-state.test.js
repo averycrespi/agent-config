@@ -461,6 +461,78 @@ test("concurrent helpers do not interleave writes and failed CLI requests report
   assert.match(JSON.parse(result.stdout).error, /invalid plan/);
 });
 
+test("Monitor registration and terminal accounting persist atomically through the checkpoint interface", async (t) => {
+  const f = await fixture(t);
+  await f.init();
+  let now = 0;
+  t.mock.method(Date, "now", () => now);
+  const pr = "https://github.com/example/project/pull/1",
+    head = "a".repeat(40);
+  await f.call({
+    action: "ci",
+    operation: "watch",
+    pr,
+    head,
+    required: ["Tests"],
+  });
+  const observation = {
+    head,
+    requirementsKnown: true,
+    checks: [{ name: "Tests", state: "pending" }],
+    reference: "gateway batch",
+  };
+  await f.call({ action: "ci", operation: "observe", observation });
+  now = 1000;
+  const prepared = await f.call({ action: "ci", operation: "prepare" });
+  assert.equal(prepared.ci.watcher.timeoutMs, 1799000);
+  now = 2000;
+  const receipt = {
+    id: otherId,
+    createdAt: now,
+    deadline: now + prepared.ci.watcher.timeoutMs,
+  };
+  await f.call({ action: "ci", operation: "attach", pr, head, receipt });
+  assert.equal((await f.status()).monitor.watcher.id, otherId);
+  const bytes = await readFile(f.file);
+  for (const request of [
+    { action: "ci", operation: "pause" },
+    {
+      action: "ci",
+      operation: "reconcile",
+      pr,
+      head,
+      receipt: { ...receipt, id: ticketId, state: "condition", endedAt: now },
+      reference: "wrong watcher",
+    },
+  ]) {
+    await assert.rejects(f.call(request), /Monitor/);
+    assert.deepEqual(await readFile(f.file), bytes);
+  }
+  now = 90000;
+  const terminal = { ...receipt, state: "condition", endedAt: 12000 };
+  const done = await f.call({
+    action: "ci",
+    operation: "reconcile",
+    pr,
+    head,
+    receipt: terminal,
+    reference: "Monitor get host receipt",
+  });
+  assert.equal(done.ci.waitUsedMs, 11000);
+  assert.equal(done.ci.waitRemainingMs, 1789000);
+  assert.equal(done.ci.lastWatcher.id, otherId);
+  assert.equal(done.ci.disposition, "paused");
+  await f.call({
+    action: "ci",
+    operation: "observe",
+    observation: {
+      ...observation,
+      checks: [{ name: "Tests", state: "passed" }],
+    },
+  });
+  assert.equal((await f.status()).monitor.disposition, "passed");
+});
+
 test("CI state persists and requires an explicit, idempotent user allowance addition", async (t) => {
   const f = await fixture(t);
   await f.init();

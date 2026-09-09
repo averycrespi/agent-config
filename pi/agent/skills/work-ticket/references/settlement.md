@@ -14,6 +14,8 @@ For multiple tickets sharing a PR, reconcile each ticket's scope and the actual 
 
 Load [herdr](../../herdr/SKILL.md) and use it for linked worktree removal. Confirm the exact checkout/workspace, all affected tickets, released writers, retained commits/branches, clean tracked/untracked work, and absence of in-progress Git operations. Inspect ignored files, nested repositories, handoffs, and temporary evidence for unique work at risk. An old blocked helper status is not a reason to refuse explicitly authorized cleanup; unresolved data loss or a live writer is.
 
+Before settlement, cancellation, or removal, cancel any still-active ticket-owned CI Monitor by its recorded ID and reconcile the host terminal receipt with the checkpoint helper. Preserve unknown registration outcomes for reconciliation, do not cancel unrelated monitors, and do not assume cancellation retracts an already queued follow-up.
+
 Before removal:
 
 1. Preserve all needed evidence outside the removal target, including legacy `.pi/tickets/`, handoffs, and referenced logs/reports. Use a persistent archive and a manifest of relative paths, sizes, and hashes; verify copied bytes. Do not prune old records to fit a helper schema. Do not treat temporary paths as durable archives.

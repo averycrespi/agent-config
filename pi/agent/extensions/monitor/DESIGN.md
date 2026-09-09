@@ -34,4 +34,4 @@ Custom receipt entries are not conversation messages. A persistence error closes
 
 Keep all tests observable: controlled clocks assert scheduling/message counts, API fixtures execute real permissioned children, and fake Pi sinks assert delivery options/lifecycle/widget placement. Existing code-mode tests qualify isolation, credential/schema admission and cancellation semantics. No live mutation fixture is needed. Manual TUI smoke and live service qualification are separate evidence, not implied by unit tests.
 
-Do not add resume/update/extend, detached workers, CI-specific adapters, work-ticket adoption, approval polling or queue-clearing workarounds without revisiting the product/authority boundary. Node permissions are not CPU/memory quotas or hostile multi-tenant isolation.
+Do not add resume/update/extend, detached workers, CI-specific adapters, ticket-specific delivery policy, approval polling or queue-clearing workarounds without revisiting the product/authority boundary. Node permissions are not CPU/memory quotas or hostile multi-tenant isolation.
