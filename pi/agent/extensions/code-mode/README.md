@@ -2,6 +2,8 @@
 
 Optional `code({description, source})` composes MCP Gateway calls in one fresh permissioned Node child, filtering intermediate responses before returning a compact JSON value. It requires the active [MCP Gateway extension](../mcp-gateway/README.md); ordinary `mcp_search`, `mcp_describe`, `mcp_call`, and read-mostly `workflow` remain unchanged.
 
+Trusted sibling extensions can use the [supported host executor API](API.md). [Monitor](../monitor/README.md) schedules fresh observations through that API without pending model turns; ordinary `code` remains one execution, and Loop remains message-based continuation.
+
 ## Usage
 
 Discover names with `mcp_search`, then read exact schemas with `mcp_describe`. Supply a required nonblank `description` (at most 200 characters) naming the invocation's concrete action and target, plus an async JavaScript **body**, not a module, as `source`:
@@ -54,7 +56,7 @@ This is not a hostile multi-tenant OS sandbox. Node/VM implementation vulnerabil
 
 ## Configuration
 
-Only global settings under `extension:code-mode` and environment overrides are honored, not project settings. The limits are deliberately finite and reversible; invalid values or malformed global JSON disable execution rather than silently increasing a requested restriction. `/code-mode-config` shows effective limits and validity. Settings are sampled for each outer call; environment overrides win when present.
+Only global settings under `extension:code-mode` and environment overrides are honored, not project settings. The limits are deliberately finite and reversible; invalid values, non-object/null sections, unreadable settings (except an absent file), or malformed global JSON disable execution rather than silently increasing a requested restriction. `/code-mode-config` shows effective limits and validity. Settings are sampled for each outer call; environment overrides win when present.
 
 | Field            | Default  | Environment override        | Description                                                               |
 | ---------------- | -------- | --------------------------- | ------------------------------------------------------------------------- |

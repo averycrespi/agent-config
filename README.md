@@ -8,7 +8,7 @@ The repository contains skills, TypeScript extensions, prompt templates, themes,
 
 Custom extensions under [`pi/agent/extensions/`](pi/agent/extensions/) provide:
 
-- **Work tracking and automation:** loops, TODOs, and scheduled tasks
+- **Work tracking and automation:** loops, session-bound monitors, TODOs, and scheduled tasks
 - **Delegation and orchestration:** isolated subagents, saved workflows, and structured output
 - **External access:** gateway-backed services, [isolated JavaScript MCP composition](pi/agent/extensions/code-mode/README.md), and web research
 - **Interaction and context:** user prompts, context reporting, compact tool output, and TUI status information
@@ -62,6 +62,8 @@ For Plane-backed delivery, [`plane`](pi/agent/skills/plane/SKILL.md) defines saf
 | [Subagents](pi/agent/extensions/subagents/README.md) | Parallelism, substantial context isolation, or independent judgment outweighs delegation overhead.             | One-shot child sessions with self-contained prompts, explicit capabilities, and configured `fast`, `balanced`, or `strong` profiles.                                         |
 | [Workflows](pi/agent/extensions/workflows/README.md) | Research, review, or audit follows predictable, reusable control flow.                                         | Deterministic JavaScript orchestration with bounded read-mostly subagents, structured output, verification gates, and budgets; no writable filesystem or shell capabilities. |
 | [Loops](pi/agent/extensions/loop/README.md)          | A user, loaded skill, or established workflow explicitly requests bounded continuation of the current session. | A repeated message with continuation/time limits and yield/stop/resume controls—not a completion judgment or background watcher.                                             |
+
+[Monitor](pi/agent/extensions/monitor/README.md) schedules fresh bounded code-mode observations without pending model turns, handing off only terminal attention. [Code mode](pi/agent/extensions/code-mode/README.md) executes one short-lived program; Loop continues the model with messages. Monitor does not replace Loop or automatically adopt ticket/CI workflows.
 
 The main session owns implementation and execution evidence; workflows own deterministic orchestration, and subagents handle isolated questions. Writable delegation requires an explicit user request and a bounded execution workflow with one writer, a structured handoff, and independent verification; parent and child writes must never overlap in one checkout. The calling user, skill, or extension defines completion policy for loops.
 
