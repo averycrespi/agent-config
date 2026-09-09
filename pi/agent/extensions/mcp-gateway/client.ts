@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { stripVTControlCharacters } from "node:util";
 import {
   DEFAULT_CONFIG,
   validateConfig,
@@ -22,12 +23,25 @@ export type CallResult = {
   isError?: boolean;
 };
 
+const REJECTION_REASONS = [
+  "invalid_params",
+  "unknown_tool",
+  "invalid_arguments",
+  "deny",
+  "block",
+  "authorization_unavailable",
+] as const;
+export type RejectionReason = (typeof REJECTION_REASONS)[number];
+const MAX_REJECTION_GUIDANCE_CHARS = 1024;
+
 export class GatewayError extends Error {
   constructor(
     message: string,
     public readonly code: string = "client_error",
     public readonly invocationId?: string,
     public readonly outcomeUnknown = false,
+    public readonly reason?: RejectionReason,
+    public readonly guidance?: string,
   ) {
     super(message);
   }
@@ -42,6 +56,15 @@ export function redactCredentials(text: string): string {
     /mgw_(?:agent|admin)_[A-Za-z0-9_-]+/g,
     "[redacted gateway credential]",
   );
+}
+
+export function sanitizeGatewayText(value: unknown): string {
+  return redactCredentials(
+    stripVTControlCharacters(typeof value === "string" ? value : ""),
+  )
+    .replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 type DiscoveryBudget = { remainingBytes: number };
@@ -260,11 +283,28 @@ export class GatewayClient {
           /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(data.invocationId)
             ? data.invocationId
             : undefined;
+        const reason =
+          code === "call_rejected" &&
+          record(parsed.error) &&
+          parsed.error.code === -32000
+            ? REJECTION_REASONS.find((candidate) => candidate === data.reason)
+            : undefined;
+        // Remote guidance is data, separate from the locally generated error summary.
+        const remoteMessage =
+          reason && record(parsed.error)
+            ? sanitizeGatewayText(parsed.error.message)
+            : "";
+        const guidance =
+          remoteMessage.length > MAX_REJECTION_GUIDANCE_CHARS
+            ? `${remoteMessage.slice(0, MAX_REJECTION_GUIDANCE_CHARS - 3)}...`
+            : remoteMessage || undefined;
         throw new GatewayError(
-          `Gateway rejected request: ${code}.`,
+          `Gateway rejected request: ${code}${reason ? ` (${reason})` : ""}.`,
           code,
           invocationId,
           code === "outcome_unknown" || data.outcomeUnknown === true,
+          reason,
+          guidance,
         );
       }
       if (!record(parsed.result))

@@ -5,7 +5,14 @@ import {
   PROTOCOL_VERSION,
   MAX_RESPONSE_BYTES,
 } from "./client.ts";
-import { fixture, reply, rpcError, TEST_BEARER, tool } from "./fixture.ts";
+import {
+  fixture,
+  rejectionCases,
+  reply,
+  rpcError,
+  TEST_BEARER,
+  tool,
+} from "./fixture.ts";
 
 const invocationId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 
@@ -231,7 +238,136 @@ test("grant tools use ordinary call transport and preserve structured results", 
   assert.deepEqual(f.requests[0].params.arguments, { name: "example.lookup" });
 });
 
-test("safe JSON-RPC errors retain IDs/uncertainty but do not copy remote messages or retry", async (t) => {
+test("call rejections preserve closed reasons and distinct gateway guidance without replay", async (t) => {
+  const f = await fixture(t);
+  for (const { reason, message } of rejectionCases) {
+    f.state.handler = (body, response) =>
+      rpcError(
+        response,
+        body,
+        "call_rejected",
+        { reason, invocationId },
+        message,
+      );
+    await assert.rejects(
+      f.client.callTool("example.write", {}),
+      (error: unknown) => {
+        assert.ok(error instanceof GatewayError);
+        assert.equal(error.code, "call_rejected");
+        assert.equal(error.reason, reason);
+        assert.equal(error.guidance, message);
+        assert.equal(error.invocationId, invocationId);
+        assert.equal(error.outcomeUnknown, false);
+        return true;
+      },
+    );
+  }
+  assert.equal(f.requests.length, rejectionCases.length);
+  assert.ok(f.requests.every((request) => request.method === "tools/call"));
+});
+
+test("unrecognized rejection metadata keeps generic errors and never exposes remote prose", async (t) => {
+  const f = await fixture(t);
+  const cases = [
+    { code: "call_rejected" },
+    ...[null, 1, [], {}, "DENY", " deny", "allow", "block\n", TEST_BEARER].map(
+      (reason) => ({ code: "call_rejected", reason }),
+    ),
+    { code: "downstream_failure", reason: "deny" },
+    { code: "not_a_code", reason: "block" },
+  ];
+  for (const data of cases) {
+    f.state.handler = (body, response) =>
+      rpcError(response, body, data.code, data, "unvalidated remote prose");
+    await assert.rejects(
+      f.client.callTool("example.write", {}),
+      (error: unknown) => {
+        assert.ok(error instanceof GatewayError);
+        assert.equal(error.reason, undefined);
+        assert.equal(error.guidance, undefined);
+        assert.doesNotMatch(error.message, /unvalidated remote prose/);
+        return true;
+      },
+    );
+  }
+  assert.equal(f.requests.length, cases.length);
+});
+
+test("rejection guidance requires the gateway JSON-RPC error code", async (t) => {
+  const f = await fixture(t);
+  for (const code of [-32602, "-32000", undefined]) {
+    f.state.handler = (body, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: {
+            code,
+            message: "unvalidated remote prose",
+            data: { code: "call_rejected", reason: "block" },
+          },
+        }),
+      );
+    };
+    await assert.rejects(
+      f.client.callTool("example.write", {}),
+      (error: unknown) => {
+        assert.ok(error instanceof GatewayError);
+        assert.equal(error.code, "call_rejected");
+        assert.equal(error.reason, undefined);
+        assert.equal(error.guidance, undefined);
+        assert.doesNotMatch(error.message, /unvalidated remote prose/);
+        return true;
+      },
+    );
+  }
+  assert.equal(f.requests.length, 3);
+});
+
+test("rejection guidance is string-only, redacted, terminal-safe, and bounded before leaving the client", async (t) => {
+  const f = await fixture(t);
+  for (const message of [null, 1, {}, [], "", " \n\t\x1b[2J "]) {
+    f.state.handler = (body, response) =>
+      rpcError(response, body, "call_rejected", { reason: "block" }, message);
+    await assert.rejects(
+      f.client.callTool("example.write", {}),
+      (error: unknown) => {
+        assert.ok(error instanceof GatewayError);
+        assert.equal(error.reason, "block");
+        assert.equal(error.guidance, undefined);
+        return true;
+      },
+    );
+  }
+  f.state.handler = (body, response) =>
+    rpcError(
+      response,
+      body,
+      "call_rejected",
+      { reason: "block", outcomeUnknown: true },
+      `\x1b]52;c;clipboard\x07\x1b[2JBLOCKED\n\t${TEST_BEARER} mgw_admin_fixture\u202e ${"x".repeat(2000)}`,
+    );
+  await assert.rejects(
+    f.client.callTool("example.write", {}),
+    (error: unknown) => {
+      assert.ok(error instanceof GatewayError);
+      assert.ok(error.guidance);
+      assert.ok(error.guidance.length <= 1024);
+      assert.match(error.guidance, /^BLOCKED \[redacted gateway credential\]/);
+      assert.match(error.guidance, /\.\.\.$/);
+      assert.doesNotMatch(
+        error.guidance,
+        /mgw_|clipboard|[\x00-\x1f\x7f-\x9f\u202e]/,
+      );
+      assert.equal(error.outcomeUnknown, true);
+      return true;
+    },
+  );
+  assert.equal(f.requests.length, 7);
+});
+
+test("safe JSON-RPC errors retain IDs/uncertainty but do not copy arbitrary remote messages or retry", async (t) => {
   const f = await fixture(t, (body, response) =>
     rpcError(response, body, "outcome_unknown", {
       invocationId,

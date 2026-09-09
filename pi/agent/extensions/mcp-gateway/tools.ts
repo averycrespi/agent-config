@@ -11,6 +11,7 @@ import {
   partialElapsed,
 } from "../_shared/render.ts";
 import { GatewayClient, GatewayError, record } from "./client.ts";
+import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { searchTools, SEARCH_LIMIT } from "./catalog.ts";
 import {
   display,
@@ -98,6 +99,13 @@ export function renderers(
             `${action} failed: ${display(preview) || "gateway tool error"}`,
           ),
         );
+        if (details?.guidance)
+          lines.push(
+            theme.fg(
+              "muted",
+              `Gateway guidance (untrusted): ${display(details.guidance)}`,
+            ),
+          );
         if (details?.outcomeUnknown === true)
           lines.push(
             theme.fg(
@@ -148,6 +156,7 @@ export function renderers(
       if (expanded) {
         for (const key of [
           "code",
+          "reason",
           "invocationId",
           "logFile",
           "spillFilePath",
@@ -185,7 +194,7 @@ async function failure(error: unknown, name: string, id: string) {
   const message = `${known.message}${unknown}${known.invocationId ? ` Invocation: ${known.invocationId}` : ""}`;
   const logFile =
     name === "mcp_call"
-      ? await failureLog(id, known.code, known.invocationId)
+      ? await failureLog(id, known.code, known.invocationId, known.reason)
       : undefined;
   return {
     content: [
@@ -193,10 +202,23 @@ async function failure(error: unknown, name: string, id: string) {
         type: "text" as const,
         text: `${name}: ${message}${logFile ? `\nLog: ${logFile}` : ""}`,
       },
+      ...(known.guidance
+        ? [
+            {
+              type: "text" as const,
+              text: wrapUntrustedContent(
+                "EXTERNAL MCP REJECTION GUIDANCE",
+                known.guidance,
+              ),
+            },
+          ]
+        : []),
     ],
     details: {
       gatewayError: true,
       code: known.code,
+      reason: known.reason,
+      guidance: known.guidance,
       invocationId: known.invocationId,
       outcomeUnknown: known.outcomeUnknown,
       summary: known.message,

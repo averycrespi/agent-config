@@ -1,19 +1,18 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
-import { stripVTControlCharacters } from "node:util";
 import { createManagedLogger } from "../_shared/logging.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import { wrapUntrustedTextBlocks } from "../_shared/untrusted.ts";
-import { record, redactCredentials, type CallResult } from "./client.ts";
+import {
+  record,
+  redactCredentials,
+  sanitizeGatewayText,
+  type CallResult,
+  type RejectionReason,
+} from "./client.ts";
 
 export type Content = AgentToolResult<unknown>["content"];
 export function display(value: unknown, limit = 240): string {
-  return redactCredentials(
-    stripVTControlCharacters(typeof value === "string" ? value : ""),
-  )
-    .replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, limit);
+  return sanitizeGatewayText(value).slice(0, limit);
 }
 export function textContent(content: Content): string {
   return content
@@ -103,6 +102,7 @@ export async function failureLog(
   id: string,
   code: string,
   invocationId?: string,
+  reason?: RejectionReason,
 ): Promise<string | undefined> {
   try {
     const logger = createManagedLogger({
@@ -110,7 +110,7 @@ export async function failureLog(
       id: `${id}-failure`,
     });
     logger.write(
-      `mcp_call failed: ${display(code)}\n${invocationId ? `Invocation: ${display(invocationId)}\n` : ""}`,
+      `mcp_call failed: ${display(code)}\n${reason ? `Reason: ${display(reason)}\n` : ""}${invocationId ? `Invocation: ${display(invocationId)}\n` : ""}`,
     );
     await logger.close();
     return logger.path;

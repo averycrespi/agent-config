@@ -80,7 +80,20 @@ Identity and grant-request operations such as `mcp_gateway.create_grant_request`
 
 ## Errors and cancellation
 
-Tool failures are surfaced as Pi tool errors, with safe gateway codes and invocation IDs where provided. Unknown outcomes explicitly warn against automatic retries. Raw HTTP problem bodies and JSON-RPC error messages are not copied; inspect gateway-side evidence for deeper diagnostics.
+Tool failures are surfaced as Pi tool errors, with safe gateway codes and invocation IDs where provided. Unknown outcomes explicitly warn against automatic retries. For `call_rejected`, the extension also preserves these validated reasons:
+
+| Reason                      | Meaning                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `invalid_params`            | Invalid `tools/call` request shape.                                                                           |
+| `unknown_tool`              | Unknown tool; refresh discovery and check its name.                                                           |
+| `invalid_arguments`         | Arguments do not match the tool's input schema.                                                               |
+| `deny`                      | A matching DENY grant forbids the call; additional ALLOW grants and self-service requests cannot override it. |
+| `block`                     | No matching ALLOW grant authorizes the call.                                                                  |
+| `authorization_unavailable` | Authorization could not be established; this is not a DENY or BLOCK decision.                                 |
+
+A recognized reason on a gateway `-32000` rejection permits the accompanying string message to appear as **untrusted gateway guidance**, separate from the locally generated error summary. Guidance is credential-redacted, terminal-sanitized, collapsed to one line, and bounded to **1,024 characters** (with an ellipsis when truncated). It is external data, not instructions or authorization. BLOCK guidance preserves the server's distinction between available self-service access requests and administrator review when self-service is blocked. The extension does not infer self-service availability from the reason alone or act on the guidance automatically.
+
+Missing or unrecognized reasons retain the generic error without copying remote prose. Missing, blank, or non-string messages omit guidance without losing a recognized reason. Other JSON-RPC messages and raw HTTP problem bodies remain suppressed; inspect gateway-side evidence for deeper diagnostics.
 
 Calls are **never automatically replayed**, including after connection failure, timeout, cancellation, or shutdown. Cancelling Pi aborts request work, but does not establish rollback or nonexecution. The client deadline is not a guarantee of server completion: a gateway/network timeout can end a response earlier. Discovery retries never retry an invocation.
 
@@ -90,9 +103,9 @@ Catalogs, descriptors, and call content are wrapped as untrusted external data. 
 
 Framed text above **25,000 characters** spills to `${tmpdir()}/pi-extension-spillover/`, with a bounded preview framed again. Directories use `0700`, files `0600`; files older than seven days are cleaned lazily. If persistence fails, the original framed content stays inline. Spill files may contain raw tool output (apart from gateway bearer redaction); handle them as sensitive external data. This is not a general secret redactor.
 
-Failed calls write small diagnostic logs under `${tmpdir()}/pi-extension-logs/mcp-gateway/`, using the shared logger's owner-only files and lazy seven-day retention. Logs contain only the failure code and optional invocation ID—not arguments, credentials, raw HTTP errors, or result payloads. The returned failure includes a log path when available. No persistent catalog or transport session is stored.
+Failed calls write small diagnostic logs under `${tmpdir()}/pi-extension-logs/mcp-gateway/`, using the shared logger's owner-only files and lazy seven-day retention. Logs contain only the failure code, optional validated rejection reason, and optional invocation ID—not guidance messages, arguments, credentials, raw HTTP errors, or result payloads. The returned failure includes a log path when available. No persistent catalog or transport session is stored.
 
-Tool rows use a single header: bold tool name, accent query/target, and muted argument names (never argument values) for calls. Successful search results show matching/total counts and a shown count when capped; describe shows a short description; calls preview up to three nonempty output lines with an omitted-line count. Success does not repeat the header or add a completion banner. Running rows show yellow progress, and failures show a red action-specific error with unknown-outcome warnings kept visible. Expanded rows include counts, diagnostic/spill paths, and up to 30 bounded text lines. Renderers strip terminal control sequences before styling and truncate to available width.
+Tool rows use a single header: bold tool name, accent query/target, and muted argument names (never argument values) for calls. Successful search results show matching/total counts and a shown count when capped; describe shows a short description; calls preview up to three nonempty output lines with an omitted-line count. Success does not repeat the header or add a completion banner. Running rows show yellow progress, and failures show a red action-specific error with recognized rejection reasons and unknown-outcome warnings kept visible. Rejection guidance has a separate, labeled untrusted preview; expand the result for the framed message. Expanded rows include counts, rejection metadata, diagnostic/spill paths, and up to 30 bounded text lines. Renderers strip terminal control sequences before styling and truncate to available width.
 
 ## Advisory bash guard
 
