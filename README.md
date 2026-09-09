@@ -77,6 +77,8 @@ For explicitly requested worktree-based delegation, [`spin-out`](pi/agent/skills
 
 [`agent-tools`](https://github.com/averycrespi/agent-tools) provides external utilities that complement this configuration repo. Its **MCP Gateway** governs authenticated external access through Pi's [`mcp-gateway`](pi/agent/extensions/mcp-gateway/README.md) extension and the `mcp_search`, `mcp_describe`, and `mcp_call` tools.
 
+[Code mode](pi/agent/extensions/code-mode/README.md) composes gateway calls in isolated JavaScript for pagination, dependent lookups, and aggregation, returning only selected results to model context. Use direct MCP tools for simple calls; use code mode when intermediate data would otherwise inflate context.
+
 The companion also includes a sandbox manager (`sb`) for isolated agent runs. Gateway permissions govern external service access; this Pi configuration's guidance toward gateway tools is advisory, not shell sandbox enforcement. Use an outer isolation layer when shell restrictions are needed.
 
 ## Development
