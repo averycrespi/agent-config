@@ -36,12 +36,14 @@ for (const name of [
   });
 }
 
-test("retired skill entrypoints are absent while Goal remains discoverable", async () => {
+test("retired skill entrypoints and Goal extension are absent", async () => {
   for (const name of ["dispatch-ticket", "advance-ticket"]) {
     await assert.rejects(access(resolve(root, name, "SKILL.md")), {
       code: "ENOENT",
     });
   }
-  await access(resolve(root, "../extensions/goal/index.ts"));
+  await assert.rejects(access(resolve(root, "../extensions/goal")), {
+    code: "ENOENT",
+  });
   await access(resolve(root, "work-ticket/scripts/ticket-state.js"));
 });

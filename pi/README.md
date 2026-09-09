@@ -94,7 +94,6 @@ TypeScript modules that customize the Pi agent. Type-check with `make typecheck`
 | `ask-user`          | `ask_user` tool for multiple-choice questions                                                           |
 | `compact-tools`     | Compact TUI rendering for built-in shell and file tools                                                 |
 | `context-usage`     | `/context-usage` token-blame report for current context-window usage                                    |
-| `goal`              | Fork-safe goals, bounded auto-run, and conservative evidence-backed completion                          |
 | `loop`              | Shared targetless bounded continuation controlled by agents, users, skills, and extensions              |
 | `mcp-gateway`       | Default MCP meta-tools, compact discovery, environment-token authentication, and an advisory bash guard |
 | `scheduled-tasks`   | Markdown-defined recurring tasks with cron support, prechecks, manual runs, logs, and handoff state     |
@@ -173,4 +172,4 @@ The legacy `.design` lifecycle and its `architect`, `specify`, `plan`, `advance-
 
 Existing local `.design` artifacts are not deleted or migrated automatically. Treat them as historical context, verify their claims against current repository state, and explicitly re-scope any unfinished work before continuing. Do not attempt to resume an old run with the removed helper.
 
-The Goal extension remains available for general-purpose, evidence-audited objectives. It does not restore the retired plan workflow or replace ticket state; ticket delivery may use Loop for optional bounded continuation, not mandatory execution choreography.
+The Goal extension and its `goal` tool and `/goal*` commands have also been retired. Remove any explicit Goal extension load paths, `extension:goal` settings, and `GOAL_*` environment overrides from local configuration, then restart Pi or run `/reload`. Existing Goal snapshots in session history are left untouched; they no longer restore active steering or auto-run. Ticket delivery may use Loop for optional bounded continuation, not mandatory execution choreography.

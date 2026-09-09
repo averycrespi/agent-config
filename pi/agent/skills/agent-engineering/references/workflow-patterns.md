@@ -46,7 +46,7 @@ What "threading AC through every phase" means concretely:
 
 Format: Gherkin (Given/When/Then) is the most common, but any structured `{id, criterion, verifies_via}` works. The `verifies_via` field is what makes the criterion testable rather than aspirational.
 
-In this repo, `shape-ticket` defines acceptance criteria in the canonical Plane ticket contract. `work-ticket` maps them to implementation and verification while one compact checkpoint under `<git-common-dir>/pi-ticket-checkpoints/` retains the working plan, progress, authorization, evidence references, scoped exceptions, and consumed allowances. It does not require a delivery-state machine. Separately, the general-purpose `goal` extension requires concrete evidence before marking an objective complete.
+In this repo, `shape-ticket` defines acceptance criteria in the canonical Plane ticket contract. `work-ticket` maps them to implementation and verification while one compact checkpoint under `<git-common-dir>/pi-ticket-checkpoints/` retains the working plan, progress, authorization, evidence references, scoped exceptions, and consumed allowances. It does not require a delivery-state machine.
 
 ## Localization
 

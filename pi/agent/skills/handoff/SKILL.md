@@ -13,7 +13,6 @@ Create a concise handoff document that lets a fresh agent continue the current s
 
 Use the conversation and existing artifacts as the primary sources of truth. Inspect only the additional state needed for an accurate handoff:
 
-- Read the durable goal with `goal(action="get")` when one may exist.
 - List session tasks with `todo` when task state is relevant. Treat task status as context, not proof of completion.
 - In a Git workspace, inspect the branch and working tree with a focused local command such as `git status --short --branch`.
 - Record verification commands and outcomes already observed. Do not rerun expensive checks solely for the handoff.

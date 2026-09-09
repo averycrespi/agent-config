@@ -1,6 +1,6 @@
 # Agent Config
 
-My personal [Pi](https://pi.dev/) setup for software development. It supports research-first clarification, focused implementation, ticket-driven delivery, pre-implementation challenge and simplification, and independent review. Bounded session goals remain available for adaptive work outside the ticket workflow.
+My personal [Pi](https://pi.dev/) setup for software development. It supports research-first clarification, focused implementation, ticket-driven delivery, pre-implementation challenge and simplification, and independent review.
 
 The repository contains the skills, extensions, prompts, and saved workflows that power that setup. Custom extensions are written in TypeScript and maintained with tests and documentation.
 
@@ -19,14 +19,13 @@ For Plane-native delivery, `plane` defines safe gateway access, `shape-ticket` p
 
 ### Choosing an orchestration primitive
 
-The harness provides four complementary orchestration primitives. Choose based on what needs to be isolated or controlled:
+The harness provides three complementary orchestration primitives. Choose based on what needs to be isolated or controlled:
 
 | Primitive     | Use it when                                                                                                                                   | What it provides                                                                                                                                           |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Subagents** | A task benefits from a fresh perspective, a different model or reasoning effort, isolation from the main context, or independent parallelism. | A one-shot child session with a self-contained prompt, explicit capabilities, and a centrally configured `fast`, `balanced`, or `strong` profile.          |
 | **Workflows** | The orchestration is predictable and reusable—especially for fan-out/fan-in research, review, verification, or audit patterns.                | Deterministic JavaScript control flow around bounded subagent calls, including parallelism, pipelines, structured output, verification gates, and budgets. |
 | **Loops**     | An agent, skill, user, or extension needs bounded targetless continuation after otherwise terminal turns.                                     | One shared session loop with continuation/time limits, yield/stop/resume controls, a repeated message, and no objective or completion policy.              |
-| **Goals**     | Work must advance incrementally across agent turns, and each next action may depend on what the previous turn discovered or completed.        | A session-scoped objective with bounded continuation, lifecycle controls, and evidence-backed completion.                                                  |
 
 Use a **subagent** when the primary need is another isolated reasoning context. Children start cold, so tasks must be self-contained. Read-only exploration and review are the default use cases; mutable delegation is kept sequential and explicitly bounded.
 
@@ -34,9 +33,7 @@ Use a **workflow** when the control graph should live in code rather than be imp
 
 Use a **loop** when only liveness is needed. A loop rebroadcasts a caller-specified message after Pi settles, subject to shared continuation and running-time bounds. It deliberately carries no objective and makes no claim about whether work is complete.
 
-Use a **goal** when progress is adaptive but can be made and audited one turn at a time. Goals keep the main agent moving toward an objective until it completes, yields, is interrupted, or reaches a configured bound. A goal supplies continuation and steering; it does not replace a durable plan or prescribe a fixed phase graph.
-
-These primitives compose. A skill or extension can use a loop as a lower-level liveness layer, while a goal may steer adaptive main-session work across turns and use read-only subagents or workflows for bounded research, diagnosis, or explicitly required review. The objective-bearing layer owns completion policy, the main session owns workspace mutation and execution evidence, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
+These primitives compose. A skill or extension can use a loop as a lower-level liveness layer, while the main session uses read-only subagents or workflows for bounded research, diagnosis, or explicitly required review. The calling skill, extension, or user defines completion policy, the main session owns workspace mutation and execution evidence, the workflow owns deterministic orchestration, and each subagent owns one isolated unit of reasoning.
 
 For explicit worktree-based delegation, the model-invokable `spin-out` skill starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief only when the user asks to spin out work.
 
@@ -44,7 +41,7 @@ For explicit worktree-based delegation, the model-invokable `spin-out` skill sta
 
 Custom TypeScript extensions under [`pi/agent/extensions/`](pi/agent/extensions/) provide:
 
-- **Work tracking and automation:** loops, goals, TODOs, and scheduled tasks
+- **Work tracking and automation:** loops, TODOs, and scheduled tasks
 - **Delegation and orchestration:** isolated subagents, saved workflows, and structured output
 - **External access:** gateway-backed services and web research
 - **Interaction and context:** user prompts, context reporting, compact tool output, and TUI status information
