@@ -1,121 +1,42 @@
 # AGENTS.md
 
-Project-specific instructions for this repository.
+## Repository and Scope
 
-## Overview
+This public repository manages Pi configuration through GNU Stow: `pi/agent/` is linked into `~/.pi/agent/`.
 
-This repo manages [Pi](https://pi.dev/) agent configuration via [GNU Stow](https://www.gnu.org/software/stow/):
+- Edit Stow-managed configuration at its source under `pi/`, not through `~/.pi/` symlinks. For example, edit `pi/agent/extensions/<name>/index.ts`. Repo-local authoring skills live under `.pi/skills/` and are not installed globally.
+- Installations and changes to running sessions require explicit user authorization. Run `make stow-pi` only when explicitly requested.
+- Keep authenticated external access and its documentation aligned with `pi/agent/extensions/mcp-gateway/` and the `mcp_search`, `mcp_describe`, and `mcp_call` tools.
+- Exclude private/internal identifiers, URLs, credentials, and proprietary information from committed content. Public dependencies and prior art may be named. Use generic examples such as `ABC-123` and `example.com`; sanitize design artifacts before committing.
 
-- `pi/agent/` → symlinked to `~/.pi/agent/` (Pi agent extensions, agents, skills)
+## Authoring Guidance
 
-## MCP Surface
+- For creating or modifying Pi extension code, tests, documentation, tools, rendering, configuration, or lifecycle behavior, read [.pi/skills/create-extension/SKILL.md](.pi/skills/create-extension/SKILL.md). Load it by path if it is absent from the skill catalog; do not change project trust or reload the session to discover it.
+- Read the affected extension's README, DESIGN, and API documentation as applicable. Keep its user-facing contracts and architectural invariants aligned with changes.
+- Use directory-based extensions under `pi/agent/extensions/<name>/` with an `index.ts` entry point and colocated tests. Never add top-level `pi/agent/extensions/*.ts` files; tests there can be mistaken for extensions.
+- Keep shared helpers in `pi/agent/extensions/_shared/` loader-inert: no `index.ts` or `package.json` entry point. Prefer existing render, config, and logging helpers.
+- Sanitize and bound external display strings before terminal styling; never expose secrets in tool rows, config inspection, or diagnostics. Invalid configuration must not silently relax security restrictions.
+- Validate shared-state mutations before applying them atomically; validation failure must leave state unchanged.
 
-Pi uses `pi/agent/extensions/mcp-gateway/` for authenticated external access through `mcp_search`, `mcp_describe`, and `mcp_call`. Keep operational instructions and documentation under `pi/` aligned with this gateway surface. Installation and changes to running sessions require explicit user authorization.
-
-## Public Repository Guidelines
-
-This is a public repository. When creating or modifying content:
-
-- **No internal details** - Don't reference specific companies, projects, team names, or internal URLs
-- **No private data** - Don't include API keys, tokens, credentials, or sensitive configuration
-- **Generic examples** - Use placeholders like `ABC-123` for tickets, `example.com` for domains
-- **Sanitize design artifacts** - Review architecture, specification, and planning content before committing to ensure it contains no proprietary information
-
-## Commands
+## Commands and Verification
 
 ```bash
-make install-dev        # install Node dependencies and Husky git hooks
-make install-playwright # install Playwright for browser automation
-make stow-pi            # symlink pi/agent/ into ~/.pi/agent/
-npm run lint            # lint Pi extension and saved-workflow TypeScript files
-npm run format:check    # check formatting for TS/JS/JSON/Markdown/YAML files
-make typecheck          # type-check Pi extension and saved-workflow TypeScript files
-make test               # run all Pi extension and saved-workflow unit tests
+make install-dev        # install Node dependencies and Husky hooks
+make install-playwright # install browser tooling and dependencies
+make stow-pi            # link configuration; explicit request required
+npm run lint            # lint extension and saved-workflow TypeScript
+npm run format:check    # check TS/JS/JSON/Markdown/YAML formatting
+make typecheck          # type-check TypeScript
+make test               # run extension, saved-workflow, and skill tests
 ```
 
-## Testing
+- For extension or saved-workflow code and runtime-affecting configuration changes, run both `make typecheck` and `make test`, plus lint and formatting checks, before reporting completion. Preserve applicable review and CI gates.
+- For documentation-only changes, check formatting and affected paths, links, and examples. For skill/prompt changes, also check instruction compatibility and relevant discovery or structural validation; do not claim structural checks prove model behavior.
+- Tests use Node's `node:test` runner through `tsx`. Preserve `.ts` source imports and `allowImportingTsExtensions` in `tsconfig.json`.
+- Keep saved-workflow tests beside their `*.js` definitions in `pi/agent/workflows/`; load the actual definition through the generic runtime in `pi/agent/extensions/workflows/`. Keep lint, typecheck, test, and lint-staged globs covering this directory.
+- Run focused tests during development with `npx tsx --test pi/agent/extensions/<name>/*.test.ts` or `npx tsx --test pi/agent/workflows/<name>.test.ts`; these do not replace required full checks for code changes.
 
-Pure-logic tests run via Node's built-in `node:test` runner, loaded through `tsx` for TypeScript execution:
+## Skills and Notes
 
-```bash
-make test                                                    # run everything
-npx tsx --test pi/agent/extensions/<ext>/*.test.ts           # run one extension
-npx tsx --test pi/agent/workflows/<workflow>.test.ts         # run one saved workflow
-```
-
-Extension tests stay colocated with their extension. Saved-workflow tests stay beside the corresponding `*.js` definition under `pi/agent/workflows/`; the test imports the generic runtime through `pi/agent/extensions/workflows/` and loads the actual adjacent definition.
-
-Test files import source with `.ts` extensions (e.g. `from "./state.ts"`). This requires `"allowImportingTsExtensions": true` in `tsconfig.json` — don't remove it or `make typecheck` will break.
-
-**Before reporting any Pi extension or saved-workflow change complete, run both `make typecheck` AND `make test`.** Typecheck alone catches type errors but not behavioral regressions — the tests cover pure logic that types can't verify.
-
-## Skill Naming Convention
-
-- **Workflow skills** (invoked to perform a task): use verb-object names when natural, or concise task names for broad workflows (e.g., `clarify`, `challenge`, `review`)
-- **Reference skills** (provide information/context): use nouns (e.g., `agent-engineering`)
-
-## Notes Format
-
-Markdown notes in `notes/` use a consistent essay format:
-
-- Start with a single H1 title; do not use frontmatter or metadata.
-- Lead with a clear thesis or framing section, then develop the argument under short H2 headings.
-- Keep the tone concise, opinionated, and evidence-backed; prefer concrete examples over generic explanation.
-- Include counterarguments as `## The steelman`, `## Caveats`, or a similarly direct H2 when relevant.
-- End with `## References` containing links and short descriptions; use relative links to other notes when relevant.
-
-## Pi Extension Conventions
-
-Use directory-based Pi extensions under `pi/agent/extensions/<name>/`.
-
-Preferred structure:
-
-- `index.ts` — extension entry point
-- `README.md` — user-facing behavior, configuration, and usage
-- `DESIGN.md` — agent-focused architecture notes, invariants, boundaries, and change guidance
-- `API.md` — optional programmatic integration docs for other extensions
-- `api.ts` — optional curated public export surface referenced by `API.md`
-- `*.test.ts` — colocated tests for meaningful logic
-- additional `*.ts` files named by concern (`tools.ts`, `render.ts`, `state.ts`, etc.)
-
-Repo-specific structure rules:
-
-- Do not add top-level single-file Pi extensions under `pi/agent/extensions/*.ts` in this repo. Keep each extension in its own directory so colocated `*.test.ts` files are never mistaken for extension entrypoints.
-- Keep saved-workflow `*.test.ts` files beside their `*.js` definitions under `pi/agent/workflows/`; repository lint, typecheck, test, and lint-staged globs must include that directory.
-- When adding a new Pi extension, also add it to the extension table in `pi/README.md` with a concise user-facing purpose and update the root `README.md` when the extension changes the repository's top-level capability overview.
-- Put general cross-extension helpers in `pi/agent/extensions/_shared/`. Keep that directory loader-inert: do not add an `index.ts`.
-- If shared code grows into a real library with its own conceptual surface, promote it to a top-level underscore-prefixed directory with an `api.ts` public surface instead of stretching `_shared/` into an ad hoc package.
-
-Documentation split:
-
-- `README.md` answers "How do I use this extension?" Its audience is users and agents operating the extension. Document user-visible behavior, commands/tools, configuration, logging, usage examples, limitations, troubleshooting, and prior art. Keep implementation details out unless they affect usage, safety, or configuration.
-- `DESIGN.md` answers "How should I change this extension safely?" Its audience is future coding agents and maintainers. Document architecture, module responsibilities, data/state model, lifecycle flows, invariants, safety/security boundaries, non-goals, and change guidance. Explain why the extension is shaped the way it is and what must remain true when modifying it.
-- Avoid duplicating the README in `DESIGN.md`. If information belongs to both audiences, put the user-facing contract in `README.md` and put only the design implication or invariant in `DESIGN.md`. For example, README lists a command's syntax; DESIGN explains which module owns command dispatch and what state that command may mutate.
-- Include `DESIGN.md` for every non-trivial extension. It may be omitted only for tiny wrapper/config-only extensions where architecture would be obvious from `README.md` and `index.ts`.
-- A good `DESIGN.md` starts with a short purpose statement, then uses concise H2 sections such as `Architecture`, `State`, `Lifecycle`, `Tools and commands`, `Security and boundaries`, `Non-goals`, and `Change guidance`. Prefer concrete file/module names and invariants over vague prose.
-- Include a `## Prior art` section in `README.md` when an extension has meaningful public inspirations, adjacent projects, or conceptual antecedents. Link to resources or similar work, describe the specific influence in one sentence, and omit the section when there is no applicable public prior art. Verify newly discovered links with the user before adding them.
-- If an extension exposes reusable code to other extensions, document imports, exports, types, and usage contracts in `API.md` instead of the README.
-- Treat `api.ts` as the stable public surface. Anything not exported there should usually be treated as internal.
-
-Implementation conventions:
-
-- **`setWidget` cast pattern.** The typed signature lives at `pi.ui.setWidget` (on `ExtensionUIContext`), but the in-repo convention — used by `todo/index.ts` — is to call `(pi as any).setWidget(...)` at the top level, gated on `piAny.hasUI && typeof piAny.setWidget === "function"`. Match this pattern when adding sticky widgets in new extensions.
-- **Shared render helpers.** For compact tool-call/result renderers, prefer helpers from `pi/agent/extensions/_shared/render.ts` instead of reimplementing common formatting, truncation, and partial-timer logic per extension.
-- **Width-aware tool rendering.** Tool `renderCall` and `renderResult` implementations that display user/tool-provided strings should use `getTruncatedText(context.lastComponent, lines)` from `pi/agent/extensions/_shared/render.ts` instead of returning raw multi-line `Text`. This preserves compact logical lines, truncates at render width, handles tabs and ANSI resets safely, and avoids TUI wrapping. Use raw `Text` only when wrapping is intentional.
-- **Tool-row visual grammar.** Action-oriented tools should render a stable call line with the bold `toolTitle` name followed by a muted concise action/target summary; never echo raw scripts, secrets, or bulky arguments. Use warning styling for partial state, success styling for successful settlement, and error styling for failures. Error results should retain a contextual action or structured-run header before the error message, and should honor both `context.isError` and extension-specific semantic error results.
-- **Progressive tool detail.** Keep collapsed results compact and scannable; use the `expanded` render option for inventories, logs, source paths, per-item progress, and other diagnostics. Long-running orchestrators may keep a compact live aggregate collapsed while preserving structured progress when expanded. Reuse `context.lastComponent` across updates and clear any shared partial timer on every settled path.
-- **Terminal-safe display data.** `getTruncatedText` enforces width but is not a general control-sequence sanitizer. Strip terminal control sequences, collapse embedded line breaks, and bound dynamic user/tool/model strings before applying theme styling. Add renderer tests for collapsed, expanded, partial, success, semantic-error, framework-error, hostile-control-character, and narrow-width behavior as applicable.
-- **Shared config helpers.** For user-facing extension settings, prefer helpers from `pi/agent/extensions/_shared/config.ts` instead of hand-reading Pi settings files. Validate merged values at the extension boundary and fall back to defaults for invalid values.
-- **Logging.** Prefer `pi/agent/extensions/_shared/logging.ts` for retained diagnostic logs. Avoid `console.*` in interactive TUI paths because it can corrupt the display; use `ctx.ui.notify` for user-visible issues, and reserve stderr/stdout writes for headless-only or last-resort diagnostics.
-- **README config/logging docs.** Every extension README should document configuration and logging behavior. If an extension has no user-facing configuration or retained logs, say so explicitly. Every extension config field should have a corresponding environment variable override unless there is a strong reason not to expose one. When an extension has configurable settings, document them in one unified table with `Field`, `Default`, `Environment override`, and `Description` columns; settings fields use camelCase, environment variables use uppercase snake case, and environment variables override settings when set. Boolean environment overrides should accept both `1`/`true` and `0`/`false`. Include a short JSON settings example after the table. Document environment variables separately only when they do not map directly to settings fields. If it writes logs or temp output, document location, retention/deletion behavior, and whether raw tool/process output may be included.
-- **Config inspection commands.** Every extension with user-facing configuration should register `/EXTENSION-NAME-config` via `pi/agent/extensions/_shared/config.ts` so users can inspect effective parsed config. Declare all sensitive fields explicitly so the shared helper masks secrets in command output.
-- **Agent tool schema naming.** Typebox schemas exposed to the agent use snake_case (e.g. `failure_reason`); internal task/state fields stay camelCase (`failureReason`). Map between them in the tool's `execute` body.
-- **Atomic agent-tool mutations.** When an agent tool mutates shared state (e.g. the `todo` tool's `set` action), collect ALL validation errors before rejecting, apply changes atomically with a single `notify()` on success, and return errors as tool result text (not `throw`) so the agent can read and recover from them.
-- **Stub Node built-ins via wrapper export.** `mock.method` from `node:test` can't replace ESM module exports — they're non-configurable bindings. To stub something like `child_process.spawn`, wrap the call in an exported holder (`export const _spawn = { fn: _nodeSpawn }`) and call through `_spawn.fn(...)`. Tests then `mock.method(_spawn, "fn", stub)`. See `subagents/spawn.ts:19-22` for the reference pattern.
-
-## Modifying This Repository
-
-- Edit Pi agent files in `pi/` directory
-- Only run `make stow-pi` when the user explicitly asks you to
-
-**IMPORTANT:** Never edit files directly in `~/.pi/`. Those are symlinks managed by stow. Always edit the source files in this repository. For example, edit `./pi/agent/extensions/foo.ts`, NOT `~/.pi/agent/extensions/foo.ts`.
+- Name workflow skills with verb-object names when natural or concise task names; name reference skills with nouns. Use `create-skill` when authoring skills.
+- Write `notes/` as concise, opinionated, evidence-backed essays: one H1, no frontmatter, a clear opening thesis, short H2 sections, and concrete examples. Include a steelman or caveats when relevant; end with `## References` containing links and short descriptions, using relative links for other notes.

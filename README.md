@@ -81,7 +81,9 @@ The companion also includes a sandbox manager (`sb`) for isolated agent runs. Ga
 
 ## Development
 
-Extensions are directory-based TypeScript modules with colocated tests and user-facing documentation. Non-trivial extensions also include design guidance, while shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/). See [repository authoring guidance](AGENTS.md) for conventions.
+Extensions are directory-based TypeScript modules with colocated tests and user-facing documentation. Non-trivial extensions also include design guidance, while shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/). See [repository authoring guidance](AGENTS.md) for safeguards and required checks.
+
+The repo-local [`create-extension`](.pi/skills/create-extension/SKILL.md) skill covers creating and modifying extensions, including rendering, configuration, state, documentation, and testing conventions. It stays under `.pi/skills/` and is not installed globally by Stow. Pi discovers project-local skills when the project is trusted and skill discovery is enabled; `AGENTS.md` also provides a direct file path for agents to read without changing trust or reloading the session.
 
 ```sh
 npm run lint         # lint extensions and saved workflows

@@ -4,7 +4,7 @@ Shared helpers for Pi extensions in this repository.
 
 This directory is intentionally loader-inert: do not add an `index.ts` or `package.json`. Sibling extensions import individual modules directly, for example `../_shared/render.ts`, and Pi's extension loader skips this directory because it has no extension entrypoint.
 
-Keep shared conventions aligned with the repo's Pi extension guidance in `AGENTS.md`.
+Keep helper-specific contracts here and in their modules. For extension authoring conventions, read the repo-local [create-extension skill](../../../../.pi/skills/create-extension/SKILL.md); repository-wide safeguards and required checks remain in [AGENTS.md](../../../../AGENTS.md).
 
 ## Modules
 
