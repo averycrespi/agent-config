@@ -1,12 +1,15 @@
 # Code mode
 
-Optional `code({source})` composes MCP Gateway calls in one fresh permissioned Node child, filtering intermediate responses before returning a compact JSON value. It requires the active [MCP Gateway extension](../mcp-gateway/README.md); ordinary `mcp_search`, `mcp_describe`, `mcp_call`, and read-mostly `workflow` remain unchanged.
+Optional `code({description, source})` composes MCP Gateway calls in one fresh permissioned Node child, filtering intermediate responses before returning a compact JSON value. It requires the active [MCP Gateway extension](../mcp-gateway/README.md); ordinary `mcp_search`, `mcp_describe`, `mcp_call`, and read-mostly `workflow` remain unchanged.
 
 ## Usage
 
-Discover names with `mcp_search`, then read exact schemas with `mcp_describe`. Supply an async JavaScript **body**, not a module, to `code`:
+Discover names with `mcp_search`, then read exact schemas with `mcp_describe`. Supply a required nonblank `description` (at most 200 characters) naming the invocation's concrete action and target, plus an async JavaScript **body**, not a module, as `source`:
 
 ```js
+code({
+  description: "Sum values from the first page of items",
+  source: `
 const first = await mcp.call("example.list", { page: 1 });
 const values = await parallel(
   first.structuredContent.ids.map(
@@ -15,7 +18,11 @@ const values = await parallel(
   ),
 );
 return values.reduce((sum, value) => sum + value, 0);
+`,
+});
 ```
+
+The description labels the tool row; it does not affect execution or authorization and is not passed to the child. Avoid secrets and raw payloads: Pi retains submitted arguments in session history. Display text is sanitized, gateway-credential-redacted, and width-truncated. Older history or incomplete arguments without a usable description display “MCP composition”.
 
 These are illustrative names: use the actual discovered schemas. `mcp.call(name, args)` resolves the complete redacted MCP result, including `content`, `structuredContent`, `isError`, and any supplied metadata. It never parses text as JSON or invents pagination/completeness fields. Provider `isError` results remain available to the program and count as host-observed failures. Gateway exceptions reject with `code`, optional validated `reason`/`invocationId`, and `outcomeUnknown`; raw exception messages and guidance are deliberately excluded to prevent intermediate-data leakage.
 

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 import {
   fixture,
   reply,
@@ -15,9 +16,107 @@ import {
 import { createGatewayAccess } from "../mcp-gateway/api.ts";
 import { runCode, _spawn } from "./runtime.ts";
 import { DEFAULT_CONFIG, parseConfig } from "./config.ts";
-import { presentRun, renderers } from "./tool.ts";
+import { PARAMETERS, presentRun, renderers } from "./tool.ts";
 
 const limits = { ...DEFAULT_CONFIG, timeoutMs: 3000 };
+
+test("code requires a nonblank description of at most 200 characters", () => {
+  const source = "return null;";
+  const validate = (description: unknown) =>
+    validateToolArguments(
+      {
+        name: "code",
+        description: "Compose MCP calls",
+        parameters: PARAMETERS,
+      },
+      {
+        type: "toolCall",
+        id: "schema",
+        name: "code",
+        arguments: { description, source },
+      },
+    );
+  for (const description of [
+    "Find unassigned issues",
+    "x".repeat(200),
+    "Find 日本語 issues",
+    "Summarize 😀 reactions",
+    "x".repeat(199) + "😀",
+  ])
+    assert.deepEqual(validate(description), { description, source });
+  for (const description of [
+    undefined,
+    null,
+    {},
+    "",
+    " \n\t",
+    "\u200b",
+    "\u200d\u2060",
+    "\u{e0001}",
+    "x".repeat(201),
+  ])
+    assert.throws(() => validate(description), /Validation failed/);
+});
+
+test("call labels use safe descriptions, fall back for history and update during streaming", () => {
+  const theme: any = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  };
+  const context: any = { state: {} };
+  for (const description of [
+    undefined,
+    null,
+    42,
+    "",
+    " \n\t",
+    "\x1b[31m",
+    "\u200b",
+    "\u200d\u2060",
+    "\u{e0001}",
+  ])
+    assert.deepEqual(
+      renderers.renderCall!({ description } as any, theme, context).render(100),
+      ["code MCP composition"],
+    );
+  const header = renderers.renderCall!({} as any, theme, context);
+  context.lastComponent = header;
+  const updated = renderers.renderCall!(
+    { description: "Find unassigned issues", source: "SOURCE_SECRET" },
+    theme,
+    context,
+  );
+  assert.equal(updated, header);
+  assert.deepEqual(updated.render(100), ["code Find unassigned issues"]);
+  const hostile = renderers.renderCall!(
+    {
+      source: "SOURCE_SECRET",
+      description: ` \x1b]52;c;evil\x07Find\n\tissues\u200b \x1b[31m${TEST_BEARER}\u202e `,
+    },
+    theme,
+    context,
+  );
+  assert.deepEqual(hostile.render(200), [
+    "code Find issues [redacted gateway credential]",
+  ]);
+  const bounded = renderers.renderCall!(
+    { description: "x".repeat(500), source: "SOURCE_SECRET" },
+    theme,
+    context,
+  );
+  assert.deepEqual(bounded.render(1000), [`code ${"x".repeat(200)}`]);
+  const unicode = renderers.renderCall!(
+    { description: "x".repeat(199) + "😀extra", source: "return null;" },
+    theme,
+    context,
+  );
+  assert.deepEqual(unicode.render(1000), [`code ${"x".repeat(199)}😀`]);
+  for (const width of [0, 1, 7, 20, 100]) {
+    const lines = unicode.render(width);
+    assert.equal(lines.length, 1);
+    assert.ok(visibleWidth(lines[0]) <= width);
+  }
+});
 
 test("large final returns spill explicitly; spill failure stays bounded and signals failure", async (t) => {
   const f = await fixture(t);
@@ -112,7 +211,7 @@ test("renderers hide source/payloads, keep semantic/framework failures and remai
     isError: false,
   };
   const header = renderers.renderCall!(
-    { source: "SOURCE_SECRET" },
+    { source: "SOURCE_SECRET" } as any,
     theme,
     context,
   );

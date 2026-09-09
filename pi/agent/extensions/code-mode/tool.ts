@@ -11,6 +11,13 @@ import type { RunResult } from "./runtime.ts";
 
 export const PARAMETERS = Type.Object(
   {
+    description: Type.String({
+      minLength: 1,
+      maxLength: 200,
+      pattern: "[^\\s\\p{Cf}]",
+      description:
+        "Short description of this invocation's concrete action and target, shown in the tool row. Avoid generic labels, secrets, and raw payloads.",
+    }),
     source: Type.String({
       minLength: 1,
       maxLength: 262144,
@@ -94,9 +101,17 @@ export const renderers: Pick<
   ToolDefinition<typeof PARAMETERS>,
   "renderCall" | "renderResult"
 > = {
-  renderCall(_args, theme, ctx) {
+  renderCall(args, theme, ctx) {
+    const description =
+      (typeof args.description === "string" &&
+        Array.from(
+          sanitizeGatewayText(args.description.replace(/\p{Cf}/gu, "")),
+        )
+          .slice(0, 200)
+          .join("")) ||
+      "MCP composition";
     return getTruncatedText(ctx.lastComponent, [
-      `${theme.fg("toolTitle", theme.bold("code"))} ${theme.fg("muted", "MCP composition")}`,
+      `${theme.fg("toolTitle", theme.bold("code"))} ${theme.fg("muted", description)}`,
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
