@@ -1,9 +1,6 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
-import {
-  readExtensionSettings,
-  readJsonFileObject,
-} from "../_shared/config.ts";
+import { readFile } from "node:fs/promises";
 
 export type CodeConfig = {
   maxCalls: number;
@@ -33,7 +30,9 @@ export function parseConfig(
     timeoutMs: "CODE_MODE_TIMEOUT_MS",
   };
   for (const key of Object.keys(overrides) as Array<keyof typeof overrides>) {
-    const raw = env[overrides[key]] ?? settings[key] ?? DEFAULT_CONFIG[key];
+    const raw =
+      env[overrides[key]] ??
+      (settings[key] === undefined ? DEFAULT_CONFIG[key] : settings[key]);
     const value =
       typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw) : raw;
     if (
@@ -50,14 +49,30 @@ export function parseConfig(
 export async function loadCodeConfig(
   _cwd: string,
   warnings: string[] = [],
+  signal?: AbortSignal,
 ): Promise<CodeConfig> {
-  const errors: string[] = [];
-  const settings = await readJsonFileObject(
-    join(getAgentDir(), "settings.json"),
-    errors,
-  );
-  const config = parseConfig(readExtensionSettings(settings, "code-mode"));
-  if (errors.length) config.valid = false;
+  let config: CodeConfig;
+  try {
+    const root: unknown = JSON.parse(
+      await readFile(join(getAgentDir(), "settings.json"), {
+        encoding: "utf8",
+        signal,
+      }),
+    );
+    if (!root || typeof root !== "object" || Array.isArray(root))
+      throw new Error("invalid_settings");
+    const settings = Object.hasOwn(root, "extension:code-mode")
+      ? (root as Record<string, unknown>)["extension:code-mode"]
+      : {};
+    if (!settings || typeof settings !== "object" || Array.isArray(settings))
+      throw new Error("invalid_settings");
+    config = parseConfig(settings as Record<string, unknown>);
+  } catch (error) {
+    config =
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+        ? parseConfig()
+        : { ...DEFAULT_CONFIG, valid: false };
+  }
   if (!config.valid)
     warnings.push(
       "Code mode disabled: invalid global settings or finite limits.",

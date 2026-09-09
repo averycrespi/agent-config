@@ -5,13 +5,14 @@ Code mode is a bounded MCP composition surface, not a workflow extension or a re
 ## Modules and integration
 
 - `index.ts` registers `code`, config inspection, semantic error promotion, and session cancellation. It requests exactly one active gateway facade at execution time, independent of extension load order.
+- `api.ts` exposes the supported sibling executor, current dependency/limit inspection and conservative whole-observation repeat-safety classification. It bounds setup time and tightens caller ceilings against current settings, without registering agent tools or owning the caller's session lifecycle.
 - `config.ts` accepts global/environment finite limits only. Invalid limits disable execution. Nothing from guest IPC influences configuration.
 - `runtime.ts` owns call IDs, admission, the FIFO concurrency queue, traces, cancellation, deadline, and child termination. `_spawn` is the narrow test seam; production uses real Node children.
 - `sandbox-source.ts` emits a trusted stdin bootstrap, separate VM setup, and separately compiled guest source. Guest bindings communicate with strings only. No parent objects, tokens, endpoint, environment, or event bus reach the child.
 - `tool.ts` separates host status from framed returned data, enforces output/spill fallback bounds, and renders metadata without source/arguments/payloads.
 - `runtime.test.ts`, `tool.test.ts`, and `value.test.ts` exercise real children and gateway HTTP fixtures. Compromised-bootstrap tests deliberately bypass guest helpers to test host IPC admission and the underlying Node permission boundary.
 
-The only cross-extension runtime surface is [gateway `api.ts`](../mcp-gateway/API.md). Its session event handshake avoids a module-global client shared accidentally across SDK sessions or reloads. The gateway factory installs a listener; only an active, nonconflicting instance responds. Shutdown removes the listener and closes the client. Trusted Pi extensions already have host authority; this API is not a same-process extension sandbox.
+Gateway authority enters through [gateway `api.ts`](../mcp-gateway/API.md); sibling consumers enter code execution through [code-mode `api.ts`](API.md). Its session event handshake avoids a module-global client shared accidentally across SDK sessions or reloads. The gateway factory installs a listener; only an active, nonconflicting instance responds. Shutdown removes the listener and closes the client. Trusted Pi extensions already have host authority; this API is not a same-process extension sandbox.
 
 ## Admission and fidelity
 
@@ -27,7 +28,7 @@ The workflows extension supplied the fresh permissioned Node/stdin/IPC pattern; 
 
 The first terminal cause closes admission synchronously. A normal return with queued/running work becomes `unfinished_calls`; a caught nested failure becomes `nested_call_failed`. Then pending traces become cancelled, dispatched unsettled work becomes unknown, the gateway abort signal fires, and the child is killed with SIGKILL. The outer promise waits for actual process close, not just the kill request. Call promises have both rejection handlers and late-settlement guards; they cannot update a finalized snapshot, publish payloads, or dispatch queued work afterward. The runtime does not wait indefinitely for a transport ignoring cancellation or claim its remote effects ceased.
 
-Whole-program wall time interrupts guest synchronous loops. No CPU/memory quota, malicious-schema resource guarantee, transactional rollback, or OS-level multi-tenant guarantee is claimed. Keep these limits explicit rather than treating Node permissions as a universal sandbox.
+Whole-program wall time interrupts guest synchronous loops. IPC admission and the final gateway dispatch callback also check an absolute deadline, so timer/event-loop delay cannot start calls after expiry. Trace `repeatSafe` is true only for host-branded transient discovery HTTP/transport failures before dispatch without uncertain effects; whole-observation classification additionally rejects any successful, unsettled, or dispatched trace. Ordinary code never retries. No CPU/memory quota, malicious-schema resource guarantee, transactional rollback, or OS-level multi-tenant guarantee is claimed. Keep these limits explicit rather than treating Node permissions as a universal sandbox.
 
 ## Output boundary
 

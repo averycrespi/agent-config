@@ -20,6 +20,7 @@ export type Trace = {
   reason?: string;
   invocationId?: string;
   outcomeUnknown?: boolean;
+  repeatSafe?: boolean;
 };
 export type RunResult = {
   status: "success" | "failed" | "cancelled" | "timeout";
@@ -39,6 +40,7 @@ export function runCode(
   gateway: GatewayAccess,
   config: CodeConfig = DEFAULT_CONFIG,
   signal?: AbortSignal,
+  deadlineMs?: number,
 ): Promise<RunResult> {
   const empty = (code: string): RunResult => ({
     status: "failed",
@@ -49,6 +51,7 @@ export function runCode(
     outcomeUnknown: false,
   });
   if (
+    (deadlineMs !== undefined && !Number.isSafeInteger(deadlineMs)) ||
     !config.valid ||
     (Object.keys(MAX_LIMITS) as Array<keyof typeof MAX_LIMITS>).some(
       (k) =>
@@ -77,6 +80,7 @@ export function runCode(
     return Promise.resolve({ ...empty("cancelled"), status: "cancelled" });
   return new Promise((resolve) => {
     const start = Date.now();
+    const deadline = Math.min(start + config.timeoutMs, deadlineMs ?? Infinity);
     const controller = new AbortController();
     const traces: Trace[] = [];
     const queue: Array<{
@@ -93,7 +97,7 @@ export function runCode(
     let settled = false;
     const timer = setTimeout(
       () => finish("timeout", "deadline_exceeded"),
-      config.timeoutMs,
+      Math.max(0, deadline - start),
     );
     const abort = () => finish("cancelled", "cancelled");
     signal?.addEventListener("abort", abort, { once: true });
@@ -144,13 +148,20 @@ export function runCode(
         if (error) finish("failed", "ipc_error");
       });
     }
+    function expired() {
+      if (Date.now() < deadline) return false;
+      finish("timeout", "deadline_exceeded");
+      return true;
+    }
     function pump() {
+      if (expired()) return;
       while (!terminal && active < config.maxConcurrency && queue.length) {
         const { trace, name, args } = queue.shift()!;
         active++;
         trace.state = "running";
         void gateway
           .call(name, args, controller.signal, () => {
+            expired();
             controller.signal.throwIfAborted();
             trace.dispatched = true;
             trace.tool = safe(name);
@@ -172,6 +183,11 @@ export function runCode(
                 trace.reason = error.reason;
                 trace.invocationId = error.invocationId;
                 trace.outcomeUnknown = error.outcomeUnknown;
+                // Only transient discovery failures prove the observation did not dispatch.
+                trace.repeatSafe =
+                  !trace.dispatched &&
+                  !error.outcomeUnknown &&
+                  ["transport_error", "http_error"].includes(error.code);
               } else trace.outcomeUnknown = trace.dispatched;
               // Remote guidance and exception messages may contain intermediate payloads.
               send({
@@ -195,7 +211,7 @@ export function runCode(
       }
     }
     function receive(raw: unknown) {
-      if (terminal) return;
+      if (terminal || expired()) return;
       if (
         typeof raw !== "string" ||
         Buffer.byteLength(raw) > MAX_RESPONSE_BYTES
@@ -267,6 +283,7 @@ export function runCode(
       pump();
     }
     try {
+      if (expired()) return;
       child = _spawn.fn(
         process.execPath,
         [
