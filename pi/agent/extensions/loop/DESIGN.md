@@ -44,6 +44,8 @@ Each start and clear advances a generation. Scheduler callbacks compare the clai
 9. emits the mutation event;
 10. sends one custom follow-up with `triggerTurn: true`.
 
+Settlement, start/resume commands, and idle API operations launch the scheduler without awaiting its delay. Pi awaits settlement and command handlers before consuming the next idle submission, so awaiting a countdown there blocks user messages and `/loop-stop`. The detached task retains delay-before-claim, cancellation, generation checks, and settlement deduplication. Its rejection handler stops the current loop with a bounded diagnostic; aborted/superseded tasks cannot stop a replacement or resumed loop.
+
 The continuation's model-visible content contains the caller message and a stable control reminder. Exact counters remain out of that message to avoid budget-driven rushing, but are available through state inspection and the widget. Delay is deterministic scheduler state rather than prompt advice; polling guidance only tells the caller to select an interval and keep each continuation to one polling batch.
 
 ## Persistence
@@ -62,7 +64,9 @@ Typed API subscriptions and `pi.events` receive lifecycle events after state mut
 
 ## UI
 
-The informational widget uses key `loop` and `belowEditor` placement. It shows precise counters because the widget is user-facing, while continuation prompts omit them. During a scheduler delay, extension-local ephemeral state supplies the next-continuation deadline and a one-second render timer updates a trailing countdown. `Loop waiting` is presentation only: persisted lifecycle status remains `running`, active time continues to accrue, and cancellation clears both the deadline and render timer. Outside an active wait, the widget shows the configured delay instead. Dynamic message and reason text is control-stripped, whitespace-collapsed, and width-truncated.
+The informational widget uses key `loop` and `belowEditor` placement and renders exactly one line for every existing loop, including yielded/stopped states. It follows the create-extension below-editor status convention; there is no message line or horizontal rule. `render.ts` owns state-to-color mapping (provider errors are failure stops; aborts and limit stops are ordinary stops) and display-safe inline reasons. `_shared/widget.ts` owns countdown rounding and width fitting: keep the state, then the next-continuation countdown, then continuation usage, active-time usage, and finally configured delay. Drop trailing telemetry rather than wrap. Continuation messages remain inspection-only. `_shared/widget.ts` also owns the persistent TUI mount: state/countdown updates replace its render callback and request a repaint, never re-register the key. Pi's `setWidget` deletes and appends existing keys, so periodic registration would reorder siblings. Disposal/removal releases the repaint handle; RPC uses supported string arrays. Loop no longer uses a top-level `pi.setWidget` compatibility shim.
+
+During a scheduler delay, extension-local ephemeral state supplies the next-continuation deadline and a one-second render timer updates the leading countdown. `loop waiting` is presentation only: persisted lifecycle status remains `running`, active time continues to accrue, and cancellation clears both the deadline and render timer. Outside an active wait, the widget shows the configured delay instead. Dynamic reason text is control-stripped and whitespace-collapsed before styling and width truncation.
 
 Tool rows follow the shared action grammar: a stable emphasized `loop` title, muted action-first summary, compact state result, and optional expanded transition. Start calls show bounds but never echo the continuation message. Renderers use `_shared/render.ts` for width-aware component reuse and sanitize dynamic reasons and errors before styling.
 

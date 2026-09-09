@@ -39,6 +39,17 @@ Apply this repository's extension conventions to new and existing extensions. Ke
 - Keep collapsed results compact; put inventories, logs, paths, per-item progress, and diagnostics in expanded results. Preserve a contextual action/run header on errors and honor both `context.isError` and semantic error results.
 - Test observable renderer behavior for applicable collapsed, expanded, partial, success, semantic-error, framework-error, hostile-control-character, and narrow-width cases.
 
+### Below-editor status widgets
+
+- Render one width-bounded line per entity using `<extension> <state> · <identity or reason> · <telemetry>`. Omit absent fields; do not add headers, overflow rows, blank lines, horizontal rules, or wrapped continuation text.
+- Follow statusline typography and TODO semantic colors: lowercase `muted` extension prefix, `accent` activity (including scheduled waiting), `warning` yielded/needs-attention state, `muted` ordinary stops, and `error` failure stops. Do not imply success with green activity labels.
+- Use `text` for names and numeric values, `muted` for metadata labels and supplementary reasons, and `dim` for inline `·` separators. Highlight nonzero failure-budget fields with `warning`. Use normal weight without icons, backgrounds, or animation; use theme tokens rather than hardcoded colors.
+- Sanitize dynamic content before styling. Shorten identity/reason text before sacrificing essential status or timing; drop secondary telemetry from the end when space is insufficient. Place failure indicators ahead of ordinary timing. Prefer `_shared/widget.ts` for fitting and countdowns; keep caller-specific sanitization at the extension boundary.
+- Round positive countdowns up to whole seconds, clamp expired countdowns to zero, and use `12s`, `1m`, or `1m 12s`. Refresh countdowns no faster than once per second; preserve lifecycle visibility and cleanup semantics. Keep instructions, source, evidence, and verbose details in inspection surfaces, not widgets.
+- Mount each TUI widget once while visible and repaint its existing component through the factory-provided `tui.requestRender()`. Do not call `setWidget` on every timer/state update: Pi deletes/reinserts keys, changing sibling order. Prefer `createPersistentWidget` in `_shared/widget.ts`; release repaint handles on disposal/removal and use string-array updates in RPC mode.
+- Keep long scheduler delays outside awaited lifecycle/command handlers so Pi can process subsequent user submissions. Own cancellation and explicitly handle detached-task rejection.
+- Document extension-specific fields and visibility in its README and layout/timer invariants in its DESIGN. This convention applies to below-editor status widgets, not tool rows, above-editor TODO lists, or the footer itself.
+
 ## Configuration and Logging
 
 - Prefer [shared config helpers](../../../pi/agent/extensions/_shared/config.ts) for settings loading/merging, boolean parsing, and inspection commands. Validate merged values at the extension boundary. Use safe defaults for invalid ordinary settings; reject or disable affected operations when fallback could relax a security restriction.

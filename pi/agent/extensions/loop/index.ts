@@ -15,7 +15,8 @@ import {
   loadLoopConfig,
   type LoopConfig,
 } from "./config.ts";
-import { createLoopWidget } from "./render.ts";
+import { renderLoopWidgetLines } from "./render.ts";
+import { createPersistentWidget } from "../_shared/widget.ts";
 import { bindLoopController } from "./runtime.ts";
 import {
   createLoopStore,
@@ -26,9 +27,6 @@ import {
   type LoopState,
 } from "./state.ts";
 import { registerLoopTool, STATE_ENTRY_TYPE } from "./tools.ts";
-
-const WIDGET_KEY = "loop";
-const WIDGET_PLACEMENT = "belowEditor";
 
 const CONTINUATION_CONTROL =
   'The loop is still running. Use `loop` with `action: "yield"` if progress requires user input, `action: "stop"` when another automatic continuation would not be useful, or `action: "get"` to inspect its state and remaining limits.';
@@ -62,22 +60,6 @@ function waitForDelay(
       },
       { once: true },
     );
-  });
-}
-
-function setLoopWidget(
-  pi: ExtensionAPI,
-  ctx: ExtensionContext,
-  content: ReturnType<typeof createLoopWidget> | undefined,
-): void {
-  const piAny = pi as any;
-  if (piAny.hasUI && typeof piAny.setWidget === "function") {
-    piAny.setWidget(WIDGET_KEY, content, { placement: WIDGET_PLACEMENT });
-    return;
-  }
-  if (!ctx.hasUI) return;
-  ctx.ui.setWidget(WIDGET_KEY, content as any, {
-    placement: WIDGET_PLACEMENT,
   });
 }
 
@@ -197,11 +179,13 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
 
   return function loopExtension(pi: ExtensionAPI) {
     const store = createLoopStore();
+    const widget = createPersistentWidget("loop");
     const apiListeners = new Set<(event: LoopEvent) => void>();
     const eventQueue: LoopEvent[] = [];
     let publishingEvents = false;
     let config = DEFAULT_LOOP_CONFIG;
     let currentCtx: ExtensionContext | undefined;
+    let contextGeneration = 0;
     let unsubscribeWidget: (() => void) | undefined;
     let unbindApi: (() => void) | undefined;
     let runSerial = 0;
@@ -224,11 +208,17 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
 
     function renderWidget(ctx: ExtensionContext): void {
       const loop = store.getLoop();
-      setLoopWidget(
-        pi,
+      widget.update(
         ctx,
         config.showWidget && loop
-          ? createLoopWidget(loop, pendingContinuationAt)
+          ? (width, theme) =>
+              renderLoopWidgetLines(
+                loop,
+                width,
+                theme,
+                Date.now(),
+                pendingContinuationAt,
+              )
           : undefined,
       );
     }
@@ -356,6 +346,9 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           },
           { deliverAs: "followUp", triggerTurn: true },
         );
+      } catch (error) {
+        if (!schedule.signal.aborted && pendingSchedule === schedule)
+          throw error;
       } finally {
         if (pendingSchedule === schedule) {
           pendingSchedule = undefined;
@@ -363,6 +356,30 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           renderWidget(ctx);
         }
       }
+    }
+
+    function launchContinuation(
+      ctx: ExtensionContext,
+      lifecycleSerial?: number,
+    ): void {
+      const generation = store.getLoop()?.generation;
+      const contextToken = contextGeneration;
+      void scheduleContinuation(ctx, lifecycleSerial).catch(
+        (error: unknown) => {
+          if (
+            contextToken !== contextGeneration ||
+            store.getLoop()?.generation !== generation
+          )
+            return;
+          const detail = boundedFailureDetail(
+            `Continuation scheduling failed: ${error instanceof Error ? error.message : String(error)}`,
+            config.reasonMaxChars,
+          );
+          store.stop("extension_stop", detail, config.reasonMaxChars);
+          publish("stopped");
+          if (ctx.hasUI) ctx.ui.notify(detail, "error");
+        },
+      );
     }
 
     const controller: LoopController = {
@@ -387,7 +404,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           typeof (currentCtx as any).isIdle === "function" &&
           (currentCtx as any).isIdle()
         ) {
-          void scheduleContinuation(currentCtx);
+          launchContinuation(currentCtx);
         }
         return loop;
       },
@@ -412,7 +429,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
             typeof (currentCtx as any).isIdle === "function" &&
             (currentCtx as any).isIdle()
           ) {
-            void scheduleContinuation(currentCtx);
+            launchContinuation(currentCtx);
           }
         }
         return requireLoop();
@@ -474,7 +491,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           );
           publish("started");
           notifyState(ctx);
-          await scheduleContinuation(ctx as unknown as ExtensionContext);
+          launchContinuation(ctx as unknown as ExtensionContext);
         } catch (error) {
           ctx.ui.notify(
             error instanceof Error ? error.message : String(error),
@@ -531,7 +548,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
           if (resumed) {
             publish("resumed");
             notifyState(ctx);
-            await scheduleContinuation(ctx as unknown as ExtensionContext);
+            launchContinuation(ctx as unknown as ExtensionContext);
           } else {
             notifyState(ctx);
           }
@@ -574,6 +591,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
     });
 
     pi.on("session_start", async (_event, ctx) => {
+      contextGeneration++;
       unsubscribeWidget?.();
       unbindApi?.();
       currentCtx = ctx;
@@ -589,6 +607,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
     });
 
     pi.on("session_tree", async (_event, ctx) => {
+      contextGeneration++;
       currentCtx = ctx;
       pendingFailure = undefined;
       cancelPendingSchedule();
@@ -662,12 +681,13 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
             return undefined;
           }
         }
-        await scheduleContinuation(ctx, runSerial);
+        launchContinuation(ctx, runSerial);
         return undefined;
       },
     );
 
     pi.on("session_shutdown", async (_event, ctx) => {
+      contextGeneration++;
       unsubscribeWidget?.();
       unsubscribeWidget = undefined;
       unbindApi?.();
@@ -676,7 +696,7 @@ export function createLoopExtension(options: LoopExtensionOptions = {}) {
       cancelPendingSchedule();
       apiListeners.clear();
       store.replaceState({ generation: 0 });
-      setLoopWidget(pi, ctx, undefined);
+      widget.update(ctx);
     });
   };
 }

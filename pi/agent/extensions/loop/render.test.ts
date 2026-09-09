@@ -20,80 +20,97 @@ function loop(overrides: Partial<LoopState> = {}): LoopState {
     ...overrides,
   };
 }
+const theme = {
+  fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+  bold: () => {
+    throw new Error("Widgets must not use bold");
+  },
+};
 
-test("loop widget gives running status visual priority over telemetry", () => {
-  const theme = {
-    fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
-    bold: (text: string) => `<bold>${text}</bold>`,
-  };
-  const lines = renderLoopWidgetLines(
-    loop({ delaySeconds: 15, activeElapsedMs: 30_000 }),
-    300,
-    theme,
-    1_000,
+test("running loop uses one quiet row without its message or separator", () => {
+  assert.deepEqual(
+    renderLoopWidgetLines(loop({ delaySeconds: 15 }), 200, undefined, 1000),
+    ["loop running · 3/10 continuations · 12m/60m active · delay 15s"],
   );
-
-  assert.equal(lines.length, 3);
+  assert.deepEqual(renderLoopWidgetLines(undefined, 80), []);
   assert.equal(
-    lines[0],
-    "<accent><bold>● Loop running</bold></accent><borderMuted> · </borderMuted><text>3/10</text><muted> continuations</muted><borderMuted> · </borderMuted><text>0m/60m</text><muted> active</muted><borderMuted> · </borderMuted><text>15s</text><muted> delay</muted>",
+    renderLoopWidgetLines(loop(), 1000, theme, 1000)[0],
+    "<muted>loop</muted> <accent>running</accent><dim> · </dim><text>3/10</text><muted> continuations</muted><dim> · </dim><text>12m/60m</text><muted> active</muted>",
   );
-  assert.match(lines[1], /Continue making concrete progress/);
 });
 
-test("loop widget replaces the configured delay with a trailing countdown while waiting", () => {
-  const lines = renderLoopWidgetLines(
-    loop({ delaySeconds: 15 }),
-    300,
-    undefined,
-    1_000,
-    13_000,
+test("waiting countdown precedes telemetry and stays accent, not warning", () => {
+  assert.deepEqual(
+    renderLoopWidgetLines(
+      loop({ delaySeconds: 15 }),
+      200,
+      undefined,
+      1000,
+      13000,
+    ),
+    ["loop waiting · next 12s · 3/10 continuations · 12m/60m active"],
   );
-
+  assert.match(
+    renderLoopWidgetLines(loop(), 1000, theme, 1000, 13000)[0],
+    /<accent>waiting<\/accent>/,
+  );
   assert.equal(
-    lines[0],
-    "◷ Loop waiting · 3/10 continuations · 12m/60m active · next continuation in 12s",
+    renderLoopWidgetLines(loop(), 25, undefined, 1000, 13000)[0],
+    "loop waiting · next 12s",
   );
 });
 
-test("loop widget renders yielded and stopped details safely", () => {
-  const yielded = renderLoopWidgetLines(
-    loop({
-      status: "yielded",
-      runningSince: undefined,
-      detail: "Need\n\u001b[31minput",
-    }),
-    80,
+test("yielded and stopped loops show safe inline reasons, never the message", () => {
+  const yielded = loop({
+    status: "yielded",
+    runningSince: undefined,
+    detail: "Need\n\u001b[31minput",
+  });
+  assert.deepEqual(renderLoopWidgetLines(yielded, 80), [
+    "loop yielded · waiting for user · Need input",
+  ]);
+  assert.match(
+    renderLoopWidgetLines(yielded, 1000, theme)[0],
+    /<warning>yielded<\/warning>/,
   );
-  const stopped = renderLoopWidgetLines(
-    loop({
-      status: "stopped",
-      runningSince: undefined,
-      stopReason: "aborted",
-      detail: "Operation aborted",
-    }),
-    80,
+  const stopped = loop({
+    status: "stopped",
+    runningSince: undefined,
+    stopReason: "user_stop",
+    detail: "Enough\nfor now",
+  });
+  assert.deepEqual(renderLoopWidgetLines(stopped, 80), [
+    "loop stopped · stopped by user · Enough for now",
+  ]);
+  assert.match(
+    renderLoopWidgetLines(stopped, 1000, theme)[0],
+    /<muted>stopped<\/muted>/,
   );
-
-  assert.match(yielded[0], /Loop yielded · waiting for user input/);
-  assert.match(yielded[1], /Need input/);
-  assert.doesNotMatch(yielded.join("\n"), /\u001b/);
-  assert.match(stopped[0], /Loop stopped · aborted/);
-  assert.match(stopped[1], /Continue making concrete progress/);
-  assert.doesNotMatch(stopped[1], /Operation aborted/);
+  assert.match(
+    renderLoopWidgetLines(
+      { ...stopped, stopReason: "provider_error" },
+      1000,
+      theme,
+    )[0],
+    /<error>stopped<\/error>/,
+  );
 });
 
-test("loop widget truncates every line to narrow widths", () => {
-  const theme = {
-    fg: (_color: string, text: string) => `\u001b[31m${text}\u001b[0m`,
-    bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+test("every lifecycle stays one ANSI-safe line at narrow widths", () => {
+  const ansiTheme = {
+    fg: (_color: string, text: string) => `\u001b[31m${text}\u001b[39m`,
+    bold: theme.bold,
   };
-  const lines = renderLoopWidgetLines(
-    loop({ message: "宽字符继续工作" }),
-    12,
-    theme,
-  );
-
-  assert.ok(lines.every((line) => visibleWidth(line) <= 12));
-  assert.ok(lines.every((line) => !line.endsWith("\u001b")));
+  for (const status of ["running", "yielded", "stopped"] as const)
+    for (const width of [0, 1, 7, 12, 40, 80]) {
+      const lines = renderLoopWidgetLines(
+        loop({ status, detail: "宽字符\n\u001b]52;c;evil\u0007继续工作" }),
+        width,
+        ansiTheme,
+        1000,
+      );
+      assert.equal(lines.length, 1);
+      assert.ok(visibleWidth(lines[0]) <= width);
+      assert.doesNotMatch(lines[0], /\n|\u0007|\u001b\]|Continue making/);
+    }
 });

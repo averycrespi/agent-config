@@ -1,4 +1,5 @@
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import {
   getLoopActiveElapsedMs,
   sanitizeDisplayText,
@@ -6,29 +7,14 @@ import {
   type LoopStopReason,
 } from "./state.ts";
 
-const SEPARATOR = "─";
-
 const plainTheme = {
   fg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
 };
 
-type WidgetTheme = typeof plainTheme;
-
-function truncateLine(text: string, width: number): string {
-  if (width <= 0) return "";
-  return truncateToWidth(text, width);
-}
+type WidgetTheme = Pick<Theme, "fg">;
 
 function formatMinutes(ms: number): string {
   return `${Math.max(0, Math.floor(ms / 60_000))}m`;
-}
-
-function formatCountdown(ms: number): string {
-  const totalSeconds = Math.max(1, Math.ceil(ms / 1_000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
 function formatStopReason(reason: LoopStopReason | undefined): string {
@@ -56,38 +42,69 @@ function formatStopReason(reason: LoopStopReason | undefined): string {
 
 function statusLine(
   loop: LoopState,
+  width: number,
   theme: WidgetTheme,
   now: number,
   nextContinuationAt?: number,
 ): string {
-  const separator = theme.fg("borderMuted", " · ");
+  const separator = theme.fg("dim", " · ");
+  const prefix = theme.fg("muted", "loop") + " ";
+  const muted = (text: string) => theme.fg("muted", text);
+  const value = (text: string) => theme.fg("text", text);
   if (loop.status === "yielded") {
-    return `${theme.fg("warning", theme.bold("◆ Loop yielded"))}${separator}${theme.fg("muted", "waiting for user input")}`;
+    return fitWidgetRow(
+      prefix + theme.fg("warning", "yielded"),
+      [],
+      width,
+      separator,
+      muted("waiting for user") +
+        (loop.detail
+          ? separator + muted(sanitizeDisplayText(loop.detail))
+          : ""),
+    );
   }
   if (loop.status === "stopped") {
-    return `${theme.fg("muted", theme.bold("■ Loop stopped"))}${separator}${theme.fg("muted", formatStopReason(loop.stopReason))}`;
+    return fitWidgetRow(
+      prefix +
+        theme.fg(
+          loop.stopReason === "provider_error" ? "error" : "muted",
+          "stopped",
+        ),
+      [],
+      width,
+      separator,
+      muted(formatStopReason(loop.stopReason)) +
+        (loop.detail
+          ? separator + muted(sanitizeDisplayText(loop.detail))
+          : ""),
+    );
   }
-
-  const elapsed = getLoopActiveElapsedMs(loop, now);
-  const continuationUsage = theme.fg(
-    "text",
-    `${loop.continuationCount}/${loop.limits.maxContinuations}`,
+  const fields: string[] = [];
+  if (nextContinuationAt !== undefined)
+    fields.push(
+      muted("next ") + value(formatWidgetCountdown(nextContinuationAt - now)),
+    );
+  fields.push(
+    value(`${loop.continuationCount}/${loop.limits.maxContinuations}`) +
+      muted(" continuations"),
+    value(
+      `${formatMinutes(getLoopActiveElapsedMs(loop, now))}/${loop.limits.maxActiveMinutes}m`,
+    ) + muted(" active"),
   );
-  const activeUsage = theme.fg(
-    "text",
-    `${formatMinutes(elapsed)}/${loop.limits.maxActiveMinutes}m`,
+  if (nextContinuationAt === undefined && loop.delaySeconds > 0)
+    fields.push(
+      muted("delay ") + value(formatWidgetCountdown(loop.delaySeconds * 1000)),
+    );
+  return fitWidgetRow(
+    prefix +
+      theme.fg(
+        "accent",
+        nextContinuationAt === undefined ? "running" : "waiting",
+      ),
+    fields,
+    width,
+    separator,
   );
-  const status =
-    nextContinuationAt === undefined
-      ? theme.fg("accent", theme.bold("● Loop running"))
-      : theme.fg("warning", theme.bold("◷ Loop waiting"));
-  const delay =
-    nextContinuationAt !== undefined
-      ? `${separator}${theme.fg("muted", "next continuation in ")}${theme.fg("text", formatCountdown(nextContinuationAt - now))}`
-      : loop.delaySeconds > 0
-        ? `${separator}${theme.fg("text", `${loop.delaySeconds}s`)}${theme.fg("muted", " delay")}`
-        : "";
-  return `${status}${separator}${continuationUsage}${theme.fg("muted", " continuations")}${separator}${activeUsage}${theme.fg("muted", " active")}${delay}`;
 }
 
 export function renderLoopWidgetLines(
@@ -98,14 +115,7 @@ export function renderLoopWidgetLines(
   nextContinuationAt?: number,
 ): string[] {
   if (!loop) return [];
-  const safeWidth = Math.max(0, width);
-  const detail =
-    loop.status === "yielded" && loop.detail ? loop.detail : loop.message;
-  return [
-    truncateLine(statusLine(loop, theme, now, nextContinuationAt), safeWidth),
-    truncateLine(`↻ ${sanitizeDisplayText(detail)}`, safeWidth),
-    theme.fg("borderMuted", SEPARATOR.repeat(safeWidth)),
-  ];
+  return [statusLine(loop, width, theme, now, nextContinuationAt)];
 }
 
 export function createLoopWidget(loop: LoopState, nextContinuationAt?: number) {

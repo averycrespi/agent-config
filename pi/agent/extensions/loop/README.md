@@ -48,7 +48,7 @@ The loop is still running. Use `loop` with `action: "yield"` if progress require
 
 The message deliberately omits exact continuation counts and elapsed or remaining minutes. Precise values remain available through `loop(get)`, commands, the API, and the widget.
 
-Continuation is scheduled from `agent_settled`, after Pi has handled retries, compaction recovery, and queued messages. When the loop has a nonzero delay, the scheduler waits that many seconds, then rechecks loop generation, lifecycle state, idleness, pending messages, and limits before claiming the continuation. The wait counts toward active running time. Stop, yield, clear, session replacement, and shutdown cancel pending waits. Accounting is persisted before the message is enqueued. Provider errors that remain after settlement and aborted runs stop the loop.
+Continuation is scheduled from `agent_settled`, after Pi has handled retries, compaction recovery, and queued messages. When the loop has a nonzero delay, the scheduler waits that many seconds, then rechecks loop generation, lifecycle state, idleness, pending messages, and limits before claiming the continuation. The wait counts toward active running time. Stop, yield, clear, session replacement, and shutdown cancel pending waits. Accounting is persisted before the message is enqueued. Provider errors that remain after settlement and aborted runs stop the loop. Countdown scheduling runs outside the awaited settlement/command handlers, so submitted input and `/loop-stop` remain usable while waiting. Unexpected scheduler failures stop the loop with a diagnostic rather than leaving a rejected background task.
 
 ## Commands
 
@@ -73,7 +73,18 @@ A loop restored from a persisted `running` snapshot becomes `stopped` with reaso
 
 ## Widget
 
-When enabled and a loop exists, a compact widget appears below the editor. It emphasizes the lifecycle status while rendering exact continuation usage and active running-time usage. A running loop shows its configured nonzero delay as secondary telemetry. While the scheduler is waiting for that delay, the status changes to `Loop waiting` and replaces the configured delay with a trailing `next continuation in 12s` countdown that updates once per second. This is transient presentation state, not a persisted lifecycle status, and waiting time continues to count as active running time. The widget shows the configured message while running, waiting, or stopped, the current wait reason while yielded, and stopped-state diagnostics in the status line. Dynamic content is terminal-safe and width-truncated.
+When enabled and a loop exists, exactly one width-bounded line appears below the editor, without icons, bold text, a message line, or a horizontal rule. The muted lowercase prefix and dim separators follow the [below-editor status convention](../../../../.pi/skills/create-extension/SKILL.md#below-editor-status-widgets). Activity is accent-colored (including scheduled waiting), yielded is warning-colored, ordinary stops are muted, and provider-error stops are error-colored. Values use normal text; labels and reasons are muted.
+
+```text
+loop running · 3/10 continuations · 8m/60m active · delay 30s
+loop waiting · next 12s · 3/10 continuations · 8m/60m active
+loop yielded · waiting for user · Choose the target environment
+loop stopped · continuation limit reached
+```
+
+These are alternative states of the same row. Running shows continuation usage and active-time usage in whole minutes, followed by any configured nonzero delay. During a scheduler delay, `waiting` replaces `running` and a leading `next` countdown replaces the configured delay. It updates once per second, rounds positive fractions upward, and uses `12s`, `1m`, or `1m 12s`. Waiting is presentation only: lifecycle remains `running` and active time continues to accrue.
+
+The TUI widget is mounted once while visible and repainted in place, preserving its position relative to Monitor and other widgets across countdown updates. Yielded/stopped rows show the reason inline and remain visible until cleared. The continuation message is available through `/loop` and `loop get`, not the widget. Dynamic reasons are terminal-safe and truncated; secondary telemetry drops from the right on narrow terminals, preserving the waiting countdown ahead of usage counters.
 
 ## Configuration
 

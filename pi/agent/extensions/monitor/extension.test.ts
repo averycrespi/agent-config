@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { Container, visibleWidth } from "@earendil-works/pi-tui";
+import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { createLoopExtension } from "../loop/index.ts";
+import { DEFAULT_LOOP_CONFIG } from "../loop/config.ts";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import registerMonitor from "./index.ts";
 import { fixture, TEST_BEARER } from "../mcp-gateway/fixture.ts";
@@ -148,7 +151,7 @@ test("TUI and RPC widgets show all active monitors and clear after cancellation 
       const lines = () => {
         const value = h.widgets.at(-1)[1];
         return typeof value === "function"
-          ? value(null, theme).render(100)
+          ? value({ requestRender() {} }, theme).render(100)
           : value;
       };
       assert.equal(lines(), undefined);
@@ -161,13 +164,11 @@ test("TUI and RPC widgets show all active monitors and clear after cancellation 
         });
         ids.push(result.details.receipts[0].id);
       }
-      assert.equal(lines().length, 5);
-      assert.equal(lines().at(-1), "─".repeat(100));
-      for (let i = 0; i < 4; i++)
-        assert.match(lines()[i], new RegExp(`^monitor active-${i} · active`));
-      await h.run({ action: "cancel", id: ids[0] });
       assert.equal(lines().length, 4);
-      assert.equal(lines().at(-1), "─".repeat(100));
+      for (let i = 0; i < 4; i++)
+        assert.match(lines()[i], new RegExp(`^monitor active · active-${i}`));
+      await h.run({ action: "cancel", id: ids[0] });
+      assert.equal(lines().length, 3);
       assert.ok(lines().every((line: string) => !line.includes("active-0")));
       await h.run({ action: "cancel", id: "all" });
       assert.equal(lines(), undefined);
@@ -302,6 +303,85 @@ test("recovery bounds both ancestry lookup and receipt examination, omitting old
   );
 });
 
+test("Loop and Monitor refresh in place without changing Pi widget order", async (t) => {
+  const h = await setup(t, true, "tui");
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const host: any = Object.create(InteractiveMode.prototype);
+  host.extensionWidgetsAbove = new Map();
+  host.extensionWidgetsBelow = new Map();
+  host.widgetContainerAbove = new Container();
+  host.widgetContainerBelow = new Container();
+  let renders = 0;
+  host.ui = {
+    requestRender: () => {
+      renders++;
+    },
+  };
+  h.ctx.ui.setWidget = (key: string, content: any, options: any) =>
+    host.setExtensionWidget(
+      key,
+      typeof content === "function"
+        ? (tui: any) => content(tui, theme)
+        : content,
+      options,
+    );
+  const loopHandlers = new Map<string, any>();
+  const loopTools = new Map<string, any>();
+  const ctx = {
+    ...h.ctx,
+    sessionManager: { getBranch: () => [] },
+    hasPendingMessages: () => false,
+  };
+  let loopTick!: () => void;
+  createLoopExtension({
+    loadConfig: async () => ({ config: DEFAULT_LOOP_CONFIG, warnings: [] }),
+    wait: (_ms, signal) =>
+      new Promise<void>((resolve) =>
+        signal.addEventListener("abort", () => resolve(), { once: true }),
+      ),
+    setInterval: (callback) => {
+      loopTick = callback;
+      return 1;
+    },
+    clearInterval() {},
+  })({
+    on: (event: string, handler: any) => loopHandlers.set(event, handler),
+    registerCommand() {},
+    registerTool: (tool: any) => loopTools.set(tool.name, tool),
+    appendEntry() {},
+    events: { emit() {} },
+    sendMessage() {
+      throw new Error("Cancelled smoke fixture must not send");
+    },
+  } as any);
+  t.after(() => loopHandlers.get("session_shutdown")({}, ctx));
+  await loopHandlers.get("session_start")({}, ctx);
+  await h.run({ ...input, source: 'return {decision:"wait",evidence:null};' });
+  await loopTools
+    .get("loop")
+    .execute(
+      "fixture",
+      { action: "start", message: "fixture", delay_seconds: 60 },
+      undefined,
+      undefined,
+      ctx,
+    );
+  void loopHandlers.get("agent_settled")({}, ctx);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const order = [...host.extensionWidgetsBelow.keys()];
+  assert.deepEqual(order, ["monitor", "loop"]);
+  const components = [...host.extensionWidgetsBelow.values()];
+  const before = renders;
+  for (let i = 0; i < 3; i++) {
+    t.mock.timers.tick(1000);
+    assert.deepEqual([...host.extensionWidgetsBelow.keys()], order);
+    loopTick();
+    assert.deepEqual([...host.extensionWidgetsBelow.values()], components);
+  }
+  assert.ok(renders > before, "updates still request repaint");
+  assert.equal(host.widgetContainerBelow.children.length, 2);
+});
+
 test("widget countdowns round up and observing appears only for sustained polls", async (t) => {
   const h = await setup(t);
   await h.run(input);
@@ -316,29 +396,29 @@ test("widget countdowns round up and observing appears only for sustained polls"
   const observations = new WidgetObservations();
   const render = (r: typeof base, now: number) =>
     widgetLines([r], now, 200, theme, observations)[0];
-  assert.match(render(waiting, 1), /active · next 1s · 1m 00s left/);
-  assert.match(render(waiting, 999), /active · next 1s/);
-  assert.match(render(waiting, 1000), /active · next 0s/);
+  assert.match(render(waiting, 1), /^monitor active · .* · next 1s · 1m left/);
+  assert.match(render(waiting, 999), / · next 1s/);
+  assert.match(render(waiting, 1000), / · next 0s/);
   assert.match(render(waiting, 61_000), /next 0s · 0s left/);
-  assert.match(render({ ...waiting, nextAt: 60_001 }, 0), /next 1m 01s/);
+  assert.match(render({ ...waiting, nextAt: 60_001 }, 0), /next 1m 1s/);
 
   const polling = { ...waiting, state: "observing" as const, polls: 2 };
   observations.update([polling], 1000);
-  assert.match(render(polling, 1040), / · active · /);
+  assert.match(render(polling, 1040), /^monitor active · /);
   assert.doesNotMatch(render(polling, 1040), /next|observing/);
   observations.update([polling], 2000);
-  assert.match(render(polling, 2999), / · active · /);
-  assert.match(render(polling, 3000), / · observing · /);
+  assert.match(render(polling, 2999), /^monitor active · /);
+  assert.match(render(polling, 3000), /^monitor observing · /);
   observations.update([waiting], 3100);
-  assert.match(render(waiting, 3100), / · active · /);
+  assert.match(render(waiting, 3100), /^monitor active · /);
   observations.update([polling], 3200);
-  assert.match(render(polling, 3200), / · active · /);
+  assert.match(render(polling, 3200), /^monitor active · /);
   const nextPoll = { ...polling, polls: 3 };
   observations.update([nextPoll], 6000);
-  assert.match(render(nextPoll, 6000), / · active · /);
+  assert.match(render(nextPoll, 6000), /^monitor active · /);
   observations.update([], 7000);
   observations.update([nextPoll], 9000);
-  assert.match(render(nextPoll, 9000), / · active · /);
+  assert.match(render(nextPoll, 9000), /^monitor active · /);
 });
 
 test("published schema, bounded restore, compact expandable rendering and hostile narrow widgets", async (t) => {
@@ -378,8 +458,7 @@ test("published schema, bounded restore, compact expandable rendering and hostil
       width,
       theme,
     );
-    assert.equal(lines.length, 3);
-    assert.equal(lines.at(-1), "─".repeat(width));
+    assert.equal(lines.length, 2);
     for (const line of lines) {
       assert.ok(visibleWidth(line) <= width);
       assert.doesNotMatch(
@@ -388,10 +467,46 @@ test("published schema, bounded restore, compact expandable rendering and hostil
       );
     }
   }
-  const styled = widgetLines([hostile], 0, 12, {
-    fg: (color, text) => `${color}:${text}`,
-  });
-  assert.equal(styled.at(-1), `borderMuted:${"─".repeat(12)}`);
+  const styled = widgetLines(
+    [
+      {
+        ...hostile,
+        name: "Build checks",
+        failures: 1,
+        failureLimit: 3,
+        nextAt: 12000,
+        deadline: 60000,
+      },
+    ],
+    0,
+    1000,
+    {
+      fg: (color, text) => `<${color}>${text}</${color}>`,
+    },
+  );
+  assert.deepEqual(styled, [
+    "<muted>monitor</muted> <accent>active</accent><dim> · </dim><text>Build checks</text><dim> · </dim><warning>failures 1/3</warning><dim> · </dim><muted>next </muted><text>12s</text><dim> · </dim><text>1m</text><muted> left</muted>",
+  ]);
+  const narrow = widgetLines(
+    [
+      {
+        ...hostile,
+        name: "A long monitor name repeated".repeat(3),
+        failures: 1,
+        failureLimit: 3,
+        nextAt: 12000,
+        deadline: 60000,
+      },
+    ],
+    0,
+    56,
+    theme,
+  )[0];
+  assert.match(
+    narrow.replaceAll("\x1b[0m", ""),
+    /^monitor active · .*… · failures 1\/3 · next 12s$/,
+  );
+  assert.ok(visibleWidth(narrow) <= 56);
   assert.deepEqual(widgetLines([], 0, 100, theme), []);
   for (const state of [
     "condition",
@@ -427,7 +542,7 @@ test("published schema, bounded restore, compact expandable rendering and hostil
       100,
       theme,
     ).length,
-    17,
+    16,
   );
   assert.equal(
     Object.hasOwn(

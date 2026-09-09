@@ -4,6 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { registerConfigCommand } from "../_shared/config.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
+import { createPersistentWidget } from "../_shared/widget.ts";
 import { executeCode, getCodeLimits } from "../code-mode/api.ts";
 import { loadMonitorConfig } from "./config.ts";
 import { MonitorEngine, active, label } from "./engine.ts";
@@ -29,12 +30,12 @@ export default function (pi: ExtensionAPI) {
   let ticker: ReturnType<typeof setInterval> | undefined;
   let context: ExtensionContext | undefined;
   const observations = new WidgetObservations();
+  const widget = createPersistentWidget("monitor");
   function clearWidget() {
     if (ticker) clearInterval(ticker);
     ticker = undefined;
     observations.update([], Date.now());
-    if (context?.hasUI)
-      context.ui.setWidget("monitor", undefined, { placement: "belowEditor" });
+    if (context) widget.update(context);
   }
   function refresh() {
     const ctx = context;
@@ -46,22 +47,9 @@ export default function (pi: ExtensionAPI) {
       clearWidget();
       return;
     }
-    if (ctx.mode === "tui")
-      ctx.ui.setWidget(
-        "monitor",
-        (_tui, theme) => ({
-          render: (width) =>
-            widgetLines(owner.list(), Date.now(), width, theme, observations),
-          invalidate() {},
-        }),
-        { placement: "belowEditor" },
-      );
-    else
-      ctx.ui.setWidget(
-        "monitor",
-        widgetLines(receipts, Date.now(), 100, ctx.ui.theme, observations),
-        { placement: "belowEditor" },
-      );
+    widget.update(ctx, (width, theme) =>
+      widgetLines(owner.list(), Date.now(), width, theme, observations),
+    );
     if (!ticker) ticker = setInterval(refresh, 1000);
   }
   function invalidate(persist: boolean) {

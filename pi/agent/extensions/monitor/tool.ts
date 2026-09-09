@@ -1,12 +1,8 @@
 import type { ToolDefinition, Theme } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { truncateToWidth } from "@earendil-works/pi-tui";
-import {
-  getTruncatedText,
-  formatDuration,
-  ELAPSED_THRESHOLD_MS,
-} from "../_shared/render.ts";
+import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
+import { getTruncatedText, ELAPSED_THRESHOLD_MS } from "../_shared/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { active, label, type Receipt } from "./engine.ts";
 
@@ -102,10 +98,6 @@ export class WidgetObservations {
   }
 }
 
-function countdown(ms: number): string {
-  return formatDuration(Math.ceil(Math.max(0, ms) / 1000) * 1000);
-}
-
 export function widgetLines(
   receipts: Receipt[],
   now: number,
@@ -113,21 +105,30 @@ export function widgetLines(
   theme: Pick<Theme, "fg">,
   observations = new WidgetObservations(),
 ): string[] {
-  const lines = receipts.filter(active).map((r) => {
+  return receipts.filter(active).map((r) => {
     const status = observations.isLongPoll(r, now) ? "observing" : "active";
-    const timing = `${r.state === "waiting" ? ` · next ${countdown(r.nextAt - now)}` : ""} · ${countdown(r.deadline - now)} left`;
-    const failure = r.failures
-      ? ` · failures ${r.failures}/${r.failureLimit}`
-      : "";
-    return truncateToWidth(
-      theme.fg("muted", "monitor") +
-        ` ${label(r.name, 80)} · ${status}${timing}${failure}`,
-      Math.max(0, width),
+    const fields: string[] = [];
+    if (r.failures)
+      fields.push(
+        theme.fg("warning", `failures ${r.failures}/${r.failureLimit}`),
+      );
+    if (r.state === "waiting")
+      fields.push(
+        theme.fg("muted", "next ") +
+          theme.fg("text", formatWidgetCountdown(r.nextAt - now)),
+      );
+    fields.push(
+      theme.fg("text", formatWidgetCountdown(r.deadline - now)) +
+        theme.fg("muted", " left"),
+    );
+    return fitWidgetRow(
+      theme.fg("muted", "monitor") + " " + theme.fg("accent", status),
+      fields,
+      width,
+      theme.fg("dim", " · "),
+      theme.fg("text", label(r.name, 80)),
     );
   });
-  if (lines.length)
-    lines.push(theme.fg("borderMuted", "─".repeat(Math.max(0, width))));
-  return lines;
 }
 export type ToolDetails = {
   monitorError?: boolean;
