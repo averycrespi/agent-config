@@ -23,6 +23,7 @@
 ## Tools and External Access
 
 - Use MCP Gateway (`mcp_search`, `mcp_describe`, `mcp_call`) for authenticated external systems, including remote Git/GitHub operations. Prefer local tools for local work; do not obtain external access through local secrets or ad hoc authenticated CLIs.
+- Explicit user authorization permits direct MCP Gateway administrative API access. Obtain separate consent for the exact mutations before executing them.
 - For linked Git worktree management, load the `herdr` skill and use `herdr worktree`, not bare `git worktree` or generic workspace commands.
 - Delegate self-contained questions when parallelism, substantial context isolation, or independent judgment outweighs handoff costs. Keep implementation in the owning session unless the user explicitly requests writable delegation under a compliant workflow; never overlap parent and child writes in one checkout.
 - Prefer validated machine-readable outputs at automation boundaries; leave execution mechanics to active tool/workflow contracts.
