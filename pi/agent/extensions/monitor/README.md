@@ -70,7 +70,7 @@ Notification receipts distinguish:
 
 - `none`: still observing.
 - `pending`: extension owns the notification and cancellation can suppress it.
-- `handed_to_pi`: the synchronous public API returned; delivery/consumption is **not acknowledged**. The widget says “follow-up handed/queued,” not consumed.
+- `handed_to_pi`: the synchronous public API returned; delivery/consumption is **not acknowledged**. This remains inspectable in receipts, not in the active-only widget.
 - `handoff_unknown`: the attempt was recorded before calling Pi; the call threw or the process stopped before recording its return. No automatic retry.
 - `suppressed`: canceled or invalidated before handoff.
 
@@ -80,18 +80,17 @@ Once handed to Pi, its queue cannot selectively retract a monitor message. Cance
 
 Global `settings.json` under `extension:monitor` only; project settings are ignored. Environment overrides win. Settings are sampled when the session/branch initializes, not hot-updated for running monitors. Restart/reload is a user decision and invalidates existing monitors. Invalid JSON, non-object settings/extension sections, unreadable settings (except an absent file), null or invalid finite values disable registration. Settings inspection remains available.
 
-| Field                | Default   | Environment override           | Description                                                                              |
-| -------------------- | --------- | ------------------------------ | ---------------------------------------------------------------------------------------- |
-| `maxActive`          | `4`       | `MONITOR_MAX_ACTIVE`           | 1–16 occupied monitors, including cleanup/pending notification.                          |
-| `maxConcurrentPolls` | `2`       | `MONITOR_MAX_CONCURRENT_POLLS` | 1–4 shared simultaneous observations.                                                    |
-| `intervalMs`         | `30000`   | `MONITOR_INTERVAL_MS`          | Default polling interval, 1000–3600000 ms.                                               |
-| `timeoutMs`          | `1800000` | `MONITOR_TIMEOUT_MS`           | Default wall-clock lifetime, 1000–86400000 ms.                                           |
-| `pollTimeoutMs`      | `30000`   | `MONITOR_POLL_TIMEOUT_MS`      | Default per-poll timeout, 1–300000 ms, tightened by code mode.                           |
-| `failureLimit`       | `3`       | `MONITOR_FAILURE_LIMIT`        | 1–20 cumulative repeat-safe failures; reaching the limit terminates.                     |
-| `maxCalls`           | `8`       | `MONITOR_MAX_CALLS`            | 1–128 nested attempts per poll, tightened by code mode.                                  |
-| `maxCallConcurrency` | `2`       | `MONITOR_MAX_CALL_CONCURRENCY` | 1–16 nested simultaneous calls per poll, tightened by code mode.                         |
-| `receiptLimit`       | `32`      | `MONITOR_RECEIPT_LIMIT`        | 16–128 in-memory/restored receipts; evict oldest unoccupied registration first.          |
-| `terminalRows`       | `2`       | `MONITOR_TERMINAL_ROWS`        | 0–8 terminal widget rows, last retained registrations; all active monitors also display. |
+| Field                | Default   | Environment override           | Description                                                                     |
+| -------------------- | --------- | ------------------------------ | ------------------------------------------------------------------------------- |
+| `maxActive`          | `4`       | `MONITOR_MAX_ACTIVE`           | 1–16 occupied monitors, including cleanup/pending notification.                 |
+| `maxConcurrentPolls` | `2`       | `MONITOR_MAX_CONCURRENT_POLLS` | 1–4 shared simultaneous observations.                                           |
+| `intervalMs`         | `30000`   | `MONITOR_INTERVAL_MS`          | Default polling interval, 1000–3600000 ms.                                      |
+| `timeoutMs`          | `1800000` | `MONITOR_TIMEOUT_MS`           | Default wall-clock lifetime, 1000–86400000 ms.                                  |
+| `pollTimeoutMs`      | `30000`   | `MONITOR_POLL_TIMEOUT_MS`      | Default per-poll timeout, 1–300000 ms, tightened by code mode.                  |
+| `failureLimit`       | `3`       | `MONITOR_FAILURE_LIMIT`        | 1–20 cumulative repeat-safe failures; reaching the limit terminates.            |
+| `maxCalls`           | `8`       | `MONITOR_MAX_CALLS`            | 1–128 nested attempts per poll, tightened by code mode.                         |
+| `maxCallConcurrency` | `2`       | `MONITOR_MAX_CALL_CONCURRENCY` | 1–16 nested simultaneous calls per poll, tightened by code mode.                |
+| `receiptLimit`       | `32`      | `MONITOR_RECEIPT_LIMIT`        | 16–128 in-memory/restored receipts; evict oldest unoccupied registration first. |
 
 ```json
 {
@@ -104,11 +103,13 @@ Global `settings.json` under `extension:monitor` only; project settings are igno
 }
 ```
 
+The former `terminalRows` setting and `MONITOR_TERMINAL_ROWS` environment override are ignored; terminal monitors are never displayed in the widget.
+
 Default aggregate nested concurrency is at most 4 (2 polls × 2 calls); configured hard maximum is 64 (4 × 16), excluding ordinary code/direct MCP activity. Calls per observation are bounded; total calls also have a finite bound from minimum interval and maximum lifetime. There is no new gateway-global quota across unrelated tools.
 
 ## Visibility, lifecycle and retention
 
-The shared widget is **below the editor**, with exactly one width-bounded line per displayed monitor, every line prefixed with muted `monitor`, and no header/overflow rows. Active rows show state and timing; failure-budget usage and notification state appear when relevant. Terminal rows use the bounded policy above, not an expanding history. Control sequences and gateway credential shapes are removed before styling. Names/descriptions are not general secret-safe containers: never put secrets in labels or instructions.
+The shared widget is **below the editor**, with exactly one width-bounded line for **every active monitor** (`waiting` or `observing`), every line prefixed with muted `monitor`, and no header/overflow rows. Rows use a stable `active` label; only polls observed running for at least two seconds show `observing`. Waiting rows show the next-poll countdown, and all active rows show remaining lifetime; both countdowns round up to whole seconds so a positive subsecond wait displays `1s`, not `0s`. Failure-budget usage appears when relevant. Receipt states remain precise and unchanged. All terminal states disappear immediately, including monitors still cleaning up or awaiting notification handoff; their receipts remain available through `/monitor` and tool list/get. When no monitors are active, the widget and its refresh timer are removed. While active rows are present, a single full-width muted `─` separator follows the monitor group, matching Loop and separating it from the statusline footer (or the next below-editor widget). The separator disappears with the widget. Control sequences and gateway credential shapes are removed before styling. Names/descriptions are not general secret-safe containers: never put secrets in labels or instructions.
 
 Monitors belong to the originating active session branch. Shutdown, reload, replacement and tree navigation abort observations, clear timers and invalidate pending extension-owned notifications. The before-tree hook stops conservatively when reached, even if a later handler cancels navigation; it never blocks navigation or appends history while Pi's tree preparation is in progress. Successful tree navigation rebuilds inspectable receipts for the destination branch only. No stale callback hands off in the new context.
 

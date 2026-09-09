@@ -2,7 +2,11 @@ import type { ToolDefinition, Theme } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import { getTruncatedText, formatDuration } from "../_shared/render.ts";
+import {
+  getTruncatedText,
+  formatDuration,
+  ELAPSED_THRESHOLD_MS,
+} from "../_shared/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { active, label, type Receipt } from "./engine.ts";
 
@@ -75,36 +79,55 @@ export function notificationContent(r: Receipt): string {
     "Observation stopped. Cancellation is not rollback. Do not replay uncertain operations. Notification handed to Pi; consumption is not acknowledged.",
   ].join("\n");
 }
+export class WidgetObservations {
+  private starts = new Map<string, { poll: number; at: number }>();
+
+  update(receipts: Receipt[], now: number): void {
+    const observing = receipts.filter((r) => r.state === "observing");
+    const ids = new Set(observing.map((r) => r.id));
+    for (const id of this.starts.keys())
+      if (!ids.has(id)) this.starts.delete(id);
+    for (const r of observing)
+      if (this.starts.get(r.id)?.poll !== r.polls)
+        this.starts.set(r.id, { poll: r.polls, at: now });
+  }
+
+  isLongPoll(r: Receipt, now: number): boolean {
+    const start = this.starts.get(r.id);
+    return (
+      r.state === "observing" &&
+      start?.poll === r.polls &&
+      now - start.at >= ELAPSED_THRESHOLD_MS
+    );
+  }
+}
+
+function countdown(ms: number): string {
+  return formatDuration(Math.ceil(Math.max(0, ms) / 1000) * 1000);
+}
+
 export function widgetLines(
   receipts: Receipt[],
-  terminalRows: number,
   now: number,
   width: number,
   theme: Pick<Theme, "fg">,
+  observations = new WidgetObservations(),
 ): string[] {
-  const live = receipts.filter(active);
-  const terminal = receipts.filter((r) => !active(r)).slice(-terminalRows);
-  return [...live, ...(terminalRows ? terminal : [])].map((r) => {
-    const timing = active(r)
-      ? `${r.state === "waiting" ? ` · next ${formatDuration(r.nextAt - now)}` : ""} · ${formatDuration(r.deadline - now)} left`
-      : "";
+  const lines = receipts.filter(active).map((r) => {
+    const status = observations.isLongPoll(r, now) ? "observing" : "active";
+    const timing = `${r.state === "waiting" ? ` · next ${countdown(r.nextAt - now)}` : ""} · ${countdown(r.deadline - now)} left`;
     const failure = r.failures
       ? ` · failures ${r.failures}/${r.failureLimit}`
       : "";
-    const notification =
-      r.notification === "handed_to_pi"
-        ? " · follow-up handed/queued"
-        : r.notification === "handoff_unknown"
-          ? " · handoff unknown"
-          : r.notification === "pending"
-            ? " · notification pending"
-            : "";
     return truncateToWidth(
       theme.fg("muted", "monitor") +
-        ` ${label(r.name, 80)} · ${label(r.state)}${timing}${failure}${notification}`,
+        ` ${label(r.name, 80)} · ${status}${timing}${failure}`,
       Math.max(0, width),
     );
   });
+  if (lines.length)
+    lines.push(theme.fg("borderMuted", "─".repeat(Math.max(0, width))));
+  return lines;
 }
 export type ToolDetails = {
   monitorError?: boolean;

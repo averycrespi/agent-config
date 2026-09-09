@@ -12,7 +12,6 @@ export const DEFAULT_CONFIG = {
   maxCalls: 8,
   maxCallConcurrency: 2,
   receiptLimit: 32,
-  terminalRows: 2,
 };
 export type Limits = typeof DEFAULT_CONFIG;
 export type MonitorConfig = Limits & { valid: boolean };
@@ -26,7 +25,6 @@ export const RANGES: Record<keyof Limits, readonly [number, number]> = {
   maxCalls: [1, 128],
   maxCallConcurrency: [1, 16],
   receiptLimit: [16, 128],
-  terminalRows: [0, 8],
 };
 export const ENV: Record<keyof Limits, string> = {
   maxActive: "MONITOR_MAX_ACTIVE",
@@ -38,7 +36,6 @@ export const ENV: Record<keyof Limits, string> = {
   maxCalls: "MONITOR_MAX_CALLS",
   maxCallConcurrency: "MONITOR_MAX_CALL_CONCURRENCY",
   receiptLimit: "MONITOR_RECEIPT_LIMIT",
-  terminalRows: "MONITOR_TERMINAL_ROWS",
 };
 export function inRange(key: keyof Limits, value: unknown): value is number {
   return (

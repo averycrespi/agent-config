@@ -18,6 +18,7 @@ import {
   summary,
   notificationContent,
   widgetLines,
+  WidgetObservations,
   type ToolDetails,
 } from "./tool.ts";
 
@@ -27,9 +28,11 @@ export default function (pi: ExtensionAPI) {
   let ready: Promise<void> = Promise.resolve();
   let ticker: ReturnType<typeof setInterval> | undefined;
   let context: ExtensionContext | undefined;
+  const observations = new WidgetObservations();
   function clearWidget() {
     if (ticker) clearInterval(ticker);
     ticker = undefined;
+    observations.update([], Date.now());
     if (context?.hasUI)
       context.ui.setWidget("monitor", undefined, { placement: "belowEditor" });
   }
@@ -38,18 +41,17 @@ export default function (pi: ExtensionAPI) {
     const owner = engine;
     if (!ctx?.hasUI || !owner) return;
     const receipts = owner.list();
+    observations.update(receipts, Date.now());
+    if (!receipts.some(active)) {
+      clearWidget();
+      return;
+    }
     if (ctx.mode === "tui")
       ctx.ui.setWidget(
         "monitor",
         (_tui, theme) => ({
           render: (width) =>
-            widgetLines(
-              owner.list(),
-              owner.config.terminalRows,
-              Date.now(),
-              width,
-              theme,
-            ),
+            widgetLines(owner.list(), Date.now(), width, theme, observations),
           invalidate() {},
         }),
         { placement: "belowEditor" },
@@ -57,20 +59,10 @@ export default function (pi: ExtensionAPI) {
     else
       ctx.ui.setWidget(
         "monitor",
-        widgetLines(
-          receipts,
-          owner.config.terminalRows,
-          Date.now(),
-          100,
-          ctx.ui.theme,
-        ),
+        widgetLines(receipts, Date.now(), 100, ctx.ui.theme, observations),
         { placement: "belowEditor" },
       );
-    if (receipts.some(active) && !ticker) ticker = setInterval(refresh, 1000);
-    if (!receipts.some(active) && ticker) {
-      clearInterval(ticker);
-      ticker = undefined;
-    }
+    if (!ticker) ticker = setInterval(refresh, 1000);
   }
   function invalidate(persist: boolean) {
     generation++;

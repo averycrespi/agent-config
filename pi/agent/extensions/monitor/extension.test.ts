@@ -8,7 +8,12 @@ import registerMonitor from "./index.ts";
 import { fixture, TEST_BEARER } from "../mcp-gateway/fixture.ts";
 import { createGatewayAccess } from "../mcp-gateway/api.ts";
 import { parseConfig, loadMonitorConfig } from "./config.ts";
-import { PARAMETERS, renderers, widgetLines } from "./tool.ts";
+import {
+  PARAMETERS,
+  renderers,
+  widgetLines,
+  WidgetObservations,
+} from "./tool.ts";
 import {
   restoreReceipts,
   RECEIPT_TYPE,
@@ -126,16 +131,57 @@ test("one meta-tool and direct commands; idle/active terminal delivery uses foll
       assert.match(h.messages[0][0].content, /answer/);
       assert.doesNotMatch(h.messages[0][0].content, /return \{/);
       assert.ok(h.widgets.every((w) => w[2].placement === "belowEditor"));
-      const widget = h.widgets.at(-1)[1](null, theme);
-      assert.equal(widget.render(100).length, 1);
-      assert.match(widget.render(100)[0], /^monitor example/);
-      assert.match(widget.render(200)[0], /handed\/queued/);
+      assert.equal(h.widgets.at(-1)[1], undefined);
       const before = h.messages.length;
       await h.commands.get("monitor").handler("", h.ctx);
       await h.commands.get("monitor").handler(r.details.receipts[0].id, h.ctx);
       await h.commands.get("monitor-cancel").handler("all", h.ctx);
       assert.equal(h.messages.length, before);
       assert.match(h.notices.at(-1)!, /cannot be selectively retracted/);
+    });
+});
+
+test("TUI and RPC widgets show all active monitors and clear after cancellation and recovery", async (t) => {
+  for (const mode of ["tui", "rpc"])
+    await t.test(mode, async (t) => {
+      const h = await setup(t, true, mode);
+      const lines = () => {
+        const value = h.widgets.at(-1)[1];
+        return typeof value === "function"
+          ? value(null, theme).render(100)
+          : value;
+      };
+      assert.equal(lines(), undefined);
+      const ids: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const result = await h.run({
+          ...input,
+          name: `active-${i}`,
+          source: 'return {decision:"wait",evidence:null};',
+        });
+        ids.push(result.details.receipts[0].id);
+      }
+      assert.equal(lines().length, 5);
+      assert.equal(lines().at(-1), "─".repeat(100));
+      for (let i = 0; i < 4; i++)
+        assert.match(lines()[i], new RegExp(`^monitor active-${i} · active`));
+      await h.run({ action: "cancel", id: ids[0] });
+      assert.equal(lines().length, 4);
+      assert.equal(lines().at(-1), "─".repeat(100));
+      assert.ok(lines().every((line: string) => !line.includes("active-0")));
+      await h.run({ action: "cancel", id: "all" });
+      assert.equal(lines(), undefined);
+      assert.equal(
+        (await h.run({ action: "list" })).details.receipts.length,
+        4,
+      );
+      await h.emit("session_start");
+      assert.equal(lines(), undefined);
+      assert.equal(
+        (await h.run({ action: "list" })).details.receipts.length,
+        4,
+      );
+      assert.equal(h.messages.length, 0);
     });
 });
 
@@ -256,6 +302,45 @@ test("recovery bounds both ancestry lookup and receipt examination, omitting old
   );
 });
 
+test("widget countdowns round up and observing appears only for sustained polls", async (t) => {
+  const h = await setup(t);
+  await h.run(input);
+  await h.received;
+  const base = restoreReceipts(h.entries, 16)[0];
+  const waiting = {
+    ...base,
+    state: "waiting" as const,
+    deadline: 60_001,
+    nextAt: 1000,
+  };
+  const observations = new WidgetObservations();
+  const render = (r: typeof base, now: number) =>
+    widgetLines([r], now, 200, theme, observations)[0];
+  assert.match(render(waiting, 1), /active · next 1s · 1m 00s left/);
+  assert.match(render(waiting, 999), /active · next 1s/);
+  assert.match(render(waiting, 1000), /active · next 0s/);
+  assert.match(render(waiting, 61_000), /next 0s · 0s left/);
+  assert.match(render({ ...waiting, nextAt: 60_001 }, 0), /next 1m 01s/);
+
+  const polling = { ...waiting, state: "observing" as const, polls: 2 };
+  observations.update([polling], 1000);
+  assert.match(render(polling, 1040), / · active · /);
+  assert.doesNotMatch(render(polling, 1040), /next|observing/);
+  observations.update([polling], 2000);
+  assert.match(render(polling, 2999), / · active · /);
+  assert.match(render(polling, 3000), / · observing · /);
+  observations.update([waiting], 3100);
+  assert.match(render(waiting, 3100), / · active · /);
+  observations.update([polling], 3200);
+  assert.match(render(polling, 3200), / · active · /);
+  const nextPoll = { ...polling, polls: 3 };
+  observations.update([nextPoll], 6000);
+  assert.match(render(nextPoll, 6000), / · active · /);
+  observations.update([], 7000);
+  observations.update([nextPoll], 9000);
+  assert.match(render(nextPoll, 9000), / · active · /);
+});
+
 test("published schema, bounded restore, compact expandable rendering and hostile narrow widgets", async (t) => {
   const h = await setup(t);
   validateToolArguments(
@@ -281,18 +366,20 @@ test("published schema, bounded restore, compact expandable rendering and hostil
   );
   const hostile = {
     ...r,
+    state: "waiting" as const,
+    notification: "none" as const,
     name: `\x1b]52;c;evil\x07a\n${TEST_BEARER}\u202e`,
     evidence: "PAYLOAD_SECRET",
   };
   for (const width of [0, 1, 7, 20, 100]) {
     const lines = widgetLines(
-      [hostile, { ...r, state: "waiting", name: "other" }],
-      1,
+      [hostile, r, { ...r, state: "observing", name: "other" }],
       Date.now(),
       width,
       theme,
     );
-    assert.equal(lines.length, 2);
+    assert.equal(lines.length, 3);
+    assert.equal(lines.at(-1), "─".repeat(width));
     for (const line of lines) {
       assert.ok(visibleWidth(line) <= width);
       assert.doesNotMatch(
@@ -301,9 +388,54 @@ test("published schema, bounded restore, compact expandable rendering and hostil
       );
     }
   }
-  assert.deepEqual(widgetLines([], 2, 0, 100, theme), []);
-  assert.equal(widgetLines([r, r, r], 1, 0, 100, theme).length, 1);
-  assert.deepEqual(widgetLines([r], 0, 0, 100, theme), []);
+  const styled = widgetLines([hostile], 0, 12, {
+    fg: (color, text) => `${color}:${text}`,
+  });
+  assert.equal(styled.at(-1), `borderMuted:${"─".repeat(12)}`);
+  assert.deepEqual(widgetLines([], 0, 100, theme), []);
+  for (const state of [
+    "condition",
+    "deadline",
+    "failure_limit",
+    "unsafe_failure",
+    "cancelled",
+    "invalidated",
+  ] as const)
+    for (const notification of [
+      "none",
+      "pending",
+      "handoff_unknown",
+      "handed_to_pi",
+      "suppressed",
+    ] as const)
+      assert.deepEqual(
+        widgetLines(
+          [{ ...r, state, notification, inFlight: true }],
+          0,
+          100,
+          theme,
+        ),
+        [],
+      );
+  assert.equal(
+    widgetLines(
+      Array.from({ length: 16 }, (_, i) => ({
+        ...hostile,
+        name: `active-${i}`,
+      })),
+      0,
+      100,
+      theme,
+    ).length,
+    17,
+  );
+  assert.equal(
+    Object.hasOwn(
+      parseConfig({ terminalRows: 8 }, { MONITOR_TERMINAL_ROWS: "8" }),
+      "terminalRows",
+    ),
+    false,
+  );
   for (const expanded of [false, true])
     for (const isPartial of [false, true])
       for (const isError of [false, true])
