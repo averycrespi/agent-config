@@ -156,7 +156,7 @@ Markdown skill packages that load on demand via progressive disclosure — only 
 
 Notes:
 
-- Testing policy lives in [the global agent instructions](agent/AGENTS.md#testing-and-verification-evidence): require proportionate regression evidence and focused plus broader checks, while leaving test-first sequencing optional.
+- Testing policy lives in [the global agent instructions](agent/AGENTS.md#engineering-and-verification): require proportionate regression evidence and focused plus broader checks, while leaving test-first sequencing optional.
 - Most skills are mirrored from the companion Claude Code configuration with Pi-platform adjustments (tool name swaps, gateway meta-tools for MCP calls, GPT-5.x-friendly prose).
 - `clarify` researches answerable questions and resolves material user-owned decisions. Standalone clarification is read-only; clarification inside authorized work resumes that work without another approval pause. It is optional, not a required ticket phase. `challenge` and explicit-only `simplify` share one assessment procedure with distinct risk and complexity lenses; neither automatically runs both. `review` evaluates changes against their authorized delivery scope and may summarize a long report while retaining the full unchanged report at an accessible path, exposing every blocker, unresolved decision, failed check, and material gap.
 - `work-ticket` loads helper, recovery, publication, and settlement procedures before the corresponding operation; inspection alone does not initialize or mutate state. `review` loads its input contract before invocation and its bounded repair procedure before editing. These references distinguish workflow defaults and scoped user exceptions from ownership, identity, and tool approval boundaries.
