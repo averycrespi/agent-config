@@ -202,6 +202,7 @@ export function renderFooterLines(
 ): string[] {
   if (width <= 0) return [""];
 
+  const border = theme.fg("borderMuted", "─".repeat(width));
   const separator = theme.fg("dim", " · ");
   const left = buildCwdSegment(state, theme);
   const right = joinFittingSegments(
@@ -210,15 +211,18 @@ export function renderFooterLines(
     separator,
   );
   const leftLines = wrapTextWithAnsi(left, width);
-  if (!right) return leftLines;
+  if (!right) return [border, ...leftLines];
 
   const leftWidth = visibleWidth(left);
   const rightWidth = visibleWidth(right);
   if (leftWidth + 1 + rightWidth <= width) {
-    return [`${left}${" ".repeat(width - leftWidth - rightWidth)}${right}`];
+    return [
+      border,
+      `${left}${" ".repeat(width - leftWidth - rightWidth)}${right}`,
+    ];
   }
 
-  return [...leftLines, right];
+  return [border, ...leftLines, right];
 }
 
 export function renderFooterLine(

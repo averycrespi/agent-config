@@ -305,6 +305,22 @@ test("renderFooterLine appends compact git summary symbols to the working direct
   );
 });
 
+test("renderFooterLines owns one full-width muted top border even without widgets or metadata", () => {
+  for (const width of [1, 7, 40, 100]) {
+    const { calls, recordingTheme } = createRecordingTheme();
+    const lines = renderFooterLines({ cwd: "/repo" }, width, recordingTheme);
+    assert.equal(stripAnsi(lines[0]), "─".repeat(width));
+    assert.deepEqual(
+      calls.filter(([color]) => color === "borderMuted"),
+      [["borderMuted", "─".repeat(width)]],
+    );
+    assert.ok(lines.every((line) => visibleWidth(line) <= width));
+    assert.equal(lines.slice(1).map(stripAnsi).join(""), "/repo");
+  }
+  for (const width of [0, -1])
+    assert.deepEqual(renderFooterLines({ cwd: "/repo" }, width, theme), [""]);
+});
+
 test("renderFooterLines right-aligns status segments after the repository segment", () => {
   const lines = renderFooterLines(
     {
@@ -323,6 +339,7 @@ test("renderFooterLines right-aligns status segments after the repository segmen
   );
 
   assert.deepEqual(lines.map(stripAnsi), [
+    "─".repeat(100),
     "~/Workspace/agent-config                    Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium",
   ]);
 });
@@ -346,6 +363,7 @@ test("renderFooterLines moves overflowing segments to subsequent lines without t
   );
 
   assert.deepEqual(lines.map(stripAnsi), [
+    "─".repeat(80),
     "~/Workspace/a-very-long-worktree-name-for-statusline",
     "[feature/a-very-long-branch-name]",
     "Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium",

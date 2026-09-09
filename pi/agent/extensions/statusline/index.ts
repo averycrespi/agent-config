@@ -2,7 +2,7 @@
  * Statusline extension for Pi.
  *
  * Displays the working directory, provider quota, context usage,
- * current model, and thinking level in a single footer line.
+ * current model, and thinking level beneath a footer-owned separator.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

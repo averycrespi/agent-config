@@ -41,7 +41,7 @@ Apply this repository's extension conventions to new and existing extensions. Ke
 
 ### Below-editor status widgets
 
-- Render one width-bounded line per entity using `<extension> <state> · <identity or reason> · <telemetry>`. Omit absent fields; do not add headers, overflow rows, blank lines, horizontal rules, or wrapped continuation text.
+- Render one width-bounded line per entity using `<extension> <state> · <identity or reason> · <telemetry>`. Omit absent fields; do not add headers, overflow rows, blank lines, horizontal rules, or wrapped continuation text. Let statusline own the boundary: its footer always begins with one full-width `borderMuted` rule, without tracking widget visibility.
 - Follow statusline typography and TODO semantic colors: lowercase `muted` extension prefix, `accent` activity (including scheduled waiting), `warning` yielded/needs-attention state, `muted` ordinary stops, and `error` failure stops. Do not imply success with green activity labels.
 - Use `text` for names and numeric values, `muted` for metadata labels and supplementary reasons, and `dim` for inline `·` separators. Highlight nonzero failure-budget fields with `warning`. Use normal weight without icons, backgrounds, or animation; use theme tokens rather than hardcoded colors.
 - Sanitize dynamic content before styling. Shorten identity/reason text before sacrificing essential status or timing; drop secondary telemetry from the end when space is insufficient. Place failure indicators ahead of ordinary timing. Prefer `_shared/widget.ts` for fitting and countdowns; keep caller-specific sanitization at the extension boundary.

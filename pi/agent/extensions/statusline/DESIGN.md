@@ -28,7 +28,9 @@ There is no slash command, agent tool, persistent state, or user-facing configur
 
 ## Rendering model
 
-The footer has two logical sides:
+`renderFooterLines` prepends exactly one full-width `borderMuted` rule for positive widths, independent of whether Loop, Monitor, or any other widget is mounted. The footer owns the boundary with the above content; no separate widget, visibility coordination, or timer is involved. Non-positive widths retain the empty-line fallback. The content-only `renderFooterLine` helper remains unchanged.
+
+Below the rule, the footer has two logical sides:
 
 - left: cwd with optional compact git summary;
 - right: provider quota, context usage, model ID, thinking level.

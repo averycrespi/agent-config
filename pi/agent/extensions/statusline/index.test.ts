@@ -112,7 +112,7 @@ function makePi() {
   return pi;
 }
 
-test("session_start installs a single-line statusline instead of publishing only a status snippet", async () => {
+test("session_start installs a bordered statusline instead of publishing only a status snippet", async () => {
   const pi = makePi();
   statuslineExtension(pi as any);
 
@@ -122,6 +122,7 @@ test("session_start installs a single-line statusline instead of publishing only
   await handler!({ type: "session_start", reason: "startup" }, pi._ctx());
 
   assert.deepEqual(pi._statuslineCalls[0], [
+    "─".repeat(200),
     rightAligned("/repo/agent-config", "ctx 42%/200k · gpt-5-codex · medium"),
   ]);
 });
@@ -154,6 +155,7 @@ test("git branch lookup does not block initial rendering and refreshes later", a
     await handler!({ type: "session_start", reason: "startup" }, pi._ctx());
 
     assert.deepEqual(pi._statuslineCalls[0], [
+      "─".repeat(200),
       rightAligned("/repo/agent-config", "ctx 42%/200k · gpt-5-codex · medium"),
     ]);
 
@@ -162,7 +164,7 @@ test("git branch lookup does not block initial rendering and refreshes later", a
 
     assert.ok(
       pi._statuslineCalls.some((call) =>
-        call[0]?.includes("/repo/agent-config [feature/async ✔]"),
+        call[1]?.includes("/repo/agent-config [feature/async ✔]"),
       ),
     );
   } finally {
@@ -207,7 +209,7 @@ test("git branch lookup clears stale branch when later cwd is not a git repo", a
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(
       pi._statuslineCalls.some((render) =>
-        render[0]?.includes("[feature/old ✔]"),
+        render[1]?.includes("[feature/old ✔]"),
       ),
     );
 
@@ -216,7 +218,7 @@ test("git branch lookup clears stale branch when later cwd is not a git repo", a
 
     assert.ok(call >= 2);
     assert.equal(
-      pi._statuslineCalls.at(-1)?.[0]?.includes("[feature/old]"),
+      pi._statuslineCalls.at(-1)?.[1]?.includes("[feature/old]"),
       false,
     );
   } finally {

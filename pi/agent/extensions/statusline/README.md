@@ -4,6 +4,10 @@ Pi extension that renders a footer with the current working directory, git branc
 
 ## Footer format
 
+The footer always begins with one full-width `─` separator styled with `borderMuted`, even when no Loop or Monitor widgets are visible. Statusline owns this boundary; individual status widgets remain one line and do not add borders. The separator adds one row above the existing footer layout without extra widget registrations, timers, or visibility tracking.
+
+Example content rows below the separator:
+
 ```
 ~/Workspace/agent-config [main ✔]                  Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
 /repo [feature/statusline-git ↓2↑3 ●1 ✚2 …1]       Codex limit 2h · ctx 92%/200k · gpt-5-codex · high
