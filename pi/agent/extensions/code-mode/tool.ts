@@ -122,8 +122,8 @@ export const renderers: Pick<
       theme.fg(
         isPartial ? "warning" : failed ? "error" : "success",
         isPartial
-          ? "Running bounded code..."
-          : `code ${failed ? "failed" : "completed"} · ${display(details?.calls ?? 0)} calls${details?.code ? ` · ${display(details.code)}` : ""}`,
+          ? "running..."
+          : `${failed ? "failed" : "completed"} · ${display(details?.calls ?? 0)} calls${details?.code ? ` · ${display(details.code)}` : ""}`,
       ),
     ];
     if (details?.outcomeUnknown)

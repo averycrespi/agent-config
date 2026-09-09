@@ -120,6 +120,96 @@ test("call labels use safe descriptions, fall back for history and update during
   }
 });
 
+test("status rows are concise, unindented and preserve styling and expanded details", () => {
+  const colors: string[] = [];
+  const theme: any = {
+    fg: (color: string, text: string) => {
+      colors.push(color);
+      return text;
+    },
+    bold: (text: string) => text,
+  };
+  for (const expanded of [false, true]) {
+    for (const state of [
+      {
+        isPartial: true,
+        codeError: false,
+        isError: false,
+        label: "running...",
+        color: "warning",
+      },
+      {
+        isPartial: false,
+        codeError: false,
+        isError: false,
+        label: "completed · 2 calls",
+        color: "success",
+      },
+      {
+        isPartial: false,
+        codeError: true,
+        isError: false,
+        label: "failed · 2 calls · nested_call_failed",
+        color: "error",
+      },
+      {
+        isPartial: false,
+        codeError: false,
+        isError: true,
+        label: "failed · 2 calls · nested_call_failed",
+        color: "error",
+      },
+    ]) {
+      colors.length = 0;
+      const failed = state.codeError || state.isError;
+      const component = renderers.renderResult!(
+        {
+          content: [],
+          details: {
+            calls: 2,
+            codeError: state.codeError,
+            ...(failed
+              ? {
+                  code: "nested_call_failed",
+                  outcomeUnknown: true,
+                  partialExecution: true,
+                }
+              : {}),
+            traces: [
+              {
+                id: 1,
+                tool: "example.lookup",
+                state: "success",
+                durationMs: 10,
+              },
+            ],
+            spillFilePath: "/tmp/example-output.txt",
+          },
+        },
+        { isPartial: state.isPartial, expanded },
+        theme,
+        { state: {}, isError: state.isError } as any,
+      );
+      assert.equal(colors[0], state.color);
+      assert.deepEqual(component.render(200), [
+        state.label,
+        ...(failed
+          ? [
+              "Outcome unknown; do not automatically retry.",
+              "Partial execution; earlier effects may persist.",
+            ]
+          : []),
+        ...(expanded
+          ? [
+              "1 example.lookup · success · 10ms",
+              "Output: /tmp/example-output.txt",
+            ]
+          : []),
+      ]);
+    }
+  }
+});
+
 test("large final returns spill explicitly; spill failure stays bounded and signals failure", async (t) => {
   const f = await fixture(t);
   const r = await runCode(
