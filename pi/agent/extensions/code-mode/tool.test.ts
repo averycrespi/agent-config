@@ -20,6 +20,18 @@ import { PARAMETERS, presentRun, renderers } from "./tool.ts";
 
 const limits = { ...DEFAULT_CONFIG, timeoutMs: 3000 };
 
+test("published code patterns avoid Unicode property escapes rejected by Codex", () => {
+  const check = (value: unknown) => {
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "pattern" && typeof child === "string")
+        assert.doesNotMatch(child, /\\[pP]\{/);
+      else check(child);
+    }
+  };
+  check(JSON.parse(JSON.stringify(PARAMETERS)));
+});
+
 test("code requires a nonblank description of at most 200 characters", () => {
   const source = "return null;";
   const validate = (description: unknown) =>
@@ -44,17 +56,7 @@ test("code requires a nonblank description of at most 200 characters", () => {
     "x".repeat(199) + "😀",
   ])
     assert.deepEqual(validate(description), { description, source });
-  for (const description of [
-    undefined,
-    null,
-    {},
-    "",
-    " \n\t",
-    "\u200b",
-    "\u200d\u2060",
-    "\u{e0001}",
-    "x".repeat(201),
-  ])
+  for (const description of [undefined, null, {}, "", " \n\t", "x".repeat(201)])
     assert.throws(() => validate(description), /Validation failed/);
 });
 
@@ -280,10 +282,30 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
   const codeExtension = loaded.extensions[0];
   const gatewayExtension = loaded.extensions[1];
   const definition = codeExtension.tools.get("code")!.definition;
+  for (const description of [
+    undefined,
+    "",
+    " \n\t",
+    "\u200b",
+    "\u200d\u2060",
+    "\u{e0001}",
+  ]) {
+    await assert.rejects(
+      definition.execute(
+        "blank-description",
+        { description, source: 'return await mcp.call("example.lookup", {});' },
+        undefined,
+        undefined,
+        ctx,
+      ),
+      /description must be nonblank/,
+    );
+  }
+  assert.equal(f.requests.length, 0);
   await assert.rejects(
     definition.execute(
       "unavailable",
-      { source: "return null;" },
+      { description: "Check gateway access", source: "return null;" },
       undefined,
       undefined,
       ctx,
@@ -301,6 +323,7 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
   const r = await definition.execute(
     "loader",
     {
+      description: "Look up 日本語 😀 results",
       source:
         'const r=await mcp.call("example.lookup", {}); return r.content[0].text;',
     },
@@ -314,6 +337,7 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
   const rejected = await definition.execute(
     "loader-invalid-arguments",
     {
+      description: "Check lookup argument validation",
       source:
         'try { await mcp.call("example.lookup", {query: 1}); } catch {} return null;',
     },
@@ -353,6 +377,7 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
   const composed = await definition.execute(
     "loader-header-annotations",
     {
+      description: "Look up two repositories",
       source: `return await parallel(["first", "second"].map(repo => async () => {
       const r = await mcp.call("example.lookup", {owner:"example", repo, fields:["name"]});
       return JSON.parse(r.content[0].text);
@@ -398,6 +423,7 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
     const failed = await definition.execute(
       "loader-errors",
       {
+        description: "Check lookup failures",
         source:
           'try { await mcp.call("example.lookup", {}); } catch(e) { return {code:e.code, reason:e.reason ?? null, invocationId:e.invocationId ?? null, outcomeUnknown:e.outcomeUnknown}; }',
       },
@@ -433,7 +459,7 @@ test("real loader shares the active gateway only, keeps direct tools, and shutdo
   await assert.rejects(
     definition.execute(
       "closed",
-      { source: "return null;" },
+      { description: "Check closed gateway", source: "return null;" },
       undefined,
       undefined,
       ctx,

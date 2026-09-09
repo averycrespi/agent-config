@@ -41,6 +41,11 @@ export default function (pi: ExtensionAPI) {
     ],
     ...renderers,
     async execute(id, params, signal, onUpdate, ctx) {
+      if (
+        typeof params.description !== "string" ||
+        !/[^\s\p{Cf}]/u.test(params.description)
+      )
+        throw new Error("code description must be nonblank.");
       const config = await loadCodeConfig(ctx.cwd);
       const gateway = requestGatewayAccess(pi);
       const combined = AbortSignal.any([

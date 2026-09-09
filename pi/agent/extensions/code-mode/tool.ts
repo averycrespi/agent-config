@@ -14,7 +14,8 @@ export const PARAMETERS = Type.Object(
     description: Type.String({
       minLength: 1,
       maxLength: 200,
-      pattern: "[^\\s\\p{Cf}]",
+      // Provider regex dialects reject Unicode property escapes; check Cf locally.
+      pattern: "\\S",
       description:
         "Short description of this invocation's concrete action and target, shown in the tool row. Avoid generic labels, secrets, and raw payloads.",
     }),
