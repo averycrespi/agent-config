@@ -231,7 +231,8 @@ export default function (pi: ExtensionAPI) {
       'Manage session-branch-bound observations: start, list, get, cancel. Explicit registration required. Start needs name, description, source, message. Each fresh code-mode child returns exactly {decision:"wait"|"notify",evidence:JSON}; wait uses zero model turns/messages. Defaults: interval 30s, lifetime 30m, poll timeout 30s, cumulative safe-failure limit 3. 4 active monitors, 2 concurrent polls; 8 calls and concurrency 2 per poll, tightened by code-mode settings. Any permitted gateway tool is allowed; obtain authority covering repeated mutations before registration. Discover schemas first. No automatic grants or uncertain replay. One terminal follow-up; cancel cannot retract a Pi-queued message. Evidence max 4096 characters; source max 256 KiB. Receipts omit source and are bounded.',
     promptSnippet: "Observe gateway conditions without polling model turns",
     promptGuidelines: [
-      "Use monitor only for explicitly requested session-bound monitoring; Loop remains model continuation and code remains one short-lived execution.",
+      "Use monitor only for explicitly requested session-bound monitoring. Prefer it over recurring agent turns for gateway conditions expressible as deterministic checks; loop remains model continuation and code remains one short-lived execution.",
+      "Monitor is not a detached service: observations stop on shutdown, reload, or session/branch navigation and do not automatically resume. notify means attention is needed, not that the task succeeded.",
       "Monitor gateway permissions are not user approval. Obtain applicable authority covering repeated mutations before monitor start. Never automatically request grants or replay uncertain observations.",
     ],
     ...renderers,

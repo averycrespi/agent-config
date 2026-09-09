@@ -150,6 +150,28 @@ test("delegation guidance requires benefit, ownership, and evidence-bearing brie
   assert.doesNotMatch(guidance, /reading more than a few files|Delegate when:/);
 });
 
+test("delegation guidance distinguishes simple batches from workflow orchestration", () => {
+  const guidance = buildDelegationGuidance(config);
+  assert.match(
+    guidance,
+    /prefer spawn_agents for a one-shot independent batch/,
+  );
+  assert.match(guidance, /owning session will synthesize/);
+  assert.match(
+    guidance,
+    /Use workflow when an applicable saved workflow or explicit orchestration/,
+  );
+  assert.match(
+    guidance,
+    /dependent phases, programmatic aggregation, or verification gates/,
+  );
+  assert.match(
+    guidance,
+    /Parallelism or structured output alone does not require workflow/,
+  );
+  assert.match(guidance, /Preserve skill-required workflows/);
+});
+
 test("preflight accepts explicit empty capabilities", async () => {
   assert.deepEqual(
     await validateSpawnAgentSpecs([valid({ capabilities: [] })], config, ctx),

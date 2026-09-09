@@ -222,7 +222,7 @@ export function registerWorkflowTool(
     description: `List, validate, or run deterministic foreground JavaScript workflows that orchestrate isolated read-mostly subagents.
 
 Use action \"list\" for current reusable definitions, action \"validate\" with exactly one of script/name without execution, or action \"run\" with exactly one of script/name and optional args.
-Scripts must start with literal metadata: export const meta = { name: \"...\", description: \"...\" }.
+Scripts must start with literal metadata: export const meta = { name: \"...\", description: \"...\" }, followed by export async function run() { ... }.
 run() must return its final value: return results, or return await report(results, { gate: () => verdict }). report() is an async gate, not an output emitter; return null for an intentional empty result.
 Use the globals agent(prompt, { intent, capabilities, profile, output?, retries?, timeoutMs? }), verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy; write-filesystem and exec-shell are rejected. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
@@ -232,15 +232,14 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "List, validate, or run a deterministic foreground JavaScript workflow.",
     promptGuidelines: [
       "Call workflow with action list when a reusable saved workflow may apply.",
-      "Use workflow for deterministic fan-out/fan-in research, review, or audit work where several isolated subagents can run under one script.",
+      "Use workflow for read-mostly subagent work that benefits from deterministic orchestration—dependent phases, programmatic aggregation, or verification gates—or an applicable saved workflow. Prefer spawn_agents for a simple independent batch; parallelism or structured output alone does not require workflow. Preserve skill-required workflows. Use code for gateway composition that needs no subagent reasoning.",
       "Do not use workflow for workspace mutation; write-filesystem and exec-shell are rejected, so use only explicitly justified read-mostly capabilities.",
-      "Write scripts with `export const meta = { name, description }` as the first statement and `export async function run() { ... }` for the main body. Return its final value; use `return results` or `return null` for an intentional empty result.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
-      "Use parallelSettled() when workflow code needs structured per-branch failure records instead of null branch results.",
+      "parallel() represents failed branches as null; use parallelSettled() when completeness or per-branch failure accounting matters. Never silently discard failed required branches.",
       "Use `agent(prompt, { output: { schema } })` for machine-readable research and fan-in boundaries. Validated structured successes may be retained after abnormal termination; successful prose is not retained in recovery artifacts.",
-      "Use `verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? })`; it resolves { ok, reasons }. Return a gated result with `return await report(value, { gate: () => verdict })`, where the callable gate returns true or an object with `ok: true` to pass. `report()` is asynchronous and requires the gate; it is not an output emitter.",
-      "Treat `budget` as an advisory snapshot only. `workflow_run_cap_exceeded` denies later calls, while `workflow_budget_exceeded` aborts active agents and prevents retries or new spawns.",
-      "Every agent and verify call must set a self-contained intent, explicit capabilities (including []), and profile.",
+      "verify() resolves { ok, reasons }; report() passes only when its callable gate returns true or an object with ok: true. Return the gated result rather than treating report() as an output emitter.",
+      "workflow_run_cap_exceeded denies later calls, while workflow_budget_exceeded aborts active agents and prevents retries or new spawns.",
+      "Brief every agent and verifier with a self-contained task, explicit capabilities (including []), and profile.",
       "Use small bounded `retries` values only for read-only subagent calls that can safely be repeated.",
       "In workflow scripts, prefer configured deadlines; set agent/verify `timeoutMs` only for a justified task-specific per-attempt deadline. Account for workload and profile; avoid blanket short deadlines for substantial research, review, or strong-profile calls. A longer child override cannot extend the whole-run deadline.",
       "After a workflow timeout, inspect the failure code, effective deadline, available progress, and partial results before deciding whether to retry. A timeout alone does not prove work stalled. Preserve useful completed results and target missing work; do not blindly rerun the entire fan-out. Timeout failures are not automatically retried.",

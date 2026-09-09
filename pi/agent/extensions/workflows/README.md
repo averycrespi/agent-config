@@ -2,7 +2,7 @@
 
 Foreground deterministic JavaScript orchestration for bounded research, review, verification, and audit workflows. Workflow code runs in a permissioned child process; privileged subagent policy, model resolution, accounting, cancellation, and retention stay host-side.
 
-This is read-mostly orchestration, not parallel implementation or workspace mutation.
+This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it when dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow add value. Prefer [`spawn_agents`](../subagents/README.md) for a simple independent batch; parallelism or structured output alone does not require a workflow. Preserve skill-required workflows. Use [`code`](../code-mode/README.md) for gateway composition that needs no subagent reasoning.
 
 ## Tool
 
@@ -61,6 +61,8 @@ Both `validate` and `run` reject obvious straight-line `run()` bodies with no va
 | `phase(name)` / `log(value)`        | Bounded progress metadata.                                                                                                                                                                   |
 | `budget`                            | Frozen advisory token/run mirror; host enforcement is authoritative.                                                                                                                         |
 | `args` / `cwd`                      | Tool arguments and call cwd.                                                                                                                                                                 |
+
+`parallel()` represents failed branches as `null`; use `parallelSettled()` when completeness or per-branch failure accounting matters. Never silently discard failed required branches.
 
 Workflow options cannot name agents, select exact models or effort, request raw tools/extensions/environment, or rely on hidden defaults. The host routes every request through the subagents extension's centralized capability/profile policy and live model registry.
 

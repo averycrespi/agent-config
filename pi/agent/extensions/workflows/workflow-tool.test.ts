@@ -104,6 +104,28 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
   );
   assert.match(guidance, /timeout alone does not prove.*stalled/);
   assert.match(guidance, /partial results.*before.*retry/i);
+  assert.match(
+    guidance,
+    /dependent phases, programmatic aggregation, or verification gates/,
+  );
+  assert.match(guidance, /Prefer spawn_agents for a simple independent batch/);
+  assert.match(
+    guidance,
+    /parallelism or structured output alone does not require workflow/,
+  );
+  assert.match(guidance, /Preserve skill-required workflows/);
+  assert.match(
+    guidance,
+    /Use code for gateway composition that needs no subagent reasoning/,
+  );
+  assert.match(guidance, /parallel\(\) represents failed branches as null/);
+  assert.match(
+    guidance,
+    /parallelSettled\(\) when completeness or per-branch failure accounting matters/,
+  );
+  assert.match(guidance, /Never silently discard failed required branches/);
+  assert.match(guidance, /export async function run\(\)/);
+  assert.match(guidance, /run\(\) must return its final value/);
 });
 
 test("workflow config display omits removed model tiers", () => {

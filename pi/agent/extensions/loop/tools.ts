@@ -289,11 +289,12 @@ export function registerLoopTool(
     name: "loop",
     label: "Loop",
     description:
-      "Control one bounded session loop that broadcasts a caller-specified continuation message after Pi settles.",
+      "Control one bounded loop for the active session branch, scheduling further owning-agent turns with a caller-specified message after Pi settles.",
     promptSnippet:
       "Start, inspect, yield, stop, resume, extend, or clear the shared session continuation loop.",
     promptGuidelines: [
-      "Use loop only when the user, a loaded skill, or an established workflow explicitly requests a loop.",
+      "Use loop only when the user, a loaded skill, or an established workflow explicitly requests a loop. Ordinary multi-step work does not require it.",
+      "For explicitly requested waiting on a gateway condition expressible as a deterministic check, prefer monitor when available. Use polling loops only when continued model reasoning or tools unavailable to monitor are needed, within the existing loop authorization rule.",
       "Use loop action=yield when progress requires user input; the next real user message wakes the loop.",
       "Use loop action=stop when another automatic continuation would not be useful.",
       "For polling loops, set delay_seconds and perform at most one polling batch per continuation.",

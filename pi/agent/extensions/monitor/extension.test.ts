@@ -111,6 +111,39 @@ async function setup(t: any, hasUI = false, mode = "print") {
   };
 }
 
+test("monitor guidance distinguishes observation, continuation, and terminal attention", async (t) => {
+  const h = await setup(t);
+  const tool = h.tools.get("monitor");
+  const guidance = [tool.description, ...tool.promptGuidelines].join("\n");
+  assert.match(
+    guidance,
+    /only for explicitly requested session-bound monitoring/,
+  );
+  assert.match(
+    guidance,
+    /Prefer it over recurring agent turns for gateway conditions expressible as deterministic checks/,
+  );
+  assert.match(
+    guidance,
+    /loop remains model continuation and code remains one short-lived execution/,
+  );
+  assert.match(guidance, /not a detached service/);
+  assert.match(
+    guidance,
+    /stop on shutdown, reload, or session\/branch navigation and do not automatically resume/,
+  );
+  assert.match(
+    guidance,
+    /notify means attention is needed, not that the task succeeded/,
+  );
+  assert.match(guidance, /authority covering repeated mutations/);
+  assert.match(
+    guidance,
+    /Never automatically request grants or replay uncertain observations/,
+  );
+  assert.equal(h.messages.length, 0);
+});
+
 test("one meta-tool and direct commands; idle/active terminal delivery uses followUp without steering", async (t) => {
   for (const idle of [true, false])
     await t.test(String(idle), async (t) => {

@@ -32,11 +32,12 @@ export default function (pi: ExtensionAPI) {
     label: "Code",
     parameters: PARAMETERS,
     description:
-      "Compose MCP calls in one fresh permissioned JavaScript child. Use mcp_search/mcp_describe first. mcp.call(name, args) returns raw redacted MCP results; parallel(thunks) bounds independent work. Explicitly return a JSON value (null for empty); only that value and bounded host failure metadata enter context. No imports, filesystem, network, process APIs, persistent state, grants, retries, or replay. Defaults: 32 calls, concurrency 4, 120 seconds; gateway per-call deadlines still apply. Returned text above 25,000 characters spills or reports overflow. Earlier writes can survive errors/cancellation; uncertain outcomes must not be retried automatically.",
+      "Compose MCP calls in one fresh permissioned JavaScript child. Discover exact tool names and inspect schemas before invocation; reuse already inspected names and schemas from the current context unless evidence indicates they changed. mcp.call(name, args) returns raw redacted MCP results; parallel(thunks) bounds independent work. Explicitly return a JSON value (null for empty); only that value and bounded host failure metadata enter context. No imports, filesystem, network, process APIs, or persistent state. No automatic grant requests, invocation retries, or program replay. Defaults: 32 calls, concurrency 4, 120 seconds; gateway per-call deadlines still apply. Returned text above 25,000 characters spills or reports overflow. Earlier writes can survive errors/cancellation; uncertain outcomes must not be retried automatically.",
     promptSnippet:
       "Run bounded isolated JavaScript composition over MCP Gateway calls",
     promptGuidelines: [
-      "Use code for multi-call MCP pagination, dependent lookups, or aggregation when filtering intermediate payloads reduces context. Direct MCP tools remain available.",
+      "Prefer direct mcp_call for straightforward calls whose results are useful as-is. Use code when bounded pagination, dependent lookups, or filtering/aggregation materially reduces intermediate context or model round trips. Do not use it for subagent reasoning or persistent polling.",
+      "mcp.call returns an MCP result envelope, not a parsed application payload. Check isError, inspect the actual content shape, and await all calls before returning.",
       "Code gateway permissions never substitute for user approval. Obtain required authorization before code mutations; never automatically request grants, poll approvals, retry nested calls, or replay a failed program.",
     ],
     ...renderers,

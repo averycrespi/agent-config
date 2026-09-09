@@ -30,7 +30,9 @@ The extension registers one `loop` tool:
 | `extend` | `max_continuations` and/or `max_active_minutes` | Loosen absolute limits without resuming or resetting usage.     |
 | `clear`  | None                                            | Remove the loop and invalidate stale continuation callbacks.    |
 
-The tool should only start a loop when the user, a loaded skill, or an established workflow explicitly requests one. Polling loops should set `delay_seconds` and perform at most one polling batch per continuation. Repeated `extend` calls cannot exceed configured hard ceilings.
+The tool should only start a loop when the user, a loaded skill, or an established workflow explicitly requests one. Ordinary multi-step work does not require it: Loop schedules further owning-agent turns after Pi settles.
+
+For explicitly requested waiting on a gateway condition expressible as a deterministic check, prefer [`monitor`](../monitor/README.md) when available. Use polling loops only when continued model reasoning or tools unavailable to Monitor are needed, within the existing loop authorization rule. Polling loops should set `delay_seconds` and perform at most one polling batch per continuation. Repeated `extend` calls cannot exceed configured hard ceilings.
 
 ### Tool rendering
 

@@ -61,6 +61,18 @@ test("loop tool advertises all lifecycle actions and snake_case limits", () => {
   assert.ok(tool.parameters.properties.delay_seconds);
   assert.match(tool.promptGuidelines.join("\n"), /explicit/i);
   assert.match(tool.promptGuidelines.join("\n"), /polling loops.*delay/i);
+  const guidance = [tool.description, ...tool.promptGuidelines].join("\n");
+  assert.match(guidance, /scheduling further owning-agent turns/);
+  assert.match(guidance, /Ordinary multi-step work does not require it/);
+  assert.match(
+    guidance,
+    /gateway condition expressible as a deterministic check, prefer monitor when available/,
+  );
+  assert.match(
+    guidance,
+    /continued model reasoning or tools unavailable to monitor/,
+  );
+  assert.match(guidance, /within the existing loop authorization rule/);
 });
 
 test("renderCall uses an action-first summary without echoing the continuation message", () => {

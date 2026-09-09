@@ -2,6 +2,8 @@
 
 `monitor` observes gateway conditions in fresh [code-mode](../code-mode/README.md) children without spending model turns while pending. The host schedules polls; only terminal attention produces a custom follow-up. [Loop](../loop/README.md) remains message-based model continuation. Neither primitive is a detached service or a completion judge.
 
+Prefer Monitor over recurring agent turns for explicitly requested gateway-condition monitoring expressible as deterministic checks. Use Loop when continued model reasoning or tools unavailable to Monitor are needed, subject to Loop's explicit-request rule; use ordinary `code` for a single bounded execution. Monitor observations stop on shutdown, reload, or session/branch navigation and do not automatically resume. `notify` means attention is needed, not that the task succeeded.
+
 ## Tool and commands
 
 One `monitor` tool supports:
@@ -44,7 +46,9 @@ monitor({
   timeout_ms: 1800000,
   source: `
 const result = await mcp.call("example.check", { id: "example" });
-const state = result.structuredContent.state;
+const state = result.structuredContent?.state;
+if (result.isError || !["pending", "succeeded", "failed"].includes(state))
+  throw new Error("Expected a successful check response with a known state");
 return { decision: state === "pending" ? "wait" : "notify", evidence: { state } };
 `,
 });

@@ -17,8 +17,49 @@ import { createGatewayAccess } from "../mcp-gateway/api.ts";
 import { runCode, _spawn } from "./runtime.ts";
 import { DEFAULT_CONFIG, parseConfig } from "./config.ts";
 import { PARAMETERS, presentRun, renderers } from "./tool.ts";
+import registerCode from "./index.ts";
 
 const limits = { ...DEFAULT_CONFIG, timeoutMs: 3000 };
+
+test("code guidance distinguishes composition and preserves envelope and authority contracts", () => {
+  let registered: any;
+  registerCode({
+    on() {},
+    registerCommand() {},
+    registerTool(tool: any) {
+      registered = tool;
+    },
+  } as any);
+  const guidance = [
+    registered.description,
+    ...registered.promptGuidelines,
+  ].join("\n");
+  assert.match(guidance, /Prefer direct mcp_call for straightforward calls/);
+  assert.match(
+    guidance,
+    /materially reduces intermediate context or model round trips/,
+  );
+  assert.match(
+    guidance,
+    /Do not use it for subagent reasoning or persistent polling/,
+  );
+  assert.match(guidance, /reuse already inspected names and schemas/);
+  assert.match(
+    guidance,
+    /MCP result envelope, not a parsed application payload/,
+  );
+  assert.match(guidance, /Check isError.*await all calls before returning/);
+  assert.match(
+    guidance,
+    /No automatic grant requests, invocation retries, or program replay/,
+  );
+  assert.match(guidance, /permissions never substitute for user approval/);
+  assert.match(guidance, /Earlier writes can survive errors\/cancellation/);
+  assert.match(
+    guidance,
+    /uncertain outcomes must not be retried automatically/,
+  );
+});
 
 test("published code patterns avoid Unicode property escapes rejected by Codex", () => {
   const check = (value: unknown) => {

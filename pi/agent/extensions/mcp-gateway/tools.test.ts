@@ -51,7 +51,16 @@ test("namespace prompts preserve normalized ordering, trust framing, and safety 
     /- \(unqualified\): 2 tools\n- a: 2 tools\n- z: 1 tools/,
   );
   assert.match(prompt, /BEGIN UNTRUSTED EXTERNAL MCP NAMESPACE SUMMARY/);
-  assert.match(prompt, /mcp_search.*mcp_describe.*mcp_call/);
+  assert.match(prompt, /mcp_search when the exact tool name is unknown/);
+  assert.match(
+    prompt,
+    /mcp_describe to obtain its schema before invocation.*mcp_call/,
+  );
+  assert.match(
+    prompt,
+    /Reuse already inspected names and schemas in the current context unless errors or evidence indicate they changed/,
+  );
+  assert.match(prompt, /host-side admission checks still apply/);
   assert.match(prompt, /Never automatically repeat a call/);
   assert.match(
     prompt,

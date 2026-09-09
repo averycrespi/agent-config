@@ -4,20 +4,28 @@ Optional `code({description, source})` composes MCP Gateway calls in one fresh p
 
 Trusted sibling extensions can use the [supported host executor API](API.md). [Monitor](../monitor/README.md) schedules fresh observations through that API without pending model turns; ordinary `code` remains one execution, and Loop remains message-based continuation.
 
+Prefer direct `mcp_call` for straightforward calls whose results are useful as-is. Use `code` when bounded pagination, dependent lookups, or filtering/aggregation materially reduces intermediate context or model round trips. Do not use it for subagent reasoning or persistent polling.
+
 ## Usage
 
-Discover names with `mcp_search`, then read exact schemas with `mcp_describe`. Supply a required nonblank `description` (at most 200 characters) naming the invocation's concrete action and target, plus an async JavaScript **body**, not a module, as `source`:
+Search with `mcp_search` when the exact tool name is unknown, and inspect its schema with `mcp_describe` before invocation. Reuse already inspected names and schemas in the current context unless errors or evidence indicate they changed; host-side admission checks still apply. Supply a required nonblank `description` (at most 200 characters) naming the invocation's concrete action and target, plus an async JavaScript **body**, not a module, as `source`:
 
 ```js
 code({
   description: "Sum values from the first page of items",
   source: `
 const first = await mcp.call("example.list", { page: 1 });
+const ids = first.structuredContent?.ids;
+if (first.isError || !Array.isArray(ids) || !ids.every((id) => typeof id === "string"))
+  throw new Error("Expected a successful list of string IDs");
 const values = await parallel(
-  first.structuredContent.ids.map(
-    (id) => async () =>
-      (await mcp.call("example.get", { id })).structuredContent.value,
-  ),
+  ids.map((id) => async () => {
+    const result = await mcp.call("example.get", { id });
+    const value = result.structuredContent?.value;
+    if (result.isError || typeof value !== "number" || !Number.isFinite(value))
+      throw new Error("Expected a successful finite numeric value");
+    return value;
+  }),
 );
 return values.reduce((sum, value) => sum + value, 0);
 `,
@@ -26,7 +34,7 @@ return values.reduce((sum, value) => sum + value, 0);
 
 The description labels the tool row; it does not affect execution or authorization and is not passed to the child. Avoid secrets and raw payloads: Pi retains submitted arguments in session history. Display text is sanitized, gateway-credential-redacted, and width-truncated. Older history or incomplete arguments without a usable description display “MCP composition”.
 
-These are illustrative names: use the actual discovered schemas. `mcp.call(name, args)` resolves the complete redacted MCP result, including `content`, `structuredContent`, `isError`, and any supplied metadata. It never parses text as JSON or invents pagination/completeness fields. Provider `isError` results remain available to the program and count as host-observed failures. Gateway exceptions reject with `code`, optional validated `reason`/`invocationId`, and `outcomeUnknown`; raw exception messages and guidance are deliberately excluded to prevent intermediate-data leakage.
+These are illustrative names: use the actual discovered schemas. `mcp.call(name, args)` resolves the complete redacted MCP result, including `content`, `structuredContent`, `isError`, and any supplied metadata. It never parses text as JSON or invents pagination/completeness fields. Check `isError` and inspect the actual content shape before consuming the application payload. Provider `isError` results remain available to the program and count as host-observed failures. Gateway exceptions reject with `code`, optional validated `reason`/`invocationId`, and `outcomeUnknown`; raw exception messages and guidance are deliberately excluded to prevent intermediate-data leakage.
 
 `parallel(thunks)` runs independent functions with bounded concurrency and preserves input order. A branch rejection rejects the helper; no branch is retried. The host also queues arbitrary concurrent `mcp.call` requests, including `Promise.all`, under the same limit. Await all calls before returning: returning with unfinished calls fails and cancels outstanding work.
 
