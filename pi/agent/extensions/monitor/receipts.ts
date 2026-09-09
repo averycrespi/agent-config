@@ -66,6 +66,7 @@ const schema = Type.Object(
       Type.Object(
         {
           code: text(160),
+          protocolCode: Type.Optional(Type.Literal("invalid_observation")),
           codes: Type.Array(text(160), { maxItems: 128 }),
           partialExecution: Type.Boolean(),
           effectsMayPersist: Type.Boolean(),

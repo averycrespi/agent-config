@@ -3,6 +3,8 @@ import test from "node:test";
 import { MonitorEngine, type Clock, type Receipt } from "./engine.ts";
 import { parseConfig } from "./config.ts";
 import type { CodeLimits, RunResult } from "../code-mode/api.ts";
+import { restoreReceipts, RECEIPT_TYPE } from "./receipts.ts";
+import { notificationContent } from "./tool.ts";
 
 export class FakeClock implements Clock {
   time = 1000;
@@ -49,6 +51,7 @@ const success = (decision = "wait", evidence: unknown = null): RunResult => ({
 const failure = (safe = true): RunResult => ({
   status: "failed",
   code: "nested_call_failed",
+  json: success().json,
   traces: [
     {
       id: 1,
@@ -249,6 +252,80 @@ test("safe failure budget is cumulative across waits; unsafe and malformed retur
     assert.equal(h.messages.length, 1);
     assert.equal(h.messages[0].state, "unsafe_failure");
   }
+});
+
+test("malformed protocol after caught transient failure never replays", async () => {
+  for (const json of [
+    undefined,
+    "null",
+    '{"decision":"wait"}',
+    success("invalid").json,
+  ]) {
+    const h = harness(async () => ({ ...failure(), json }));
+    h.engine.start(input, limits);
+    await h.clock.advance();
+    await h.clock.advance(1000);
+    assert.equal(h.starts.length, 1);
+    assert.equal(h.messages.length, 1);
+    assert.equal(h.messages[0].state, "unsafe_failure");
+    assert.equal(h.messages[0].failure!.code, "nested_call_failed");
+    assert.equal(h.messages[0].failure!.protocolCode, "invalid_observation");
+    assert.deepEqual(h.messages[0].failure!.codes, ["transport_error"]);
+    const restored = restoreReceipts(
+      h.persisted.map((data) => ({
+        type: "custom",
+        customType: RECEIPT_TYPE,
+        data,
+      })),
+      16,
+    )[0];
+    assert.deepEqual(restored.failure, h.messages[0].failure);
+    const content = notificationContent(restored);
+    for (const code of [
+      "nested_call_failed",
+      "invalid_observation",
+      "transport_error",
+    ])
+      assert.ok(content.includes(code));
+  }
+});
+
+test("deadline settlement retains host and protocol failure in history and handoff", async () => {
+  let resolve!: (r: RunResult) => void;
+  const h = harness(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  h.engine.start({ ...input, timeout_ms: 1000 }, limits);
+  await h.clock.advance();
+  await h.clock.advance(1000);
+  assert.equal(h.messages.length, 0);
+  resolve({ ...failure(), json: "null" });
+  await h.clock.advance();
+  assert.equal(h.starts.length, 1);
+  assert.equal(h.messages.length, 1);
+  assert.equal(h.messages[0].state, "deadline");
+  const restored = restoreReceipts(
+    h.persisted.map((data) => ({
+      type: "custom",
+      customType: RECEIPT_TYPE,
+      data,
+    })),
+    16,
+  )[0];
+  assert.deepEqual(restored.failure, h.messages[0].failure);
+  assert.equal(restored.failure!.code, "nested_call_failed");
+  assert.equal(restored.failure!.protocolCode, "invalid_observation");
+  assert.deepEqual(restored.failure!.codes, ["transport_error"]);
+  const content = notificationContent(restored);
+  for (const code of [
+    "nested_call_failed",
+    "invalid_observation",
+    "transport_error",
+  ])
+    assert.ok(content.includes(code));
 });
 
 test("cancellation before handoff suppresses only owned notifications; after handoff it remains truthful", async () => {

@@ -24,7 +24,7 @@ Session/branch generation invalidates asynchronous registration, timers, results
 
 ## Failure and handoff invariants
 
-Host `RunResult` always wins over guest decisions. Latest validated evidence is separately attributed to its poll number. The cumulative safe-failure counter survives intervening waits. Classification defaults unsafe: only every-call nondispatch plus branded transient discovery failure qualifies. Any dispatched call makes replay unsafe regardless of annotations or subsequent gateway rejection.
+Host `RunResult` always wins over guest decisions. A repeat-safe host failure still requires a protocol-valid observation return before scheduling another poll; malformed decision/evidence terminates deterministically while retaining host failure metadata. Latest validated evidence is separately attributed to its poll number. The cumulative safe-failure counter survives intervening waits. Classification defaults unsafe: only every-call nondispatch plus branded transient discovery failure qualifies. Any dispatched call makes replay unsafe regardless of annotations or subsequent gateway rejection.
 
 Terminal notification transitions are `pending → handoff_unknown → handed_to_pi`, or `pending → suppressed`. Persist `handoff_unknown` before invoking the synchronous Pi API. Exceptions/interruptions leave that state without replay. A separate zero-delay timer serializes one attempt at a time and permits cancellation before the Pi boundary; there is no acknowledgment promise to await. Successful API return says only that handoff returned, never that a follow-up was consumed. Do not use `hasPendingMessages`, history absence, agent end or queue inspection as a selective acknowledgment.
 

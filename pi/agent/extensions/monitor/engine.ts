@@ -58,6 +58,7 @@ export type Receipt = {
   evidencePoll?: number;
   failure?: {
     code: string;
+    protocolCode?: "invalid_observation";
     codes: string[];
     partialExecution: boolean;
     effectsMayPersist: boolean;
@@ -345,6 +346,9 @@ export class MonitorEngine {
     if (result.status !== "success")
       r.failure = {
         code: label(result.code ?? "observation_failed", 160),
+        ...(result.code === "nested_call_failed" && !decision
+          ? { protocolCode: "invalid_observation" as const }
+          : {}),
         codes: result.traces
           .filter((t) => t.code)
           .map((t) => label(t.code, 160))
@@ -364,6 +368,10 @@ export class MonitorEngine {
     }
     if (result.status !== "success") {
       if (!isRepeatSafeFailure(result)) {
+        this.finish(m, "unsafe_failure");
+        return;
+      }
+      if (!decision) {
         this.finish(m, "unsafe_failure");
         return;
       }
