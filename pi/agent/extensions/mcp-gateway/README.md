@@ -35,6 +35,8 @@ The companion's stock `serve-demo` launcher currently does not expose `--allowed
 - `mcp_describe({name})` returns the exact descriptor, including input schema, optional output schema, and annotations.
 - `mcp_call({name, arguments})` invokes the exact external name using its input schema. Gateway validates arguments and authorizes the call.
 
+The optional [code-mode extension](../code-mode/README.md) adds bounded JavaScript composition through the same active client, before presentation formatting. Its host-only [API](API.md) adds fresh catalog/schema admission without changing the three direct tools. Nested calls retain gateway restrictions and authorization but do not synthesize ordinary Pi tool hooks.
+
 The prompt contains at most **24 namespaces**, each with its tool count, plus fixed discovery guidance. It never injects the full tool inventory or schemas. Namespace names are bounded to 80 characters. Tool metadata is untrusted data, not instructions or authorization.
 
 Discovery uses modern stateless HTTP MCP **2026-07-28**, without a long-lived SDK session. There is no legacy negotiation or automatic downgrade. Startup, each agent start, search, and describe refresh the paginated catalog. The guard uses only the most recently completed traversal. Failed/incomplete discovery drops the cache. A stale cursor restarts discovery once, within the same deadline; other discovery failures are surfaced without retry.

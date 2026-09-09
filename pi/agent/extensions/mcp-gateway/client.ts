@@ -18,6 +18,7 @@ export type GatewayTool = {
   annotations?: Record<string, unknown>;
 };
 export type CallResult = {
+  [key: string]: unknown;
   content: unknown[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
@@ -34,7 +35,21 @@ const REJECTION_REASONS = [
 export type RejectionReason = (typeof REJECTION_REASONS)[number];
 const MAX_REJECTION_GUIDANCE_CHARS = 1024;
 
+// Pi loads sibling extensions with separate module caches; constructor identity differs.
+const GATEWAY_ERROR = Symbol.for("pi:mcp-gateway:GatewayError:v1");
+
+export function isGatewayError(error: unknown): error is GatewayError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    GATEWAY_ERROR in error &&
+    error[GATEWAY_ERROR] === true
+  );
+}
+
 export class GatewayError extends Error {
+  readonly [GATEWAY_ERROR] = true;
+
   constructor(
     message: string,
     public readonly code: string = "client_error",
@@ -441,22 +456,35 @@ export class GatewayClient {
     name: string,
     args: Record<string, unknown>,
     signal?: AbortSignal,
+    admission?: {
+      validate: (
+        schema: Record<string, unknown>,
+        args: Record<string, unknown>,
+      ) => void;
+      onDispatch?: () => void;
+    },
   ): Promise<CallResult> {
     return this.operation(signal, this.config.callTimeoutMs, async (active) => {
       let identity: string | undefined;
-      if (this.config.readOnly) {
+      if (this.config.readOnly || admission) {
         const catalog = await this.operation(
           active,
           this.config.discoveryTimeoutMs,
           (s) => this.discover(s),
         );
-        if (!catalog.tools.some((tool) => tool.name === name))
+        const tool = catalog.tools.find((tool) => tool.name === name);
+        if (!tool)
           throw new GatewayError(
-            "Tool is not available in read-only mode.",
-            "read_only_rejected",
+            this.config.readOnly
+              ? "Tool is not available in read-only mode."
+              : "Tool is not available in the current gateway catalog.",
+            this.config.readOnly ? "read_only_rejected" : "unknown_tool",
           );
+        admission?.validate(tool.inputSchema, args);
         identity = catalog.identity;
       }
+      active.throwIfAborted();
+      admission?.onDispatch?.();
       const { value } = await this.request(
         "tools/call",
         { name, arguments: args },
