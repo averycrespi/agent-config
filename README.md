@@ -1,26 +1,32 @@
 # Agent Config
 
-My personal [Pi](https://pi.dev/) setup for software development: research-first clarification, focused implementation, ticket-driven delivery, and independent review.
+[![CI](https://github.com/averycrespi/agent-config/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/averycrespi/agent-config/actions/workflows/ci.yml)
 
-The repository contains skills, TypeScript extensions, prompt templates, themes, and saved workflows, installed into `~/.pi/agent/` with [GNU Stow](https://www.gnu.org/software/stow/).
+My personal configuration and extension toolkit for the [Pi](https://pi.dev/) coding agent.
 
-## Capabilities
+It combines reusable development skills with custom tools for delegation, automation, external services, and terminal UI improvements. Use it for direct coding work, research and independent review, or optional Plane-backed ticket delivery.
 
-Custom extensions under [`pi/agent/extensions/`](pi/agent/extensions/) provide:
+This is a configuration repository, not a standalone agent. Pi is installed separately; [GNU Stow](https://www.gnu.org/software/stow/) links the configuration into `~/.pi/agent/`. Model settings and integration credentials remain local.
 
-- **Work tracking and automation:** loops, session-bound monitors, TODOs, and scheduled tasks
-- **Delegation and orchestration:** isolated subagents, saved workflows, and structured output
-- **External access:** gateway-backed services, [isolated JavaScript MCP composition](pi/agent/extensions/code-mode/README.md), and web research
-- **Interaction and context:** user prompts, context reporting, compact tool output, and TUI status information
+## What's included
 
-See [`pi/README.md`](pi/README.md) for the complete extension, skill, prompt, and saved-workflow catalog.
+| Component          | Purpose                                                                                                                 | Location                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| Agent instructions | Shared rules for task execution, verification, Git, and communication                                                   | [`AGENTS.md`](pi/agent/AGENTS.md)     |
+| Skills             | On-demand guidance for clarification, debugging, review, ticket delivery, and other activities                          | [`skills/`](pi/agent/skills/)         |
+| Extensions         | TypeScript tools and UI enhancements for delegation, automation, external access, context visibility, and work tracking | [`extensions/`](pi/agent/extensions/) |
+| Saved workflows    | Reusable JavaScript orchestration for independent review and deep research                                              | [`workflows/`](pi/agent/workflows/)   |
+| Prompt templates   | Slash-invoked prompts, including secret scanning                                                                        | [`prompts/`](pi/agent/prompts/)       |
+| Themes             | Terminal appearance, including Catppuccin Mocha                                                                         | [`themes/`](pi/agent/themes/)         |
 
-## Quick Start
+See [`pi/README.md`](pi/README.md) for the full catalog. These components are installed from `pi/agent/`; repository-local authoring guidance and development tooling stay in this checkout.
+
+## Quick start
 
 ### Requirements
 
 - [Pi agent](https://pi.dev/), installed separately, with a configured model provider
-- [Node.js](https://nodejs.org/) 24+; [`.tool-versions`](.tool-versions) pins the version used by CI (currently 25.9.0)
+- [Node.js](https://nodejs.org/) 24+; [`.tool-versions`](.tool-versions) pins the version used by CI (currently 25.9.0). Use the pinned version for Code mode's required permission support.
 - [Homebrew](https://brew.sh/) for the macOS dependency setup below
 - macOS assumed; Linux requires equivalent system dependencies, including GNU Stow
 
@@ -38,56 +44,78 @@ make stow-pi     # symlink pi/agent/ into ~/.pi/agent/
 
 Personal `pi/agent/settings.json` is gitignored, so a fresh clone does not reproduce model/provider selections or local extension settings. Configure these for your environment, then start Pi (or run `/reload` in an existing session to load the installed extensions and skills).
 
-### Optional integrations
+Browser automation, Herdr, and authenticated external services need additional setup; see [Optional integrations](#optional-integrations).
 
-- **Browser automation and local web rendering:** run `make install-playwright`. This installs browser tooling and Chromium for the pinned web-access dependency; without it, web-access still supports static extraction and hosted fallbacks. See [web-access](pi/agent/extensions/web-access/README.md).
-- **Terminal and worktree integration:** install [Herdr](https://herdr.dev/), then run `herdr integration install pi` after Stow. Restart Pi or run `/reload` to load its lifecycle bridge. See [Herdr integration](pi/README.md#herdr-integration), including macOS-to-Lima remote setup.
-- **Authenticated external services:** configure a separate MCP Gateway endpoint and supply `MCP_GATEWAY_AGENT_TOKEN` in Pi's process environment. Keep tokens out of settings and the repository. Missing gateway configuration leaves Pi usable, but MCP calls require it. See [gateway configuration](pi/agent/extensions/mcp-gateway/README.md#configuration).
+## Working with the agent
 
-## Development workflow
+### Direct work
 
 Use the activities that fit the request rather than treating every skill as a mandatory phase:
 
-- **Clarify** material ambiguity with [`clarify`](pi/agent/skills/clarify/SKILL.md): research first, ask focused questions, and return a concise brief without creating artifacts. Skip the interview when the request is already clear.
+- **Clarify** material ambiguity with [`clarify`](pi/agent/skills/clarify/SKILL.md): research first, ask focused questions, and return a concise brief. Skip the interview when the request is already clear.
 - **Stress-test** concrete approaches with [`challenge`](pi/agent/skills/challenge/SKILL.md) for material risks or explicit-only [`simplify`](pi/agent/skills/simplify/SKILL.md) for unnecessary complexity.
-- **Implement and verify** directly for authorized local work, or use the ticket workflow for prepared delivery. Keep evidence and checks proportionate to the change.
-- **Review** changes with [`review`](pi/agent/skills/review/SKILL.md), combining repository context, deterministic checks, and independent analysis while reporting failed checks and verification gaps.
+- **Implement and verify** authorized work in the main session. Use [`diagnose`](pi/agent/skills/diagnose/SKILL.md) when a failure's cause is uncertain, and keep checks proportionate to the change.
+- **Review** changes with [`review`](pi/agent/skills/review/SKILL.md), combining repository context, deterministic checks, and independent analysis. Report failed checks and verification gaps rather than implying success.
 
-For Plane-backed delivery, [`plane`](pi/agent/skills/plane/SKILL.md) defines safe gateway access, [`shape-ticket`](pi/agent/skills/shape-ticket/SKILL.md) prepares a verifiable contract, and [`work-ticket`](pi/agent/skills/work-ticket/SKILL.md) owns one selected ticket through the authorized delivery boundary. Ticket implementation includes in-scope local commits unless excluded; pushing and PR publication require explicit authorization. PR delivery includes independent review before publication and bounded, session-bound CI monitoring and repair afterward. See `work-ticket` for recovery, allowances, and settlement procedures.
+### Ticket-driven delivery
 
-## Orchestration
+For Plane-backed work, [`shape-ticket`](pi/agent/skills/shape-ticket/SKILL.md) prepares a verifiable ticket contract, and [`work-ticket`](pi/agent/skills/work-ticket/SKILL.md) owns one selected ticket through the authorized delivery boundary. The [`plane`](pi/agent/skills/plane/SKILL.md) skill supplies safe gateway access.
 
-| Primitive                                            | Use it when                                                                                                    | What it provides                                                                                                                                                             |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Subagents](pi/agent/extensions/subagents/README.md) | Parallelism, substantial context isolation, or independent judgment outweighs delegation overhead.             | One-shot child sessions with self-contained prompts, explicit capabilities, and configured `fast`, `balanced`, or `strong` profiles.                                         |
-| [Workflows](pi/agent/extensions/workflows/README.md) | Research, review, or audit follows predictable, reusable control flow.                                         | Deterministic JavaScript orchestration with bounded read-mostly subagents, structured output, verification gates, and budgets; no writable filesystem or shell capabilities. |
-| [Loops](pi/agent/extensions/loop/README.md)          | A user, loaded skill, or established workflow explicitly requests bounded continuation of the current session. | A repeated message with continuation/time limits and yield/stop/resume controls—not a completion judgment or background watcher.                                             |
+Ticket implementation includes in-scope local commits unless excluded; pushing and PR publication require explicit authorization. PR delivery includes independent review before publication and bounded, session-bound CI monitoring and repair afterward. See `work-ticket` for the full delivery and recovery procedures.
 
-[Monitor](pi/agent/extensions/monitor/README.md) schedules fresh bounded code-mode observations without pending model turns, handing off only terminal attention. [Code mode](pi/agent/extensions/code-mode/README.md) executes one short-lived program; Loop continues the model with messages. Monitor does not replace Loop or automatically adopt ticket/CI workflows.
+## Delegation and automation
 
-The main session owns implementation and execution evidence; workflows own deterministic orchestration, and subagents handle isolated questions. Writable delegation requires an explicit user request and a bounded execution workflow with one writer, a structured handoff, and independent verification; parent and child writes must never overlap in one checkout. The calling user, skill, or extension defines completion policy for loops.
+### Delegate and coordinate reasoning
 
-For explicitly requested worktree-based delegation, [`spin-out`](pi/agent/skills/spin-out/SKILL.md) starts a fresh Pi agent in a Herdr-managed worktree with a durable local task brief.
+| Mechanism                                            | Use it for                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Subagents](pi/agent/extensions/subagents/README.md) | Isolated questions where parallelism, context isolation, or independent judgment outweighs delegation overhead. Each child receives a self-contained prompt, explicit capabilities, and a configured profile.                                              |
+| [Workflows](pi/agent/extensions/workflows/README.md) | Repeatable research or review coordinated by deterministic JavaScript, with bounded subagents and verification gates. Saved definitions include `review` and `deep-research`; workflow subagents cannot receive writable filesystem or shell capabilities. |
+| [Spin-out](pi/agent/skills/spin-out/SKILL.md)        | Explicitly requested delegation to a fresh Pi agent in a Herdr-managed worktree, with a durable local task brief.                                                                                                                                          |
 
-## Integrations
+The main session owns implementation and execution evidence by default. Writable delegation requires an explicit user request and the [bounded execution safeguards](pi/agent/extensions/subagents/README.md#delegation-guidance); parent and child writes must never overlap in one checkout.
 
-### Herdr
+### Continue, watch, and schedule
 
-[Herdr](https://herdr.dev/) provides the terminal and worktree control plane used by the [`herdr`](pi/agent/skills/herdr/SKILL.md) and `spin-out` skills. Herdr owns the local Pi lifecycle bridge; this repository's [`ask-user`](pi/agent/extensions/ask-user/README.md) extension exposes `ask_user` and reports interactive questions through that bridge. See [Herdr integration](pi/README.md#herdr-integration) for installation, component ownership, and remote-client setup.
+| Mechanism                                                        | Use it for                                                                                                                                                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Loop](pi/agent/extensions/loop/README.md)                       | Continuing the current agent session within turn and time limits when explicitly requested by the user, a loaded skill, or an established workflow. Ordinary multi-step work does not need a loop. |
+| [Monitor](pi/agent/extensions/monitor/README.md)                 | Explicitly requested checks of gateway conditions without recurring model turns while waiting, followed by a notification when attention is needed.                                                |
+| [Scheduled tasks](pi/agent/extensions/scheduled-tasks/README.md) | Recurring Markdown-defined tasks run through cron, or on demand, in fresh child Pi processes with retained run artifacts and optional cross-run handoffs.                                          |
 
-### Companion: agent-tools
+Loop continues reasoning; Monitor checks conditions; scheduled tasks start separate runs. Monitor is session-bound, not a durable background service: shutdown, reload, or session/branch navigation stops observations without automatic resumption. Neither Loop nor Monitor decides whether the overall task succeeded; the calling user, skill, or workflow defines completion.
 
-[`agent-tools`](https://github.com/averycrespi/agent-tools) provides external utilities that complement this configuration repo. Its **MCP Gateway** governs authenticated external access through Pi's [`mcp-gateway`](pi/agent/extensions/mcp-gateway/README.md) extension and the `mcp_search`, `mcp_describe`, and `mcp_call` tools.
+### Compose external tool calls
 
-[Code mode](pi/agent/extensions/code-mode/README.md) composes gateway calls in isolated JavaScript for pagination, dependent lookups, and aggregation, returning only selected results to model context. Use direct MCP tools for simple calls; use code mode when intermediate data would otherwise inflate context.
+[Code mode](pi/agent/extensions/code-mode/README.md) runs one bounded JavaScript program to paginate, join, or aggregate MCP Gateway results before returning compact data to the model. It coordinates tool calls, not agents, and does not provide persistent polling.
 
-The companion also includes a sandbox manager (`sb`) for isolated agent runs. Gateway permissions govern external service access; this Pi configuration's guidance toward gateway tools is advisory, not shell sandbox enforcement. Use an outer isolation layer when shell restrictions are needed.
+Use direct `mcp_search`, `mcp_describe`, and `mcp_call` tools for straightforward discovery and calls. Use Code mode when intermediate results would otherwise inflate context. Gateway permissions do not replace user authorization for external mutations.
 
-## Development
+## Optional integrations
 
-Extensions are directory-based TypeScript modules with colocated tests and user-facing documentation. Non-trivial extensions also include design guidance, while shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/). See [repository authoring guidance](AGENTS.md) for safeguards and required checks.
+### Browser automation and web rendering
 
-The repo-local [`create-extension`](.pi/skills/create-extension/SKILL.md) skill covers creating and modifying extensions, including rendering, configuration, state, documentation, and testing conventions. It stays under `.pi/skills/` and is not installed globally by Stow. Pi discovers project-local skills when the project is trusted and skill discovery is enabled; `AGENTS.md` also provides a direct file path for agents to read without changing trust or reloading the session.
+Run `make install-playwright` to install browser tooling and Chromium for the pinned web-access dependency. Without it, web-access still supports static extraction and hosted fallbacks. See [web-access](pi/agent/extensions/web-access/README.md) and the [Playwright skill](pi/agent/skills/playwright/SKILL.md).
+
+### Herdr: terminal and worktree control
+
+Install [Herdr](https://herdr.dev/), then run `herdr integration install pi` after Stow. Restart Pi or run `/reload` to load its lifecycle bridge.
+
+The [`herdr`](pi/agent/skills/herdr/SKILL.md) and `spin-out` skills use Herdr for terminal and worktree control. Herdr owns the local Pi lifecycle bridge; this repository's [`ask-user`](pi/agent/extensions/ask-user/README.md) extension reports interactive questions through it. See [Herdr integration](pi/README.md#herdr-integration) for component ownership and remote-client setup, including macOS-to-Lima use.
+
+### MCP Gateway: authenticated external services
+
+The companion [`agent-tools`](https://github.com/averycrespi/agent-tools) repository provides the MCP Gateway used by this configuration's [`mcp-gateway`](pi/agent/extensions/mcp-gateway/README.md) extension.
+
+Configure a separate gateway endpoint and supply `MCP_GATEWAY_AGENT_TOKEN` in Pi's process environment. Keep tokens out of settings and the repository. Missing gateway configuration leaves Pi usable, but MCP calls require it. See [gateway configuration](pi/agent/extensions/mcp-gateway/README.md#configuration).
+
+The companion also includes a sandbox manager (`sb`) for isolated agent runs. Gateway permissions govern external service access; this configuration's guidance toward gateway tools is advisory, not shell sandbox enforcement. Use an outer isolation layer when shell restrictions are needed.
+
+## Developing this repository
+
+Extensions are directory-based TypeScript modules with colocated tests and user-facing documentation. Non-trivial extensions also include design guidance; shared helpers live under [`pi/agent/extensions/_shared/`](pi/agent/extensions/_shared/).
+
+See [repository authoring guidance](AGENTS.md) for safeguards and required checks, and the repo-local [`create-extension`](.pi/skills/create-extension/SKILL.md) skill for extension conventions. That skill stays under `.pi/skills/` and is not installed globally by Stow.
 
 ```sh
 npm run lint         # lint extensions and saved workflows

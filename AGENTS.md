@@ -9,6 +9,14 @@ This public repository manages Pi configuration through GNU Stow: `pi/agent/` is
 - Keep authenticated external access and its documentation aligned with `pi/agent/extensions/mcp-gateway/` and the `mcp_search`, `mcp_describe`, and `mcp_call` tools.
 - Exclude private/internal identifiers, URLs, credentials, and proprietary information from committed content. Public dependencies and prior art may be named. Use generic examples such as `ABC-123` and `example.com`; sanitize design artifacts before committing.
 
+## README Purpose
+
+- Keep the root `README.md` an orientation and decision guide: explain what this repository is, what it contains and enables, how to install it, and where to learn more. Make clear that Pi is installed separately and personal settings and credentials are not supplied by the repository.
+- Describe components by purpose before introducing tool names. Separate working with the configured agent from developing this repository, and present development activities as optional rather than a mandatory pipeline.
+- Group delegation and automation by the reader's goal: delegate reasoning, continue/watch/schedule work, or compose external tool calls. Preserve material authorization, ownership, and lifecycle boundaries without reproducing detailed execution policies.
+- Keep the full inventory in `pi/README.md` and detailed contracts in the relevant skill and extension documentation. Link to those sources instead of accumulating API details, recovery procedures, or repeated integration setup in the root README.
+- Keep the linked main-branch CI badge directly beneath the title, and keep installation commands and verification guidance aligned with repository tooling.
+
 ## Authoring Guidance
 
 - For creating or modifying Pi extension code, tests, documentation, tools, rendering, configuration, or lifecycle behavior, read [.pi/skills/create-extension/SKILL.md](.pi/skills/create-extension/SKILL.md). Load it by path if it is absent from the skill catalog; do not change project trust or reload the session to discover it.
