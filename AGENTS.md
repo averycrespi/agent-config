@@ -15,6 +15,7 @@ This public repository manages Pi configuration through GNU Stow: `pi/agent/` is
 - Describe components by purpose before introducing tool names. Separate working with the configured agent from developing this repository, and present development activities as optional rather than a mandatory pipeline.
 - Group delegation and automation by the reader's goal: delegate reasoning, continue/watch/schedule work, or compose external tool calls. Preserve material authorization, ownership, and lifecycle boundaries without reproducing detailed execution policies.
 - Keep the full inventory in `pi/README.md` and detailed contracts in the relevant skill and extension documentation. Link to those sources instead of accumulating API details, recovery procedures, or repeated integration setup in the root README.
+- Keep `pi/README.md` a current, linked component catalog and configuration reference. Explain component purpose, primary entry points, and installation versus loading behavior; keep detailed execution contracts in skill/extension docs and integration walkthroughs and migration procedures in `pi/docs/`. Preserve useful incoming section links when reorganizing.
 - Keep the linked main-branch CI badge directly beneath the title, and keep installation commands and verification guidance aligned with repository tooling.
 
 ## Authoring Guidance
