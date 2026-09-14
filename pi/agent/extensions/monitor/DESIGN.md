@@ -30,6 +30,12 @@ Terminal notification transitions are `pending → handoff_unknown → handed_to
 
 Custom receipt entries are not conversation messages. A persistence error closes the engine rather than continuing unrecorded observation. History entries are individually bounded; append-only Pi history grows with finite polling and user registrations. Interrupted recovery receipts conservatively retain `inFlight` and consumed poll count; exact final call accounting after abrupt shutdown is not guaranteed. Source/returned evidence may contain sensitive data in ordinary Pi history; redaction is not universal secret detection.
 
+## Lifecycle observations
+
+`api.ts` defines the bounded event union documented in [API.md](API.md). The engine publishes only admission, termination/suppression, and notification-attempt/return transitions through an optional host sink; `index.ts` forwards them to `pi.events`. Publication is failure-isolated and uses fresh shallow-frozen identity/enum payloads, never receipts or source. Admission publication precedes persistence so a persistence-triggered invalidation remains ordered after registration. Terminal publication precedes persistence for the same reason. Notification attempts still persist before crossing Pi's boundary.
+
+Polling, countdown refresh, receipt restoration, and final cleanup accounting add no events. A pending terminal notification canceled or invalidated later produces a new terminal transition, not a duplicate original completion. Events remain observable during invalidation even when history writes are forbidden by tree preparation. No new resources, recovery state, scheduling policy, or model turns are introduced.
+
 ## Change guidance
 
 Keep all tests observable: controlled clocks assert scheduling/message counts, API fixtures execute real permissioned children, and fake Pi sinks assert delivery options/lifecycle/widget placement. Existing code-mode tests qualify isolation, credential/schema admission and cancellation semantics. No live mutation fixture is needed. Manual TUI smoke and live service qualification are separate evidence, not implied by unit tests.

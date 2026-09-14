@@ -3,13 +3,16 @@ import test from "node:test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Container, visibleWidth } from "@earendil-works/pi-tui";
-import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import {
+  createEventBus,
+  InteractiveMode,
+} from "@earendil-works/pi-coding-agent";
 import { createLoopExtension } from "../loop/index.ts";
 import { DEFAULT_LOOP_CONFIG } from "../loop/config.ts";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import registerMonitor from "./index.ts";
 import { fixture, TEST_BEARER } from "../mcp-gateway/fixture.ts";
-import { createGatewayAccess } from "../mcp-gateway/api.ts";
+import { provideGatewayAccess } from "../mcp-gateway/api.ts";
 import { parseConfig, loadMonitorConfig } from "./config.ts";
 import {
   PARAMETERS,
@@ -66,16 +69,14 @@ async function setup(t: any, hasUI = false, mode = "print") {
       notify: (s: string) => notices.push(s),
     },
   };
+  const events = createEventBus();
+  provideGatewayAccess({ events } as any, f.client, () => true);
   const pi: any = {
     on: (e: string, fn: Function) => handlers.set(e, fn),
     registerTool: (tool: any) => tools.set(tool.name, tool),
     registerCommand: (name: string, command: any) =>
       commands.set(name, command),
-    events: {
-      emit(_e: string, r: any) {
-        r.accept(createGatewayAccess(f.client));
-      },
-    },
+    events,
     appendEntry: (customType: string, data: unknown) =>
       entries.push({
         id: String(entries.length),
@@ -97,6 +98,7 @@ async function setup(t: any, hasUI = false, mode = "print") {
     tools.get("monitor").execute("fixture", args, undefined, undefined, ctx);
   return {
     f,
+    events,
     ctx,
     handlers,
     tools,
@@ -628,4 +630,63 @@ test("published schema, bounded restore, compact expandable rendering and hostil
   );
   assert.match(call.render(1000)[0], /^monitor start/);
   assert.doesNotMatch(call.render(1000)[0], /SOURCE_SECRET|mgw_agent_|\x1b/);
+});
+
+test("ordinary Pi listeners observe bounded monitor lifecycle without extra delivery", async (t) => {
+  const h = await setup(t);
+  const observed: any[] = [];
+  for (const type of ["registered", "terminated", "notification"])
+    h.events.on(`monitor:${type}`, (event) => observed.push(event));
+  const r = await h.run(input);
+  const id = r.details.receipts[0].id;
+  assert.deepEqual(observed, [{ type: "registered", id }]);
+  await h.received;
+  assert.deepEqual(observed, [
+    { type: "registered", id },
+    { type: "terminated", id, state: "condition", notification: "pending" },
+    { type: "notification", id, notification: "handoff_unknown" },
+    { type: "notification", id, notification: "handed_to_pi" },
+  ]);
+  assert.equal(h.messages.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(observed),
+    /answer|fixture|Report|source|evidence/,
+  );
+  await h.run({ action: "cancel", id });
+  assert.equal(observed.length, 4);
+});
+
+test("monitor wait, cancellation and navigation events do not send messages or replay restoration", async (t) => {
+  const h = await setup(t);
+  const observed: any[] = [];
+  for (const type of ["registered", "terminated", "notification"])
+    h.events.on(`monitor:${type}`, (event) => observed.push(event));
+  await h.run({ ...input, source: "" });
+  assert.deepEqual(observed, []);
+  const r = await h.run({
+    ...input,
+    source: 'return {decision:"wait",evidence:null};',
+  });
+  const id = r.details.receipts[0].id;
+  await h.run({ action: "cancel", id });
+  await h.run({ action: "cancel", id });
+  assert.deepEqual(observed, [
+    { type: "registered", id },
+    { type: "terminated", id, state: "cancelled", notification: "suppressed" },
+  ]);
+  const second = await h.run({
+    ...input,
+    source: 'return {decision:"wait",evidence:null};',
+  });
+  await h.emit("session_before_tree");
+  assert.deepEqual(observed.at(-1), {
+    type: "terminated",
+    id: second.details.receipts[0].id,
+    state: "invalidated",
+    notification: "suppressed",
+  });
+  const count = observed.length;
+  await h.emit("session_tree");
+  assert.equal(observed.length, count);
+  assert.equal(h.messages.length, 0);
 });

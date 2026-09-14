@@ -47,6 +47,12 @@ Event types are `started`, `continued`, `yielded`, `stopped`, `resumed`, `extend
 
 The extension emits the same payload on Pi's shared event bus under `loop:<type>`, for example `loop:yielded`. Use the imported API for typed direct coordination and `pi.events` for loose coupling.
 
+### Coverage and privacy
+
+The existing inventory covers creation (`started`), continuation accounting (`continued`), yielding (`yielded`), ordinary stops (`stopped`), explicit or user-input wake (`resumed`), limit increases (`extended`), clearing (`cleared`), and exhausted limits (`exhausted`). No duplicate publisher or additional Loop event is needed for these transitions. Names, payloads, and typed subscriptions remain unchanged. Restoration normalizes persisted running state to stopped without replaying mutation events.
+
+Payloads include the Loop snapshot, which can contain caller instructions and reasons. **Do not forward whole Loop events across a process or trust boundary.** Select only the safe fields needed by the consumer. Event publication is not task-completion evidence; `agent_start`, `agent_settled`, and `session_shutdown` remain built-in Pi hooks, not renamed extension events.
+
 ## Types
 
 `api.ts` exports:

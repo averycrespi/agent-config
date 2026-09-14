@@ -80,6 +80,10 @@ Notification receipts distinguish:
 
 Once handed to Pi, its queue cannot selectively retract a monitor message. Cancel reports this limitation without changing unrelated queues. An asynchronous Pi delivery failure can surface through Pi's extension-error reporting without a per-monitor acknowledgment. Neither absent history nor `hasPendingMessages()` proves delivery failure or permits replay.
 
+## Extension events
+
+Ordinary `pi.events` listeners receive `monitor:registered`, `monitor:terminated`, and `monitor:notification`. Payloads contain only the monitor UUID and fixed lifecycle dispositions, not receipt content. No poll/countdown events or additional model turns are introduced. See [API.md](API.md) for payload types, timing, cancellation/restoration semantics, and an in-process example requiring no watcher.
+
 ## Configuration
 
 Global `settings.json` under `extension:monitor` only; project settings are ignored. Environment overrides win. Settings are sampled when the session/branch initializes, not hot-updated for running monitors. Restart/reload is a user decision and invalidates existing monitors. Invalid JSON, non-object settings/extension sections, unreadable settings (except an absent file), null or invalid finite values disable registration. Settings inspection remains available.

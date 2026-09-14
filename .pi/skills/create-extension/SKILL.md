@@ -30,6 +30,15 @@ Apply this repository's extension conventions to new and existing extensions. Ke
 - Keep tool contracts in schemas, descriptions, and active tool guidelines rather than duplicating them in global prompts. Bound model-facing output and disclose truncation or retained-output paths when applicable.
 - For lifecycle changes, identify state ownership, restoration, cancellation, and shutdown behavior. Start long-lived resources when needed by the session, not unconditionally in the extension factory; clean them up idempotently. Preserve the affected extension's branching and recovery invariants.
 
+## Extension Events
+
+- Reuse `pi.events` for in-process extension communication and audit existing publishers before adding gaps. Name new events `<extension-name>:<event>` using the owning extension's directory name. Preserve established names, payloads, and typed subscriptions; document compatibility exceptions rather than silently renaming them.
+- Keep built-in Pi hooks (`agent_start`, `agent_settled`, `session_shutdown`, and UI prompt hooks) unchanged. Do not duplicate them as extension events or interpret settlement as task success.
+- Emit meaningful producer-owned transitions, not poll/countdown telemetry. Document the inventory, payload fields, timing, cancellation, shutdown, restoration, and notification-handoff semantics in the owning API docs. Distinguish registration, terminal attention, handoff, and acknowledged delivery.
+- Select bounded identity and enum disposition fields for new lifecycle payloads. Exclude prompts, question/answer contents, options, scripts, transcripts, tool payloads, credentials, and raw errors. Never declare existing rich state events safe for wholesale forwarding; consumers must select safe fields.
+- Keep publication observational: preserve producer authority, allowances, outcomes, cancellation, and cleanup; add no model turns, replay, persistence, or transport merely to emit an event. Isolate observer failures and do not expose mutable producer state. Events grant no authority to control another agent or answer for the user.
+- Test with actual `pi.events` listeners and observable normal, canceled, failed, and interrupted transitions where supported. Assert correlation, privacy, compatibility, and unchanged message counts; include a focused in-process example requiring no watcher.
+
 ## Rendering and UI
 
 - Use the supported `ctx.ui.setWidget(...)` API, guarded by `ctx.hasUI`; do not copy top-level `(pi as any).setWidget` compatibility shims into new code. Check the installed API's mode support before using TUI-only component factories.

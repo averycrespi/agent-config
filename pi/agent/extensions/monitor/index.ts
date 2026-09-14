@@ -87,6 +87,7 @@ export default function (pi: ExtensionAPI) {
         changed: () => {
           if (token === generation) refresh();
         },
+        event: (event) => pi.events.emit(`monitor:${event.type}`, event),
       });
       engine = owner;
       owner.restore(

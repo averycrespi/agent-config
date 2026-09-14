@@ -32,6 +32,8 @@ The custom UI has two modes:
 1. Option-list mode: Up/Down changes the highlighted option, Enter selects it, Escape cancels.
 2. Free-text mode: selecting the automatic `Type something.` row opens an inline editor; Enter submits non-empty text, while Escape returns to option-list mode without cancelling.
 
+`api.ts` exposes the identity/outcome-only event types documented in [API.md](API.md). The custom factory announces a fresh request UUID only when it actually begins an unaborted interaction; unsupported UI paths cannot falsely announce a wait. The encompassing `try/finally` emits a correlated resolution after settlement with a default `failed` outcome, updated only after a successful UI return. New event publication is failure-isolated and shallow-frozen, with no user content or raw errors. It does not create messages, model turns, or authorization to answer.
+
 The UI registers an abort listener for the tool signal and removes it on completion. Immediately before opening the UI, the tool emits `herdr:blocked` with `active: true` and a fixed, non-user-controlled label. A `finally` block always emits the matching inactive event and removes the abort listener, including cancellation, abort, and rendering failures. Herdr's listener uses a counter, so balanced events must remain one pair per opened prompt. Width-dependent rendered lines are cached and invalidated on input or explicit invalidate calls to avoid unnecessary recomputation.
 
 ## Validation invariants
