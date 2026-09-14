@@ -81,9 +81,10 @@ The main session owns implementation and execution evidence by default. Writable
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Loop](pi/agent/extensions/loop/README.md)                       | Continuing the current agent session within turn and time limits when explicitly requested by the user, a loaded skill, or an established workflow. Ordinary multi-step work does not need a loop. |
 | [Monitor](pi/agent/extensions/monitor/README.md)                 | Explicitly requested checks of gateway conditions without recurring model turns while waiting, followed by a notification when attention is needed.                                                |
+| [Session Watch](pi/agent/extensions/session-watch/README.md)     | Explicitly requested one-shot observation of another participating local Pi session's events, with a watcher widget and no recurring model turns while waiting.                                    |
 | [Scheduled tasks](pi/agent/extensions/scheduled-tasks/README.md) | Recurring Markdown-defined tasks run through cron, or on demand, in fresh child Pi processes with retained run artifacts and optional cross-run handoffs.                                          |
 
-Loop continues reasoning; Monitor checks conditions; scheduled tasks start separate runs. Monitor is session-bound, not a durable background service: shutdown, reload, or session/branch navigation stops observations without automatic resumption. Neither Loop nor Monitor decides whether the overall task succeeded; the calling user, skill, or workflow defines completion.
+Loop continues reasoning; Monitor checks gateway conditions; Session Watch listens to another participating session; scheduled tasks start separate runs. Monitor and Session Watch are session-bound, not durable background services: shutdown, reload, or session/branch navigation stops observations without automatic resumption. Notifications are attention signals, not proof of task success or permission to answer for the user. The calling user, skill, or workflow defines completion.
 
 ### Compose external tool calls
 
