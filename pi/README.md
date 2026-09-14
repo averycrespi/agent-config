@@ -53,6 +53,7 @@ Each name links to its configuration, usage, and lifecycle documentation. The in
 | [mcp-gateway](agent/extensions/mcp-gateway/README.md)             | Access authenticated external services through a gateway             | `mcp_search`, `mcp_describe`, `mcp_call` |
 | [monitor](agent/extensions/monitor/README.md)                     | Watch gateway conditions without recurring model turns while waiting | `monitor`, `/monitor`                    |
 | [scheduled-tasks](agent/extensions/scheduled-tasks/README.md)     | Run recurring Markdown-defined tasks with retained run artifacts     | `scheduled_tasks`                        |
+| [session-watch](agent/extensions/session-watch/README.md)         | Observe selected events from another participating local Pi session  | `session_watch`                          |
 | [statusline](agent/extensions/statusline/README.md)               | Show session, context, and model information                         | Automatic footer                         |
 | [structured-output](agent/extensions/structured-output/README.md) | Validate final output against a configured schema                    | `structured_output` when configured      |
 | [subagents](agent/extensions/subagents/README.md)                 | Delegate self-contained questions to isolated child agents           | `spawn_agents`                           |
@@ -60,7 +61,7 @@ Each name links to its configuration, usage, and lifecycle documentation. The in
 | [web-access](agent/extensions/web-access/README.md)               | Search the web and extract pages, repositories, and PDFs             | `web_search`, `web_fetch`                |
 | [workflows](agent/extensions/workflows/README.md)                 | Coordinate bounded research and review with JavaScript               | `workflow`                               |
 
-For choosing between these mechanisms and their material authorization and ownership boundaries, see [Delegation and automation](../README.md#delegation-and-automation). Monitor observations are session-bound and do not automatically resume after shutdown, reload, or navigation.
+For choosing between these mechanisms and their material authorization and ownership boundaries, see [Delegation and automation](../README.md#delegation-and-automation). Monitor and Session Watch observations are session-bound and do not automatically resume after shutdown, reload, or navigation. Session Watch requires both local sessions to load the extension; its live incarnation discovery does not launch sessions or inspect transcripts.
 
 [`_shared/`](agent/extensions/_shared/README.md) contains helpers imported by sibling extensions, not a separately loaded extension. Extension authoring conventions and required checks live in the [repository guidance](../AGENTS.md#authoring-guidance).
 

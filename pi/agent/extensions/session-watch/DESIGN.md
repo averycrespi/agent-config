@@ -1,0 +1,34 @@
+# Session Watch design
+
+A one-shot socket subscription is enough: the target inserts a filter and sends an acknowledgement before subsequent event frames on the same stream. There is no durable event log, generalized publisher platform, replay cursor, or runtime snapshot requirement. See [README.md](README.md) for user semantics and [API.md](API.md) for observational events.
+
+## Modules
+
+- `events.ts` is the closed inventory and projection boundary. Built-in hooks contribute no payload; extension listeners select only producer UUIDs and fixed dispositions. Existing publishers are unchanged. Never spread rich Loop payloads or trust TypeScript assertions as wire validation. Validate again on receipt. Listener failures are isolated from producer outcomes.
+- `transport.ts` owns one Unix socket per fresh incarnation, private path validation, bounded live discovery, registration ACK/nonce, frame validation, sequence checks, and socket cleanup. The persistent Pi session UUID is metadata, not an incarnation selector. Discovery does not read session transcripts or claim readiness. Handshake timers are absolute, not activity-reset idle timers. Socket timeouts, frame limits, connection limits and finite watches bound per-process transport use; no global same-user quota or hostile-process isolation is promised.
+- `engine.ts` owns synchronous capacity reservation across asynchronous handshake, branch-local receipts, deadlines, one-shot settlement, notification attempts and terminal retention. Its injected observation/host sinks support deterministic state tests without introducing a second transport. An accepted observation promise retains an event arriving before the parent finishes registration. Failed setup releases reservation and closes transport; there is no partially admitted receipt for a missing target.
+- `index.ts` binds Pi hooks and existing event publishers, tracks context generation, restores branch receipts, owns the widget timer and registers the tool. Shutdown suppresses outgoing pending handoffs before yielding to flush a best-effort shutdown event. Before-tree cleanup does not append history. The internal root-factory argument is a test seam, not user configuration.
+- `receipts.ts` validates retained shapes and state-machine coherence (canonical labels, finite ordered timing, selected event only on matches, and compatible notification disposition), then walks at most 4096 ancestors, keeping at most 32 newest distinct receipts. Restoring does not attach a socket or hand off a notification. Original history remains append-only, not globally quota-managed.
+- `tool.ts` owns schema, compact rows, receipt framing and widget layout. `_shared/widget.ts` mounts once while visible and repaints, retaining sibling order. Countdown updates are not state entries or events. Removing the final active row releases the timer and paint handle; headless and RPC use their supported surfaces.
+
+## Core invariants
+
+The first match, deadline or observation failure closes the socket and ends active UI state. Capacity remains occupied through an extension-owned pending notification. A zero-delay timer gives cancellation a chance before handoff; timers execute synchronously and do not await model turns. Persist `handoff_unknown` before the single synchronous Pi call. Its return permits `handed_to_pi`, never a consumption claim. A throw is not retried. Cancellation suppresses extension-owned work only, preserving already attempted dispositions and unrelated queues.
+
+A generation change invalidates outstanding registration and host callbacks. Before-tree stops conservatively even if later navigation is canceled. Parent restoration invalidates active receipts rather than pretending to cover an interruption. Target reload changes its incarnation and socket; connection loss is failure, not implicit following. An event before target subscription insertion is outside coverage; an event after insertion cannot overtake the ACK. The only buffered result is this subscription's first notice. Frames carry nonce/incarnation and strictly exceed the acknowledged sequence baseline. A result callback samples the clock once for both terminal classification and `endedAt`: at/after the deadline it is `deadline`, while `match` and `failure` must be earlier. Restoration enforces that same boundary, avoiding a second clock read that could produce contradictory evidence.
+
+A persistence failure closes all observations without additional persistence attempts. This deliberately favors suppression over unrecorded automatic work. The last persisted receipt may therefore be conservatively stale and require explicit reconciliation, just as after a crash.
+
+## Safety and scope
+
+Same-user Unix permissions prevent accidental cross-user routing but are not proof against a malicious same-user program or extension. No peer PID credential portability layer is introduced. Random incarnation paths plus nonce/sequence validation prevent accidental stale or cross-connection matches; no PID reuse inference is needed. The transport uses a canonical private local directory, never caller paths or project settings. Do not add permissive fallback for invalid security state.
+
+Only event metadata crosses to the parent. Neither transport nor watcher lifecycle events include caller instructions, publisher raw errors, questions, answers, monitor scripts/evidence or Loop messages. The caller's instruction stays local and is used only at terminal attention; original tool arguments are subject to Pi's ordinary retention. Receipt output is untrusted data, not new authorization. Labels must never contain secrets.
+
+`session-watch:*` names are excluded from the selectable inventory, preventing watcher bookkeeping from recursively satisfying watches. Built-in settlement can still follow a watcher-driven model run, so it remains runtime evidence rather than completion. A new watch always requires explicit registration; no automatic rearm occurs.
+
+## Change guidance
+
+Keep tests at public observable boundaries: real sockets and child-process lifecycle publishers, message counts/options, exact matching and failure receipts, bounded recovery, and stable rendered widgets. No test installs/reloads into a live session. The child fixture and `test-support.ts` are test-only, not extension entry points. Regression tests are not proof of actual Pi queue consumption or live terminal behavior.
+
+Do not broaden into generic messaging, task-result signaling, agent launch/control, arbitrary observers, remote transport, gateway polling, ticket/CI policy or persistent event storage. Revisit the contract before adding any of these.
