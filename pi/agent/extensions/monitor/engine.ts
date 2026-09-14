@@ -7,6 +7,7 @@ import {
 } from "../code-mode/api.ts";
 import { sanitizeGatewayText, redactCredentials } from "../mcp-gateway/api.ts";
 import { DEFAULT_CONFIG, inRange, type MonitorConfig } from "./config.ts";
+import type { MonitorEvent, MonitorTerminalState } from "./api.ts";
 
 export const MAX_SOURCE_BYTES = 256 * 1024;
 export const MAX_EVIDENCE_CHARS = 4096;
@@ -96,6 +97,7 @@ export interface Host {
   persist(receipt: Receipt): void;
   handoff(receipt: Receipt): void;
   changed(): void;
+  event?(event: MonitorEvent): void;
 }
 
 export class MonitorEngine {
@@ -223,9 +225,17 @@ export class MonitorEngine {
     };
     const m = { receipt, source: input.source! };
     this.monitors.set(receipt.id, m);
+    this.publish({ type: "registered", id: receipt.id });
     this.save(m);
     this.schedule();
     return { errors, receipt: structuredClone(receipt) };
+  }
+  private publish(event: MonitorEvent) {
+    try {
+      this.host.event?.(Object.freeze(event));
+    } catch {
+      // Observability must not change admission, cleanup, or delivery outcomes.
+    }
   }
   private save(m: Monitor, persist = true) {
     this.trim();
@@ -401,7 +411,7 @@ export class MonitorEngine {
     r.nextAt = this.clock.now() + r.intervalMs;
     this.save(m);
   }
-  private finish(m: Monitor, state: State) {
+  private finish(m: Monitor, state: MonitorTerminalState) {
     const r = m.receipt;
     r.state = state;
     r.endedAt = this.clock.now();
@@ -411,6 +421,12 @@ export class MonitorEngine {
         : "pending";
     m.source = "";
     m.controller?.abort();
+    this.publish({
+      type: "terminated",
+      id: r.id,
+      state,
+      notification: r.notification,
+    });
     this.save(m);
     this.enqueue();
   }
@@ -434,9 +450,19 @@ export class MonitorEngine {
       m.receipt.notification = "handoff_unknown";
       this.save(m);
       if (this.closed) return;
+      this.publish({
+        type: "notification",
+        id: m.receipt.id,
+        notification: "handoff_unknown",
+      });
       try {
         this.host.handoff(structuredClone(m.receipt));
         m.receipt.notification = "handed_to_pi";
+        this.publish({
+          type: "notification",
+          id: m.receipt.id,
+          notification: "handed_to_pi",
+        });
       } catch {
         /* The attempted handoff must never be replayed. */
       }
@@ -470,6 +496,12 @@ export class MonitorEngine {
         m.receipt.endedAt = this.clock.now();
         m.source = "";
         m.controller?.abort();
+        this.publish({
+          type: "terminated",
+          id: m.receipt.id,
+          state: "invalidated",
+          notification: "suppressed",
+        });
         this.save(m, persist);
       }
   }

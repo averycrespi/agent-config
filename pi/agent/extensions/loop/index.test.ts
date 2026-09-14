@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { loop as loopApi } from "./api.ts";
 import { createLoopExtension } from "./index.ts";
 
@@ -23,6 +24,7 @@ function makePi() {
   const entries: Array<{ type: string; data: unknown }> = [];
   const sentMessages: Array<{ message: any; options: any }> = [];
   const events: Array<{ name: string; data: unknown }> = [];
+  const bus = createEventBus();
   return {
     hasUI: true,
     commands,
@@ -51,8 +53,10 @@ function makePi() {
       sentMessages.push({ message, options });
     },
     events: {
+      on: bus.on,
       emit(name: string, data: unknown) {
         events.push({ name, data });
+        bus.emit(name, data);
       },
     },
   } as any;
@@ -649,7 +653,22 @@ test("restoration clamps historical limits to current hard ceilings", async () =
 test("public API performs the same bounded mutations and publishes events", async () => {
   const { pi } = await setup();
   const observed: string[] = [];
-  const unsubscribe = loopApi.subscribe((event) => observed.push(event.type));
+  const busEvents: unknown[] = [];
+  const typedEvents: unknown[] = [];
+  const off = [
+    "started",
+    "yielded",
+    "stopped",
+    "extended",
+    "resumed",
+    "cleared",
+  ].map((type) =>
+    pi.events.on(`loop:${type}`, (event: unknown) => busEvents.push(event)),
+  );
+  const unsubscribe = loopApi.subscribe((event) => {
+    observed.push(event.type);
+    typedEvents.push(event);
+  });
 
   loopApi.start({ message: "API work", maxContinuations: 2 });
   loopApi.yield("wait");
@@ -658,6 +677,9 @@ test("public API performs the same bounded mutations and publishes events", asyn
   loopApi.resume();
   loopApi.clear();
   unsubscribe();
+  off.forEach((unsubscribe: () => void) => unsubscribe());
+  assert.deepEqual(busEvents, typedEvents);
+  assert.equal(busEvents.length, 6);
 
   assert.deepEqual(observed, [
     "started",

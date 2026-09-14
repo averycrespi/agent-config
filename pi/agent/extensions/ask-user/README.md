@@ -42,6 +42,10 @@ Renders a custom TUI widget at the bottom of the terminal:
 
 In non-interactive mode (`!ctx.hasUI`) the tool returns an error immediately.
 
+## Extension events
+
+`ask-user:input_requested` and `ask-user:input_resolved` on `pi.events` correlate actual input waits with a generated request UUID and `answered`, `cancelled`, or `failed` outcome. They omit question/answer content and grant no authority to answer for the user. Invalid requests, pre-abort, headless mode, and RPC's unsupported custom UI do not announce a wait. Existing Herdr signaling is preserved. See [API.md](API.md) for types, timing, privacy, and subscription examples.
+
 ## Configuration
 
 No user-facing configuration.

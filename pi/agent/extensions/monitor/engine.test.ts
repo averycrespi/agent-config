@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { MonitorEngine, type Clock, type Receipt } from "./engine.ts";
 import { parseConfig } from "./config.ts";
 import type { CodeLimits, RunResult } from "../code-mode/api.ts";
@@ -78,6 +79,7 @@ function harness(
   settings = {},
 ) {
   const clock = new FakeClock();
+  const events = createEventBus();
   const messages: Receipt[] = [];
   const persisted: Receipt[] = [];
   const starts: number[] = [];
@@ -91,10 +93,11 @@ function harness(
       persist: (r) => persisted.push(r),
       handoff: (r) => messages.push(r),
       changed() {},
+      event: (event) => events.emit(`monitor:${event.type}`, event),
     },
     clock,
   );
-  return { engine, clock, messages, persisted, starts };
+  return { engine, clock, messages, persisted, starts, events };
 }
 
 test("wait observations send zero messages; notify stops and hands off once", async () => {
@@ -402,4 +405,74 @@ test("simultaneous completions serialize; receipts are bounded; ambiguous handof
   await clock.advance(100000);
   assert.equal(calls, 1);
   assert.equal(engine.get(r.id)!.notification, "handoff_unknown");
+});
+
+for (const state of ["deadline", "unsafe_failure", "failure_limit"] as const) {
+  test(`lifecycle bus reports ${state} without poll telemetry or private evidence`, async () => {
+    const h = harness(
+      async () =>
+        state === "deadline"
+          ? success("wait", "private evidence")
+          : failure(state === "failure_limit"),
+      { failureLimit: 1 },
+    );
+    const observed: any[] = [];
+    for (const type of ["registered", "terminated", "notification"])
+      h.events.on(`monitor:${type}`, (event) => observed.push(event));
+    const r = h.engine.start(input, limits).receipt!;
+    await h.clock.advance();
+    if (state === "deadline") {
+      assert.deepEqual(observed, [{ type: "registered", id: r.id }]);
+      assert.equal(h.messages.length, 0);
+      await h.clock.advance(10000);
+    }
+    assert.deepEqual(observed, [
+      { type: "registered", id: r.id },
+      { type: "terminated", id: r.id, state, notification: "pending" },
+      { type: "notification", id: r.id, notification: "handoff_unknown" },
+      { type: "notification", id: r.id, notification: "handed_to_pi" },
+    ]);
+    assert.equal(h.messages.length, 1);
+    assert.equal(h.engine.get(r.id)!.state, state);
+    assert.doesNotMatch(
+      JSON.stringify(observed),
+      /private|source|message|evidence|code/,
+    );
+    h.engine.close();
+  });
+}
+
+test("publication failure cannot change producer outcomes; throwing handoff remains unknown", async () => {
+  const clock = new FakeClock();
+  const observed: any[] = [];
+  let handoffs = 0;
+  const engine = new MonitorEngine(
+    parseConfig({}, {}),
+    {
+      execute: async () => success("notify"),
+      persist() {},
+      changed() {},
+      event(event) {
+        observed.push(event);
+        throw new Error("observer failed");
+      },
+      handoff() {
+        handoffs++;
+        throw new Error("private error");
+      },
+    },
+    clock,
+  );
+  const r = engine.start(input, limits).receipt!;
+  await clock.advance();
+  assert.equal(engine.get(r.id)!.state, "condition");
+  assert.equal(engine.get(r.id)!.notification, "handoff_unknown");
+  assert.deepEqual(observed.at(-1), {
+    type: "notification",
+    id: r.id,
+    notification: "handoff_unknown",
+  });
+  await clock.advance(20000);
+  assert.equal(handoffs, 1);
+  engine.close();
 });
