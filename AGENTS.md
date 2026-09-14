@@ -5,7 +5,7 @@
 This public repository manages Pi configuration through GNU Stow: `pi/agent/` is linked into `~/.pi/agent/`.
 
 - Edit Stow-managed configuration at its source under `pi/`, not through `~/.pi/` symlinks. For example, edit `pi/agent/extensions/<name>/index.ts`. Repo-local authoring skills live under `.pi/skills/` and are not installed globally.
-- Installations and changes to running sessions require explicit user authorization. Run `make stow-pi` only when explicitly requested.
+- Installing/linking Pi configuration, global/system installations, and changes to running sessions require explicit user authorization. Run `make stow-pi` only when explicitly requested. Required checkout-local development dependency setup is part of authorized implementation and verification; follow the setup guidance below.
 - Keep authenticated external access and its documentation aligned with `pi/agent/extensions/mcp-gateway/` and the `mcp_search`, `mcp_describe`, and `mcp_call` tools.
 - Exclude private/internal identifiers, URLs, credentials, and proprietary information from committed content. Public dependencies and prior art may be named. Use generic examples such as `ABC-123` and `example.com`; sanitize design artifacts before committing.
 
@@ -39,6 +39,7 @@ make typecheck          # type-check TypeScript
 make test               # run extension, saved-workflow, and skill tests
 ```
 
+- Check dependency availability before running tools in a fresh checkout/worktree. Inspect package scripts and setup effects, then install the declared locked development dependencies when needed (`npm ci` for this repository). Preserve the lockfile and unrelated work; do not silently upgrade dependencies, run audit fixes, or expand setup into global/system installation, Pi configuration linking, or live-session changes. Account for lifecycle scripts such as Husky setup and ask only when their effects exceed the authorized scope. After setup, continue the already-authorized implementation and verification; missing dependencies alone are not a reason to hand work back.
 - For extension or saved-workflow code and runtime-affecting configuration changes, run both `make typecheck` and `make test`, plus lint and formatting checks, before reporting completion. Preserve applicable review and CI gates.
 - For documentation-only changes, check formatting and affected paths, links, and examples. For skill/prompt changes, also check instruction compatibility and relevant discovery or structural validation; do not claim structural checks prove model behavior.
 - Tests use Node's `node:test` runner through `tsx`. Preserve `.ts` source imports and `allowImportingTsExtensions` in `tsconfig.json`.

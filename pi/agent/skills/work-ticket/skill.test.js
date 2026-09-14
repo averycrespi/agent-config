@@ -8,6 +8,7 @@ for (const name of [
   "plane",
   "shape-ticket",
   "work-ticket",
+  "spin-out",
   "review",
   "challenge",
   "simplify",
@@ -19,7 +20,7 @@ for (const name of [
     const metadata = content.match(/^---\n([\s\S]*?)\n---/);
     assert.ok(metadata);
     assert.equal(metadata[1].match(/^name: (.+)$/m)?.[1], name);
-    assert.match(metadata[1], /^description: Use when /m);
+    assert.match(metadata[1], /^description: Use (?:only )?when /m);
     const seen = new Set();
     const pending = [file];
     while (pending.length) {

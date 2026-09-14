@@ -19,7 +19,7 @@ unstow-pi:
 	stow -D -d pi -t ~/.pi/agent agent
 
 typecheck:
-	npx -p typescript tsc
+	npm run typecheck
 
 test:
-	npx tsx --test "pi/agent/extensions/**/*.test.ts" "pi/agent/workflows/**/*.test.ts" "pi/agent/skills/**/*.test.js"
+	npm test

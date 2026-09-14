@@ -97,6 +97,8 @@ Use this structure, omitting empty sections:
 
 Make the handoff self-contained because the new agent cannot see the current conversation. Include the source branch, exact base commit, target branch, and any source-only working-tree caveat under `Starting point`. Prefer repo-relative paths and concise references over copied content. Distinguish observed evidence from assumptions, redact sensitive information, and include exact verification commands only when useful. Suggest only skills expected to be available to the new agent and materially useful for the task.
 
+For implementation handoffs, make required checkout-local dependency setup part of the child's preparation under repository instructions. Fresh worktrees do not inherit installed dependencies. Direct the child to inspect setup commands and lifecycle effects, use declared locked dependencies without unrelated upgrades, and continue the authorized task after setup. Leave repository-specific setup to the child. Distinguish this from installing the delivered software/configuration, global/system installation, or changing running sessions; do not invent a blanket "do not install" restriction. Preserve any actual user restriction and report a concrete conflict if it prevents required setup.
+
 Read the completed file once before starting Pi. Confirm that it describes the delegated task rather than the current session generally, contains testable acceptance criteria, and does not depend on uncommitted source state unavailable in the target.
 
 ## Start and prompt Pi

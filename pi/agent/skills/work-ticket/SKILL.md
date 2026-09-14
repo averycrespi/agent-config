@@ -23,6 +23,8 @@ Git, Plane, and GitHub own their respective facts. A checkpoint is a recovery ai
 
 ## Implement and review
 
+Check checkout-local dependency availability before implementation and checks. Treat missing dependencies in a fresh worktree as expected setup: follow repository instructions, inspect setup commands and lifecycle effects, and install the declared locked development dependencies within the authorized scope. Preserve lockfiles and unrelated work; do not infer permission for dependency upgrades, global/system installation, deployment, or live-session changes. Stop only for a concrete setup failure or an effect requiring additional authority, not merely an absent dependency directory. After setup or a user-authorized prerequisite repair, continue the already-authorized delivery work; setup completion and errors in unfinished implementation are not handoff boundaries.
+
 Implement coherent acceptance slices with meaningful regression coverage. Run applicable repository/ticket-required checks and update existing documentation when behavior changes. Diagnose failures; bound attempts without meaningful progress. Commit coherent verified work at sensible checkpoints, inspecting named-file staging and hooks. A commit is nonterminal while authorized work remains.
 
 Require independent review before PR publication; local delivery follows repository/user review requirements. Load [review](../review/SKILL.md). Cover the full intended change and acceptance criteria after required local checks. Review completeness and delivery readiness are different: remote CI is downstream qualification, not a prerequisite for pre-publication review. Follow [publication](references/publication.md) for the evidence boundary and delivery sequence.
