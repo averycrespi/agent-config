@@ -5,7 +5,7 @@ description: Use only when the user explicitly asks to "spin out" work or delega
 
 # Spin Out
 
-Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Activate only for an explicit user request to spin out or delegate work to another agent; never infer that request from task size, complexity, or the potential usefulness of parallel work.
+Create a Herdr-managed Git worktree, write a self-contained task handoff inside it, start Pi in its root pane, and prompt the new agent to read the handoff and begin. Activate only for an explicit user request to spin out or delegate work to another agent; an explicit [work-stack](../work-stack/SKILL.md) request delegates its ordered tickets serially. Never infer delegation from task size, complexity, or the potential usefulness of parallel work.
 
 ## Preflight
 

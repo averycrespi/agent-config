@@ -8,6 +8,7 @@ for (const name of [
   "plane",
   "shape-ticket",
   "work-ticket",
+  "work-stack",
   "spin-out",
   "review",
   "challenge",

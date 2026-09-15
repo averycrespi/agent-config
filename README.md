@@ -61,6 +61,8 @@ Use the activities that fit the request rather than treating every skill as a ma
 
 For Plane-backed work, [`shape-ticket`](pi/agent/skills/shape-ticket/SKILL.md) prepares a verifiable ticket contract, and [`work-ticket`](pi/agent/skills/work-ticket/SKILL.md) owns one selected ticket through the authorized delivery boundary. The [`plane`](pi/agent/skills/plane/SKILL.md) skill supplies safe gateway access.
 
+For an explicitly ordered series, [work-stack](pi/agent/skills/work-stack/SKILL.md) coordinates one isolated ticket child at a time, stacking each successor on the predecessor's verified commit. Choose local-only branches or explicitly authorized review-ready PRs; the parent reconciles evidence before advancing and pauses on blockers or changed predecessor heads. It does not merge or automatically restack.
+
 Ticket implementation includes in-scope local commits unless excluded; pushing and PR publication require explicit authorization. PR delivery includes independent review before publication and bounded, session-bound CI monitoring and repair afterward. See `work-ticket` for the full delivery and recovery procedures.
 
 ## Delegation and automation
