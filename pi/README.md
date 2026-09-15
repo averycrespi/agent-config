@@ -69,26 +69,29 @@ For choosing between these mechanisms and their material authorization and owner
 
 Skills provide on-demand guidance, not additional tools by themselves. Pi discovers skill descriptions and loads the body when needed; invoke one explicitly with `/skill:name` or let the agent select a matching skill. Explicit-only skills still require a user request. See each linked skill for its full contract and any attribution or license files in its directory.
 
-| Skill                                                        | Use it for                                                                   |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| [agent-engineering](agent/skills/agent-engineering/SKILL.md) | Design and analysis of coding-agent harnesses and workflows                  |
-| [challenge](agent/skills/challenge/SKILL.md)                 | Stress-testing a concrete approach before implementation                     |
-| [clarify](agent/skills/clarify/SKILL.md)                     | Researching ambiguity and asking focused questions                           |
-| [create-skill](agent/skills/create-skill/SKILL.md)           | Creating or updating skills                                                  |
-| [diagnose](agent/skills/diagnose/SKILL.md)                   | Investigating failures, regressions, and performance problems                |
-| [frontend-design](agent/skills/frontend-design/SKILL.md)     | Building distinctive production-grade web interfaces                         |
-| [handoff](agent/skills/handoff/SKILL.md)                     | Explicitly requested session handoffs in `.handoffs/`                        |
-| [herdr](agent/skills/herdr/SKILL.md)                         | Terminal, agent, and Git worktree control through Herdr                      |
-| [plane](agent/skills/plane/SKILL.md)                         | Safe access to Plane through MCP Gateway                                     |
-| [playwright](agent/skills/playwright/SKILL.md)               | Browser automation, testing, and extraction                                  |
-| [review](agent/skills/review/SKILL.md)                       | Preparing evidence and invoking independent change review                    |
-| [shape-ticket](agent/skills/shape-ticket/SKILL.md)           | Preparing and explicitly approving a verifiable Plane ticket                 |
-| [simplify](agent/skills/simplify/SKILL.md)                   | Explicitly requested checks for unnecessary complexity before implementation |
-| [spin-out](agent/skills/spin-out/SKILL.md)                   | Explicitly requested delegation to a fresh agent in a Herdr worktree         |
-| [wiki](agent/skills/wiki/SKILL.md)                           | Maintaining a persistent Markdown wiki from source documents                 |
-| [work-ticket](agent/skills/work-ticket/SKILL.md)             | Owning one selected ticket through its authorized delivery boundary          |
+| Skill                                                        | Use it for                                                                        |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [agent-engineering](agent/skills/agent-engineering/SKILL.md) | Design and analysis of coding-agent harnesses and workflows                       |
+| [challenge](agent/skills/challenge/SKILL.md)                 | Stress-testing a concrete approach before implementation                          |
+| [clarify](agent/skills/clarify/SKILL.md)                     | Researching ambiguity and asking focused questions                                |
+| [create-skill](agent/skills/create-skill/SKILL.md)           | Creating or updating skills                                                       |
+| [diagnose](agent/skills/diagnose/SKILL.md)                   | Investigating failures, regressions, and performance problems                     |
+| [frontend-design](agent/skills/frontend-design/SKILL.md)     | Building distinctive production-grade web interfaces                              |
+| [handoff](agent/skills/handoff/SKILL.md)                     | Explicitly requested session handoffs in `.handoffs/`                             |
+| [herdr](agent/skills/herdr/SKILL.md)                         | Terminal, agent, and Git worktree control through Herdr                           |
+| [plane](agent/skills/plane/SKILL.md)                         | Safe access to Plane through MCP Gateway                                          |
+| [playwright](agent/skills/playwright/SKILL.md)               | Browser automation, testing, and extraction                                       |
+| [review](agent/skills/review/SKILL.md)                       | Preparing evidence and invoking independent change review                         |
+| [shape-ticket](agent/skills/shape-ticket/SKILL.md)           | Preparing and explicitly approving a verifiable Plane ticket                      |
+| [simplify](agent/skills/simplify/SKILL.md)                   | Explicitly requested checks for unnecessary complexity before implementation      |
+| [spin-out](agent/skills/spin-out/SKILL.md)                   | Explicitly requested delegation to a fresh agent in a Herdr worktree              |
+| [wiki](agent/skills/wiki/SKILL.md)                           | Maintaining a persistent Markdown wiki from source documents                      |
+| [work-stack](agent/skills/work-stack/SKILL.md)               | Coordinating an explicitly ordered stack with one isolated ticket child at a time |
+| [work-ticket](agent/skills/work-ticket/SKILL.md)             | Owning one selected ticket through its authorized delivery boundary               |
 
 The [review skill](agent/skills/review/SKILL.md) prepares evidence and invokes the saved `review` workflow below; they are guidance and executable orchestration for the same activity, not interchangeable entry points. Ticket publication, CI monitoring, repair, and recovery procedures belong to [work-ticket](agent/skills/work-ticket/SKILL.md), rather than this catalog.
+
+[Work-stack](agent/skills/work-stack/SKILL.md) composes spin-out, work-ticket, Herdr, and Session Watch for one repository and a local-only or review-ready PR boundary. The parent retains a small Git-excluded stack record referencing child-owned ticket checkpoints, verifies predecessor commits before advancing, and ends turns while watches are pending. Both sessions must already load Session Watch; installing the skill does not launch children or reload extensions. Stacked PR CI qualifies the recorded stack base, not independent readiness for main.
 
 The scheduled-tasks extension also bundles [manage-scheduled-tasks](agent/extensions/scheduled-tasks/skills/manage-scheduled-tasks/SKILL.md) for authoring, validating, running, and debugging task definitions. The repo-local [create-extension skill](../.pi/skills/create-extension/SKILL.md) is an authoring aid, not part of the Stow-installed skill inventory.
 
