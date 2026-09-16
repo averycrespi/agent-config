@@ -160,7 +160,7 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
     promptSnippet:
       "Observe typed events or poll in fresh Script evaluations; continue only within explicit finite bounds",
     promptGuidelines: [
-      "Use background only with explicit monitoring/continuation authority. Provider permission is not user approval; obtain authority covering repeated mutations. Discover Script and Background event schemas before use. Do not give Background and a legacy tool ownership of the same job. No automatic retries, grants, approval polling or replay. Timeout and settlement do not prove condition or task success; cancel recurring jobs when no further authorized work is useful.",
+      "Use background only with explicit monitoring/continuation authority. Provider permission is not user approval; obtain authority covering repeated mutations. Discover Script and Background event schemas before use. Keep one owner per job; reconcile historical observers before replacement. No automatic retries, grants, approval polling or replay. Timeout and settlement do not prove condition or task success; cancel recurring jobs when no further authorized work is useful. Cancel and reconcile continuation before requesting input; immutable replacements preserve caller-owned cumulative time and wake allowances, including uncertain handoffs.",
     ],
     async execute(_id, params, signal) {
       const token = generation;

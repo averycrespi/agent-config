@@ -17,7 +17,7 @@ import {
   updateMonitor,
   validateMonitor,
   remainingWaitMs,
-} from "./ci-monitor.js";
+} from "./ci-background.js";
 
 const LIMIT = 64 * 1024;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;

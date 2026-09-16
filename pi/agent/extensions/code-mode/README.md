@@ -2,7 +2,7 @@
 
 Optional `code({description, source})` composes MCP Gateway calls in one fresh permissioned Node child, filtering intermediate responses before returning a compact JSON value. It requires the active [MCP Gateway extension](../mcp-gateway/README.md); ordinary `mcp_search`, `mcp_describe`, `mcp_call`, and read-mostly `workflow` remain unchanged.
 
-Trusted sibling extensions can use the [supported host executor API](API.md). [Monitor](../monitor/README.md) schedules fresh observations through that API without pending model turns; ordinary `code` remains one execution, and Loop remains message-based continuation.
+Trusted sibling extensions can use the [supported host executor API](API.md). Ordinary `code` remains one foreground execution. Use [Background](../background/README.md) for explicitly authorized observation or continuation; its evaluator uses Script, not Code's scheduler.
 
 Prefer direct `mcp_call` for straightforward calls whose results are useful as-is. Use `code` when bounded pagination, dependent lookups, or filtering/aggregation materially reduces intermediate context or model round trips. Do not use it for subagent reasoning or persistent polling.
 

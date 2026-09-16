@@ -111,6 +111,20 @@ function fixture(overrides: Partial<Host> = {}) {
   };
 }
 
+test("observation end time excludes queued delivery and later cancellation", async () => {
+  const f = fixture({ evaluate: async () => success("wake") });
+  const r = await f.engine.start(f.reg({ recurring: false, max_wakes: 1 }));
+  await f.advance();
+  assert.equal(f.engine.get(r.id)!.endedAt, 10000);
+  await f.advance(20000);
+  f.engine.cancel(r.id);
+  assert.equal(f.engine.get(r.id)!.endedAt, 10000);
+  const active = await f.engine.start(f.reg());
+  await f.advance(1000);
+  f.engine.close(true);
+  assert.equal(f.engine.get(active.id)!.endedAt, 31000);
+});
+
 test("atomic invalid registration and mandatory immutable bounds", () => {
   for (const patch of [
     { cycle_timeout_ms: undefined },

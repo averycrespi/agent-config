@@ -2,15 +2,17 @@ import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  SessionEventBridge,
+  Bridge as SessionEventBridge,
   subscribeEvents,
-  discoverSessions,
-  subscribeSessionBus,
-  SESSION_EVENTS,
-  sessionEventFilters,
-  type SessionEventName,
-  type SessionNotice,
-} from "../session-watch/api.ts";
+  discover as discoverSessions,
+} from "./session-transport.ts";
+import {
+  subscribeBus as subscribeSessionBus,
+  EVENTS as SESSION_EVENTS,
+  filters as sessionEventFilters,
+  type EventName as SessionEventName,
+  type Notice as SessionNotice,
+} from "./session-events.ts";
 import { registerBackgroundProvider } from "./providers.ts";
 import { isId } from "./contract.ts";
 export function sessionRoot() {

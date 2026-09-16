@@ -45,6 +45,7 @@ export function parseReceipt(value: unknown): Receipt | undefined {
       "id",
       "name",
       "createdAt",
+      "endedAt",
       "deadline",
       "cycleDeadline",
       "nextAt",
@@ -114,7 +115,8 @@ export function parseReceipt(value: unknown): Receipt | undefined {
     )
       return;
     if (
-      [r.nextAt, r.evidenceAt].some(
+      (r.endedAt !== undefined && r.status === "active") ||
+      [r.nextAt, r.evidenceAt, r.endedAt].some(
         (n) => n !== undefined && (!Number.isSafeInteger(n) || n < r.createdAt),
       )
     )

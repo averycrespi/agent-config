@@ -1,6 +1,6 @@
 # Background design
 
-A deterministic host supervisor separates observation from cognition. Timers and typed provider subscriptions invoke fresh Script children; only bounded attention crosses into Pi. Legacy tools keep their existing ownership and callers.
+A deterministic host supervisor separates observation from cognition. Timers and typed provider subscriptions invoke fresh Script children; only bounded attention crosses into Pi. Background owns observation/continuation; migration never transfers uncertain historical jobs or notifications.
 
 ## Modules
 
@@ -8,7 +8,7 @@ A deterministic host supervisor separates observation from cognition. Timers and
 - `engine.ts`: synchronous reservations, staged subscription admission, serial per-job FIFO evaluations, two shared execution slots, four occupied jobs, host clocks, committed state/evidence, coalesced attention and causal recurrence.
 - `execution.ts`: supported Script host API adapter. A fresh guest parses encoded JSON trigger/state arguments (including own `__proto__` data keys), with source headroom reserved for encoding overhead; selected provider globals and Script limits remain authoritative. No alternate executor or persistent interpreter exists.
 - `providers.ts` / `api.ts`: typed, schema-checked host subscription contracts with atomic registration alongside Script, policy intersection, bounded payloads and cancellation. The private event-bus query avoids module-cache singleton assumptions; it is not a guest bus binding.
-- `sessions.ts`: optional same-user local/cross-session provider. It reuses Session Watch's supported safe projection/transport API, but owns an independent socket namespace/incarnation. This does not route jobs through the legacy tool or require its extension factory.
+- `sessions.ts`: optional same-user local/cross-session provider; `session-events.ts` projects the closed safe agent/Ask User inventory and `session-transport.ts` owns ordered Unix subscriptions. Transport is Background-owned, with no dependency on retired extension factories or job ownership.
 - `index.ts`: current context/generation, lifecycle binding, positive wake-message correlation, persistence, tool boundary and stable widget.
 - `receipts.ts`: bounded ancestor traversal and receipt validation; execution is never restored.
 - `tool.ts`: snake-case schema, safe rendering, compact summaries and untrusted evidence framing.
@@ -37,6 +37,8 @@ Cycle timeout, polling interval, post-settlement continuation delay and immutabl
 
 Generation changes close old work before replacing contexts. Shutdown persists conservative invalidation; reached before-tree cleanup does not append into a prepared tree. A canceled navigation does not resurrect observations. Destination restoration scans at most 4096 ancestors and retains at most 32 receipt identities, normalizing active/pending execution to invalidated/suppressed. Unknown/handed dispositions are never replayed. Historical interrupted accounting is not a live execution slot.
 
+The first stopObservation records `endedAt` once; subsequent pending-attention suppression cannot charge queued-delivery time as observation. Restoration never fabricates missing historical timing. Receipt parsing rejects end times on active receipts and times before creation. Caller ledgers retain cumulative budgets across registrations rather than relying on per-job limits alone.
+
 Receipt accounting omits absent optional codes so in-memory entries and disk JSON validate identically. Legacy v1 accounting with an own enumerable data `code: undefined` is normalized without mutating retained history or invoking accessors; strict JSON validation remains unchanged for all other fields. Reload tests retain raw in-memory entries rather than silently JSON-round-tripping them, which would conceal this compatibility case.
 
 Persistence failure fails closed. External effects and uncertain dispatched work survive cancellation; late cleanup cannot write into another generation. Receipts contain cumulative counts/flags and the latest bounded host trace, not an unbounded event/call log. Source is absent from receipts but original tool arguments remain in ordinary Pi history. Individual entries are bounded; append-only history is not globally quota-managed.
@@ -49,4 +51,4 @@ Receipts add optional validated intervalMs/delayMs/eventCount display metadata, 
 
 Keep tests at observable boundaries: fake-clock scheduling/message counts, state snapshots, actual Script child accounting, typed provider schemas/revocation, real ordered sockets, cross-process producer metadata and controlled lifecycle/UI fixtures. Live-session/model/provider qualification remains explicitly separate. Never install/reload the delivered extension as a test side effect.
 
-Do not add retries, evaluator stop decisions, mutable registrations, recovery execution, raw bus bindings, semantic completion inference or Pi queue-clearing workarounds. Preserve legacy callers during qualification. Provider permission is not mutation approval, and host event subscriptions are not a sandbox for trusted extension code.
+Do not add retries, evaluator stop decisions, mutable registrations, recovery execution, raw bus bindings, semantic completion inference or Pi queue-clearing workarounds. Keep the [migration inventory](../../../docs/migrations.md#observer-retirement) aligned with callers and historical exceptions. Provider permission is not mutation approval, and host event subscriptions are not a sandbox for trusted extension code.

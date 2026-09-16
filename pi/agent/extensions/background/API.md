@@ -59,7 +59,7 @@ const dispose = registerBackgroundProvider(pi, {
 pi.on("session_shutdown", dispose);
 ```
 
-`producer` is illustrative trusted application code. Background never supplies a raw event-bus object or arbitrary session controller to evaluators. The built-in `sessions.lifecycle` provider is documented in [README.md](README.md#cross-session-events-session-watch-equivalent).
+`producer` is illustrative trusted application code. Background never supplies a raw event-bus object or arbitrary session controller to evaluators. The built-in `sessions.lifecycle` provider is documented in [README.md](README.md#cross-session-events).
 
 ## Evaluator input
 

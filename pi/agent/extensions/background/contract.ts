@@ -67,6 +67,8 @@ export interface Receipt {
   id: string;
   name: string;
   createdAt: number;
+  /** First observation stop; absent for interrupted older receipts. */
+  endedAt?: number;
   deadline: number;
   cycleDeadline: number;
   nextAt?: number;

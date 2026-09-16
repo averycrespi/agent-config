@@ -15,19 +15,13 @@ import {
   validNotice,
   type EventName,
   type Notice,
-} from "./events.ts";
+} from "./session-events.ts";
 
 export const MAX_TIMEOUT = 86_400_000;
 const HANDSHAKE_MS = 2000;
 export interface Target {
   incarnation: string;
   sessionId: string;
-}
-export interface Observation {
-  target: Target;
-  startedAt: number;
-  result: Promise<Notice | undefined>;
-  close(): void;
 }
 const safeError = () =>
   new Error(
@@ -36,11 +30,6 @@ const safeError = () =>
 export const finiteTimeout = (n: unknown): n is number =>
   Number.isInteger(n) && (n as number) >= 1000 && (n as number) <= MAX_TIMEOUT;
 
-/** No settings/path override: Unix-only, canonical local temporary directory. */
-export function transportRoot(): string {
-  if (!process.getuid || process.platform === "win32") throw safeError();
-  return join(realpathSync("/tmp"), `pi-session-watch-${process.getuid()}`);
-}
 export function checkRoot(root: string, create = false) {
   if (create) {
     try {
@@ -109,10 +98,7 @@ export class Bridge {
   readonly target: Target;
   private sequence = 0;
   private sockets = new Set<Socket>();
-  private watches = new Map<
-    Socket,
-    { nonce: string; events: EventName[]; stream: boolean }
-  >();
+  private watches = new Map<Socket, { nonce: string; events: EventName[] }>();
   private server = createServer((socket) => this.accept(socket));
   private closed = false;
   constructor(
@@ -168,7 +154,7 @@ export class Bridge {
         admitted = true;
         send(socket, { ...this.target, nonce: data.nonce }, true);
       } else if (
-        (data.op === "watch" || data.op === "subscribe") &&
+        data.op === "subscribe" &&
         Object.keys(data).length === 5 &&
         filters(data.events) &&
         finiteTimeout(data.timeoutMs)
@@ -178,7 +164,6 @@ export class Bridge {
         this.watches.set(socket, {
           nonce: data.nonce,
           events: data.events,
-          stream: data.op === "subscribe",
         });
         clearTimeout(expiry);
         expiry = setTimeout(
@@ -206,12 +191,11 @@ export class Bridge {
     if (!validNotice(event)) return;
     for (const [socket, watch] of this.watches) {
       if (!watch.events.includes(name)) continue;
-      if (!watch.stream) this.watches.delete(socket);
-      send(
-        socket,
-        { target: this.target.incarnation, nonce: watch.nonce, event },
-        !watch.stream,
-      );
+      send(socket, {
+        target: this.target.incarnation,
+        nonce: watch.nonce,
+        event,
+      });
     }
   }
   close() {
@@ -233,86 +217,6 @@ function connect(root: string, target: string, signal?: AbortSignal) {
   socket.on("error", () => socket.destroy());
   if (signal?.aborted) socket.destroy();
   return socket;
-}
-
-export async function observe(
-  root: string,
-  target: string,
-  events: EventName[],
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<Observation> {
-  if (!filters(events) || !finiteTimeout(timeoutMs)) throw safeError();
-  const socket = connect(root, target, signal);
-  const nonce = randomUUID();
-  let baseline: number | undefined;
-  let startedAt = 0;
-  let finish!: (value: Notice | undefined) => void;
-  const result = new Promise<Notice | undefined>((resolve) => {
-    finish = resolve;
-  });
-  const ready = new Promise<Target>((resolve, reject) => {
-    const handshake = setTimeout(
-      () => socket.destroy(),
-      Math.min(HANDSHAKE_MS, timeoutMs),
-    );
-    handshake.unref();
-    socket.once("close", () => {
-      clearTimeout(handshake);
-      reject(safeError());
-      finish(undefined);
-    });
-    receive(socket, (data) => {
-      if (baseline === undefined) {
-        if (
-          data.incarnation !== target ||
-          data.nonce !== nonce ||
-          !uuid(data.sessionId) ||
-          !Number.isSafeInteger(data.startedAt) ||
-          !Number.isSafeInteger(data.sequence) ||
-          (data.sequence as number) < 0 ||
-          Object.keys(data).length !== 5
-        ) {
-          socket.destroy();
-          return;
-        }
-        baseline = data.sequence as number;
-        startedAt = data.startedAt as number;
-        clearTimeout(handshake);
-        resolve({ incarnation: target, sessionId: data.sessionId });
-      } else {
-        if (
-          data.target !== target ||
-          data.nonce !== nonce ||
-          !validNotice(data.event) ||
-          !events.includes(data.event.name) ||
-          data.event.sequence <= baseline ||
-          data.event.at < startedAt ||
-          Object.keys(data).length !== 3
-        ) {
-          socket.destroy();
-          return;
-        }
-        finish(data.event);
-        socket.destroy();
-      }
-    });
-    socket.once("connect", () =>
-      send(socket, { op: "watch", target, nonce, events, timeoutMs }),
-    );
-  });
-  try {
-    const identity = await ready;
-    return {
-      target: identity,
-      startedAt,
-      result,
-      close: () => socket.destroy(),
-    };
-  } catch {
-    socket.destroy();
-    throw safeError();
-  }
 }
 
 export interface EventSubscription {

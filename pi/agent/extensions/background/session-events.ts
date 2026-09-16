@@ -8,17 +8,6 @@ export const BUILTIN_EVENTS = [
 export const BUS_EVENTS = [
   "ask-user:input_requested",
   "ask-user:input_resolved",
-  "monitor:registered",
-  "monitor:terminated",
-  "monitor:notification",
-  "loop:started",
-  "loop:continued",
-  "loop:yielded",
-  "loop:stopped",
-  "loop:resumed",
-  "loop:extended",
-  "loop:cleared",
-  "loop:exhausted",
 ] as const;
 export const EVENTS = [...BUILTIN_EVENTS, ...BUS_EVENTS] as const;
 export type EventName = (typeof EVENTS)[number];
@@ -42,62 +31,23 @@ export function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-/** Only producer UUIDs and closed dispositions cross the socket. Never spread payloads. */
+/** Forward only producer identity and closed dispositions, never rich bus payloads. */
 export function project(
   name: EventName,
   raw: unknown,
 ): Record<string, string> | undefined {
   if ((BUILTIN_EVENTS as readonly string[]).includes(name)) return {};
   const data = record(raw);
-  if (name.startsWith("ask-user:")) {
-    if (!uuid(data.requestId)) return;
-    if (name === "ask-user:input_requested")
-      return { requestId: data.requestId };
-    if (!["answered", "cancelled", "failed"].includes(data.outcome as string))
-      return;
-    return { requestId: data.requestId, outcome: data.outcome as string };
-  }
-  if (name.startsWith("monitor:")) {
-    if (!uuid(data.id)) return;
-    if (name === "monitor:registered") return { id: data.id };
-    if (name === "monitor:notification") {
-      if (
-        !["handoff_unknown", "handed_to_pi"].includes(
-          data.notification as string,
-        )
-      )
-        return;
-      return { id: data.id, notification: data.notification as string };
-    }
-    if (
-      ![
-        "condition",
-        "deadline",
-        "failure_limit",
-        "unsafe_failure",
-        "cancelled",
-        "invalidated",
-      ].includes(data.state as string) ||
-      !["pending", "suppressed"].includes(data.notification as string)
-    )
-      return;
-    return {
-      id: data.id,
-      state: data.state as string,
-      notification: data.notification as string,
-    };
-  }
-  if (name === "loop:cleared") return {};
-  const loop = record(data.loop);
+  if (!uuid(data.requestId)) return;
+  if (name === "ask-user:input_requested") return { requestId: data.requestId };
   if (
-    !uuid(loop.id) ||
-    !["running", "yielded", "stopped"].includes(loop.status as string)
+    name !== "ask-user:input_resolved" ||
+    !["answered", "cancelled", "failed"].includes(data.outcome as string)
   )
     return;
-  return { id: loop.id, status: loop.status as string };
+  return { requestId: data.requestId, outcome: data.outcome as string };
 }
 
-/** Listener failures must not escape into existing publishers (including Loop). */
 export function subscribeBus(
   pi: Pick<ExtensionAPI, "events">,
   publish: (name: EventName, metadata: Record<string, string>) => void,
@@ -133,10 +83,7 @@ export function validNotice(value: unknown): value is Notice {
   )
     return false;
   const m = record(n.metadata);
-  const projected = project(
-    n.name,
-    n.name.startsWith("loop:") ? { loop: m } : m,
-  );
+  const projected = project(n.name, m);
   return (
     projected !== undefined &&
     JSON.stringify(projected) === JSON.stringify(m) &&

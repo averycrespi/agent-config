@@ -3,12 +3,7 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture } from "../script/fixture.ts";
-import {
-  temporaryRoot,
-  pause,
-  theme,
-  value,
-} from "../session-watch/test-support.ts";
+import { temporaryRoot, pause, theme, value } from "./test-support.ts";
 import background from "./index.ts";
 import { restore, parseReceipt } from "./receipts.ts";
 import { widgetLines, renderers, notificationContent } from "./tool.ts";
