@@ -57,6 +57,10 @@ Use the activities that fit the request rather than treating every skill as a ma
 - **Implement and verify** authorized work in the main session. Use [`diagnose`](pi/agent/skills/diagnose/SKILL.md) when a failure's cause is uncertain, and keep checks proportionate to the change.
 - **Review** changes with [`review`](pi/agent/skills/review/SKILL.md), combining repository context, deterministic checks, and independent analysis. Report failed checks and verification gaps rather than implying success.
 
+### Manage unattended session context
+
+[Idle compaction](pi/agent/extensions/idle-compaction/README.md) optionally summarizes large, inactive open terminal sessions without starting an agent turn. It is disabled by default, costs summarization tokens, and loses some detail; native navigation races and incomplete dialog visibility remain documented limitations. Use `/idle-compaction` for a persistent session override and status.
+
 ### Ticket-driven delivery
 
 For Plane-backed work, [`shape-ticket`](pi/agent/skills/shape-ticket/SKILL.md) prepares a verifiable ticket contract, and [`work-ticket`](pi/agent/skills/work-ticket/SKILL.md) owns one selected ticket through the authorized delivery boundary. The [`plane`](pi/agent/skills/plane/SKILL.md) skill supplies safe gateway access.
