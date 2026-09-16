@@ -30,6 +30,20 @@ Apply this repository's extension conventions to new and existing extensions. Ke
 - Keep tool contracts in schemas, descriptions, and active tool guidelines rather than duplicating them in global prompts. Bound model-facing output and disclose truncation or retained-output paths when applicable.
 - For lifecycle changes, identify state ownership, restoration, cancellation, and shutdown behavior. Start long-lived resources when needed by the session, not unconditionally in the extension factory; clean them up idempotently. Preserve the affected extension's branching and recovery invariants.
 
+## Script Providers
+
+Apply this section when an extension registers capabilities through the [Script provider API](../../../pi/agent/extensions/script/API.md).
+
+- Add a `## Script provider` entry point to the owning extension's README. Put the detailed contract there or link to its canonical API section; preserve existing incoming anchors when renaming sections.
+- Organize the detailed contract under these headings:
+  - **Availability:** namespace, loading/installation requirements, readiness, global allowlisting, and explicit per-execution selection. Distinguish registration, selection, permission, and user approval.
+  - **Methods:** a concise table of signatures, purposes, and guest result envelopes. Document framing, optional fields, and material differences from direct tools.
+  - **Example:** valid discovery and minimal execution examples with all required tool fields, including nonsecret `description`. Mark illustrative external names as placeholders requiring discovery and schema inspection before invocation.
+  - **Permissions and effects:** provider-owned authorization, credentials/redaction, network access, host filesystem effects, logs/spills, and nested-hook limitations. Never describe provider selection as user approval or a general host sandbox.
+  - **Failure and lifecycle:** sticky failures, known/unknown outcomes, cancellation, deadlines, provider disposal, and any internal fallbacks. Preserve no-automatic-retry/replay boundaries and distinguish logical calls from underlying attempts.
+- Keep runtime method schemas authoritative for argument validation, provider documentation authoritative for provider semantics, and Script's documentation authoritative for shared execution rules. Link rather than copying complete schemas or repeating core policy in each provider guide.
+- Validate documented signatures and examples against registered methods and the current Script tool schema. Check README/API links and retained anchors; keep the linked provider entries in `pi/README.md` current. Structural validation is not live provider qualification.
+
 ## Extension Events
 
 - Reuse `pi.events` for in-process extension communication and audit existing publishers before adding gaps. Name new events `<extension-name>:<event>` using the owning extension's directory name. Preserve established names, payloads, and typed subscriptions; document compatibility exceptions rather than silently renaming them.

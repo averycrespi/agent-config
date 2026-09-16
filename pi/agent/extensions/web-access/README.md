@@ -48,9 +48,38 @@ Routes by URL type:
 
 The Playwright fallback requires Chromium installed for the repository's pinned `playwright-core` version. Run `make install-playwright` from the repository root. If Playwright or Chromium is unavailable, the extension continues to the hosted fallbacks.
 
-## Script composition
+<a id="script-composition"></a>
 
-When web-access is active it registers `web.search({query, num_results?})` and `web.fetch({url, max_chars?})` through the supported [Script provider API](../script/API.md). Put `"web"` in the global Script `allowedProviders` policy and explicitly select `providers: ["web"]`. Registration alone grants no execution access. Discover the positional schemas with `script({action: "describe", providers: ["web"]})`.
+## Script provider
+
+### Availability
+
+When web-access is active it registers the `web` namespace through the supported [Script provider API](../script/API.md). Put `"web"` in the global Script `allowedProviders` policy and explicitly select `providers: ["web"]`. Registration alone grants no execution access.
+
+Web-only scripts need no MCP Gateway. Hosted Exa MCP is an existing web transport, not the Gateway extension. Direct web tools work without the Script tool loaded. The provider is available after session startup; factory order is irrelevant. The sibling Script host library must remain installed, but its extension need not be activated.
+
+### Methods
+
+| Method                              | Purpose                                         | Guest result                                        |
+| ----------------------------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `web.search({query, num_results?})` | Search through configured web providers         | Existing `web_search` `{content, details}` envelope |
+| `web.fetch({url, max_chars?})`      | Retrieve a public page, PDF, or GitHub resource | Existing `web_fetch` `{content, details}` envelope  |
+
+These are not new structured search/page APIs. Untrusted framing, configured fallbacks, limits, clone reuse and spill behavior are shared with the direct tools. Optional `undefined` metadata is omitted for JSON transport. Runtime discovery is authoritative for positional argument schemas; this section owns web-specific semantics, while shared bounds and execution rules live in [Script](../script/README.md).
+
+### Example
+
+Discover the method schemas first:
+
+```js
+script({
+  action: "describe",
+  description: "Inspect web composition methods",
+  providers: ["web"],
+});
+```
+
+Then select the provider for execution:
 
 ```js
 script({
@@ -63,8 +92,6 @@ script({
   `,
 });
 ```
-
-Methods return the existing tool `{content, details}` envelope, not a new structured search/page API. Untrusted framing, configured fallbacks, limits, clone reuse and spill behavior are shared with the direct tools. Optional `undefined` metadata is omitted for JSON transport. A host-generated unique ID names each potential spill. PDF HTTP errors now carry framed text and `details.errorPreview`, like other retrieval errors. Any error preview forces failed Script accounting even if the guest ignores it; retrieval errors conservatively mark the outcome unknown because the tools do not prove absence of effects. Inspect Script status before using returned JSON.
 
 For cross-provider composition, enable and select both `mcp` and `web`. Discover exact MCP names with `mcp_search` and inspect schemas with `mcp_describe` first. This illustrative tool must return the documented `structuredContent.url` field:
 
@@ -82,11 +109,17 @@ script({
 });
 ```
 
-Web-only scripts need no MCP Gateway. Hosted Exa MCP is an existing web transport, not the Gateway extension. Direct web tools work without the Script tool loaded. The provider is available after session startup and disposed on shutdown, cancelling executions selecting it; factory order is irrelevant. The sibling Script host library must remain installed, but its extension need not be activated.
+### Permissions and effects
 
-The execution signal and absolute deadline bound host admission and propagate to web requests and clone subprocesses. Script call/concurrency ceilings apply to logical search/fetch calls; existing fallback attempts occur inside those calls. No extra bridge retries or replay are added. Await every operation: unfinished calls fail accounting. Cancellation is not rollback; clones, cleanup and spills may survive, and non-abortable DNS, PDF parsing, filesystem work or browser startup may settle late. The runtime cannot interrupt synchronous host work. Final explicit JSON must fit Script's 24,000-byte limit even when the web tool's inline output is larger; return a compact selection rather than automatically replaying on overflow.
+Provider selection is not user approval: obtain applicable authority before operations with side effects. Queries and URLs may be sent to configured external services; the [network and content safety limits](#external-content-safety) apply equally to composed calls.
 
-Clone/spill paths are host references only. The guest gets no filesystem, raw network, process or credential binding and cannot invoke `read` on a returned path. Follow-up file exploration requires a separate authorized host tool. Selecting web nevertheless authorizes its existing host retrieval implementation, including GitHub cached-file reads, temporary writes and lazy cleanup; this is not a filesystem/egress sandbox. GitHub cache handling assumes trusted local cache paths and does not isolate repository symlinks. Network/DNS and cache limitations below remain applicable. Nested provider calls do not synthesize Pi tool hooks; gate the outer Script tool when needed.
+Clone/spill paths are host references only. The guest gets no filesystem, raw network, process or credential binding and cannot invoke `read` on a returned path. Follow-up file exploration requires a separate authorized host tool. Selecting web nevertheless permits its existing host retrieval implementation, including GitHub cached-file reads, temporary writes and lazy cleanup; this is not a filesystem/egress sandbox. A host-generated unique ID names each potential spill. GitHub cache handling assumes trusted local cache paths and does not isolate repository symlinks. Network/DNS and cache limitations below remain applicable. Nested provider calls do not synthesize Pi tool hooks; gate the outer Script tool when needed.
+
+### Failure and lifecycle
+
+Retrieval errors, including PDF HTTP errors, carry framed text and `details.errorPreview`. Any error preview forces failed Script accounting even if the guest ignores it; retrieval errors conservatively mark the outcome unknown because the tools do not prove absence of effects. Inspect Script status before using returned JSON.
+
+The provider is disposed on shutdown, cancelling executions selecting it. The execution signal and absolute deadline bound host admission and propagate to web requests and clone subprocesses. Script call/concurrency ceilings apply to logical search/fetch calls; existing fallback attempts occur inside those calls. No extra bridge retries or replay are added. Await every operation: unfinished calls fail accounting. Cancellation is not rollback; clones, cleanup and spills may survive, and non-abortable DNS, PDF parsing, filesystem work or browser startup may settle late. The runtime cannot interrupt synchronous host work. Final explicit JSON must fit Script's 24,000-byte limit even when the web tool's inline output is larger; return a compact selection rather than automatically replaying on overflow.
 
 ## Configuration
 
