@@ -357,14 +357,14 @@ for (const mode of ["cancel", "deadline", "shutdown", "unfinished"] as const) {
     globalThis.fetch = async (_url, init) =>
       new Promise<Response>((_resolve, reject) => {
         calls++;
-        init!.signal!.addEventListener(
-          "abort",
-          () => {
-            aborted = true;
-            reject(new Error("fixture aborted"));
-          },
-          { once: true },
-        );
+        const abort = () => {
+          aborted = true;
+          reject(new Error("fixture aborted"));
+        };
+        // Unfinished-call cancellation can precede fetch entry after async setup.
+        // Like real fetch, handle an already-aborted signal as well as a later event.
+        if (init!.signal!.aborted) abort();
+        else init!.signal!.addEventListener("abort", abort, { once: true });
         started();
       });
     const controller = new AbortController();

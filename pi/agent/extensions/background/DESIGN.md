@@ -1,0 +1,48 @@
+# Background design
+
+A deterministic host supervisor separates observation from cognition. Timers and typed provider subscriptions invoke fresh Script children; only bounded attention crosses into Pi. Legacy tools keep their existing ownership and callers.
+
+## Modules
+
+- `contract.ts`: immutable registration validation, finite hard bounds, receipt/trigger types and successful-observation validation.
+- `engine.ts`: synchronous reservations, staged subscription admission, serial per-job FIFO evaluations, two shared execution slots, four occupied jobs, host clocks, committed state/evidence, coalesced attention and causal recurrence.
+- `execution.ts`: supported Script host API adapter. A fresh guest parses encoded JSON trigger/state arguments (including own `__proto__` data keys), with source headroom reserved for encoding overhead; selected provider globals and Script limits remain authoritative. No alternate executor or persistent interpreter exists.
+- `providers.ts` / `api.ts`: typed, schema-checked host subscription contracts with atomic registration alongside Script, policy intersection, bounded payloads and cancellation. The private event-bus query avoids module-cache singleton assumptions; it is not a guest bus binding.
+- `sessions.ts`: optional same-user local/cross-session provider. It reuses Session Watch's supported safe projection/transport API, but owns an independent socket namespace/incarnation. This does not route jobs through the legacy tool or require its extension factory.
+- `index.ts`: current context/generation, lifecycle binding, positive wake-message correlation, persistence, tool boundary and stable widget.
+- `receipts.ts`: bounded ancestor traversal and receipt validation; execution is never restored.
+- `tool.ts`: snake-case schema, safe rendering, compact summaries and untrusted evidence framing.
+
+## Admission and observation
+
+Registration validates before reservation; reservations include asynchronous setup in the capacity count. All subscriptions are staged before committing one job. Callbacks can enqueue bounded events during setup, before acknowledgment returns. Setup loss/overflow/cancellation closes every staged subscription and leaves no admitted receipt. Once admitted, registration-tool cancellation no longer owns the job. The job has its own cancellation controller.
+
+Subscriptions and evaluations have separate lifetimes. Event sources run in trusted host code, not long-lived guests. Providers supply safe projected metadata and explicit coverage; Background validates/copies bounded JSON against snapshotted schemas. A two-second setup race rejects uncooperative providers, aborts their setup, and closes late returned subscriptions without retry. It cannot forcibly stop arbitrary synchronous trusted code or undo external effects.
+
+Every job queues accepted events in order. Timer triggers do not accumulate: the next poll moves to one interval after evaluation settlement, including event evaluations. No job overlaps evaluations; shared slots remain occupied through child cleanup. Queue overflow is terminal coverage loss, not an implicit latest-event policy. Initial evaluation follows staged events. Recurring observation remains active during agent work and pending attention; only timer-only continuation waits for the correlated settlement before arming another delay.
+
+Script host accounting is checked before interpreting guest decisions. Only a complete successful result can replace state/evidence atomically. Failure leaves the committed snapshot unchanged while retaining bounded host accounting; guest JSON from failed runs is discarded. Late results after lifetime/cancellation cannot commit. Results processed at/after a cycle deadline cannot turn timeout into condition success. Source is released when observation stops.
+
+## Attention and recurrence
+
+The event queue and pending attention are different structures. A job has at most one pending attention, plus its last attempted handoff identity. Conditions coalesce; failure outranks budget exhaustion, timeout and condition. A recurring cycle closes when attention becomes eligible. Observations may continue updating committed evidence while attention is held. A cycle timeout does not interrupt an already bounded recurring evaluation: handoff waits for final host accounting. One-shot timeout aborts observation and records interrupted work.
+
+A detached host timer checks idleness again immediately before handoff. It never awaits a long delay in a Pi lifecycle handler. Attempt count and `handoff_unknown` are persisted before calling Pi; a synchronous return only records `handed_to_pi`. A throw terminates without retry. Positive matching custom `message_start` marks runtime admission; a subsequent `agent_settled` can rearm that recurring cycle. Neither unrelated settlement, queue/history absence nor API return is a consumption acknowledgment. Batching is allowed, and admission says nothing about task success.
+
+An outstanding unobserved handoff prevents another send, including a subsequent budget/failure attention. Lifetime still ends observation; pending attention remains inspectable and cancelable instead of fabricating acknowledgment. A positively correlated later settlement can release that pending terminal attention within the wake cap. Reaching the wake cap never sends an extra over-budget message. Subsequent attention is still recorded as suppressed, retaining failure causes/accounting independently of the last attempted handoff.
+
+Cycle timeout, polling interval, post-settlement continuation delay and immutable total lifetime are separate. Lifetime includes setup, queued work, evaluation, pending delivery and agent work; neither rearming nor messages reset it. Finite evaluation and wake counts provide additional bounds. Deadline eligibility cannot guarantee prompt-cache retention or model-consumption timing.
+
+## Lifecycle, retention, and UI
+
+Generation changes close old work before replacing contexts. Shutdown persists conservative invalidation; reached before-tree cleanup does not append into a prepared tree. A canceled navigation does not resurrect observations. Destination restoration scans at most 4096 ancestors and retains at most 32 receipt identities, normalizing active/pending execution to invalidated/suppressed. Unknown/handed dispositions are never replayed. Historical interrupted accounting is not a live execution slot.
+
+Persistence failure fails closed. External effects and uncertain dispatched work survive cancellation; late cleanup cannot write into another generation. Receipts contain cumulative counts/flags and the latest bounded host trace, not an unbounded event/call log. Source is absent from receipts but original tool arguments remain in ordinary Pi history. Individual entries are bounded; append-only history is not globally quota-managed.
+
+The shared widget mounts once while visible and repaints without sibling reordering. It shows active jobs and terminal jobs with pending attention, not transient evaluation states. Positive countdowns round upward and refresh at most once per second. Pending attention remains until handoff/suppression; final rows then disappear. Rendering sanitizes before theme styling and truncation. RPC receives string arrays; headless mode makes no UI calls.
+
+## Verification and change guidance
+
+Keep tests at observable boundaries: fake-clock scheduling/message counts, state snapshots, actual Script child accounting, typed provider schemas/revocation, real ordered sockets, cross-process producer metadata and controlled lifecycle/UI fixtures. Live-session/model/provider qualification remains explicitly separate. Never install/reload the delivered extension as a test side effect.
+
+Do not add retries, evaluator stop decisions, mutable registrations, recovery execution, raw bus bindings, semantic completion inference or Pi queue-clearing workarounds. Preserve legacy callers during qualification. Provider permission is not mutation approval, and host event subscriptions are not a sandbox for trusted extension code.
