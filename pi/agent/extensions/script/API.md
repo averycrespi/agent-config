@@ -88,6 +88,6 @@ Each bounded `Trace` contains `id`, `tool` (validated `namespace.method` only af
 
 Internally, `script:providers-v1` is a synchronous, host-only event-bus query with `{accept(provider)}`. Registration installs one listener; collection rejects duplicate namespaces/over-cap inventories. It exists to avoid accidental module-global state across Pi's separate extension module caches and to make factory order irrelevant. Use the supported API, not this internal message shape. Handlers, schemas and cancellation signals stay in trusted host memory; this is not a public telemetry event or a guest binding. No other lifecycle notifications, model messages or continuations are emitted.
 
-MCP Gateway implements the optional `mcp` namespace through this API; see its [provider contract and example](../mcp-gateway/API.md#script-provider). No MCP transport or error interpretation belongs in script core. Web-access supplies optional `web.search` and `web.fetch`; see its [composition and host-effects contract](../web-access/README.md#script-composition).
+MCP Gateway implements the optional `mcp` namespace through this API; see its [provider contract and example](../mcp-gateway/API.md#script-provider). No MCP transport or error interpretation belongs in script core. Web-access supplies optional `web.search` and `web.fetch`; see its [provider and host-effects contract](../web-access/README.md#script-provider).
 
 See [README.md](README.md) for configuration, isolation limitations, output bounds and retention; [DESIGN.md](DESIGN.md) for implementation invariants.
