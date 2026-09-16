@@ -56,7 +56,7 @@ async function harness(t: any, mode = "tui") {
       entries.push({
         type: "custom",
         customType,
-        data: JSON.parse(JSON.stringify(data)),
+        data,
         id: randomUUID(),
         parentId: entries.at(-1)?.id,
       }),
@@ -118,6 +118,9 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   const started = await h.call(input);
   assert.equal(started.details.backgroundError, false, JSON.stringify(started));
   const id = value(started).id;
+  assert.equal(started.details.action, "start");
+  assert.equal(started.details.receipt.eventCount, 1);
+  assert.equal(started.details.receipt.id, id);
   const mounted = h.component;
   await h.hook("agent_start");
   await pause();
@@ -125,7 +128,7 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   assert.equal(h.component, mounted);
   const pending = value(await h.call({ action: "get", id }));
   assert.equal(pending.attention.disposition, "pending");
-  assert.match(h.component.render(200)[0], /condition awaiting settlement/);
+  assert.match(h.component.render(200)[0], /condition met · follow-up queued/);
   await h.idle();
   await pause();
   assert.equal(h.messages.length, 1);
@@ -167,6 +170,24 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   assert.doesNotMatch(JSON.stringify(observed), /safe name|Inspect|evidence/);
 });
 
+test("action details select one job and distinguish cancellation from a no-op", async (t) => {
+  const h = await harness(t);
+  const first = value(await h.call(input));
+  const second = value(await h.call({ ...input, name: "other job" }));
+  const selected = await h.call({ action: "get", id: second.id });
+  assert.equal(selected.details.receipt.id, second.id);
+  assert.deepEqual(selected.details.receipts, []);
+  const cancelled = await h.call({ action: "cancel", id: first.id });
+  assert.equal(cancelled.details.cancelChanged, true);
+  assert.equal(cancelled.details.receipt.status, "cancelled");
+  const again = await h.call({ action: "cancel", id: first.id });
+  assert.equal(again.details.cancelChanged, false);
+  const listed = await h.call({ action: "list" });
+  assert.equal(listed.details.receipts.length, 2);
+  assert.equal(listed.details.receipt, undefined);
+  assert.equal(h.messages.length, 0);
+});
+
 test("cancellation/navigation suppress pending attention and stale callbacks; headless/RPC use supported UI paths", async (t) => {
   for (const mode of ["rpc", "json"]) {
     const h = await harness(t, mode);
@@ -187,10 +208,71 @@ test("cancellation/navigation suppress pending attention and stale callbacks; he
   }
 });
 
+test("successful Script receipts survive in-memory reload without replay", async (t) => {
+  for (const decision of ["wake", "wait"]) {
+    const h = await harness(t, "json");
+    const started = value(
+      await h.call({
+        action: "start",
+        name: "reload",
+        message: "Inspect",
+        providers: [],
+        interval_ms: 1000,
+        cycle_timeout_ms: 1000,
+        lifetime_ms: 10000,
+        max_wakes: 1,
+        source: `return {decision: '${decision}', evidence: {checked: true}};`,
+      }),
+    );
+    let latest: any;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      latest = value(await h.call({ action: "get", id: started.id }));
+      if (latest.status === "finished" && !latest.inFlight) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(latest.status, "finished");
+    assert.equal(
+      latest.attention.reason,
+      decision === "wake" ? "condition" : "timeout",
+    );
+    const saved = h.entries
+      .filter((e: any) => e.data.id === started.id)
+      .at(-1).data;
+    assert.equal(Object.hasOwn(saved.accounting, "code"), false);
+    assert.ok(parseReceipt(saved));
+    await h.idle();
+    for (let attempt = 0; !h.messages.length && attempt < 100; attempt++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(h.messages.length, 1);
+    await h.hook("message_start", {
+      message: { role: "custom", ...h.messages[0].message },
+    });
+    await h.idle();
+    const before = value(await h.call({ action: "get", id: started.id }));
+    assert.equal(before.wakes, 1);
+    await h.hook("session_shutdown");
+    await h.hook("session_start");
+    const after = value(await h.call({ action: "get", id: started.id }));
+    assert.deepEqual(after, before);
+    await h.idle();
+    await pause();
+    assert.equal(h.messages.length, 1);
+  }
+});
+
 test("receipt-only recovery is bounded and malformed receipts cannot resume execution", async (t) => {
   const h = await harness(t);
   const r = value(await h.call(input));
   assert.ok(parseReceipt(r));
+  const { eventCount: _eventCount, ...legacy } = r;
+  assert.ok(parseReceipt(legacy));
+  for (const extra of [
+    { intervalMs: 0 },
+    { delayMs: 1000 },
+    { eventCount: 5 },
+    { intervalMs: 1000, delayMs: 1000 },
+  ])
+    assert.equal(parseReceipt({ ...r, ...extra }), undefined);
   assert.equal(parseReceipt({ ...r, maxWakes: Infinity }), undefined);
   assert.equal(parseReceipt({ ...r, state: "x".repeat(5000) }), undefined);
   let reads = 0;
@@ -239,7 +321,7 @@ test("widget and tool renderers are width bounded and never expose scripts, evid
           content: [],
           details: {
             backgroundError: error,
-            status: "inspected",
+            action: "list",
             receipts: [r],
           },
         } as any,

@@ -136,6 +136,9 @@ export class BackgroundEngine {
       status: "active",
       recurring: reg.recurring,
       cycleMs: reg.cycleMs,
+      ...(reg.intervalMs !== undefined ? { intervalMs: reg.intervalMs } : {}),
+      ...(reg.delayMs !== undefined ? { delayMs: reg.delayMs } : {}),
+      eventCount: reg.events.length,
       maxWakes: reg.maxWakes,
       wakes: 0,
       evaluations: 0,
@@ -476,8 +479,11 @@ export class BackgroundEngine {
       )
       .then(
         (result) => {
-          const { json: _json, ...accounting } = result;
-          j.r.accounting = accounting;
+          const { json: _json, code, ...accounting } = result;
+          j.r.accounting = {
+            ...accounting,
+            ...(code !== undefined ? { code } : {}),
+          };
           j.r.calls += result.traces.length;
           j.r.effectsMayPersist ||= result.effectsMayPersist;
           j.r.outcomeUnknown ||= result.outcomeUnknown;

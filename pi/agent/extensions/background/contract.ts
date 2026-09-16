@@ -73,6 +73,10 @@ export interface Receipt {
   status: "active" | "finished" | "cancelled" | "invalidated";
   recurring: boolean;
   cycleMs: number;
+  /** Optional display metadata; older receipts remain readable. */
+  intervalMs?: number;
+  delayMs?: number;
+  eventCount?: number;
   maxWakes: number;
   wakes: number;
   evaluations: number;
