@@ -8,6 +8,7 @@ import {
 import { createBridge } from "./bridge.ts";
 import { runScript, type RunResult } from "./runtime.ts";
 export { registerScriptProvider } from "./provider.ts";
+export { jsonSnapshot as snapshotScriptJson } from "./value.ts";
 export type {
   JsonValue,
   ScriptProvider,

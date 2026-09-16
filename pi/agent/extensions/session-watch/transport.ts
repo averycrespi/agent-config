@@ -109,7 +109,10 @@ export class Bridge {
   readonly target: Target;
   private sequence = 0;
   private sockets = new Set<Socket>();
-  private watches = new Map<Socket, { nonce: string; events: EventName[] }>();
+  private watches = new Map<
+    Socket,
+    { nonce: string; events: EventName[]; stream: boolean }
+  >();
   private server = createServer((socket) => this.accept(socket));
   private closed = false;
   constructor(
@@ -165,14 +168,18 @@ export class Bridge {
         admitted = true;
         send(socket, { ...this.target, nonce: data.nonce }, true);
       } else if (
-        data.op === "watch" &&
+        (data.op === "watch" || data.op === "subscribe") &&
         Object.keys(data).length === 5 &&
         filters(data.events) &&
         finiteTimeout(data.timeoutMs)
       ) {
         admitted = true;
         // Registration boundary is this synchronous insertion, before the ACK.
-        this.watches.set(socket, { nonce: data.nonce, events: data.events });
+        this.watches.set(socket, {
+          nonce: data.nonce,
+          events: data.events,
+          stream: data.op === "subscribe",
+        });
         clearTimeout(expiry);
         expiry = setTimeout(
           () => socket.destroy(),
@@ -199,11 +206,11 @@ export class Bridge {
     if (!validNotice(event)) return;
     for (const [socket, watch] of this.watches) {
       if (!watch.events.includes(name)) continue;
-      this.watches.delete(socket);
+      if (!watch.stream) this.watches.delete(socket);
       send(
         socket,
         { target: this.target.incarnation, nonce: watch.nonce, event },
-        true,
+        !watch.stream,
       );
     }
   }
@@ -304,6 +311,100 @@ export async function observe(
     };
   } catch {
     socket.destroy();
+    throw safeError();
+  }
+}
+
+export interface EventSubscription {
+  target: Target;
+  startedAt: number;
+  close(): void;
+}
+
+/** Continuous ordered coverage; no reconnect or replay. Callbacks are installed before ACK. */
+export async function subscribeEvents(
+  root: string,
+  target: string,
+  events: EventName[],
+  timeoutMs: number,
+  onEvent: (event: Notice) => void,
+  onLoss: () => void,
+  signal?: AbortSignal,
+): Promise<EventSubscription> {
+  if (!filters(events) || !finiteTimeout(timeoutMs)) throw safeError();
+  const socket = connect(root, target, signal);
+  const nonce = randomUUID();
+  let baseline: number | undefined;
+  let startedAt = 0;
+  let closed = false;
+  const close = () => {
+    closed = true;
+    socket.destroy();
+  };
+  try {
+    const identity = await new Promise<Target>((resolve, reject) => {
+      const timer = setTimeout(
+        () => socket.destroy(),
+        Math.min(HANDSHAKE_MS, timeoutMs),
+      );
+      timer.unref();
+      socket.once("close", () => {
+        clearTimeout(timer);
+        reject(safeError());
+        if (!closed && baseline !== undefined) {
+          closed = true;
+          try {
+            onLoss();
+          } catch {
+            /* observational */
+          }
+        }
+      });
+      receive(socket, (data) => {
+        if (closed) return;
+        if (baseline === undefined) {
+          if (
+            data.incarnation !== target ||
+            data.nonce !== nonce ||
+            !uuid(data.sessionId) ||
+            !Number.isSafeInteger(data.startedAt) ||
+            (data.startedAt as number) < 0 ||
+            !Number.isSafeInteger(data.sequence) ||
+            (data.sequence as number) < 0 ||
+            Object.keys(data).length !== 5
+          ) {
+            socket.destroy();
+            return;
+          }
+          baseline = data.sequence as number;
+          startedAt = data.startedAt as number;
+          clearTimeout(timer);
+          resolve({ incarnation: target, sessionId: data.sessionId });
+        } else {
+          if (
+            data.target !== target ||
+            data.nonce !== nonce ||
+            !validNotice(data.event) ||
+            !events.includes(data.event.name) ||
+            data.event.sequence <= baseline ||
+            data.event.at < startedAt ||
+            Object.keys(data).length !== 3
+          ) {
+            socket.destroy();
+            return;
+          }
+          baseline = data.event.sequence;
+          onEvent(data.event);
+        }
+      });
+      socket.once("connect", () =>
+        send(socket, { op: "subscribe", target, nonce, events, timeoutMs }),
+      );
+    });
+    if (closed || socket.destroyed || signal?.aborted) throw safeError();
+    return { target: identity, startedAt, close };
+  } catch {
+    close();
     throw safeError();
   }
 }

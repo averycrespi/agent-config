@@ -82,6 +82,8 @@ Every call gets a fresh child; the API owns no scheduler or session handlers. Ca
 
 Each bounded `Trace` contains `id`, `tool` (validated `namespace.method` only after dispatch; otherwise `(not dispatched)`), `state` (`queued`, `running`, `succeeded`, `failed`, `cancelled`), `dispatched`, queue-inclusive `startedMs`/`durationMs`, optional fixed `code`, and `outcomeUnknown`. No raw arguments, results or exception messages are included. Every dispatched handler is conservatively potentially effectful. There is no repeat-safety classification or transactional guarantee.
 
+`snapshotScriptJson(value, maxBytes?)` exposes the executor's strict plain-JSON snapshot contract to trusted host consumers. It returns serialized JSON or throws a fixed validation/size category; default bound is the 16 MiB IPC ceiling. Callers such as [Background](../background/README.md) supply tighter state/evidence bounds. It rejects accessors, lossy/cyclic values and serialization hooks rather than calling them. This helper grants no execution or provider authority.
+
 ## Discovery and host communication
 
 `describeScriptProviders(pi, cwd, providers, capabilityCeiling?, signal?)` returns copied `{namespace, methods: [{name, description, inputSchema, errorCodes?}]}` definitions. `providers: []` requests all permitted registered definitions; a nonempty list requires each selected provider to be permitted and available. There is no execution authority in this result. The agent-facing `script` describe action limits serialized discovery to 24,000 bytes; host consumers must also bound/frame presentation.
