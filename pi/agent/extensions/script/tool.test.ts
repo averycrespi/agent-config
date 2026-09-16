@@ -25,7 +25,14 @@ test("real loader runs without gateway, coexists with code, discovers schemas, a
   );
   const extension = loaded.extensions[0];
   const definition = extension.tools.get("script")!.definition;
-  const ctx: any = { cwd: f.dir, hasUI: false };
+  const ctx: any = {
+    cwd: f.dir,
+    hasUI: false,
+    sessionManager: {
+      getSessionId: () => "fixture",
+      getSessionFile: () => undefined,
+    },
+  };
   const invoke = (args: Record<string, unknown>) =>
     definition.execute(
       "fixture",
@@ -106,6 +113,10 @@ test("discovery reports actionable categories and bounded inventories through th
   const invoke = (providers = args.providers, signal?: AbortSignal) =>
     tool.execute("discovery", { ...args, providers }, signal, undefined, {
       cwd: f.dir,
+      sessionManager: {
+        getSessionId: () => "fixture",
+        getSessionFile: () => undefined,
+      },
     } as any);
   const success = await invoke();
   assert.match(
@@ -125,7 +136,13 @@ test("discovery reports actionable categories and bounded inventories through th
     badCallArgs,
     undefined,
     undefined,
-    { cwd: f.dir } as any,
+    {
+      cwd: f.dir,
+      sessionManager: {
+        getSessionId: () => "fixture",
+        getSessionFile: () => undefined,
+      },
+    } as any,
   );
   assert.match(
     renderResult(badCall, badCallArgs),

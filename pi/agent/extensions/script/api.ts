@@ -2,6 +2,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadScriptConfig, MAX_LIMITS } from "./config.ts";
 import {
   collectProviders,
+  methodAvailable,
+  type ScriptSession,
   validName,
   type RegisteredProvider,
 } from "./provider.ts";
@@ -15,6 +17,8 @@ export type {
   ScriptMethod,
   MethodContext,
   MethodResult,
+  ScriptSession,
+  ScriptExecutionContext,
 } from "./provider.ts";
 export type { RunResult, Trace } from "./runtime.ts";
 export { MAX_LIMITS } from "./config.ts";
@@ -26,6 +30,8 @@ export type ScriptLimits = {
 export type ScriptOptions = {
   source: string;
   providers: string[];
+  /** Optional caller-owned session metadata, snapshotted before async setup. */
+  session?: ScriptSession;
   /** Omission uses host policy; an explicit empty ceiling allows only pure computation. */
   capabilityCeiling?: string[];
   limits: ScriptLimits;
@@ -102,6 +108,7 @@ export async function describeScriptProviders(
       methods: [...p.methods].map(([name, m]) => ({
         name,
         description: m.description,
+        ...(m.available ? { available: methodAvailable(m) } : {}),
         inputSchema: structuredClone(m.inputSchema),
         ...(m.errorCodes ? { errorCodes: [...m.errorCodes] } : {}),
       })),
@@ -129,6 +136,12 @@ export async function executeScript(
     )
   )
     return failure("invalid_config");
+  const execution = Object.freeze({
+    cwd,
+    ...(options.session
+      ? { session: Object.freeze({ ...options.session }) }
+      : {}),
+  });
   const started = Date.now();
   const deadline = Math.min(
     options.deadlineMs,
@@ -163,7 +176,7 @@ export async function executeScript(
     ]);
     const result = await runScript(
       options.source,
-      createBridge(selected),
+      createBridge(selected, execution),
       {
         ...config,
         maxCalls: Math.min(config.maxCalls, options.limits.maxCalls),

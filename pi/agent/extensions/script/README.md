@@ -1,6 +1,6 @@
 # Script
 
-Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with legacy [Code mode](../code-mode/README.md); it does not migrate Code mode, Monitor, Loop, or Session Watch. [MCP Gateway](../mcp-gateway/README.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-provider) optionally supplies `web.search` and `web.fetch`, independently of Gateway.
+Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with legacy [Code mode](../code-mode/README.md); it does not migrate Code mode, Monitor, Loop, or Session Watch. [MCP Gateway](../mcp-gateway/README.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-provider) optionally supplies `web.search` and `web.fetch`, independently of Gateway. [Builtins](../builtins/README.md#script-provider) optionally supplies active stock filesystem/shell methods with structured results; image reads require direct `read`.
 
 ## Usage
 
@@ -13,7 +13,7 @@ script({
 });
 ```
 
-Use `action: "describe"` with explicit `providers` to inspect method descriptions and positional argument schemas; `providers: []` lists all currently registered, host-permitted APIs. Discovery never invokes handlers or grants access. An unavailable selected provider fails closed; retry discovery with a narrower selection when an unrelated provider is unavailable or the output is too large.
+Use `action: "describe"` with explicit `providers` to inspect method descriptions and positional argument schemas; `providers: []` lists all currently registered, host-permitted APIs. Discovery never invokes handlers or grants access. Methods with live readiness restrictions include an informational `available` boolean; readiness is rechecked before every dispatch, including queued calls. An unavailable selected provider fails closed; retry discovery with a narrower selection when an unrelated provider is unavailable or the output is too large.
 
 Each selected namespace becomes a frozen guest object. For a fixture provider declaring `fixture.echo` with an integer argument:
 
