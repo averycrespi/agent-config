@@ -37,9 +37,9 @@ Supply an async JavaScript **body**, not a module. Explicitly return JSON (`null
 
 ## Tool display
 
-The call row shows the action, **selected providers**, and nonsecret description. Selection is a request, not proof of permission, availability, or user approval. `run` with `[]` shows `selected: none`; `describe` with `[]` shows `providers: permitted`. More than three selected names use a `+N more` suffix; expand for the full selection.
+The call row shows the action, provider selection or discovery scope, and nonsecret description. Execution uses `providers: web, mcp` or `providers: none`; discovery uses `scope: web, mcp` or `scope: all` for `[]`. Here, **all** means currently registered, host-permitted providers, not unrestricted access. Selection is a request, not proof of permission, availability, or user approval. More than three selected names use a `+N more` suffix; expand for the full selection.
 
-Collapsed results distinguish computation-only success, runs with no provider calls, successful call counts, and discovery provider/method counts. Empty discovery says no permitted providers were discovered; it does not imply that no extensions are installed. Failures show a safe reason rather than an unhelpful zero-call count. Cancellation, timeout, partial execution, and unknown outcomes remain distinct, with effect warnings visible even when collapsed.
+Collapsed results show `completed · no calls` for successful zero-call runs, whether or not providers were selected; otherwise they show successful call counts or discovery provider/method counts. Empty discovery says no permitted providers were discovered; it does not imply that no extensions are installed. Failures show a safe reason rather than an unhelpful zero-call count. Cancellation, timeout, partial execution, and unknown outcomes remain distinct, with effect warnings visible even when collapsed.
 
 Expand for discovered method names, attempted/succeeded call counts, traces, fixed error codes, and recovery guidance. Raw source, arguments, returned JSON, schemas, intermediate values, and exception text never appear in custom tool rows; explicit JSON and schemas still appear in the framed model-facing result. Labels and detail lines are sanitized and truncated to terminal width.
 

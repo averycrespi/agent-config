@@ -211,7 +211,7 @@ test("unknown discovery exceptions are suppressed rather than used as recovery g
   assert.doesNotMatch(JSON.stringify(result), /SECRET_DISCOVERY_EXCEPTION/);
 });
 
-test("rows distinguish computation, selection, call outcomes, and framework errors", () => {
+test("rows distinguish discovery scope, provider selection, and call outcomes", () => {
   const run = {
     status: "success" as const,
     traces: [],
@@ -225,13 +225,21 @@ test("rows distinguish computation, selection, call outcomes, and framework erro
     renderers.renderCall!(input, plainTheme, {} as any)
       .render(200)
       .join("\n");
-  assert.match(header(args), /selected: none.*Compute totals/);
+  assert.match(header(args), /providers: none.*Compute totals/);
   assert.match(
     header({ ...args, providers: ["mcp", "web"] }),
-    /selected: mcp, web/,
+    /providers: mcp, web/,
   );
-  assert.match(header({ ...args, action: "describe" }), /providers: permitted/);
+  assert.match(header({ ...args, action: "describe" }), /scope: all/);
+  assert.match(
+    header({ ...args, action: "describe", providers: ["mcp", "web"] }),
+    /scope: mcp, web/,
+  );
   assert.match(header({ description: "streaming" }), /providers: pending/);
+  assert.match(
+    header({ action: "describe", description: "streaming" }),
+    /scope: pending/,
+  );
   assert.match(
     header({ ...args, providers: ["first", "second", "third", "fourth"] }),
     /first, second, third, \+1 more/,
@@ -244,14 +252,11 @@ test("rows distinguish computation, selection, call outcomes, and framework erro
     ),
     /selected provider: fourth/,
   );
-  assert.match(
-    renderResult(presentRun(run), args),
-    /completed · computation only/,
-  );
-  assert.match(
-    renderResult(presentRun(run), { ...args, providers: ["mcp"] }),
-    /completed · no provider calls/,
-  );
+  for (const providers of [[], ["mcp"]])
+    assert.equal(
+      renderResult(presentRun(run), { ...args, providers }),
+      "completed · no calls",
+    );
   assert.equal(
     renderResult(
       { content: [{ type: "text", text: "SECRET_FRAMEWORK" }] },
@@ -378,7 +383,7 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
     ctx,
   );
   assert.doesNotMatch(header.render(100).join(), /SECRET|\x1b|\x07|\n/);
-  assert.match(header.render(200).join(), /selected: web, \(invalid\)/);
+  assert.match(header.render(200).join(), /providers: web, \(invalid\)/);
   for (const width of [0, 1, 8, 40, 100])
     for (const line of header.render(width))
       assert.ok(visibleWidth(line) <= width);
@@ -388,8 +393,8 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
     { ...ctx, lastComponent: header },
   );
   assert.equal(reused, header);
-  assert.match(reused.render(200).join(), /providers: permitted/);
-  assert.doesNotMatch(reused.render(200).join(), /selected: web/);
+  assert.match(reused.render(200).join(), /scope: all/);
+  assert.doesNotMatch(reused.render(200).join(), /providers: web/);
   for (const state of [
     { isPartial: true, error: false, semantic: false, color: "warning" },
     { isPartial: false, error: false, semantic: false, color: "success" },

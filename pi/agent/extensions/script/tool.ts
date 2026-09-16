@@ -124,12 +124,11 @@ const providerNames = (value: unknown) =>
 
 function providerLabel(args: { action?: unknown; providers?: unknown }) {
   const names = providerNames(args.providers);
-  if (!names) return "providers: pending";
+  const label = args.action === "describe" ? "scope" : "providers";
+  if (!names) return `${label}: pending`;
   if (!names.length)
-    return args.action === "describe"
-      ? "providers: permitted"
-      : "selected: none";
-  return `selected: ${names.slice(0, 3).join(", ")}${names.length > 3 ? `, +${names.length - 3} more` : ""}`;
+    return `${label}: ${args.action === "describe" ? "all" : "none"}`;
+  return `${label}: ${names.slice(0, 3).join(", ")}${names.length > 3 ? `, +${names.length - 3} more` : ""}`;
 }
 
 export const renderers: Pick<
@@ -182,7 +181,7 @@ export const renderers: Pick<
             ? `completed · ${plural(d.providerCount, "provider")} · ${plural(d.methodCount, "method")}`
             : "completed · provider discovery";
     } else if (calls === 0) {
-      summary = `completed · ${Array.isArray(args.providers) && args.providers.length === 0 ? "computation only" : "no provider calls"}`;
+      summary = "completed · no calls";
     } else summary = `completed · ${plural(succeeded, "call")} succeeded`;
     const lines = [
       theme.fg(isPartial ? "warning" : failed ? "error" : "success", summary),
