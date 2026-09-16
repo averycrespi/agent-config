@@ -7,7 +7,7 @@ import { createPersistentWidget } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { BackgroundEngine } from "./engine.ts";
 import { evaluateBackground } from "./execution.ts";
-import { registration, RequestError, isId } from "./contract.ts";
+import { registration, RequestError, isId, type Receipt } from "./contract.ts";
 import { subscribeProvider, describeEvents } from "./providers.ts";
 import { SessionProvider, sessionRoot } from "./sessions.ts";
 import { restore, RECEIPT_TYPE } from "./receipts.ts";
@@ -171,6 +171,8 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
         if (!owner || !ctx || token !== generation || signal?.aborted)
           throw new RequestError("Background unavailable or cancelled.");
         let value: unknown;
+        let selected: Receipt | undefined;
+        let cancelChanged = false;
         if (params.action === "start") {
           const reg = registration(params);
           await describeScriptProviders(
@@ -184,7 +186,8 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
             throw new RequestError(
               "Context changed or registration cancelled.",
             );
-          value = await owner.start(reg, signal);
+          selected = await owner.start(reg, signal);
+          value = selected;
         } else {
           const allowed =
             params.action === "list"
@@ -205,11 +208,16 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
           else if (params.action === "get" || params.action === "cancel") {
             if (!isId(params.id))
               throw new RequestError("A job UUID is required.");
-            value =
-              params.action === "cancel"
-                ? owner.cancel(params.id)
-                : owner.get(params.id);
-            if (!value) throw new RequestError("Unknown Background job.");
+            const before = owner.get(params.id);
+            selected =
+              params.action === "cancel" ? owner.cancel(params.id) : before;
+            if (!selected) throw new RequestError("Unknown Background job.");
+            cancelChanged =
+              params.action === "cancel" &&
+              !!before &&
+              (before.status === "active" ||
+                before.attention?.disposition === "pending");
+            value = selected;
           } else throw new RequestError("Unknown action.");
         }
         if (token !== generation)
@@ -228,8 +236,10 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
           ],
           details: {
             backgroundError: false,
-            status: params.action === "start" ? "registered" : "inspected",
-            receipts: owner.list().map(summary),
+            action: params.action,
+            receipt: selected && summary(selected),
+            cancelChanged,
+            receipts: params.action === "list" ? owner.list().map(summary) : [],
           },
         };
       } catch (error) {
@@ -243,7 +253,12 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
                   : "Background operation failed: invalid policy, unavailable provider, subscription or bounded output. No automatic retry; inspect receipts before a new registration.",
             },
           ],
-          details: { backgroundError: true, status: "failed", receipts: [] },
+          details: {
+            backgroundError: true,
+            action: params.action,
+            status: "failed",
+            receipts: [],
+          },
         };
       }
     },

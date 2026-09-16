@@ -157,8 +157,31 @@ Jobs belong to the originating session branch. Shutdown, reload, replacement and
 
 No standalone logs, source files or result spills are written. Ordinary Pi history retains original arguments, state, evidence and `background:receipt-v1` entries. Entries are individually bounded; append-only history is not globally bounded. Abrupt exit may lose final accounting, and old receipts can fall outside the restoration window. Providers can have their own audit/clone/spill retention. Generic JSON framing is not secret detection; choose evidence carefully.
 
+## Tool display
+
+Collapsed results summarize the requested action, not a generic inspection acknowledgment:
+
+- `list`: `2 active · 5 retained`, `no active jobs · 7 retained`, or `no jobs`. Retained includes active and terminal receipts; pending follow-ups are counted separately. Expand for the named inventory.
+- `get`: `CI check · polling · 0 wakes · 4 evaluations`, or a terminal reason such as `evaluation failed · script_error`. Counts report attempts, not watched-task success.
+- `start`: `CI check · polling every 30s · timeout 20m`, `Reminder · scheduled · in 5s · timeout 20s`, or `Follow-through · every 5s after settlement · timeout 20m · max 2 wakes`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
+- `cancel`: `CI check · cancelled` versus `CI check · already finished`. Uncertain effects, uncertain handoffs, and already-handed follow-ups remain visible; cancellation does not retract Pi-owned messages or roll back effects.
+
+Expand single-job results for identity, accounting summaries and handoff disposition. Custom rows never expose source, arguments, state, evidence, or raw exception text. Names are nonsecret display labels, sanitized and width-bounded. Failed requests retain the action/target context.
+
 ## Widget and qualification
 
-One stable, width-bounded row per visible job appears below the editor: `background <state> · <nonsecret name> · wake <countdown>`. Activity uses accent, pending attention warning, failures error; there is no green activity state, source, payload or evidence. Short evaluations do not flicker. Pending attention remains visible until handoff/suppression even after observation ends. Recurring jobs remain visible while waiting for positively correlated settlement, showing remaining lifetime then. Finished/canceled rows disappear after handoff/suppression. Names shorten before timing is dropped. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls.
+One stable, width-bounded row per visible job appears below the editor. Identity comes before descriptive activity and labeled timing:
+
+```text
+background · CI check · polling · next check 3s · timeout 12s
+background · Worker · watching events · timeout 15m
+background · Follow-through · continue in 5s · timeout 20s · wakes 0/2
+background · CI check · timed out · follow-up queued
+background · Follow-through · awaiting settlement · wakes 1/2 · expires 50s
+```
+
+`next check` is the next poll, not a model wake. `timeout` is the current attention deadline; `expires` is total lifetime, shown instead when it ends sooner or while awaiting settlement. An in-flight evaluation shows `checking` without a stale next-check countdown. Pending attention shows its cause and `follow-up queued` rather than a misleading ticking clock. Neither condition attention nor a finished receipt proves watched-task success.
+
+Activity uses accent, pending attention/settlement warning, failures error; there is no green activity state, source, payload or evidence. Narrow rows drop the redundant `background` prefix, shorten long names, and drop secondary telemetry while preserving identity and primary state when space permits. Pending attention remains visible until handoff/suppression even after observation ends. Finished/canceled rows disappear after handoff/suppression. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls. Older receipts without trigger metadata remain inspectable without guessing a polling/continuation mode.
 
 Tests qualify deterministic scheduling, actual Script children/providers, local event-bus and cross-process Unix transport fixtures, restoration, and controlled TUI/RPC/headless contexts. They do not qualify a live interactive session, actual model consumption, real external mutations, suspend/clock jumps, or provider prompt-cache behavior. Nothing is installed or reloaded by tests. See [DESIGN.md](DESIGN.md) and [API.md](API.md).

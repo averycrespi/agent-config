@@ -15,6 +15,9 @@ export function parseReceipt(value: unknown): Receipt | undefined {
       "status",
       "recurring",
       "cycleMs",
+      "intervalMs",
+      "delayMs",
+      "eventCount",
       "maxWakes",
       "wakes",
       "evaluations",
@@ -78,6 +81,20 @@ export function parseReceipt(value: unknown): Receipt | undefined {
       [r.nextAt, r.evidenceAt].some(
         (n) => n !== undefined && (!Number.isSafeInteger(n) || n < r.createdAt),
       )
+    )
+      return;
+    if (
+      [r.intervalMs, r.delayMs].some(
+        (n) =>
+          n !== undefined &&
+          (!Number.isSafeInteger(n) || n < 1000 || n > LIMITS.cycle),
+      ) ||
+      (r.intervalMs !== undefined && r.delayMs !== undefined) ||
+      (r.eventCount !== undefined &&
+        (!Number.isSafeInteger(r.eventCount) ||
+          r.eventCount < 0 ||
+          r.eventCount > 4)) ||
+      (r.delayMs !== undefined && (r.eventCount ?? 0) > 0)
     )
       return;
     if (
