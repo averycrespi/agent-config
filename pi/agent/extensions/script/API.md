@@ -46,17 +46,17 @@ export default function (pi: ExtensionAPI) {
 
 Namespaces and method names are lower-case ASCII identifiers matching `[a-z][a-z0-9_]{0,47}`. JS keywords, prototype/then names, runtime helper names and privileged globals are reserved. At most 32 providers and 32 methods per provider are supported. Public descriptions are nonblank, at most 500 characters and contain no terminal/control-format characters. They and schemas must contain no secrets.
 
-`ScriptMethod` contains `description`, `inputSchema`, and `handler(args, context)`. The schema describes the **positional argument array**: `fixture.echo(3)` validates `[3]`. Schemas are snapshotted at registration, at most 16 KiB, plain JSON, strictly compiled with Ajv draft-07. Root `type: "array"` is required. No coercion, defaults, schema downloads, asynchronous schemas, unsupported keywords/formats/dialects or unresolved external references. Use standard JSON Schema constraints without format plugins. Invalid argument values fail before the handler is entered.
+`ScriptMethod` contains `description`, `inputSchema`, optional `errorCodes`, and `handler(args, context)`. `errorCodes` declares at most 64 unique public constants matching `[a-z][a-z0-9_]{0,63}`. Registration snapshots this list; never derive codes from arguments, results, credentials, or remote prose. The schema describes the **positional argument array**: `fixture.echo(3)` validates `[3]`. Schemas are snapshotted at registration, at most 16 KiB, plain JSON, strictly compiled with Ajv draft-07. Root `type: "array"` is required. No coercion, defaults, schema downloads, asynchronous schemas, unsupported keywords/formats/dialects or unresolved external references. Use standard JSON Schema constraints without format plugins. Invalid argument values fail before the handler is entered.
 
 The handler receives JSON arguments and `{signal, deadlineMs}`. Pass the signal/deadline into downstream work; provider-specific permission, redaction and per-call policies remain provider-owned. The host records dispatch immediately before invoking the handler, conservatively including any provider-internal admission. Do not automatically retry, grant, poll approval, or replay in a handler.
 
 The handler returns a `Promise<MethodResult>`:
 
 ```ts
-{ value: jsonValue, isError?: boolean, outcomeUnknown?: boolean }
+{ value: jsonValue, isError?: boolean, outcomeUnknown?: boolean, error?: string }
 ```
 
-Only `value` reaches the guest, after plain-JSON snapshot and IPC size validation. `isError: true` forces failed host accounting even if the guest returns normally. `outcomeUnknown: true` also forces failure. Use a known failed result for a confirmed rejection; use unknown outcome for uncertain effects. Throwing suppresses raw exception text and conservatively records an unknown outcome. Raw provider result envelopes are not automatically interpreted: a future provider must translate its own failure semantics into this contract. Do not forward credentials in `value`; intermediate data intentionally becomes guest-readable, but does not enter traces or diagnostics.
+Only `value` reaches the guest, after plain-JSON snapshot and IPC size validation. `isError: true` forces failed host accounting even if the guest returns normally. `outcomeUnknown: true` also forces failure. Use a known failed result for a confirmed rejection; use unknown outcome for uncertain effects. Throwing suppresses raw exception text and conservatively records an unknown outcome. To reject a guest call with a known public category, return `{value: null, error: declaredCode, outcomeUnknown}`. The bridge validates the code against the method's snapshotted `errorCodes`; the runtime rejects with `{code, outcomeUnknown}` and retains that code in the failed host trace even when caught. Undeclared codes or a non-null rejection value fail as an unknown provider error without leaking the code. No arbitrary exception message or metadata is forwarded. Raw provider result envelopes are not automatically interpreted: providers translate their own failure semantics into this contract. Do not forward credentials in `value`; intermediate data intentionally becomes guest-readable, but does not enter traces or diagnostics.
 
 ## Execute from a trusted host
 
@@ -84,8 +84,10 @@ Each bounded `Trace` contains `id`, `tool` (validated `namespace.method` only af
 
 ## Discovery and host communication
 
-`describeScriptProviders(pi, cwd, providers, capabilityCeiling?, signal?)` returns copied `{namespace, methods: [{name, description, inputSchema}]}` definitions. `providers: []` requests all permitted registered definitions; a nonempty list requires each selected provider to be permitted and available. There is no execution authority in this result. The agent-facing `script` describe action limits serialized discovery to 24,000 bytes; host consumers must also bound/frame presentation.
+`describeScriptProviders(pi, cwd, providers, capabilityCeiling?, signal?)` returns copied `{namespace, methods: [{name, description, inputSchema, errorCodes?}]}` definitions. `providers: []` requests all permitted registered definitions; a nonempty list requires each selected provider to be permitted and available. There is no execution authority in this result. The agent-facing `script` describe action limits serialized discovery to 24,000 bytes; host consumers must also bound/frame presentation.
 
 Internally, `script:providers-v1` is a synchronous, host-only event-bus query with `{accept(provider)}`. Registration installs one listener; collection rejects duplicate namespaces/over-cap inventories. It exists to avoid accidental module-global state across Pi's separate extension module caches and to make factory order irrelevant. Use the supported API, not this internal message shape. Handlers, schemas and cancellation signals stay in trusted host memory; this is not a public telemetry event or a guest binding. No other lifecycle notifications, model messages or continuations are emitted.
+
+MCP Gateway implements the optional `mcp` namespace through this API; see its [provider contract and example](../mcp-gateway/API.md#script-provider). No MCP transport or error interpretation belongs in script core.
 
 See [README.md](README.md) for configuration, isolation limitations, output bounds and retention; [DESIGN.md](DESIGN.md) for implementation invariants.

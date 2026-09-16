@@ -13,12 +13,16 @@ export type MethodResult = {
   value: JsonValue;
   isError?: boolean;
   outcomeUnknown?: boolean;
+  /** Reject with a public code declared by this method; value must be null. */
+  error?: string;
 };
 export type MethodContext = { signal: AbortSignal; deadlineMs: number };
 export type ScriptMethod = {
   description: string;
   /** JSON Schema draft-07 for the positional argument array. */
   inputSchema: Record<string, unknown>;
+  /** Fixed public failure codes, never derived from arguments or response prose. */
+  errorCodes?: readonly string[];
   handler: (args: JsonValue[], context: MethodContext) => Promise<MethodResult>;
 };
 export type ScriptProvider = {
@@ -159,6 +163,18 @@ export function registerScriptProvider(
         JSON.stringify(schema).includes('"$async"')
       )
         throw new Error();
+      const errorCodes = method.errorCodes;
+      if (
+        errorCodes !== undefined &&
+        (!Array.isArray(errorCodes) ||
+          errorCodes.length > 64 ||
+          [...errorCodes].some(
+            (code) =>
+              typeof code !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(code),
+          ) ||
+          new Set(errorCodes).size !== errorCodes.length)
+      )
+        throw new Error();
       const ajv = new Ajv({
         strict: true,
         allErrors: false,
@@ -169,6 +185,7 @@ export function registerScriptProvider(
       methods.set(name, {
         description: method.description,
         inputSchema: schema,
+        errorCodes: errorCodes ? Object.freeze([...errorCodes]) : undefined,
         handler: method.handler,
         validate,
       });

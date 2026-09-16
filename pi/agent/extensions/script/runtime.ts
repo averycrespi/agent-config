@@ -170,9 +170,20 @@ export function runScript(
             (value) => {
               if (terminal) return;
               trace.state = value.isError ? "failed" : "succeeded";
-              if (value.isError) trace.code = "provider_error";
+              if (value.isError) trace.code = value.error ?? "provider_error";
               trace.outcomeUnknown = value.outcomeUnknown === true;
-              send({ id: trace.id, ok: true, value: value.value });
+              send(
+                value.error
+                  ? {
+                      id: trace.id,
+                      ok: false,
+                      error: {
+                        code: value.error,
+                        outcomeUnknown: trace.outcomeUnknown,
+                      },
+                    }
+                  : { id: trace.id, ok: true, value: value.value },
+              );
             },
             (error) => {
               if (terminal) return;

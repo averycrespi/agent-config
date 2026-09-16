@@ -70,14 +70,22 @@ export function createBridge(providers: RegisteredProvider[]): ScriptBridge {
         !Object.hasOwn(result, "value") ||
         (result.isError !== undefined && typeof result.isError !== "boolean") ||
         (result.outcomeUnknown !== undefined &&
-          typeof result.outcomeUnknown !== "boolean")
+          typeof result.outcomeUnknown !== "boolean") ||
+        (result.error !== undefined &&
+          (typeof result.error !== "string" ||
+            !found.method.errorCodes?.includes(result.error) ||
+            result.value !== null))
       )
         throw new Error("invalid_provider_result");
       // Snapshot before IPC, excluding host objects, accessors, and serialization hooks.
       return {
         value: JSON.parse(jsonSnapshot(result.value)),
-        isError: result.isError === true || result.outcomeUnknown === true,
+        isError:
+          result.isError === true ||
+          result.outcomeUnknown === true ||
+          result.error !== undefined,
         outcomeUnknown: result.outcomeUnknown === true,
+        error: result.error,
       };
     },
   };

@@ -102,6 +102,7 @@ export async function describeScriptProviders(
         name,
         description: m.description,
         inputSchema: structuredClone(m.inputSchema),
+        ...(m.errorCodes ? { errorCodes: [...m.errorCodes] } : {}),
       })),
     }),
   );

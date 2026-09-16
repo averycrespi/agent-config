@@ -80,6 +80,48 @@ test("registration is atomic, conflict-safe, independent of module cache and rem
   assert.equal(collectProviders(f.pi).length, 0);
 });
 
+test("declared public errors survive catches, are snapshotted, and reject undeclared codes", async (t) => {
+  const codes = ["known_failure"];
+  let code = "known_failure";
+  const f = await fixture(t, {
+    echo: {
+      ...echo,
+      errorCodes: codes,
+      handler: async () => ({ value: null, error: code }),
+    },
+  });
+  codes.push("private_code");
+  const r = await f.run(
+    "try { await fixture.echo(1); } catch(e) { return e.code; }",
+  );
+  assert.equal(r.json, '"known_failure"');
+  assert.equal(r.status, "failed");
+  assert.equal(r.traces[0].code, "known_failure");
+  assert.equal(r.outcomeUnknown, false);
+  code = "private_code";
+  const bad = await f.run(
+    "try { await fixture.echo(1); } catch {} return null;",
+  );
+  assert.equal(bad.traces[0].code, "provider_error");
+  assert.equal(bad.outcomeUnknown, true);
+  assert.doesNotMatch(JSON.stringify(bad), /private_code/);
+  for (const invalid of [
+    ["bad\\ncode"],
+    ["duplicate", "duplicate"],
+    Array(65).fill("code"),
+    Array(1),
+  ]) {
+    assert.throws(() =>
+      registerScriptProvider(f.pi, {
+        namespace: "invalid",
+        available: () => true,
+        methods: { echo: { ...echo, errorCodes: invalid } },
+      }),
+    );
+    assert.equal(collectProviders(f.pi).length, 1);
+  }
+});
+
 test("selection is explicit and intersects host policy and caller ceiling", async (t) => {
   const f = await fixture(t, { echo });
   assert.equal(

@@ -1,6 +1,6 @@
 # Script
 
-Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with legacy [Code mode](../code-mode/README.md); it does not migrate Code mode, Monitor, Loop, or Session Watch. No production providers are bundled here yet.
+Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with legacy [Code mode](../code-mode/README.md); it does not migrate Code mode, Monitor, Loop, or Session Watch. [MCP Gateway](../mcp-gateway/API.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway.
 
 ## Usage
 
@@ -29,7 +29,9 @@ script({
 });
 ```
 
-This example requires a separately registered provider and host allowlist entry; registration alone grants no execution access. See [API.md](API.md) for provider registration and supported host execution.
+For gateway composition, allow `mcp` in global `allowedProviders`, select `providers: ["mcp"]`, and call `mcp.call(name, args)`. Discover names with `mcp_search` and inspect schemas with `mcp_describe` first; inspect the returned envelope's `isError` and actual content shape. See the [gateway example and failure contract](../mcp-gateway/API.md#script-provider).
+
+The fixture example requires a separately registered provider and host allowlist entry; registration alone grants no execution access. See [API.md](API.md) for provider registration and supported host execution.
 
 Supply an async JavaScript **body**, not a module. Explicitly return JSON (`null` for no output), and await every call. Missing, cyclic, non-finite, function, bigint, non-plain-object, accessor, symbol, non-enumerable, sparse-array and extra-array-property results reject. Captured intrinsics and descriptor snapshots avoid guest serialization hooks. Values have a 100-level nesting bound. `parallel(thunks)` bounds independent work and preserves order; arbitrary `Promise.all` calls also obey the host queue. There is no guest logging/progress API.
 
@@ -61,7 +63,7 @@ Host execution callers may further narrow providers and limits, never expand glo
 
 Only the explicit JSON result and bounded host accounting return. A guest catch cannot erase host-observed failures. A failed run may retain returned JSON; inspect status first. Traces retain call IDs, validated dispatched method names, states, durations and fixed failure codes, not arguments, intermediate values, source or exception text. Unknown/unselected method names never enter traces.
 
-Entering a handler is conservatively considered dispatch, even if that handler subsequently rejects during its own admission. Every dispatch sets `effectsMayPersist`; an unsuccessful run with dispatch sets `partialExecution`. Handler exceptions, invalid provider results, and dispatched work unsettled at termination set `outcomeUnknown`. A provider can explicitly report a known failure or unknown outcome without throwing. Unknown outcomes also force failed status. Cancellation is not rollback or proof of nonexecution. Successful writes may survive later failures. There are **no automatic retries, grants, approval polling, or replay**.
+Entering a handler is conservatively considered dispatch, even if that handler subsequently rejects during its own admission. Every dispatch sets `effectsMayPersist`; an unsuccessful run with dispatch sets `partialExecution`. Handler exceptions, invalid provider results, and dispatched work unsettled at termination set `outcomeUnknown`. A provider can explicitly report a known failure or unknown outcome without throwing, or reject with one of its declared public error codes. Declared codes remain in host traces even after a guest catch. Unknown outcomes also force failed status. Cancellation is not rollback or proof of nonexecution. Successful writes may survive later failures. There are **no automatic retries, grants, approval polling, or replay**.
 
 Cancellation/deadline closes admission, aborts handlers, kills the child with SIGKILL and waits for process close. Returning while calls remain queued/running fails. Late handler settlements cannot change the finalized receipt or dispatch queued calls. Providers must cooperate with cancellation; the runtime cannot forcibly stop arbitrary trusted host JavaScript or external effects. Removing a selected registration aborts its active executions. The agent tool cancels on shutdown and tree navigation; host callers own their execution signals and session lifetime.
 
