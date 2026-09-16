@@ -37,6 +37,8 @@ The companion's stock `serve-demo` launcher currently does not expose `--allowed
 
 Search when the exact tool name is unknown, and obtain its schema before invocation. Reuse already inspected names and schemas in the current context unless errors or evidence indicate they changed; host-side admission checks still apply.
 
+The optional [Script extension](../script/README.md) selects Gateway's `mcp` capability explicitly, after trusted global allowlisting, for bounded composition. Its [provider API and example](API.md#script-provider) preserve complete redacted envelopes and safe failure accounting without changing direct tools. Discover and inspect external schemas before composition; gateway permission is not user approval. Gateway remains usable without loading Script, and Script works provider-free without Gateway.
+
 The optional [code-mode extension](../code-mode/README.md) adds bounded JavaScript composition through the same active client, before presentation formatting. Its host-only [API](API.md) adds fresh catalog/schema admission without changing the three direct tools. Nested calls retain gateway restrictions and authorization but do not synthesize ordinary Pi tool hooks.
 
 The prompt contains at most **24 namespaces**, each with its tool count, plus fixed discovery guidance. It never injects the full tool inventory or schemas. Namespace names are bounded to 80 characters. Tool metadata is untrusted data, not instructions or authorization.

@@ -5,6 +5,7 @@
 ## Architecture
 
 - `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content, applies large-output spillover, and renders compact tool output.
+- `script-provider.ts` registers optional `web.search`/`web.fetch` through Script's supported API, adapting the same tool implementations to JSON and sticky failure accounting.
 - `config.ts` loads Tavily, Jina, and Exa API keys plus the Playwright toggle from Pi settings and environment variables.
 - `search.ts` implements provider fallback for search: Tavily, authenticated-or-keyless Exa MCP, then configured Jina Search.
 - `fetch.ts` implements generic extraction: local Readability, optional local Playwright, Jina Reader, then authenticated-or-keyless Exa MCP.
@@ -24,6 +25,16 @@ The surface is intentionally small:
 - `web_fetch` reads one URL and returns cleaned content or a GitHub clone overview.
 
 Do not merge search and fetch into a generic research workflow inside the extension. The agent should decide which search results to fetch and how to synthesize them.
+
+## Script boundary
+
+The factory registers one provider on the session event bus; availability requires a started session context. Shutdown clears context and disposes the registration, aborting selected executions. Script need not be loaded as an extension and Gateway is not imported. The provider delegates only the two explicit web operations, never arbitrary tool names. Existing tools remain registered independently.
+
+Reuse the authoritative tool execute functions so routing, formatting, safety, configured fallback and spill behavior cannot drift between surfaces. The adapter combines the execution signal with its absolute-deadline timer, checks cancellation before and after work, and generates spill IDs on the host. The JSON transport drops optional undefined fields. Existing `errorPreview` metadata, including PDF HTTP errors, sets sticky failure and conservative uncertainty: the tools' caught exceptions cannot certify no prior effects. Thrown/unfinished work is accounted by Script as unknown. No bridge-specific retry is permitted.
+
+Script accounts logical provider calls, not each configured fallback request. Dispatched work can create or reuse clones, perform lazy cleanup, and write spills even when the enclosing script later fails. Non-abortable DNS, parsing and filesystem operations may outlive termination; the adapter cannot forcibly interrupt trusted host JavaScript. A returned path never becomes guest filesystem authority, but host cache reads retain their existing trust/symlink limitations. Preserve those distinctions in documentation.
+
+Actual permissioned-child tests cover direct/bridge envelope equivalence, Gateway-free web calls, MCP-to-web-to-MCP result dependencies, selection/argument denial, fallback, URL/DNS/redirect safety, errors, cached blobs, spills, cancellation/deadline/disposal, unfinished calls and call ceilings. Real-loader tests exercise both factory orders and web-access without the Script tool. These fixtures do not qualify live services or browser installations.
 
 ## Configuration lifecycle
 

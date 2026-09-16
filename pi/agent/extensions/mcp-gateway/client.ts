@@ -150,6 +150,10 @@ export class GatewayClient {
     this.lifetime.abort();
     this.cached = undefined;
   }
+  /** Host-only authority lifetime; reconfiguration/close revokes selected script runs. */
+  getLifetimeSignal(): AbortSignal {
+    return this.lifetime.signal;
+  }
   getReadOnly(): boolean {
     return this.config.readOnly;
   }
