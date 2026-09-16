@@ -490,6 +490,10 @@ test("Monitor registration and terminal accounting persist atomically through th
     id: otherId,
     createdAt: now,
     deadline: now + prepared.ci.watcher.timeoutMs,
+    cycleMs: prepared.ci.watcher.cycleMs,
+    recurring: false,
+    maxWakes: 1,
+    status: "active",
   };
   await f.call({ action: "ci", operation: "attach", pr, head, receipt });
   assert.equal((await f.status()).monitor.watcher.id, otherId);
@@ -501,7 +505,13 @@ test("Monitor registration and terminal accounting persist atomically through th
       operation: "reconcile",
       pr,
       head,
-      receipt: { ...receipt, id: ticketId, state: "condition", endedAt: now },
+      receipt: {
+        ...receipt,
+        id: ticketId,
+        status: "finished",
+        lastAttention: { reason: "condition" },
+        endedAt: now,
+      },
       reference: "wrong watcher",
     },
   ]) {
@@ -509,14 +519,19 @@ test("Monitor registration and terminal accounting persist atomically through th
     assert.deepEqual(await readFile(f.file), bytes);
   }
   now = 90000;
-  const terminal = { ...receipt, state: "condition", endedAt: 12000 };
+  const terminal = {
+    ...receipt,
+    status: "finished",
+    lastAttention: { reason: "condition" },
+    endedAt: 12000,
+  };
   const done = await f.call({
     action: "ci",
     operation: "reconcile",
     pr,
     head,
     receipt: terminal,
-    reference: "Monitor get host receipt",
+    reference: "Background get host receipt",
   });
   assert.equal(done.ci.waitUsedMs, 11000);
   assert.equal(done.ci.waitRemainingMs, 1789000);

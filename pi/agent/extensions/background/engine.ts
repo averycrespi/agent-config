@@ -235,6 +235,7 @@ export class BackgroundEngine {
     }
   }
   private stopObservation(j: Job) {
+    j.r.endedAt ??= this.clock.now();
     j.controller.abort();
     j.execution?.abort();
     j.subs.forEach((s) => {

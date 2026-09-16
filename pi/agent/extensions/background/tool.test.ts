@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { theme } from "../session-watch/test-support.ts";
+import { theme } from "./test-support.ts";
 import type { Receipt } from "./contract.ts";
 import {
   renderers,

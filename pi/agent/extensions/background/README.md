@@ -2,7 +2,7 @@
 
 Observe conditions or continue an explicitly authorized task without model turns while waiting. Background owns host timers and typed subscriptions; each optional evaluator runs in a fresh [Script](../script/README.md) child. It is a session-bound supervisor, not a persistent JavaScript process, detached service, completion judge, or prompt-cache guarantee.
 
-[Loop](../loop/README.md), [Monitor](../monitor/README.md), and [Session Watch](../session-watch/README.md) remain operational during qualification. Existing callers are not migrated. Never register the same job in both systems.
+Background is the repository-supported observer and continuation primitive. See the [retirement inventory and safe transition guide](../../../docs/migrations.md#observer-retirement) before replacing historical jobs. Never register two schedulers for the same work.
 
 ## Tool and bounds
 
@@ -47,7 +47,7 @@ A unique wake ID is matched only against a positive custom `message_start` event
 
 First inspect `script describe` and `background list` for real provider schemas. Examples use fictional domain calls where noted; substitute discovered names and validate their actual envelopes.
 
-### Polling (Monitor equivalent)
+### Polling
 
 ```js
 background({
@@ -69,7 +69,7 @@ background({
 });
 ```
 
-### Cross-session events (Session Watch equivalent)
+### Cross-session events
 
 With `sessions` permitted in Script's global allowlist, use Script's `sessions.list()` to discover exact incarnation UUIDs. Both sessions must load Background. Discovery does not launch/reload sessions or read transcripts. Replace the illustrative UUID below with a discovered one.
 
@@ -95,9 +95,11 @@ background({
 });
 ```
 
-The same provider accepts `"local"` for explicit current-incarnation observation. The safe inventory mirrors Session Watch's built-in agent hooks and selected Ask User/Monitor/Loop transitions; it excludes raw bus bindings, transcripts, questions/options/answers, credentials, and unrestricted session control. See the [event inventory](../session-watch/README.md#events-and-meaning). Background uses a separate same-user Unix socket directory, `/tmp/pi-background-events-<uid>/` (canonical `/private/tmp` on macOS), so legacy discovery and job ownership remain separate. Mode-0700 directory, mode-0600 sockets, exact incarnation/nonce and increasing sequence checks apply. Disconnect/replacement/invalid identity fails coverage without reconnect/replay. This is cooperative same-user isolation, not hostile-process authentication.
+The same provider accepts `"local"` for current-incarnation observation. Selectable events are `agent_start`, `agent_settled`, `session_shutdown`, `ask-user:input_requested` (request UUID only), and `ask-user:input_resolved` (UUID plus answered/cancelled/failed). Built-in hooks carry no content. Background bookkeeping events are deliberately excluded to avoid feedback loops. Settlement can occur while a child CI job is still pending; reconcile its checkpoint and external state, never infer task completion. Input attention grants no permission to answer for the user.
 
-### Settlement-based continuation (Loop equivalent)
+Background owns its same-user Unix transport at `/tmp/pi-background-events-<uid>/` (canonical `/private/tmp` on macOS). Mode-0700 directory, mode-0600 sockets, exact incarnation/nonce and increasing sequence checks apply. Coverage begins when target filters are installed before ACK; earlier events are excluded. Disconnect/replacement/invalid identity fails coverage without reconnect/replay. No transcripts, questions/options/answers, credentials, raw bus bindings or session control are exposed. This is cooperative same-user isolation, not hostile-process authentication. Discovery probes at most 128 entries with four probes in flight; transport allows 16 incoming sockets, a two-second handshake and an 8 KiB receive buffer. It never deletes stale/unrelated files.
+
+### Settlement-based continuation
 
 ```js
 background({
@@ -113,6 +115,8 @@ background({
   max_wakes: 10,
 });
 ```
+
+Before requesting user input, cancel the continuation job and reconcile its receipt; do not leave recurrence waking while waiting for a decision. There is no yield/resume/extend. After real user input, start a fresh immutable registration only within existing authority and caller-retained remaining lifetime/wake allowance. Cancellation cannot retract a Pi-owned follow-up. Count attempted/unknown handoffs conservatively, never reset consumed workflow budgets. The first delay begins on admission; only subsequent delays follow positively correlated settlement. Evaluators return wait/wake, never terminate a recurring job; cancel when no useful authorized work remains.
 
 ### Compound polling and events with explicit state
 
@@ -152,6 +156,8 @@ Only explicitly authorized monitoring/continuation may be registered. Repeated p
 No Background settings or environment overrides exist; ceilings are fixed. Provider policy and evaluator limits come from [Script's global/environment configuration](../script/README.md#policy-and-configuration), never project settings. Enable only needed namespaces, for example `allowedProviders: ["sessions", "mcp"]`; editing/installing configuration and reloading a live session require separate authorization. Invalid Script policy fails closed. Event registration alone grants no permission. The optional session provider may be unavailable on unsupported/unsafe transports; timer-only jobs still work.
 
 Hard bounds: 4 occupied jobs (including registration, cleanup and pending attention), 2 concurrent evaluations, 32 event triggers per job, 10,000 evaluations per job, 8 provider calls and 2 concurrent calls per evaluation, and 30 seconds per evaluation tightened by Script. Script's source/IPC/output and isolation limits still apply. At most 32 receipts are retained/restored, examining 4096 ancestors. Source is released when observation ends. Accounting retains the latest bounded trace plus cumulative counts/possible-effect flags, not an unbounded call log. Inspection output is capped at 48,000 bytes and fails rather than spilling/replaying when oversized.
+
+Receipts include optional `endedAt`, the first host observation-stop timestamp. Later queued delivery or cancellation of pending attention does not move it. Active receipts have no end time. Older/restored interrupted receipts may lack it; callers must charge unknown intervals conservatively rather than infer an end from a deadline or notification. This supports caller-owned cumulative allowances without changing attention semantics.
 
 Jobs belong to the originating session branch. Shutdown, reload, replacement and reached before-tree navigation invalidate observations and suppress extension-owned pending handoffs. Before-tree invalidation is conservative even if navigation is later canceled; no history is appended during tree preparation. Destination history restores **receipts only**, never subscriptions, children or notifications. Stale callbacks cannot wake another context. No work continues while Pi is closed, and timers/sockets do not keep a print/JSON process alive.
 

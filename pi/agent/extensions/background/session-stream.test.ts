@@ -7,7 +7,7 @@ import { once } from "node:events";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Bridge, subscribeEvents } from "./transport.ts";
+import { Bridge, subscribeEvents } from "./session-transport.ts";
 
 test("continuous subscriptions retain ordered events after ACK and report disconnect", async (t) => {
   const root = await mkdtemp(join(realpathSync("/tmp"), "pi-stream-"));
@@ -46,7 +46,7 @@ test(
   async (t) => {
     const root = await mkdtemp(join(realpathSync("/tmp"), "pi-stream-child-"));
     const child = fork(
-      new URL("./fixture-worker.ts", import.meta.url),
+      new URL("./session-fixture-worker.ts", import.meta.url),
       [root],
       {
         execArgv: ["--import", "tsx"],
@@ -68,7 +68,9 @@ test(
     const call = async (command: string) => {
       const response = once(child, "message");
       child.send({ command, id: randomUUID() });
-      await response;
+      const [result] = await response;
+      assert.notEqual(result.error, true);
+      return result;
     };
     await call("ask");
     const seen: any[] = [];
@@ -82,7 +84,13 @@ test(
       () => lost++,
     );
     await call("ask");
-    await call("settled");
+    await call("pending");
+    const childState = await call("settled");
+    assert.deepEqual(
+      childState.jobs,
+      ["active"],
+      "settlement is not CI completion",
+    );
     await new Promise((r) => setTimeout(r, 30));
     assert.deepEqual(
       seen.map((n) => n.name),
