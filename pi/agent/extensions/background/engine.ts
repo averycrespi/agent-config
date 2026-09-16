@@ -479,8 +479,11 @@ export class BackgroundEngine {
       )
       .then(
         (result) => {
-          const { json: _json, ...accounting } = result;
-          j.r.accounting = accounting;
+          const { json: _json, code, ...accounting } = result;
+          j.r.accounting = {
+            ...accounting,
+            ...(code !== undefined ? { code } : {}),
+          };
           j.r.calls += result.traces.length;
           j.r.effectsMayPersist ||= result.effectsMayPersist;
           j.r.outcomeUnknown ||= result.outcomeUnknown;

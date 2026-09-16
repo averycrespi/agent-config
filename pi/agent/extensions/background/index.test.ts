@@ -56,7 +56,7 @@ async function harness(t: any, mode = "tui") {
       entries.push({
         type: "custom",
         customType,
-        data: JSON.parse(JSON.stringify(data)),
+        data,
         id: randomUUID(),
         parentId: entries.at(-1)?.id,
       }),
@@ -205,6 +205,58 @@ test("cancellation/navigation suppress pending attention and stale callbacks; he
       value(await h.call({ action: "get", id })).attention.disposition,
       "suppressed",
     );
+  }
+});
+
+test("successful Script receipts survive in-memory reload without replay", async (t) => {
+  for (const decision of ["wake", "wait"]) {
+    const h = await harness(t, "json");
+    const started = value(
+      await h.call({
+        action: "start",
+        name: "reload",
+        message: "Inspect",
+        providers: [],
+        interval_ms: 1000,
+        cycle_timeout_ms: 1000,
+        lifetime_ms: 10000,
+        max_wakes: 1,
+        source: `return {decision: '${decision}', evidence: {checked: true}};`,
+      }),
+    );
+    let latest: any;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      latest = value(await h.call({ action: "get", id: started.id }));
+      if (latest.status === "finished" && !latest.inFlight) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(latest.status, "finished");
+    assert.equal(
+      latest.attention.reason,
+      decision === "wake" ? "condition" : "timeout",
+    );
+    const saved = h.entries
+      .filter((e: any) => e.data.id === started.id)
+      .at(-1).data;
+    assert.equal(Object.hasOwn(saved.accounting, "code"), false);
+    assert.ok(parseReceipt(saved));
+    await h.idle();
+    for (let attempt = 0; !h.messages.length && attempt < 100; attempt++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(h.messages.length, 1);
+    await h.hook("message_start", {
+      message: { role: "custom", ...h.messages[0].message },
+    });
+    await h.idle();
+    const before = value(await h.call({ action: "get", id: started.id }));
+    assert.equal(before.wakes, 1);
+    await h.hook("session_shutdown");
+    await h.hook("session_start");
+    const after = value(await h.call({ action: "get", id: started.id }));
+    assert.deepEqual(after, before);
+    await h.idle();
+    await pause();
+    assert.equal(h.messages.length, 1);
   }
 });
 
