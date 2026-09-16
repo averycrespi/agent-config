@@ -37,8 +37,6 @@ The companion's stock `serve-demo` launcher currently does not expose `--allowed
 
 Search when the exact tool name is unknown, and obtain its schema before invocation. Reuse already inspected names and schemas in the current context unless errors or evidence indicate they changed; host-side admission checks still apply.
 
-The optional [Script extension](../script/README.md) selects Gateway's `mcp` capability explicitly, after trusted global allowlisting, for bounded composition. Its [provider API and example](API.md#script-provider) preserve complete redacted envelopes and safe failure accounting without changing direct tools. Discover and inspect external schemas before composition; gateway permission is not user approval. Gateway remains usable without loading Script, and Script works provider-free without Gateway.
-
 The optional [code-mode extension](../code-mode/README.md) adds bounded JavaScript composition through the same active client, before presentation formatting. Its host-only [API](API.md) adds fresh catalog/schema admission without changing the three direct tools. Nested calls retain gateway restrictions and authorization but do not synthesize ordinary Pi tool hooks.
 
 The prompt contains at most **24 namespaces**, each with its tool count, plus fixed discovery guidance. It never injects the full tool inventory or schemas. Namespace names are bounded to 80 characters. Tool metadata is untrusted data, not instructions or authorization.
@@ -46,6 +44,20 @@ The prompt contains at most **24 namespaces**, each with its tool count, plus fi
 Discovery uses modern stateless HTTP MCP **2026-07-28**, without a long-lived SDK session. There is no legacy negotiation or automatic downgrade. Startup, each agent start, search, and describe refresh the paginated catalog. The guard uses only the most recently completed traversal. Failed/incomplete discovery drops the cache. A stale cursor restarts discovery once, within the same deadline; other discovery failures are surfaced without retry.
 
 Each response is bounded to **16 MiB**; a discovery operation shares **32 MiB**, **100 pages**, and **10,000 descriptors** across both attempts, including discarded pages and JSON error bodies. Byte budgets are enforced while consuming the response, before JSON parsing; the chunk that crosses a limit is rejected and the remaining body cancelled. Repeated cursors, duplicate names, malformed descriptors, and over-limit catalogs fail explicitly rather than returning apparent completeness.
+
+## Script provider
+
+Compose discovered external calls through `mcp.call(name, args)` using the optional [Script extension](../script/README.md). Enable `mcp` in Script's global `allowedProviders`, then explicitly select `providers: ["mcp"]`. Direct Gateway tools work without loading Script; registration and selection are not permission or user approval.
+
+The [provider contract](API.md#script-provider) is organized as:
+
+- [Availability](API.md#availability): activation, installation, and allowlisting.
+- [Methods](API.md#methods): signatures and complete redacted MCP result envelopes.
+- [Example](API.md#example): valid Script discovery and minimal execution; inspect external names/schemas before calling them.
+- [Permissions and effects](API.md#permissions-and-effects): gateway admission, authorization, and durable external effects.
+- [Failure and lifecycle](API.md#failure-and-lifecycle): sticky failures, uncertainty, cancellation, and deadlines.
+
+Runtime discovery supplies authoritative argument schemas. Script's documentation owns shared execution rules; the linked contract owns MCP-specific semantics.
 
 ## Configuration
 

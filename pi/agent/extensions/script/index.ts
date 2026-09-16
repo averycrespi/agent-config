@@ -1,10 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerConfigCommand } from "../_shared/config.ts";
-import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { describeScriptProviders, executeScript, MAX_LIMITS } from "./api.ts";
 import { loadScriptConfig } from "./config.ts";
-import { PARAMETERS, presentRun, renderers } from "./tool.ts";
-import { jsonSnapshot, MAX_OUTPUT_BYTES } from "./value.ts";
+import {
+  PARAMETERS,
+  presentRun,
+  presentDiscovery,
+  discoveryFailure,
+  renderers,
+} from "./tool.ts";
 
 export default function (pi: ExtensionAPI) {
   let lifetime = new AbortController();
@@ -59,7 +63,7 @@ export default function (pi: ExtensionAPI) {
       const task = (async () => {
         if (params.action === "describe") {
           try {
-            const json = jsonSnapshot(
+            return presentDiscovery(
               await describeScriptProviders(
                 pi,
                 ctx.cwd,
@@ -67,21 +71,9 @@ export default function (pi: ExtensionAPI) {
                 undefined,
                 combined,
               ),
-              MAX_OUTPUT_BYTES,
             );
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: wrapUntrustedContent("SCRIPT PROVIDER SCHEMAS", json),
-                },
-              ],
-              details: { calls: 0 },
-            };
-          } catch {
-            throw new Error(
-              "Provider discovery unavailable or exceeds output limit; select fewer providers and inspect /script-config.",
-            );
+          } catch (error) {
+            return discoveryFailure(error, combined.aborted);
           }
         }
         if (params.action !== "run") throw new Error("invalid script action");
