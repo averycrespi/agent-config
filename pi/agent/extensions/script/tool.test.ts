@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture, echo } from "./fixture.ts";
-import { renderers } from "./tool.ts";
+import { renderers, presentRun, discoveryFailure } from "./tool.ts";
+import { registerScriptProvider } from "./api.ts";
 import { _spawn } from "./runtime.ts";
 
 test("real loader runs without gateway, coexists with code, discovers schemas, and cancels on shutdown", async (t) => {
@@ -69,6 +70,294 @@ test("real loader runs without gateway, coexists with code, discovers schemas, a
   assert.equal(((await pending).details as any)?.status, "cancelled");
 });
 
+const plainTheme: any = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+};
+const renderResult = (
+  result: any,
+  args: any = {},
+  expanded = false,
+  isError = false,
+) =>
+  renderers.renderResult!(result, { expanded, isPartial: false }, plainTheme, {
+    args,
+    isError,
+  } as any)
+    .render(200)
+    .join("\n");
+
+test("discovery reports actionable categories and bounded inventories through the real loader", async (t) => {
+  const f = await fixture(t, { echo });
+  const loaded = await discoverAndLoadExtensions(
+    [fileURLToPath(new URL("./index.ts", import.meta.url))],
+    f.dir,
+    f.dir,
+    f.pi.events,
+  );
+  assert.deepEqual(loaded.errors, []);
+  const extension = loaded.extensions[0];
+  const tool = extension.tools.get("script")!.definition;
+  const args = {
+    action: "describe",
+    description: "Inspect providers",
+    providers: ["fixture"],
+  };
+  const invoke = (providers = args.providers, signal?: AbortSignal) =>
+    tool.execute("discovery", { ...args, providers }, signal, undefined, {
+      cwd: f.dir,
+    } as any);
+  const success = await invoke();
+  assert.match(
+    renderResult(success, args),
+    /completed · 1 provider · 1 method/,
+  );
+  assert.match(renderResult(success, args, true), /fixture\.echo/);
+  assert.doesNotMatch(renderResult(success, args), /0 calls|fixture\.echo/);
+  const badCallArgs = {
+    ...args,
+    action: "run",
+    source:
+      'try { await fixture.echo("SECRET_ARGUMENT"); } catch {} return null;',
+  };
+  const badCall = await tool.execute(
+    "bad-call",
+    badCallArgs,
+    undefined,
+    undefined,
+    { cwd: f.dir } as any,
+  );
+  assert.match(
+    renderResult(badCall, badCallArgs),
+    /one or more provider calls failed/,
+  );
+  assert.match(renderResult(badCall, badCallArgs, true), /invalid_arguments/);
+  assert.match(
+    renderResult(badCall, badCallArgs, true),
+    /positional-array schema/,
+  );
+  assert.doesNotMatch(JSON.stringify(badCall), /SECRET_ARGUMENT/);
+
+  await f.config({ allowedProviders: [] });
+  const denied = await invoke();
+  assert.equal((denied.details as any).code, "capability_denied");
+  assert.match(JSON.stringify(denied.content), /allowedProviders/);
+  assert.match(
+    renderResult(denied, args),
+    /blocked · provider selection denied by Script policy/,
+  );
+  assert.doesNotMatch(JSON.stringify(denied), /select fewer|exceeds output/);
+  const hook = extension.handlers.get("tool_result")![0] as any;
+  assert.deepEqual(
+    await hook({ toolName: "script", details: denied.details }, {}),
+    { isError: true },
+  );
+  const empty = await invoke([]);
+  assert.match(
+    renderResult(empty, { ...args, providers: [] }),
+    /no permitted providers discovered/,
+  );
+
+  await f.config({ allowedProviders: ["fixture"] });
+  f.unavailable();
+  const unavailable = await invoke();
+  assert.equal((unavailable.details as any).code, "capability_unavailable");
+  assert.match(JSON.stringify(unavailable.content), /loading and readiness/);
+  await f.config({ allowedProviders: "*" });
+  assert.equal(((await invoke()).details as any).code, "invalid_config");
+  const controller = new AbortController();
+  controller.abort(new Error("SECRET_ABORT"));
+  const cancelled = await invoke([], controller.signal);
+  assert.equal((cancelled.details as any).status, "cancelled");
+  assert.doesNotMatch(JSON.stringify(cancelled), /SECRET_ABORT/);
+
+  let calls = 0;
+  const dispose = registerScriptProvider(f.pi, {
+    namespace: "large",
+    available: () => true,
+    methods: Object.fromEntries(
+      Array.from({ length: 32 }, (_, i) => [
+        `method${i}`,
+        {
+          description: "Inspect a fixture value",
+          inputSchema: {
+            type: "array",
+            maxItems: 0,
+            description: "x".repeat(1000),
+          },
+          handler: async () => {
+            calls++;
+            return { value: null };
+          },
+        },
+      ]),
+    ),
+  });
+  t.after(dispose);
+  await f.config({ allowedProviders: ["large"] });
+  const oversized = await invoke(["large"]);
+  assert.equal((oversized.details as any).code, "output_limit");
+  assert.match(JSON.stringify(oversized.content), /Select fewer providers/);
+  assert.doesNotMatch(JSON.stringify(oversized), /xxxx/);
+  assert.equal(calls, 0);
+});
+
+test("unknown discovery exceptions are suppressed rather than used as recovery guidance", () => {
+  const result = discoveryFailure(
+    new Error("SECRET_DISCOVERY_EXCEPTION"),
+    false,
+  );
+  assert.equal(result.details.code, "discovery_unavailable");
+  assert.doesNotMatch(JSON.stringify(result), /SECRET_DISCOVERY_EXCEPTION/);
+});
+
+test("rows distinguish computation, selection, call outcomes, and framework errors", () => {
+  const run = {
+    status: "success" as const,
+    traces: [],
+    effectsMayPersist: false,
+    partialExecution: false,
+    outcomeUnknown: false,
+    json: "null",
+  };
+  const args = { action: "run", description: "Compute totals", providers: [] };
+  const header = (input: any) =>
+    renderers.renderCall!(input, plainTheme, {} as any)
+      .render(200)
+      .join("\n");
+  assert.match(header(args), /selected: none.*Compute totals/);
+  assert.match(
+    header({ ...args, providers: ["mcp", "web"] }),
+    /selected: mcp, web/,
+  );
+  assert.match(header({ ...args, action: "describe" }), /providers: permitted/);
+  assert.match(header({ description: "streaming" }), /providers: pending/);
+  assert.match(
+    header({ ...args, providers: ["first", "second", "third", "fourth"] }),
+    /first, second, third, \+1 more/,
+  );
+  assert.match(
+    renderResult(
+      presentRun(run),
+      { ...args, providers: ["first", "second", "third", "fourth"] },
+      true,
+    ),
+    /selected provider: fourth/,
+  );
+  assert.match(
+    renderResult(presentRun(run), args),
+    /completed · computation only/,
+  );
+  assert.match(
+    renderResult(presentRun(run), { ...args, providers: ["mcp"] }),
+    /completed · no provider calls/,
+  );
+  assert.equal(
+    renderResult(
+      { content: [{ type: "text", text: "SECRET_FRAMEWORK" }] },
+      args,
+      true,
+      true,
+    ),
+    "failed · tool execution error",
+  );
+  const trace = {
+    id: 1,
+    tool: "web.fetch",
+    state: "succeeded" as const,
+    dispatched: true,
+    startedMs: 0,
+    durationMs: 5,
+    outcomeUnknown: false,
+  };
+  assert.match(
+    renderResult(
+      presentRun({ ...run, traces: [trace], effectsMayPersist: true }),
+      args,
+    ),
+    /1 call succeeded/,
+  );
+  const failed = presentRun({
+    ...run,
+    status: "failed",
+    code: "output_limit",
+    traces: [trace],
+    effectsMayPersist: true,
+    partialExecution: true,
+    outcomeUnknown: true,
+  });
+  const collapsed = renderResult(failed, args);
+  assert.match(collapsed, /failed · returned JSON exceeds 24,000 bytes/);
+  assert.match(collapsed, /Outcome unknown; do not automatically retry/);
+  assert.match(collapsed, /Partial execution; effects may persist/);
+  assert.doesNotMatch(collapsed, /web.fetch|Reduce the returned JSON/);
+  const expanded = renderResult(failed, args, true);
+  assert.match(expanded, /web.fetch · succeeded/);
+  assert.match(expanded, /Reduce the returned JSON/);
+  assert.match(JSON.stringify(failed.content), /Reconcile provider effects/);
+  assert.match(
+    renderResult(
+      presentRun({ ...run, status: "timeout", code: "deadline_exceeded" }),
+      args,
+    ),
+    /timed out/,
+  );
+  assert.match(
+    renderResult(
+      presentRun({ ...run, status: "cancelled", code: "cancelled" }),
+      args,
+    ),
+    /cancelled/,
+  );
+});
+
+test("every fixed core run failure has actionable, payload-free expanded guidance", () => {
+  for (const [code, guidance] of [
+    ["capability_denied", "global allowedProviders"],
+    ["capability_unavailable", "loading and readiness"],
+    ["invalid_config", "SCRIPT_* environment"],
+    ["invalid_selection", "unique provider namespace"],
+    ["provider_conflict", "duplicate Script namespaces"],
+    ["invalid_arguments", "positional-array schema"],
+    ["invalid_source", "at most 256 KiB"],
+    ["executor_unavailable", "extension installation"],
+    ["sandbox_error", "host process resources"],
+    ["sandbox_exit", "host process resource limits"],
+    ["ipc_error", "host process health"],
+    ["invalid_ipc", "version compatibility"],
+    ["invalid_result", "Explicitly return plain JSON"],
+    ["script_error", "Inspect the JavaScript body"],
+    ["call_limit", "reduce attempted calls"],
+    ["unfinished_calls", "Await every provider call"],
+    ["isolation_unavailable", "never remove permission flags"],
+    ["nested_call_failed", "guest catches do not erase"],
+    ["provider_error", "provider documentation"],
+    ["deadline_exceeded", "provider deadlines"],
+    ["cancelled", "Cancellation is not rollback"],
+    ["output_limit", "Reduce the returned JSON"],
+    ["ipc_limit", "provider output limits"],
+  ]) {
+    const result = presentRun({
+      status: "failed",
+      code,
+      traces: [],
+      effectsMayPersist: false,
+      partialExecution: false,
+      outcomeUnknown: false,
+      json: '"SECRET_RETURN"',
+    });
+    const rendered = renderResult(
+      result,
+      { action: "run", providers: [] },
+      true,
+    );
+    assert.ok(rendered.includes(guidance), code);
+    assert.ok(rendered.includes(`code: ${code}`), code);
+    assert.ok(JSON.stringify(result.content).includes(guidance), code);
+    assert.doesNotMatch(rendered, /SECRET_RETURN/);
+  }
+});
+
 test("renderers are bounded, payload-free, and distinguish framework/semantic failures", () => {
   const colors: string[] = [];
   const theme: any = {
@@ -83,11 +372,24 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
     {
       description: "read\x1b]52;c;evil\x07\nitems",
       source: "SECRET_SOURCE",
+      providers: ["web", "hostile\u001b[31m\nprovider"],
     } as any,
     theme,
     ctx,
   );
   assert.doesNotMatch(header.render(100).join(), /SECRET|\x1b|\x07|\n/);
+  assert.match(header.render(200).join(), /selected: web, \(invalid\)/);
+  for (const width of [0, 1, 8, 40, 100])
+    for (const line of header.render(width))
+      assert.ok(visibleWidth(line) <= width);
+  const reused = renderers.renderCall!(
+    { action: "describe", description: "Inspect", providers: [] },
+    theme,
+    { ...ctx, lastComponent: header },
+  );
+  assert.equal(reused, header);
+  assert.match(reused.render(200).join(), /providers: permitted/);
+  assert.doesNotMatch(reused.render(200).join(), /selected: web/);
   for (const state of [
     { isPartial: true, error: false, semantic: false, color: "warning" },
     { isPartial: false, error: false, semantic: false, color: "success" },

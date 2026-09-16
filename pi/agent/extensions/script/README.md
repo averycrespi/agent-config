@@ -35,6 +35,14 @@ The fixture example requires a separately registered provider and host allowlist
 
 Supply an async JavaScript **body**, not a module. Explicitly return JSON (`null` for no output), and await every call. Missing, cyclic, non-finite, function, bigint, non-plain-object, accessor, symbol, non-enumerable, sparse-array and extra-array-property results reject. Captured intrinsics and descriptor snapshots avoid guest serialization hooks. Values have a 100-level nesting bound. `parallel(thunks)` bounds independent work and preserves order; arbitrary `Promise.all` calls also obey the host queue. There is no guest logging/progress API.
 
+## Tool display
+
+The call row shows the action, **selected providers**, and nonsecret description. Selection is a request, not proof of permission, availability, or user approval. `run` with `[]` shows `selected: none`; `describe` with `[]` shows `providers: permitted`. More than three selected names use a `+N more` suffix; expand for the full selection.
+
+Collapsed results distinguish computation-only success, runs with no provider calls, successful call counts, and discovery provider/method counts. Empty discovery says no permitted providers were discovered; it does not imply that no extensions are installed. Failures show a safe reason rather than an unhelpful zero-call count. Cancellation, timeout, partial execution, and unknown outcomes remain distinct, with effect warnings visible even when collapsed.
+
+Expand for discovered method names, attempted/succeeded call counts, traces, fixed error codes, and recovery guidance. Raw source, arguments, returned JSON, schemas, intermediate values, and exception text never appear in custom tool rows; explicit JSON and schemas still appear in the framed model-facing result. Labels and detail lines are sanitized and truncated to terminal width.
+
 ## Policy and configuration
 
 Only global `extension:script` settings and environment overrides apply, never project settings. Invalid settings, malformed/unreadable global JSON (other than a missing file), invalid provider lists or limits disable execution rather than relaxing policy. Settings are sampled on every execution/discovery; environment values take precedence. `/script-config` displays effective policy and limits.
@@ -79,11 +87,28 @@ This is **not a hostile multi-tenant OS sandbox**. There are no CPU/memory quota
 
 No retained logs, temporary source files or result spills are written. Pi session history retains submitted arguments and returned output/accounting. Descriptions are display-only: keep them nonsecret. Renderers sanitize terminal controls and bound labels, but generic secret detection is not possible. Providers must exclude credentials from public schemas, descriptions, and values delivered to the guest. Explicitly returning sensitive data includes it in history; the runtime is not a general secret filter.
 
-- `capability_denied`: check the global allowlist and caller ceiling.
+- `capability_denied`: check the global allowlist and caller ceiling; policy changes require authorization.
+- `invalid_selection`: supply explicit, unique provider names, or `[]` for pure computation.
+- `provider_conflict`: inspect duplicate namespace registrations; do not rely on load order.
 - `capability_unavailable`: verify registration and provider readiness; no fallback provider is selected.
 - `invalid_config`: inspect `/script-config` and global settings.
+- `output_limit`: for discovery, select fewer providers; for execution, reduce the explicit returned JSON. Neither path spills oversized output, and execution must not be automatically replayed.
+- `discovery_unavailable`: an unclassified discovery failure; inspect provider loading/readiness and `/script-config`. Raw exception details are suppressed.
 - `invalid_arguments`: inspect the selected method's positional-array schema.
+- `invalid_source`: supply a nonblank async JavaScript body in `source`, at most 256 KiB, not a module.
+- `invalid_result`: explicitly return strict JSON or `null`; accessors and non-JSON values reject.
+- `script_error`: inspect the body and discovered method schemas; raw guest exceptions are suppressed.
+- `call_limit`: reduce attempted calls; queued calls also consume the limit.
+- `unfinished_calls`: await every provider call before returning.
+- `deadline_exceeded`, `cancelled`: inspect configured/provider deadlines or the cancellation cause; neither proves nonexecution.
+- `nested_call_failed`: inspect individual failed-call codes; guest catches do not erase host failures.
 - `provider_error`, partial execution or unknown outcome: reconcile provider effects before any further action.
 - `isolation_unavailable`: use a Node version with the required permission flags; never remove the flags to bypass this failure.
+- `executor_unavailable`: inspect the extension installation and qualified Node version; setup exceptions are suppressed.
+- `sandbox_error`, `sandbox_exit`: inspect host process health/resource limits and the runtime installation; child output is intentionally suppressed.
+- `ipc_error`, `invalid_ipc`: inspect runtime installation/version compatibility and host process health; broken or malformed IPC is not exposed or automatically replayed.
+- `ipc_limit`: reduce provider arguments, intermediate results, or final JSON and inspect provider output limits.
+
+After any dispatched failure, reconcile provider effects before further action. Recovery guidance never authorizes automatic replay.
 
 No persistence/resume, subscriptions, background jobs, model continuation or session control is added. Future supervisors may call the host API but must own scheduling and lifetime separately. See [DESIGN.md](DESIGN.md) for invariants and fixture coverage.

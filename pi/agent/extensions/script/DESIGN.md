@@ -12,6 +12,7 @@ Script provides disposable computation with a narrow provider boundary. It is no
 - `sandbox-source.ts`: trusted stdin bootstrap and separate VM setup; namespaced guest wrappers communicate through strings only. Captured intrinsics snapshot final JSON without guest serialization hooks.
 - `value.ts`: strict host JSON snapshots and fixed byte bounds.
 - `index.ts` / `tool.ts`: tool registration, discovery, bounded framed output, safe compact rendering and cancellation of owned runs on shutdown/navigation.
+- `diagnostics.ts`: fixed public error summaries and recovery guidance, with a closed allowlist for discovery exception categories.
 - `fixture.ts` and colocated tests: in-process trusted provider plus real permissioned children. No live credentials or external services are required.
 
 ## Authority and identity
@@ -35,6 +36,10 @@ The child has no inherited environment or privileged descriptors beyond stdin/IP
 Only explicit JSON enters final output. A bounded host receipt accompanies it, including failures even after guest catches. Schema/handler/guest errors never expose raw exception text. Unknown arbitrary method names remain `(not dispatched)`; only registered ASCII names can become trace labels. Child stdout/stderr are ignored. There are no argument previews, result previews, guest logs, source files, persistent interpreters, retained diagnostics or automatic spill/replay.
 
 The 24,000-byte result limit is deliberately smaller than IPC bounds and leaves room for bounded accounting in tool context. Oversized output fails rather than persisting data. Host API discovery returns copied definitions; agent discovery fails when its output is oversized. Providers must keep credentials out of public definitions and guest values. Explicit output is not secret-filtered; a generic core cannot know all provider credentials. Renderers show sanitized display labels and host metadata only, never source or returned payloads.
+
+Discovery failures retain only known core categories (or `discovery_unavailable`), plus cancellation derived from the owned signal. They return semantic-error details through the same `tool_result` promotion as execution failures; raw exceptions never enter content or renderers. Oversized discovery is distinct from oversized explicit JSON, so guidance does not confuse narrowing discovery with replaying execution.
+
+Rendering consumes host accounting and `context.args`, not source or result payloads. Selection labels describe the request, not effective authority. Discovery details retain only namespace/method names and counts, not duplicate schemas. Expanded rows show bounded inventories, traces, and static guidance; collapsed rows prioritize outcomes and partial/unknown warnings over zero-call accounting. No renderer performs discovery, grants access, or adds live-session state.
 
 ## Verification and change guidance
 
