@@ -48,6 +48,46 @@ Routes by URL type:
 
 The Playwright fallback requires Chromium installed for the repository's pinned `playwright-core` version. Run `make install-playwright` from the repository root. If Playwright or Chromium is unavailable, the extension continues to the hosted fallbacks.
 
+## Script composition
+
+When web-access is active it registers `web.search({query, num_results?})` and `web.fetch({url, max_chars?})` through the supported [Script provider API](../script/API.md). Put `"web"` in the global Script `allowedProviders` policy and explicitly select `providers: ["web"]`. Registration alone grants no execution access. Discover the positional schemas with `script({action: "describe", providers: ["web"]})`.
+
+```js
+script({
+  action: "run",
+  description: "Read a public page summary",
+  providers: ["web"],
+  source: `
+    const page = await web.fetch({url: "https://example.com", max_chars: 1000});
+    return {content: page.content, details: page.details};
+  `,
+});
+```
+
+Methods return the existing tool `{content, details}` envelope, not a new structured search/page API. Untrusted framing, configured fallbacks, limits, clone reuse and spill behavior are shared with the direct tools. Optional `undefined` metadata is omitted for JSON transport. A host-generated unique ID names each potential spill. PDF HTTP errors now carry framed text and `details.errorPreview`, like other retrieval errors. Any error preview forces failed Script accounting even if the guest ignores it; retrieval errors conservatively mark the outcome unknown because the tools do not prove absence of effects. Inspect Script status before using returned JSON.
+
+For cross-provider composition, enable and select both `mcp` and `web`. Discover exact MCP names with `mcp_search` and inspect schemas with `mcp_describe` first. This illustrative tool must return the documented `structuredContent.url` field:
+
+```js
+script({
+  action: "run",
+  description: "Read a discovered item's public page",
+  providers: ["mcp", "web"],
+  source: `
+    const item = await mcp.call("example.lookup", {query: "public page"});
+    if (item.isError) return {failed: true};
+    const page = await web.fetch({url: item.structuredContent.url, max_chars: 1000});
+    return {content: page.content, method: page.details.method};
+  `,
+});
+```
+
+Web-only scripts need no MCP Gateway. Hosted Exa MCP is an existing web transport, not the Gateway extension. Direct web tools work without the Script tool loaded. The provider is available after session startup and disposed on shutdown, cancelling executions selecting it; factory order is irrelevant. The sibling Script host library must remain installed, but its extension need not be activated.
+
+The execution signal and absolute deadline bound host admission and propagate to web requests and clone subprocesses. Script call/concurrency ceilings apply to logical search/fetch calls; existing fallback attempts occur inside those calls. No extra bridge retries or replay are added. Await every operation: unfinished calls fail accounting. Cancellation is not rollback; clones, cleanup and spills may survive, and non-abortable DNS, PDF parsing, filesystem work or browser startup may settle late. The runtime cannot interrupt synchronous host work. Final explicit JSON must fit Script's 24,000-byte limit even when the web tool's inline output is larger; return a compact selection rather than automatically replaying on overflow.
+
+Clone/spill paths are host references only. The guest gets no filesystem, raw network, process or credential binding and cannot invoke `read` on a returned path. Follow-up file exploration requires a separate authorized host tool. Selecting web nevertheless authorizes its existing host retrieval implementation, including GitHub cached-file reads, temporary writes and lazy cleanup; this is not a filesystem/egress sandbox. GitHub cache handling assumes trusted local cache paths and does not isolate repository symlinks. Network/DNS and cache limitations below remain applicable. Nested provider calls do not synthesize Pi tool hooks; gate the outer Script tool when needed.
+
 ## Configuration
 
 Configure via `extension:web-access` in Pi settings. Environment variables override settings when set. Use `/web-access-config` to display the effective parsed config with API keys masked.

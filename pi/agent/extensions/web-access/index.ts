@@ -33,6 +33,7 @@ import {
 import { extractPdf } from "./pdf.ts";
 import { formatResults, webSearch } from "./search.ts";
 import { safeFetch } from "./url-safety.ts";
+import { registerWebScriptProvider } from "./script-provider.ts";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -305,15 +306,12 @@ const fetchTool = {
           headers: { Accept: "application/pdf" },
         });
         if (!response.ok) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Fetch failed (HTTP ${response.status}): ${params.url}`,
-              },
-            ],
-            details: {},
-          };
+          return await externalResult(
+            "FETCH ERROR",
+            `Fetch failed (HTTP ${response.status}): ${params.url}`,
+            toolCallId,
+            { errorPreview: `Fetch failed (HTTP ${response.status})` },
+          );
         }
         const buffer = await response.arrayBuffer();
         const pdf = await extractPdf(buffer, maxChars);
@@ -344,6 +342,27 @@ const fetchTool = {
 // ── Extension registration ───────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  let currentContext: ExtensionContext | undefined;
+  const dispose = registerWebScriptProvider(
+    pi,
+    () => currentContext !== undefined,
+    {
+      search: {
+        parameters: searchParams,
+        execute: (id, params, signal) =>
+          searchTool.execute(id, params, signal, undefined, currentContext!),
+      },
+      fetch: {
+        parameters: fetchParams,
+        execute: (id, params, signal) =>
+          fetchTool.execute(id, params, signal, undefined, currentContext!),
+      },
+    },
+  );
+  pi.on("session_shutdown", () => {
+    currentContext = undefined;
+    dispose();
+  });
   pi.registerTool(searchTool as any);
   pi.registerTool(fetchTool as any);
   registerConfigCommand(pi, {
@@ -354,10 +373,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     await ensureConfig(ctx);
+    currentContext = ctx;
   });
 
   pi.on("before_agent_start", async (_event, ctx) => {
     await ensureConfig(ctx);
+    currentContext = ctx;
     return undefined;
   });
 }

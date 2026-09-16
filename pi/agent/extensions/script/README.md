@@ -1,6 +1,6 @@
 # Script
 
-Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with legacy [Code mode](../code-mode/README.md); it does not migrate Code mode, Monitor, Loop, or Session Watch. [MCP Gateway](../mcp-gateway/API.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway.
+Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with legacy [Code mode](../code-mode/README.md); it does not migrate Code mode, Monitor, Loop, or Session Watch. [MCP Gateway](../mcp-gateway/API.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-composition) optionally supplies `web.search` and `web.fetch`, independently of Gateway.
 
 ## Usage
 

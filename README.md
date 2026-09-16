@@ -90,7 +90,7 @@ Loop continues reasoning; Monitor checks gateway conditions; Session Watch liste
 
 ### Compose external tool calls
 
-[Script](pi/agent/extensions/script/README.md) runs bounded JavaScript with explicitly selected, host-permitted extension capabilities, or pure JSON computation with no providers. Its supported provider and host APIs are independent of MCP Gateway, which optionally supplies a capability for composing authenticated external calls. Runs are single-use, not background jobs, and provider permission never substitutes for user authorization.
+[Script](pi/agent/extensions/script/README.md) runs bounded JavaScript with explicitly selected, host-permitted extension capabilities, or pure JSON computation with no providers. Its supported provider and host APIs are independent of MCP Gateway, which optionally supplies a capability for composing authenticated external calls. [Web-access](pi/agent/extensions/web-access/README.md#script-composition) independently supplies search and fetch capabilities for the same composition, retaining host-side clone/spill effects without guest filesystem access. Runs are single-use, not background jobs, and provider permission never substitutes for user authorization.
 
 [Code mode](pi/agent/extensions/code-mode/README.md) runs one bounded JavaScript program to paginate, join, or aggregate MCP Gateway results before returning compact data to the model. It coordinates tool calls, not agents, and does not provide persistent polling.
 

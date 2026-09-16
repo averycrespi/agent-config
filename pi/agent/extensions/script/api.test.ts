@@ -80,6 +80,35 @@ test("registration is atomic, conflict-safe, independent of module cache and rem
   assert.equal(collectProviders(f.pi).length, 0);
 });
 
+test("fetch is a namespaced method only, never a provider/global binding", async (t) => {
+  const f = await fixture(t, { fetch: echo });
+  assert.throws(
+    () =>
+      registerScriptProvider(f.pi, {
+        namespace: "fetch",
+        methods: { echo },
+        available: () => true,
+      }),
+    /invalid_namespace/,
+  );
+  for (const name of ["then", "constructor", "process", "require"]) {
+    assert.throws(
+      () =>
+        registerScriptProvider(f.pi, {
+          namespace: "invalid",
+          methods: { [name]: echo },
+          available: () => true,
+        }),
+      /invalid_method/,
+    );
+  }
+  const r = await f.run(
+    "return {value: await fixture.fetch(7), raw: typeof fetch};",
+  );
+  assert.equal(r.status, "success");
+  assert.deepEqual(JSON.parse(r.json!), { value: 7, raw: "undefined" });
+});
+
 test("declared public errors survive catches, are snapshotted, and reject undeclared codes", async (t) => {
   const codes = ["known_failure"];
   let code = "known_failure";

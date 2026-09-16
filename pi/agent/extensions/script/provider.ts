@@ -143,7 +143,8 @@ export function registerScriptProvider(
   >();
   for (const [name, method] of entries) {
     if (
-      !validName(name) ||
+      // A namespaced fetch method cannot expose or shadow the raw fetch global.
+      (!validName(name) && name !== "fetch") ||
       !method ||
       typeof method.handler !== "function" ||
       typeof method.description !== "string" ||
