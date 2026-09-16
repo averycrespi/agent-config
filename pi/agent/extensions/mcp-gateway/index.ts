@@ -6,6 +6,7 @@ import { buildGatewayPrompt } from "./catalog.ts";
 import { registerGuard } from "./guard.ts";
 import { registerTools } from "./tools.ts";
 import { provideGatewayAccess } from "./api.ts";
+import { registerGatewayScriptProvider } from "./script-provider.ts";
 
 export default function (pi: ExtensionAPI) {
   registerConfigCommand(pi, {
@@ -16,6 +17,19 @@ export default function (pi: ExtensionAPI) {
   const client = new GatewayClient();
   let active = false;
   const removeAccess = provideGatewayAccess(pi, client, () => active);
+  let providerLifetime: AbortSignal | undefined;
+  let removeScriptProvider: (() => void) | undefined;
+  const configure = async (cwd: string) => {
+    client.configure(await loadGatewayConfig(cwd));
+    if (providerLifetime === client.getLifetimeSignal()) return;
+    removeScriptProvider?.();
+    providerLifetime = client.getLifetimeSignal();
+    removeScriptProvider = registerGatewayScriptProvider(
+      pi,
+      client,
+      () => active,
+    );
+  };
   pi.on("session_start", async (_event, ctx) => {
     if (active) return;
     if (
@@ -37,7 +51,7 @@ export default function (pi: ExtensionAPI) {
     active = true;
     registerTools(pi, client);
     registerGuard(pi, client);
-    client.configure(await loadGatewayConfig(ctx.cwd));
+    await configure(ctx.cwd);
     try {
       await client.listTools();
     } catch {
@@ -47,11 +61,12 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", () => {
     active = false;
     removeAccess();
+    removeScriptProvider?.();
     client.close();
   });
   pi.on("before_agent_start", async (event, ctx) => {
     if (!active) return undefined;
-    client.configure(await loadGatewayConfig(ctx.cwd));
+    await configure(ctx.cwd);
     try {
       await client.listTools(ctx.signal);
     } catch {

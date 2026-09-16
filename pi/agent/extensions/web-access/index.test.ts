@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import extensionDefault from "./index.ts";
 
 const OLD_ENV = { ...process.env };
@@ -12,6 +13,7 @@ const originalFetch = globalThis.fetch;
 function registeredTools(): Map<string, any> {
   const tools = new Map<string, any>();
   const pi = {
+    events: createEventBus(),
     registerTool(tool: any) {
       tools.set(tool.name, tool);
     },
@@ -69,6 +71,7 @@ type RegisteredTool = {
 function loadRegisteredTool(name: string): RegisteredTool {
   const tools = new Map<string, RegisteredTool>();
   extensionDefault({
+    events: createEventBus(),
     registerTool(def: RegisteredTool) {
       tools.set(def.name, def);
     },
@@ -198,6 +201,7 @@ test("/web-access-config displays effective config with masked keys", async () =
   const commands = new Map<string, any>();
   const notifications: Array<{ message: string; level: string }> = [];
   const pi = {
+    events: createEventBus(),
     registerTool() {},
     registerCommand(name: string, command: any) {
       commands.set(name, command);
