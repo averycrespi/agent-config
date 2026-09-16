@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import compactTools from "./index.ts";
 import registerBash from "./bash.ts";
 import registerFind from "./find.ts";
@@ -105,6 +106,9 @@ test("extension registers all renderer overrides after session_start", async () 
   let setActiveToolsCalled = false;
 
   compactTools({
+    events: createEventBus(),
+    getActiveTools: () => ["read"],
+    getAllTools: () => registered.map((name) => ({ name })),
     on(event: string, handler: Function) {
       handlers.set(event, handler);
     },
@@ -116,7 +120,9 @@ test("extension registers all renderer overrides after session_start", async () 
     },
   } as any);
 
-  await handlers.get("session_start")?.();
+  assert.deepEqual(registered, []);
+  await handlers.get("session_start")?.({}, { cwd: "/repo" });
+  await handlers.get("session_start")?.({}, { cwd: "/repo" });
 
   assert.deepEqual(registered.sort(), ["bash", "find", "grep", "ls", "read"]);
   assert.equal(setActiveToolsCalled, false);

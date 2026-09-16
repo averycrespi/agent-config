@@ -56,6 +56,14 @@ export default function (pi: ExtensionAPI) {
         !/[^\s\p{Cf}]/u.test(params.description)
       )
         throw new Error("script description must be nonblank and bounded");
+      const session = {
+        id: ctx.sessionManager.getSessionId(),
+        file: ctx.sessionManager.getSessionFile(),
+        provider: ctx.model?.provider,
+        model: ctx.model?.id,
+        reasoningLevel: ctx.thinkingLevel,
+      };
+      const cwd = ctx.cwd;
       const combined = AbortSignal.any([
         lifetime.signal,
         ...(signal ? [signal] : []),
@@ -66,7 +74,7 @@ export default function (pi: ExtensionAPI) {
             return presentDiscovery(
               await describeScriptProviders(
                 pi,
-                ctx.cwd,
+                cwd,
                 params.providers,
                 undefined,
                 combined,
@@ -82,7 +90,8 @@ export default function (pi: ExtensionAPI) {
           details: {},
         });
         return presentRun(
-          await executeScript(pi, ctx.cwd, {
+          await executeScript(pi, cwd, {
+            session,
             source: params.source!,
             providers: params.providers,
             limits: MAX_LIMITS,

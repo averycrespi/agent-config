@@ -1,12 +1,14 @@
-# compact-tools Design
+# Builtins design
 
-`compact-tools` is a display-only extension. It replaces verbose TUI renderers for selected built-in tools while delegating execution to Pi's built-in implementations unchanged.
+`builtins` keeps direct compact renderers unchanged and adapts active stock Pi tools to Script. It is not an arbitrary extension dispatcher or a second filesystem/shell implementation.
 
 ## Architecture
 
 - `index.ts` defers renderer override registration until `session_start` and registers each compact tool override exactly once.
 - `read.ts`, `bash.ts`, `ls.ts`, `find.ts`, and `grep.ts` each register a same-name tool with Pi's built-in schema/description and compact renderers.
 - `render.test.ts` verifies output shape, width behavior, and deferred registration.
+- `provider.ts` registers validated stock argument schemas, live method admission and structured result translation through the public Script API.
+- `provider.test.ts` exercises real filesystem/shell effects through Script IPC, cancellation, lifecycle, images, context isolation and fixture composition.
 - Shared formatting comes from `pi/agent/extensions/_shared/render.ts`.
 
 Each tool module follows the same pattern:
@@ -22,9 +24,19 @@ Do not register the overrides during extension factory setup. Pi's startup refre
 
 The `registered` guard in `index.ts` prevents duplicate registration if multiple session-start events fire.
 
-## Execution invariant
+## Script boundary
 
-Execution behavior must remain unchanged. This extension should not add authorization, path handling, command execution logic, truncation policy, or result transformation. If a tool needs behavioral changes, that belongs in a separate extension or in Pi itself.
+Registration is session-owned and grants no permissions. Methods have synchronous availability checks that consult the current active/configured tool inventory at discovery and immediately before Script dispatch. Script's optional method-level callback is snapshotted as a function, not as its result; queued work cannot retain a stale authorization boolean. Supported stock factories are fixed, including PowerShell only on Windows. Same-name extension implementations are never executed by the provider.
+
+Script snapshots `{cwd, session?}` at execution entry before asynchronous setup, freezes it, and passes it only to trusted handlers. The agent tool samples session metadata from its caller context; host callers may supply the same plain metadata. Factory instances are made for the caller cwd, not global process cwd. Shell factories disable implicit session injection and use a spawn hook closing over the immutable snapshot. Pi strips inherited session variables before that hook. No mutable current-session object crosses the boundary.
+
+Structured results preserve content and metadata. Only documented absent optional fields are omitted before strict JSON snapshot; unknown lossy values fail closed. Images reject before serialization with a fixed code directing callers to direct read. Stock throws conservatively retain unknown outcomes because filesystem/shell effects may already exist. No raw exception messages enter traces.
+
+All calls share Script's queue and concurrency limits without adapter-level serialization. Pi's native per-file queues remain part of stock execution. The adapter passes abort signals unchanged, creates no scheduler, and does not synthesize tool hooks. Shutdown/disposal abort selected executions; tree navigation disposes and replaces registration so old results cannot re-enter new authority. Script owns deadlines, IPC/output limits, sticky failure and stale-result accounting. Successful writes are not rolled back.
+
+## Direct execution invariant
+
+Execution behavior must remain unchanged. The direct wrappers must not add authorization, path handling, command execution logic, truncation policy, or result transformation. If a tool needs behavioral changes, that belongs in a separate extension or in Pi itself.
 
 Preserve these invariants:
 

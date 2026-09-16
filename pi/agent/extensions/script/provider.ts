@@ -16,9 +16,36 @@ export type MethodResult = {
   /** Reject with a public code declared by this method; value must be null. */
   error?: string;
 };
-export type MethodContext = { signal: AbortSignal; deadlineMs: number };
+export type ScriptSession = Readonly<{
+  id: string;
+  file?: string;
+  provider?: string;
+  model?: string;
+  reasoningLevel?: string;
+}>;
+export type ScriptExecutionContext = Readonly<{
+  cwd: string;
+  session?: ScriptSession;
+}>;
+export type MethodContext = {
+  signal: AbortSignal;
+  deadlineMs: number;
+  /** Immutable caller snapshot; absent only in internal bridge fixtures. */
+  execution?: ScriptExecutionContext;
+};
+export function methodAvailable(
+  method: Pick<ScriptMethod, "available">,
+): boolean {
+  try {
+    return method.available === undefined || method.available() === true;
+  } catch {
+    return false;
+  }
+}
 export type ScriptMethod = {
   description: string;
+  /** Cheap live admission check; discovery is informational, never a grant. */
+  available?: () => boolean;
   /** JSON Schema draft-07 for the positional argument array. */
   inputSchema: Record<string, unknown>;
   /** Fixed public failure codes, never derived from arguments or response prose. */
@@ -147,6 +174,8 @@ export function registerScriptProvider(
       (!validName(name) && name !== "fetch") ||
       !method ||
       typeof method.handler !== "function" ||
+      (method.available !== undefined &&
+        typeof method.available !== "function") ||
       typeof method.description !== "string" ||
       !method.description.trim() ||
       method.description.length > 500 ||
@@ -188,6 +217,7 @@ export function registerScriptProvider(
         inputSchema: schema,
         errorCodes: errorCodes ? Object.freeze([...errorCodes]) : undefined,
         handler: method.handler,
+        available: method.available,
         validate,
       });
     } catch {
