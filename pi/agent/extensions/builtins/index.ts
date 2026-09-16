@@ -1,5 +1,5 @@
 /**
- * Compact tools extension for Pi.
+ * Builtin adapters for Pi.
  *
  * Overrides built-in tool renderers so the TUI shows compact labels and
  * summaries instead of full tool output. Tool execution behavior is
@@ -20,6 +20,7 @@ import registerFind from "./find.ts";
 import registerGrep from "./grep.ts";
 import registerLs from "./ls.ts";
 import registerRead from "./read.ts";
+import { registerBuiltinsProvider } from "./provider.ts";
 
 const overrides: Record<string, (pi: ExtensionAPI) => void> = {
   read: registerRead,
@@ -31,11 +32,23 @@ const overrides: Record<string, (pi: ExtensionAPI) => void> = {
 
 export default function (pi: ExtensionAPI) {
   let registered = false;
-  pi.on("session_start", () => {
-    if (registered) return;
-    registered = true;
-    for (const register of Object.values(overrides)) {
-      register(pi);
+  let ready = false;
+  let dispose: (() => void) | undefined;
+  pi.on("session_start", (_event, ctx) => {
+    if (!registered) {
+      registered = true;
+      for (const register of Object.values(overrides)) register(pi);
     }
+    ready = true;
+    dispose ??= registerBuiltinsProvider(pi, () => ready, ctx.cwd);
+  });
+  pi.on("session_tree", (_event, ctx) => {
+    dispose?.();
+    dispose = registerBuiltinsProvider(pi, () => ready, ctx.cwd);
+  });
+  pi.on("session_shutdown", () => {
+    ready = false;
+    dispose?.();
+    dispose = undefined;
   });
 }

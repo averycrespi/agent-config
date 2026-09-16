@@ -2,7 +2,9 @@ import type {
   JsonValue,
   MethodResult,
   RegisteredProvider,
+  ScriptExecutionContext,
 } from "./provider.ts";
+import { methodAvailable } from "./provider.ts";
 import { jsonSnapshot } from "./value.ts";
 
 export class AdmissionError extends Error {
@@ -25,7 +27,10 @@ export type ScriptBridge = {
     dispatch: () => void,
   ): Promise<MethodResult>;
 };
-export function createBridge(providers: RegisteredProvider[]): ScriptBridge {
+export function createBridge(
+  providers: RegisteredProvider[],
+  execution?: ScriptExecutionContext,
+): ScriptBridge {
   const methods = new Map<
     string,
     {
@@ -55,7 +60,8 @@ export function createBridge(providers: RegisteredProvider[]): ScriptBridge {
       } catch {
         /* Fail closed without exception text. */
       }
-      if (!available) throw new AdmissionError("capability_unavailable");
+      if (!available || !methodAvailable(found.method))
+        throw new AdmissionError("capability_unavailable");
       if (!found.method.validate(args))
         throw new AdmissionError("invalid_arguments");
       signal.throwIfAborted();
@@ -63,6 +69,7 @@ export function createBridge(providers: RegisteredProvider[]): ScriptBridge {
       const result = await found.method.handler(args as JsonValue[], {
         signal,
         deadlineMs,
+        execution,
       });
       if (
         !result ||
