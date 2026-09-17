@@ -2,7 +2,7 @@
 
 Foreground deterministic JavaScript orchestration for bounded research, review, verification, and audit workflows. Workflow code runs in a permissioned child process; privileged subagent policy, model resolution, accounting, cancellation, and retention stay host-side.
 
-This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it when dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow add value. Prefer [`spawn_agents`](../subagents/README.md) for a simple independent batch; parallelism or structured output alone does not require a workflow. Preserve skill-required workflows. Use [`code`](../code-mode/README.md) for gateway composition that needs no subagent reasoning.
+This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it when dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow add value. Prefer [`spawn_agents`](../subagents/README.md) for a simple independent batch; parallelism or structured output alone does not require a workflow. Preserve skill-required workflows. Use [`script`](../script/README.md) with the selected `mcp` provider for gateway composition that needs no subagent reasoning.
 
 ## Tool
 

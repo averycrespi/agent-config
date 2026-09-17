@@ -232,7 +232,7 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
       "List, validate, or run a deterministic foreground JavaScript workflow.",
     promptGuidelines: [
       "Call workflow with action list when a reusable saved workflow may apply.",
-      "Use workflow for read-mostly subagent work that benefits from deterministic orchestration—dependent phases, programmatic aggregation, or verification gates—or an applicable saved workflow. Prefer spawn_agents for a simple independent batch; parallelism or structured output alone does not require workflow. Preserve skill-required workflows. Use code for gateway composition that needs no subagent reasoning.",
+      "Use workflow for read-mostly subagent work that benefits from deterministic orchestration—dependent phases, programmatic aggregation, or verification gates—or an applicable saved workflow. Prefer spawn_agents for a simple independent batch; parallelism or structured output alone does not require workflow. Preserve skill-required workflows. Use script with the selected mcp provider for gateway composition that needs no subagent reasoning.",
       "Do not use workflow for workspace mutation; write-filesystem and exec-shell are rejected, so use only explicitly justified read-mostly capabilities.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
       "parallel() represents failed branches as null; use parallelSettled() when completeness or per-branch failure accounting matters. Never silently discard failed required branches.",

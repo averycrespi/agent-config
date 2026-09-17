@@ -49,6 +49,43 @@ test("actual child preserves the complete direct-client envelope and redaction",
   assert.equal(d[0].methods[0].name, "call");
 });
 
+test("actual child composes pagination and parallel dependent lookups", async (t) => {
+  const f = await setup(t);
+  f.state.handler = (body, response) => {
+    if (body.method === "tools/list")
+      return reply(response, body, {
+        tools: [tool("example.page"), tool("example.detail")],
+      });
+    const { name, arguments: args } = body.params;
+    const value =
+      name === "example.page"
+        ? args.query === "0"
+          ? { ids: ["a", "b"], next: "1" }
+          : { ids: ["c"], next: null }
+        : { value: { a: 2, b: 3, c: 5 }[args.query as "a" | "b" | "c"] };
+    reply(response, body, { content: [], structuredContent: value });
+  };
+  const result = await f.run(`
+    let page = "0";
+    const ids = [];
+    do {
+      const result = await mcp.call("example.page", {query: page});
+      if (result.isError) throw new Error("Page failed");
+      ids.push(...result.structuredContent.ids);
+      page = result.structuredContent.next;
+    } while (page !== null);
+    const values = await parallel(ids.map(id => async () => {
+      const result = await mcp.call("example.detail", {query: id});
+      if (result.isError) throw new Error("Detail failed");
+      return result.structuredContent.value;
+    }));
+    return values.reduce((sum, value) => sum + value, 0);
+  `);
+  assert.equal(result.status, "success");
+  assert.equal(result.json, "10");
+  assert.equal(f.requests.filter((r) => r.method === "tools/call").length, 5);
+});
+
 test("explicit selection, host ceiling, positional schema and catalog admission prevent calls", async (t) => {
   const f = await setup(t);
   assert.equal(

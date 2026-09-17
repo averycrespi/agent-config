@@ -116,7 +116,7 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
   assert.match(guidance, /Preserve skill-required workflows/);
   assert.match(
     guidance,
-    /Use code for gateway composition that needs no subagent reasoning/,
+    /Use script with the selected mcp provider for gateway composition that needs no subagent reasoning/,
   );
   assert.match(guidance, /parallel\(\) represents failed branches as null/);
   assert.match(

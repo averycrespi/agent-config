@@ -8,12 +8,10 @@ import { renderers, presentRun, discoveryFailure } from "./tool.ts";
 import { registerScriptProvider } from "./api.ts";
 import { _spawn } from "./runtime.ts";
 
-test("real loader runs without gateway, coexists with code, discovers schemas, and cancels on shutdown", async (t) => {
+test("real loader runs without gateway, discovers schemas, and cancels on shutdown", async (t) => {
   const f = await fixture(t, { echo });
   const loaded = await discoverAndLoadExtensions(
-    ["./index.ts", "../code-mode/index.ts"].map((p) =>
-      fileURLToPath(new URL(p, import.meta.url)),
-    ),
+    [fileURLToPath(new URL("./index.ts", import.meta.url))],
     f.dir,
     f.dir,
     f.pi.events,
@@ -21,7 +19,7 @@ test("real loader runs without gateway, coexists with code, discovers schemas, a
   assert.deepEqual(loaded.errors, []);
   assert.deepEqual(
     loaded.extensions.map((e) => [...e.tools.keys()]),
-    [["script"], ["code"]],
+    [["script"]],
   );
   const extension = loaded.extensions[0];
   const definition = extension.tools.get("script")!.definition;
@@ -68,7 +66,7 @@ test("real loader runs without gateway, coexists with code, discovers schemas, a
     { isError: true },
   );
   assert.equal(
-    await hook({ toolName: "code", details: failed.details }, ctx),
+    await hook({ toolName: "other_tool", details: failed.details }, ctx),
     undefined,
   );
   const pending = invoke({ action: "run", source: "while(true) {}" });
