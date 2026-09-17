@@ -15,7 +15,7 @@ Records live at `<git-common-dir>/pi-ticket-checkpoints/<ticketId>.json`, outsid
 - `override`: `override: {id, requirement, scope, action, instruction, reference}` records an actual scoped user exception, not invented permission. Allowance additions also supply `budget: review/ci/wait` and positive integer `additional` (batches or milliseconds). Waiting additions require an existing CI ledger and a reconciled watcher. Never reset consumption or erase failed evidence.
 - `external`: before a consequential write, `operation: begin`, stable `id`, exact `target`, and `intent`; after authoritative reread, `operation: confirm`, same `id`, and `reference`. Reconcile pending effects before a different effect. Never replay an external mutation to obtain a receipt. Confirmation remains available to the recorded owner after release/removal through a surviving checkout.
 
-Mutation acknowledgments return saved path, next action, repair usage, and compact CI disposition. Full reports/logs belong in retained artifacts, not this record.
+Mutation acknowledgments return saved path, next action, repair usage, and compact CI disposition. Keep full reports/logs at `<git-common-dir>/pi-ticket-artifacts/<ticket-uuid>/<run-id>/`, a sibling of the strict checkpoint store, never a directory inside it. Use unique paths and retain original bytes; see [persistent artifacts](settlement.md#persistent-artifacts) and [final bookkeeping](publication.md#recoverable-final-bookkeeping).
 
 ## CI registration and cumulative accounting
 

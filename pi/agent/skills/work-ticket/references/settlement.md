@@ -10,6 +10,14 @@ Explicit user acceptance can resolve an incomplete review, missing qualification
 
 For multiple tickets sharing a PR, reconcile each ticket's scope and the actual final merged change. Preserve predecessor evidence at its original revision; describe successor relationships in concise references rather than rebinding old checks. Do not waive unresolved identity or ownership conflicts.
 
+## Persistent artifacts
+
+Keep full delivery evidence at `<git-common-dir>/pi-ticket-artifacts/<ticket-uuid>/<run-id>/`. Resolve the Git common directory from the repository, not by assuming a linked checkout's `.git` is a directory. This sibling of `pi-ticket-checkpoints/` survives linked-worktree removal; the strict checkpoint store accepts checkpoint files only, not artifact directories. Keep compact references in the existing checkpoint, not a second delivery ledger.
+
+Use unique artifact paths for original host receipts, registration correlation, review/check reports, portable-comment confirmations, and cleanup archives. Before removal, copy unique handoffs, legacy records and referenced evidence into a new `archives/<archive-id>/` under that run root. Preserve existing archives and historical bytes. Record a manifest with each file's relative path, byte size and **SHA-256** digest; reread the copied files and verify all three against the source before proceeding. Retain revision/scope and provenance alongside the manifest. Reject ambiguous paths, symlinks, missing files or mismatched bytes; keep the target and adverse evidence rather than repair an archive by overwriting originals.
+
+Ensure the resolved artifact root is outside every removal target. Removing the primary repository or Git common directory requires a separately authorized external durable archive and fresh verification; temporary directories are not durable storage. Ignored `.handoffs/` are excluded from broad formatting discovery, not from preservation checks. Keep generated reports outside maintained source rather than weakening source formatting checks.
+
 ## Safe removal
 
 Load [herdr](../../herdr/SKILL.md) and use it for linked worktree removal. Confirm the exact checkout/workspace, all affected tickets, released writers, retained commits/branches, clean tracked/untracked work, and absence of in-progress Git operations. Inspect ignored files, nested repositories, handoffs, and temporary evidence for unique work at risk. An old blocked helper status is not a reason to refuse explicitly authorized cleanup; unresolved data loss or a live writer is.
@@ -18,7 +26,7 @@ Before settlement, cancellation or removal, cancel any still-active ticket-owned
 
 Before removal:
 
-1. Preserve all needed evidence outside the removal target, including legacy `.pi/tickets/`, handoffs, and referenced logs/reports. Use a persistent archive and a manifest of relative paths, sizes, and hashes; verify copied bytes. Do not prune old records to fit a helper schema. Do not treat temporary paths as durable archives.
+1. Preserve all needed evidence outside the removal target, including legacy `.pi/tickets/`, handoffs, and referenced logs/reports. Use the [persistent artifact root](#persistent-artifacts) and a manifest of relative paths, byte sizes, and SHA-256 hashes; verify copied bytes. Do not prune old records to fit a helper schema. Do not treat temporary paths as durable archives.
 2. Verify the new checkpoint's Git common directory survives removal. It normally survives linked-checkout removal; deleting the primary repository needs an external copy too. Preserve existing legacy cleanup archives unchanged.
 3. Record the exact pending removal target and intent with `external begin` and reference the archive/safety evidence. Keep source files quiescent, release ownership, and retain the owner/ticket identity for confirmation from a surviving repository checkout.
 4. Remove only the authorized checkout/workspace through Herdr without force. Do not bundle branch/archive deletion or unrelated workspace changes. Reread inventory and path absence, then `external confirm` from a surviving checkout. Report what remains and the next actor/action.

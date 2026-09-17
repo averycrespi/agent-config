@@ -488,23 +488,22 @@ export async function ticketState(r) {
         apply(s, r);
       }
     }
-    if (!s.released)
-      for (const entry of await readdir(store)) {
-        if (entry === ".writer.lock" || entry === `${r.ticketId}.json`)
-          continue;
-        need(
-          /^[a-f0-9-]{36}\.json$/.test(entry),
-          "unexpected checkpoint store entry; inspect before proceeding",
-        );
-        const other = await jsonFile(join(store, entry));
-        validate(other);
-        need(
+    for (const entry of await readdir(store)) {
+      if (entry === ".writer.lock" || entry === `${r.ticketId}.json`) continue;
+      need(
+        /^[a-f0-9-]{36}\.json$/.test(entry),
+        "unexpected checkpoint store entry; inspect before proceeding",
+      );
+      const other = await jsonFile(join(store, entry));
+      validate(other);
+      need(
+        s.released ||
           other.released ||
-            other.checkout !== s.checkout ||
-            other.ticketId === s.ticketId,
-          "checkout has another ticket owner; release or reconcile it first",
-        );
-      }
+          other.checkout !== s.checkout ||
+          other.ticketId === s.ticketId,
+        "checkout has another ticket owner; release or reconcile it first",
+      );
+    }
     s.revision += 1;
     validate(s);
     const bytes = JSON.stringify(s, null, 2) + "\n";

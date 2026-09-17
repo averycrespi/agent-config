@@ -64,8 +64,7 @@ async function fixture() {
       clear: (id) => timers.delete(id),
     },
   );
-  const start = async () => {
-    update({ operation: "prepare" });
+  const register = async () => {
     const w = ledger.watcher;
     const r = await engine.start(
       registration({
@@ -79,7 +78,14 @@ async function fixture() {
         max_wakes: 1,
       }),
     );
-    update({ operation: "attach", pr, head, receipt: r });
+    return r;
+  };
+  const attach = (receipt) =>
+    update({ operation: "attach", pr, head, receipt });
+  const start = async () => {
+    update({ operation: "prepare" });
+    const r = await register();
+    attach(r);
     return r.id;
   };
   const advance = async (ms) => {
@@ -113,6 +119,12 @@ async function fixture() {
   return {
     engine,
     start,
+    register,
+    attach,
+    restore() {
+      ledger = JSON.parse(JSON.stringify(ledger));
+      validateMonitor(ledger);
+    },
     advance,
     reconcile,
     update,
@@ -172,6 +184,48 @@ test("migrated CI polling waits without messages, then reconciles success/failur
     "blocked",
   );
   f.engine.close(false);
+});
+
+test("fast terminal attachment survives interruption with exact identity and no accounting refund", async () => {
+  for (const interruption of ["prepared", "registered", "attached"]) {
+    const f = await fixture();
+    f.update({ operation: "prepare" });
+    if (interruption === "prepared") f.restore();
+    await f.advance(1000);
+    f.result("passed");
+    const admitted = await f.register();
+    await f.advance(0);
+    const receipt = f.engine.get(admitted.id);
+    assert.equal(receipt.status, "finished");
+    assert.equal(receipt.endedAt, 1000);
+    assert.equal(receipt.source, undefined);
+    // Retained start response correlates the source-independent terminal receipt.
+    assert.equal(receipt.id, admitted.id);
+    assert.equal(receipt.createdAt, admitted.createdAt);
+    if (interruption === "registered") f.restore();
+    const before = structuredClone(f.ledger);
+    assert.throws(() =>
+      f.update({ operation: "attach", pr, head: "b".repeat(40), receipt }),
+    );
+    assert.deepEqual(f.ledger, before);
+    f.attach(receipt);
+    if (interruption === "attached") f.restore();
+    f.attach(receipt);
+    assert.equal(f.ledger.watcher.id, admitted.id);
+    await f.advance(5000);
+    const charged = f.reconcile(admitted.id).waitUsedMs;
+    f.reconcile(admitted.id);
+    assert.equal(f.ledger.waitUsedMs, charged);
+    assert.equal(
+      charged,
+      0,
+      "known setup and queued attention are not running observation",
+    );
+    assert.equal(f.ledger.disposition, "paused");
+    assert.equal(f.messages.length, 0);
+    assert.equal(f.update(observation("passed")).disposition, "passed");
+    f.engine.close(false);
+  }
 });
 
 test("25-minute attention renews only the remaining cumulative allowance", async () => {
