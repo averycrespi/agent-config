@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture } from "../script/fixture.ts";
 import { temporaryRoot, pause, theme, value } from "./test-support.ts";
@@ -8,12 +10,21 @@ import background from "./index.ts";
 import { restore, parseReceipt } from "./receipts.ts";
 import { widgetLines, renderers, notificationContent } from "./tool.ts";
 
-async function harness(t: any, mode = "tui") {
+async function harness(t: any, mode = "tui", config: unknown = {}) {
   const f = await fixture(t);
-  await f.config({ allowedProviders: ["sessions"] });
+  delete process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS;
+  delete process.env.BACKGROUND_MAX_LIFETIME_MS;
+  await writeFile(
+    join(f.dir, "settings.json"),
+    JSON.stringify({
+      "extension:script": { allowedProviders: ["sessions"] },
+      "extension:background": config,
+    }),
+  );
   const temp = temporaryRoot(),
     handlers = new Map<string, any>(),
-    tools = new Map<string, any>();
+    tools = new Map<string, any>(),
+    commands = new Map<string, any>();
   const entries: any[] = [],
     messages: any[] = [],
     mounts: any[] = [];
@@ -47,6 +58,8 @@ async function harness(t: any, mode = "tui") {
     ...f.pi,
     on: (n: string, fn: any) => handlers.set(n, fn),
     registerTool: (tool: any) => tools.set(tool.name, tool),
+    registerCommand: (name: string, command: any) =>
+      commands.set(name, command),
     appendEntry: (customType: string, data: any) =>
       entries.push({
         type: "custom",
@@ -60,7 +73,7 @@ async function harness(t: any, mode = "tui") {
       busy = true;
     },
   };
-  background(pi, () => temp.root);
+  await background(pi, () => temp.root);
   const hook = (name: string, event = {}) => handlers.get(name)?.(event, ctx);
   t.after(async () => {
     await hook("session_shutdown");
@@ -73,6 +86,8 @@ async function harness(t: any, mode = "tui") {
     ...f,
     call,
     hook,
+    tools,
+    commands,
     entries,
     messages,
     mounts,
@@ -104,6 +119,124 @@ const input = {
     },
   ],
 };
+
+test("configuration snapshot aligns tool schema and admission until extension reload", async (t) => {
+  const h = await harness(t, "json", {
+    maxCycleTimeoutMs: 3_600_000,
+    maxLifetimeMs: 172_800_000,
+  });
+  const tool = h.tools.get("background");
+  assert.equal(tool.parameters.properties.cycle_timeout_ms.maximum, 3_600_000);
+  assert.equal(tool.parameters.properties.lifetime_ms.maximum, 172_800_000);
+  assert.match(tool.description, /1000–3600000 ms/);
+  const raw = {
+    ...input,
+    cycle_timeout_ms: 3_600_000,
+    lifetime_ms: 172_800_000,
+  };
+  const started = await h.call(raw);
+  assert.equal(started.details.backgroundError, false);
+  const r = value(started);
+  assert.equal(r.deadline - r.createdAt, 172_800_000);
+  await writeFile(
+    join(h.dir, "settings.json"),
+    JSON.stringify({
+      "extension:script": { allowedProviders: ["sessions"] },
+      "extension:background": { maxCycleTimeoutMs: 1000, maxLifetimeMs: 1000 },
+    }),
+  );
+  process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS = "1000";
+  await h.hook("session_before_tree");
+  await h.hook("session_tree");
+  assert.equal(
+    value(await h.call({ action: "get", id: r.id })).status,
+    "invalidated",
+  );
+  assert.equal((await h.call(raw)).details.backgroundError, false);
+  assert.equal(
+    (await h.call({ ...raw, cycle_timeout_ms: 3_600_001 })).details
+      .backgroundError,
+    true,
+  );
+  const notices: string[] = [];
+  await h.commands.get("background-config").handler("", {
+    cwd: h.dir,
+    ui: { notify: (s: string) => notices.push(s) },
+  });
+  assert.match(notices[0], /3600000/);
+  assert.match(notices[0], /"valid": true/);
+  // A new factory (reload) takes the new policy; it does not mutate old jobs.
+  const reloaded = new Map<string, any>();
+  await background({
+    registerCommand() {},
+    on() {},
+    registerTool: (t: any) => reloaded.set(t.name, t),
+  } as any);
+  assert.equal(
+    reloaded.get("background").parameters.properties.cycle_timeout_ms.maximum,
+    1000,
+  );
+});
+
+test("invalid policy blocks starts without disabling inspection or cancellation", async (t) => {
+  const h = await harness(t, "json", {
+    maxLifetimeMs: "PRIVATE invalid value",
+  });
+  const result = await h.call(input);
+  assert.equal(result.details.backgroundError, true);
+  assert.match(result.content[0].text, /starts disabled/);
+  assert.doesNotMatch(result.content[0].text, /PRIVATE/);
+  assert.deepEqual(value(await h.call({ action: "list" })).receipts, []);
+  assert.equal(h.entries.length, 0);
+  const notices: string[] = [];
+  await h.commands.get("background-config").handler("", {
+    cwd: h.dir,
+    ui: { notify: (s: string) => notices.push(s) },
+  });
+  assert.match(notices[0], /"valid": false/);
+  assert.doesNotMatch(notices[0], /PRIVATE/);
+  // Inspection/cancellation of historical jobs stays available under invalid policy.
+  const historical = {
+    id: "11111111-2222-4333-8444-555555555555",
+    name: "historical",
+    createdAt: 1000,
+    deadline: 172801000,
+    cycleDeadline: 3601000,
+    cycleMs: 3600000,
+    status: "active",
+    recurring: false,
+    maxWakes: 1,
+    wakes: 0,
+    evaluations: 0,
+    calls: 0,
+    inFlight: false,
+    awaitingSettlement: false,
+    state: null,
+    evidence: null,
+    coverage: [],
+    gap: false,
+    interrupted: false,
+    effectsMayPersist: false,
+    outcomeUnknown: false,
+  };
+  h.entries.push({
+    id: "entry",
+    type: "custom",
+    customType: "background:receipt-v1",
+    data: historical,
+  });
+  await h.hook("session_before_tree");
+  await h.hook("session_tree");
+  assert.equal(
+    value(await h.call({ action: "get", id: historical.id })).status,
+    "invalidated",
+  );
+  assert.equal(
+    (await h.call({ action: "cancel", id: historical.id })).details
+      .backgroundError,
+    false,
+  );
+});
 
 test("actual event provider holds one wake until idle; immutable controls, stable widget and lifecycle restoration", async (t) => {
   const h = await harness(t);

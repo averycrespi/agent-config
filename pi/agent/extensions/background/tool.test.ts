@@ -4,7 +4,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "./test-support.ts";
 import type { Receipt } from "./contract.ts";
 import {
-  PARAMETERS,
+  parameters,
   pollingWarning,
   renderers,
   summary,
@@ -94,10 +94,18 @@ test("start describes timer, recurrence, event and compound registrations withou
 });
 
 test("clock schema describes settlement delay, observation expiry and outer ceiling", () => {
-  const fields = JSON.parse(JSON.stringify(PARAMETERS)).properties as Record<
-    string,
-    { description: string }
-  >;
+  const fields = JSON.parse(
+    JSON.stringify(
+      parameters({
+        maxCycleTimeoutMs: 3600000,
+        maxLifetimeMs: 172800000,
+        valid: true,
+      }),
+    ),
+  ).properties as Record<string, { description: string; maximum: number }>;
+  assert.equal(fields.cycle_timeout_ms.maximum, 3600000);
+  assert.equal(fields.interval_ms.maximum, 3600000);
+  assert.equal(fields.lifetime_ms.maximum, 172800000);
   assert.match(
     fields.interval_ms.description!,
     /after each evaluation settles/,

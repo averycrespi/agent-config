@@ -26,7 +26,7 @@ See [`pi/README.md`](pi/README.md) for the full catalog. These components are in
 ### Requirements
 
 - [Pi agent](https://pi.dev/), installed separately, with a configured model provider
-- [Node.js](https://nodejs.org/) 24+; [`.tool-versions`](.tool-versions) pins the version used by CI (currently 25.9.0). Use the pinned version for Script and Code mode's required permission support.
+- [Node.js](https://nodejs.org/) 24+; [`.tool-versions`](.tool-versions) pins the version used by CI (currently 25.9.0). Use the pinned version for Script's required permission support.
 - [Homebrew](https://brew.sh/) for the macOS dependency setup below
 - macOS assumed; Linux requires equivalent system dependencies, including GNU Stow
 
@@ -59,7 +59,7 @@ Use the activities that fit the request rather than treating every skill as a ma
 
 ### Manage unattended session context
 
-[Idle compaction](pi/agent/extensions/idle-compaction/README.md) optionally summarizes large, inactive open terminal sessions without starting an agent turn. It is disabled by default, costs summarization tokens, and loses some detail; native navigation races and incomplete dialog visibility remain documented limitations. Use `/idle-compaction` for a persistent session override and status.
+[Idle compaction](pi/agent/extensions/idle-compaction/README.md) optionally summarizes large, inactive open terminal sessions without starting an agent turn. It is disabled by default, costs summarization tokens, and loses some detail; native navigation races and incomplete dialog visibility remain documented limitations. Use `/idle-compaction-enable` or `/idle-compaction-disable` for a persistent session override, and `/idle-compaction-status` to inspect status.
 
 ### Ticket-driven delivery
 
@@ -94,9 +94,7 @@ Background is the supported route for session-bound observation and explicitly r
 
 [Script](pi/agent/extensions/script/README.md) runs bounded JavaScript with explicitly selected, host-permitted extension capabilities, or pure JSON computation with no providers. Its supported provider and host APIs are independent of MCP Gateway, which optionally supplies a capability for composing authenticated external calls. [Web-access](pi/agent/extensions/web-access/README.md#script-composition) independently supplies search and fetch capabilities for the same composition, retaining host-side clone/spill effects without guest filesystem access. [Builtins](pi/agent/extensions/builtins/README.md#script-provider) adds composition of active stock filesystem and shell tools while preserving compact direct rendering. Nested calls do not run ordinary tool hooks; provider permission never substitutes for user authorization. Runs are single-use, not background jobs.
 
-[Code mode](pi/agent/extensions/code-mode/README.md) runs one bounded JavaScript program to paginate, join, or aggregate MCP Gateway results before returning compact data to the model. It coordinates tool calls, not agents, and does not provide persistent polling.
-
-Use direct `mcp_search`, `mcp_describe`, and `mcp_call` tools for straightforward discovery and calls. Use Code mode when intermediate results would otherwise inflate context. Gateway permissions do not replace user authorization for external mutations.
+Use direct `mcp_search`, `mcp_describe`, and `mcp_call` tools for straightforward discovery and calls. Use Script to paginate, join, or aggregate results when intermediate data would otherwise inflate context. Gateway composition requires the globally allowed and explicitly selected `mcp` provider; see its [provider contract](pi/agent/extensions/mcp-gateway/API.md#script-provider). Gateway permissions do not replace user authorization for external mutations.
 
 ## Optional integrations
 

@@ -1,6 +1,6 @@
 # Script design
 
-Script provides disposable computation with a narrow provider boundary. It is not a generic Pi tool dispatcher, workflow engine or background supervisor. The legacy Code mode implementation remains unchanged: runtime/bootstrap code is adapted locally rather than extracting a shared executor and migrating existing consumers in this change.
+Script provides disposable computation with a narrow provider boundary. It is not a generic Pi tool dispatcher, workflow engine or background supervisor.
 
 ## Modules
 
@@ -43,6 +43,6 @@ Rendering consumes host accounting and `context.args`, not source or result payl
 
 ## Verification and change guidance
 
-Actual-boundary fixtures cover pure execution, namespace wrappers and parallel calls, explicit host/caller selection, unavailable/missing methods, invalid schemas and atomic conflicts, schema rejection without dispatch, count/concurrency limits, deadline/cancellation/actual child exit, provider revocation, sticky known/unknown failures, partial writes, late settlements, strict JSON/output bounds, credential/intermediate diagnostic privacy, forged IPC and underlying Node permissions. Loader tests cover independent loading without Gateway, coexistence with Code mode, event-bus interoperability across module caches, discovery, semantic error promotion and shutdown. Rendering tests cover narrow widths and hostile control text.
+Actual-boundary fixtures cover pure execution, namespace wrappers and parallel calls, explicit host/caller selection, unavailable/missing methods, invalid schemas and atomic conflicts, schema rejection without dispatch, count/concurrency limits, deadline/cancellation/actual child exit, provider revocation, sticky known/unknown failures, partial writes, late settlements, strict JSON/output bounds, credential/intermediate diagnostic privacy, forged IPC and underlying Node permissions. Loader tests cover independent loading without Gateway, event-bus interoperability across module caches, discovery, semantic error promotion and shutdown. Rendering tests cover narrow widths and hostile control text.
 
-Keep the legacy consumers unchanged until separately authorized migration. Gateway's optional MCP provider and future providers implement this API rather than importing core internals; fixture qualification is not live integration qualification. Any new guest binding, schema dialect, output channel or failure disposition needs actual-boundary regression coverage and corresponding contract updates. Background supervision belongs to a separate owner calling the supported host API.
+Gateway's optional MCP provider and future providers implement this API rather than importing core internals; fixture qualification is not live integration qualification. Any new guest binding, schema dialect, output channel or failure disposition needs actual-boundary regression coverage and corresponding contract updates. Background supervision belongs to a separate owner calling the supported host API.

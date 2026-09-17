@@ -22,7 +22,7 @@ Use [Background](../../../extensions/background/README.md) polling with fresh Sc
 
 ### Collect one read-only batch
 
-Discover tools with `mcp_search` and inspect exact schemas with `mcp_describe`; do not invent names or response shapes. For immediate/final owning-session collection, use direct MCP or [Code](../../../extensions/code-mode/README.md) for bounded pagination/dependent lookups. The Background evaluator uses Script's selected `mcp.call`, not a second Code scheduler. No mutations or local checkpoint writes belong in it.
+Discover tools with `mcp_search` and inspect exact schemas with `mcp_describe`; do not invent names or response shapes. For immediate/final owning-session collection, use direct MCP or [Script](../../../extensions/script/README.md) with the globally allowed and explicitly selected `mcp` provider for bounded pagination/dependent lookups. Discover the provider API with `script` action `describe` before using unfamiliar methods. The Background evaluator uses the same selected `mcp.call` capability. No mutations or local checkpoint writes belong in the evaluator.
 
 Fetch PR source/base/head/open state, applicable required coverage, current check runs/statuses and all relevant pages within limits. Bind queries to the watched revision, resolve latest applicable attempts/duplicate names, then recheck PR identity/head before accepting the batch. Reads are not atomic. Unexpected remote changes block writes pending ownership/content reconciliation, not automatic rebinding or overwrite.
 

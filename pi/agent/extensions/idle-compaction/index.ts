@@ -97,20 +97,19 @@ export function createIdleCompactionExtension(
       controller.activity();
     });
 
-    pi.registerCommand("idle-compaction", {
-      description:
-        "Set a session idle-compaction override or inspect status: on|off|status",
-      handler: async (args, ctx) => {
-        const action = args.trim() || "status";
-        if (!["on", "off", "status"].includes(action)) {
-          ctx.ui.notify("Usage: /idle-compaction on|off|status", "warning");
-          return;
-        }
-        if (action !== "status") controller.setOverride(action === "on");
-        controller.activity();
-        ctx.ui.notify(controller.status(), "info");
-      },
-    });
+    for (const action of ["enable", "disable", "status"] as const) {
+      pi.registerCommand(`idle-compaction-${action}`, {
+        description:
+          action === "status"
+            ? "Show idle-compaction status"
+            : `${action === "enable" ? "Enable" : "Disable"} idle compaction for this session`,
+        handler: async (_args, ctx) => {
+          if (action !== "status") controller.setOverride(action === "enable");
+          controller.activity();
+          ctx.ui.notify(controller.status(), "info");
+        },
+      });
+    }
     registerConfigCommand(pi, {
       extensionName: "idle-compaction",
       loadConfig: (_cwd, outputWarnings = []) => {

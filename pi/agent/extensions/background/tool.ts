@@ -6,53 +6,58 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { label, type Receipt } from "./contract.ts";
+import { DEFAULT_CONFIG, type BackgroundConfig } from "./config.ts";
 const finite = (max: number, description: string) =>
   Type.Optional(Type.Integer({ minimum: 1000, maximum: max, description }));
-export const PARAMETERS = Type.Object(
-  {
-    action: StringEnum(["start", "list", "get", "cancel"] as const),
-    id: Type.Optional(Type.String()),
-    name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-    message: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
-    providers: Type.Optional(
-      Type.Array(Type.String(), { maxItems: 32, uniqueItems: true }),
-    ),
-    source: Type.Optional(Type.String({ minLength: 1, maxLength: 237568 })),
-    cycle_timeout_ms: finite(
-      1500000,
-      "Observation/attention deadline per cycle, including setup; NOT a per-call timeout. One-shot expiry ends observation. For repeated polling, allow multiple intervals plus evaluation time.",
-    ),
-    lifetime_ms: finite(
-      86400000,
-      "Outer wall-clock ceiling including setup and settlement waits. Does not override earlier cycle expiry or renew caller-owned task allowances.",
-    ),
-    max_wakes: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-    recurring: Type.Optional(Type.Boolean()),
-    interval_ms: finite(
-      1500000,
-      "Polling delay after each evaluation settles (including event evaluations), not evaluation runtime or observation lifetime. Initial evaluation runs after setup; interval >= cycle timeout permits no subsequent poll before that deadline.",
-    ),
-    delay_ms: finite(
-      1500000,
-      "Timer-only continuation delay: first from admission, subsequent delays after positively correlated wake settlement. Alternative to polling/events/source.",
-    ),
-    events: Type.Optional(
-      Type.Array(
-        Type.Object(
-          {
-            provider: Type.String(),
-            event: Type.String(),
-            args: Type.Array(Type.Any()),
-          },
-          { additionalProperties: false },
-        ),
-        { maxItems: 4 },
+export const parameters = (
+  config: Readonly<BackgroundConfig> = DEFAULT_CONFIG,
+) =>
+  Type.Object(
+    {
+      action: StringEnum(["start", "list", "get", "cancel"] as const),
+      id: Type.Optional(Type.String()),
+      name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+      message: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+      providers: Type.Optional(
+        Type.Array(Type.String(), { maxItems: 32, uniqueItems: true }),
       ),
-    ),
-    state: Type.Optional(Type.Any()),
-  },
-  { additionalProperties: false },
-);
+      source: Type.Optional(Type.String({ minLength: 1, maxLength: 237568 })),
+      cycle_timeout_ms: finite(
+        config.maxCycleTimeoutMs,
+        "Observation/attention deadline per cycle, including setup; NOT a per-call timeout. One-shot expiry ends observation. For repeated polling, allow multiple intervals plus evaluation time.",
+      ),
+      lifetime_ms: finite(
+        config.maxLifetimeMs,
+        "Outer wall-clock ceiling including setup and settlement waits. Does not override earlier cycle expiry or renew caller-owned task allowances.",
+      ),
+      max_wakes: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+      recurring: Type.Optional(Type.Boolean()),
+      interval_ms: finite(
+        config.maxCycleTimeoutMs,
+        "Polling delay after each evaluation settles (including event evaluations), not evaluation runtime or observation lifetime. Initial evaluation runs after setup; interval >= cycle timeout permits no subsequent poll before that deadline.",
+      ),
+      delay_ms: finite(
+        config.maxCycleTimeoutMs,
+        "Timer-only continuation delay: first from admission, subsequent delays after positively correlated wake settlement. Alternative to polling/events/source.",
+      ),
+      events: Type.Optional(
+        Type.Array(
+          Type.Object(
+            {
+              provider: Type.String(),
+              event: Type.String(),
+              args: Type.Array(Type.Any()),
+            },
+            { additionalProperties: false },
+          ),
+          { maxItems: 4 },
+        ),
+      ),
+      state: Type.Optional(Type.Any()),
+    },
+    { additionalProperties: false },
+  );
+export const PARAMETERS = parameters();
 export function summary(r: Receipt) {
   return {
     id: r.id,

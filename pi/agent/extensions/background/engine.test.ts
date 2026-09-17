@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BackgroundEngine, type Clock, type Host } from "./engine.ts";
 import { registration, type Receipt, type Trigger } from "./contract.ts";
+import { parseConfig, MAX_DURATION_MS } from "./config.ts";
 import type { RunResult, JsonValue } from "../script/api.ts";
 const success = (
   decision = "wait",
@@ -128,7 +129,7 @@ test("observation end time excludes queued delivery and later cancellation", asy
 test("atomic invalid registration and mandatory immutable bounds", () => {
   for (const patch of [
     { cycle_timeout_ms: undefined },
-    { cycle_timeout_ms: 1500001 },
+    { cycle_timeout_ms: 1740001 },
     { lifetime_ms: Infinity },
     { max_wakes: 0 },
     { recurring: false, max_wakes: 2 },
@@ -142,6 +143,45 @@ test("atomic invalid registration and mandatory immutable bounds", () => {
     () => registration({}),
     /name[\s\S]*cycle_timeout_ms[\s\S]*lifetime_ms[\s\S]*max_wakes/,
   );
+});
+
+test("configured long deadlines schedule and expire without resetting lifetime", async () => {
+  const f = fixture();
+  const config = parseConfig(
+    { maxCycleTimeoutMs: MAX_DURATION_MS, maxLifetimeMs: MAX_DURATION_MS },
+    {},
+  );
+  const r = await f.engine.start(
+    registration(
+      {
+        name: "long",
+        message: "Inspect",
+        providers: [],
+        recurring: true,
+        max_wakes: 3,
+        cycle_timeout_ms: 90_000_000,
+        lifetime_ms: 180_000_000,
+        delay_ms: 100_000_000,
+      },
+      config,
+    ),
+  );
+  assert.equal(r.deadline - r.createdAt, 180_000_000);
+  assert.equal([...f.timers.values()][0].at, r.createdAt + 90_000_000);
+  await f.advance(90_000_000 - 1);
+  assert.equal(f.engine.get(r.id)!.attention, undefined);
+  await f.advance(1);
+  assert.equal(f.engine.get(r.id)!.attention!.reason, "timeout");
+  f.idle();
+  await f.advance();
+  f.admit();
+  await f.advance(1000);
+  f.idle();
+  assert.equal(f.engine.get(r.id)!.cycleDeadline, r.createdAt + 180_001_000);
+  assert.equal(f.engine.get(r.id)!.deadline, r.deadline);
+  await f.advance(89_999_000);
+  assert.equal(f.engine.get(r.id)!.failureCode, "lifetime_limit");
+  f.engine.close(false);
 });
 
 test("polling uses zero messages while waiting and no catch-up bursts", async () => {

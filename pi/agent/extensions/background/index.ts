@@ -4,6 +4,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { describeScriptProviders, snapshotScriptJson } from "../script/api.ts";
 import { createPersistentWidget } from "../_shared/widget.ts";
+import { registerConfigCommand } from "../_shared/config.ts";
+import { loadBackgroundConfig, CONFIG_WARNING } from "./config.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { BackgroundEngine } from "./engine.ts";
 import { evaluateBackground } from "./execution.ts";
@@ -12,7 +14,7 @@ import { subscribeProvider, describeEvents } from "./providers.ts";
 import { SessionProvider, sessionRoot } from "./sessions.ts";
 import { restore, RECEIPT_TYPE } from "./receipts.ts";
 import {
-  PARAMETERS,
+  parameters,
   renderers,
   widgetLines,
   visible,
@@ -21,7 +23,19 @@ import {
   pollingWarning,
 } from "./tool.ts";
 
-export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
+export default async function background(
+  pi: ExtensionAPI,
+  rootPath = sessionRoot,
+) {
+  const config = Object.freeze(await loadBackgroundConfig());
+  registerConfigCommand(pi, {
+    extensionName: "background",
+    sensitiveFields: [],
+    loadConfig: (_cwd, warnings = []) => {
+      if (!config.valid) warnings.push(CONFIG_WARNING);
+      return { ...config };
+    },
+  });
   let generation = 0;
   let context: ExtensionContext | undefined;
   let engine: BackgroundEngine | undefined;
@@ -57,6 +71,7 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
   const initialize = (ctx: ExtensionContext) => {
     close(false);
     context = ctx;
+    if (!config.valid && ctx.hasUI) ctx.ui.notify(CONFIG_WARNING, "warning");
     const token = generation;
     const current = () => {
       if (token !== generation) throw new Error("stale_context");
@@ -154,10 +169,9 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
   pi.registerTool({
     name: "background",
     label: "Background",
-    parameters: PARAMETERS,
+    parameters: parameters(config),
     ...renderers,
-    description:
-      "Bounded session-branch observation/continuation: start/list/get/cancel. Start requires name, message, explicit providers, cycle_timeout_ms (1s–25m), lifetime_ms (1s–24h), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example: interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.",
+    description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example (when configured ceilings permit): interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
     promptSnippet:
       "Observe typed events or poll in fresh Script evaluations; continue only within explicit finite bounds",
     promptGuidelines: [
@@ -175,7 +189,7 @@ export default function background(pi: ExtensionAPI, rootPath = sessionRoot) {
         let selected: Receipt | undefined;
         let cancelChanged = false;
         if (params.action === "start") {
-          const reg = registration(params);
+          const reg = registration(params, config);
           await describeScriptProviders(
             pi,
             ctx.cwd,

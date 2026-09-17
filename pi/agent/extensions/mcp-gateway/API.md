@@ -23,13 +23,13 @@ const result = await gateway.call(name, args, signal, () => {
 
 Each composed call refreshes discovery under the active client configuration, validates the discovered schema using strict Ajv with standard formats, and pins credential identity through invocation. Draft-07 and explicit draft-2020-12 are supported, including the string-valued `x-mcp-header` provider annotation. This annotation does not validate arguments or assign headers locally; gateway-owned routing is unchanged. Unsupported schemas, other unknown formats/keywords, async schemas, unresolved external references, and invalid arguments fail closed. No coercion/defaults/schema downloads occur. The gateway independently validates and authorizes the operation. Configured annotation-based read-only restrictions, per-call deadlines, credential rotation, and cancellation remain in force.
 
-`GatewayError` exposes locally generated summary/code, optional validated rejection reason and invocation ID, uncertainty, and optional bounded external guidance. Consumers crossing a model-context boundary must not copy guidance or arbitrary exception messages automatically: those can contain intermediate data. The code-mode consumer forwards only safe failure metadata. Provider `isError` results remain raw data; consumers must retain a host-observed failure separately from guest control flow.
+`GatewayError` exposes locally generated summary/code, optional validated rejection reason and invocation ID, uncertainty, and optional bounded external guidance. Consumers crossing a model-context boundary must not copy guidance or arbitrary exception messages automatically: those can contain intermediate data. The Script provider forwards only declared safe failure codes and outcome uncertainty. Provider `isError` results remain raw data; consumers must retain a host-observed failure separately from guest control flow.
 
 ## Script provider
 
 ### Availability
 
-When Gateway activates, it registers the optional `mcp` namespace using `registerScriptProvider` from `../script/api.ts`. Loading the `script` tool is not required for direct gateway tools or host-library use. Factory order does not matter. Script remains usable with `providers: []` without Gateway. Code mode retains its existing API; Background selects this Script provider for gateway polling.
+When Gateway activates, it registers the optional `mcp` namespace using `registerScriptProvider` from `../script/api.ts`. Loading the `script` tool is not required for direct gateway tools or host-library use. Factory order does not matter. Script remains usable with `providers: []` without Gateway. Background selects this Script provider for gateway polling.
 
 Enable `mcp` in the trusted global Script `allowedProviders` policy, then explicitly select `providers: ["mcp"]` per execution. Registration alone grants no execution access; the Script host library must be installed even when its tool extension is not loaded.
 
@@ -76,7 +76,7 @@ The adapter uses `createGatewayAccess` on the same owned client, preserving fres
 
 ### Failure and lifecycle
 
-Provider `isError` resolves unchanged but forces host failure. Known gateway exceptions reject with a declared safe `code` and `outcomeUnknown`; Script retains the code independently of guest catches. Raw exceptions and rejection guidance are suppressed. Rejection reasons/invocation IDs are not included in this minimal provider error contract; direct tools and legacy Code mode retain their existing richer diagnostics. Unrecognized exceptions conservatively become unknown provider failures. Script accounts handler entry as potential dispatch, even for provider-internal preflight rejection, so effects/partial flags can conservatively overstate effects. No gateway envelope is invented for a transport/admission failure.
+Provider `isError` resolves unchanged but forces host failure. Known gateway exceptions reject with a declared safe `code` and `outcomeUnknown`; Script retains the code independently of guest catches. Raw exceptions and rejection guidance are suppressed. Rejection reasons/invocation IDs are not included in this minimal provider error contract; direct tools retain their richer diagnostics. Unrecognized exceptions conservatively become unknown provider failures. Script accounts handler entry as potential dispatch, even for provider-internal preflight rejection, so effects/partial flags can conservatively overstate effects. No gateway envelope is invented for a transport/admission failure.
 
 The Script deadline/signal further narrows execution. Configuration changes and shutdown dispose the registration, cancelling **all** executions selecting it, including runs between calls. New executions select a fresh registration; old executions cannot adopt new authority.
 

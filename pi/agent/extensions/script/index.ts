@@ -47,6 +47,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet:
       "Run isolated JavaScript with explicitly selected extension capabilities",
     promptGuidelines: [
+      "Prefer direct mcp_call for straightforward gateway calls. Use script with the selected mcp provider when bounded pagination, dependent lookups, or aggregation materially reduces intermediate context. Discover external names with mcp_search and inspect schemas with mcp_describe before calling mcp.call; reuse inspected schemas unless evidence indicates a change. Check each raw MCP envelope's isError and actual content shape, and await every call. Script is not subagent reasoning or persistent polling.",
       "Discover script provider APIs with action describe before using unfamiliar methods. Provider permission is not user approval: obtain action authorization before mutations; never automatically replay failed or uncertain script execution.",
     ],
     async execute(_id, params, signal, onUpdate, ctx) {

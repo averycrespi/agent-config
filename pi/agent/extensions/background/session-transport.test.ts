@@ -12,6 +12,7 @@ import {
   subscribeEvents,
 } from "./session-transport.ts";
 import { temporaryRoot } from "./test-support.ts";
+import { MAX_DURATION_MS } from "./config.ts";
 
 async function fixture(t: any) {
   const temp = temporaryRoot(),
@@ -100,6 +101,38 @@ test(
     await once(slow, "close");
     bridge.publish("agent_settled", {});
     await match;
+  },
+);
+
+test(
+  "subscriptions above 24 hours and at timer safety ceiling retain coverage",
+  { timeout: 5000 },
+  async (t) => {
+    const { root, bridge } = await fixture(t);
+    for (const timeout of [172_800_000, MAX_DURATION_MS]) {
+      let observed!: () => void;
+      const event = new Promise<void>((resolve) => {
+        observed = resolve;
+      });
+      let lost = false;
+      const sub = await subscribeEvents(
+        root,
+        bridge.target.incarnation,
+        ["agent_settled"],
+        timeout,
+        observed,
+        () => {
+          lost = true;
+        },
+      );
+      t.after(sub.close);
+      // An overflowing Node timer would disconnect almost immediately.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      assert.equal(lost, false);
+      bridge.publish("agent_settled", {});
+      await event;
+      sub.close();
+    }
   },
 );
 

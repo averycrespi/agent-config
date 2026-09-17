@@ -4,7 +4,8 @@ A deterministic host supervisor separates observation from cognition. Timers and
 
 ## Modules
 
-- `contract.ts`: immutable registration validation, finite hard bounds, receipt/trigger types and successful-observation validation.
+- `config.ts`: fail-closed global/environment policy loading, default ceilings and timer-safety bound.
+- `contract.ts`: immutable registration validation against the configuration snapshot, fixed count bounds, receipt/trigger types and successful-observation validation.
 - `engine.ts`: synchronous reservations, staged subscription admission, serial per-job FIFO evaluations, two shared execution slots, four occupied jobs, host clocks, committed state/evidence, coalesced attention and causal recurrence.
 - `execution.ts`: supported Script host API adapter. A fresh guest parses encoded JSON trigger/state arguments (including own `__proto__` data keys), with source headroom reserved for encoding overhead; selected provider globals and Script limits remain authoritative. No alternate executor or persistent interpreter exists.
 - `providers.ts` / `api.ts`: typed, schema-checked host subscription contracts with atomic registration alongside Script, policy intersection, bounded payloads and cancellation. The private event-bus query avoids module-cache singleton assumptions; it is not a guest bus binding.
@@ -14,6 +15,8 @@ A deterministic host supervisor separates observation from cognition. Timers and
 - `tool.ts`: snake-case schema, safe rendering, compact summaries and untrusted evidence framing.
 
 ## Admission and observation
+
+The async extension factory snapshots global/environment configuration before registering tools; no resources start there. Project settings cannot expand host policy. The shared config command reports the same snapshot. Tool schema, description and runtime admission use that snapshot until reload (not tree navigation); invalid policy blocks starts while preserving inspection/cancellation. Cycle and lifetime defaults are policy ceilings, never implicit job arguments. Interval and delay retain their coupling to the cycle ceiling. Technical duration safety is separate: 2,147,481,647 ms reserves the transport's two-second grace below Node's maximum timer delay. Receipt validation uses that technical bound so lowering policy cannot erase historical accounting. Transport accepts that same finite range; older peers fail subscription setup rather than silently shortening coverage.
 
 Registration validates before reservation; reservations include asynchronous setup in the capacity count. All subscriptions are staged before committing one job. Callbacks can enqueue bounded events during setup, before acknowledgment returns. Setup loss/overflow/cancellation closes every staged subscription and leaves no admitted receipt. Once admitted, registration-tool cancellation no longer owns the job. The job has its own cancellation controller.
 
