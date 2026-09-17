@@ -199,6 +199,73 @@ test("polling uses zero messages while waiting and no catch-up bursts", async ()
   assert.equal(f.inputs.length, 2);
 });
 
+test("equal polling interval/cycle expires after initial pending check despite longer lifetime", async () => {
+  const f = fixture({
+    evaluate: async () => success("wait", { ci: "pending" }),
+  });
+  const r = await f.engine.start(
+    f.reg({
+      recurring: false,
+      max_wakes: 1,
+      interval_ms: 30000,
+      cycle_timeout_ms: 30000,
+      lifetime_ms: 900000,
+    }),
+  );
+  await f.advance(30000);
+  const ended = f.engine.get(r.id)!;
+  assert.equal(ended.evaluations, 1);
+  assert.equal(ended.status, "finished");
+  assert.equal(ended.attention!.reason, "timeout");
+  assert.deepEqual(ended.evidence, { ci: "pending" });
+  assert.equal(ended.failureCode, undefined);
+  f.idle();
+  await f.advance(900000);
+  assert.equal(f.messages.length, 1);
+  assert.equal(f.engine.get(r.id)!.evaluations, 1);
+  f.engine.close(false);
+});
+
+test("longer cycle polls after evaluation settlement and observes CI passing beyond 30 seconds", async () => {
+  let complete!: (result: RunResult) => void;
+  const triggers: Trigger[] = [];
+  const f = fixture({
+    evaluate: async (_reg, trigger) => {
+      triggers.push(trigger);
+      if (triggers.length === 1)
+        return new Promise((resolve) => {
+          complete = resolve;
+        });
+      return success("wake", { ci: "passed" });
+    },
+  });
+  const r = await f.engine.start(
+    f.reg({
+      recurring: false,
+      max_wakes: 1,
+      interval_ms: 30000,
+      cycle_timeout_ms: 600000,
+      lifetime_ms: 900000,
+    }),
+  );
+  await f.advance(1300);
+  complete(success("wait", { ci: "pending" }));
+  await f.advance(0);
+  await f.advance(29999);
+  assert.equal(triggers.length, 1);
+  assert.equal(f.engine.get(r.id)!.status, "active");
+  await f.advance(1);
+  assert.equal(triggers[1].at - triggers[0].at, 31300);
+  const ended = f.engine.get(r.id)!;
+  assert.equal(ended.attention!.reason, "condition");
+  assert.deepEqual(ended.evidence, { ci: "passed" });
+  assert.equal(f.messages.length, 0);
+  f.idle();
+  await f.advance(0);
+  assert.equal(f.messages.length, 1);
+  f.engine.close(false);
+});
+
 test("one-shot condition stops observation, held until settlement and cancelable", async () => {
   const f = fixture({ evaluate: async () => success("wake", { ready: true }) });
   const r = await f.engine.start(f.reg({ recurring: false, max_wakes: 1 }));

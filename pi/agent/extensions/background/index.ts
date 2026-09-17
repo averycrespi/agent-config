@@ -20,6 +20,7 @@ import {
   visible,
   summary,
   notificationContent,
+  pollingWarning,
 } from "./tool.ts";
 
 export default async function background(
@@ -170,7 +171,7 @@ export default async function background(
     label: "Background",
     parameters: parameters(config),
     ...renderers,
-    description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
+    description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example (when configured ceilings permit): interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
     promptSnippet:
       "Observe typed events or poll in fresh Script evaluations; continue only within explicit finite bounds",
     promptGuidelines: [
@@ -238,14 +239,23 @@ export default async function background(
           throw new RequestError(
             "Session changed; inspect destination receipts.",
           );
+        const warning =
+          params.action === "start" && selected
+            ? pollingWarning(summary(selected))
+            : undefined;
         return {
           content: [
             {
               type: "text",
-              text: wrapUntrustedContent(
-                "BACKGROUND RESULT",
-                snapshotScriptJson(JSON.parse(JSON.stringify(value)), 48000),
-              ),
+              text:
+                (warning ? `${warning}\n` : "") +
+                wrapUntrustedContent(
+                  "BACKGROUND RESULT",
+                  snapshotScriptJson(
+                    JSON.parse(JSON.stringify(value)),
+                    48000 - Buffer.byteLength(warning ?? ""),
+                  ),
+                ),
             },
           ],
           details: {

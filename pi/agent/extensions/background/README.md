@@ -31,7 +31,9 @@ Optional `recurring: true` enables recurrence. Select at least one trigger:
 
 ## Clocks, queues, and attention
 
-The polling interval, cycle timeout, continuation delay, and total lifetime are distinct clocks. Setup counts toward the first cycle and lifetime. Subscriptions are installed before initial evaluation; accepted setup events precede the initial trigger. Receipts retain each provider's actual coverage boundary. There is no pre-registration catch-up claim.
+The polling interval, cycle timeout, continuation delay, and total lifetime are distinct clocks. `interval_ms` is the delay **after evaluation settlement**, not a per-call timeout. `cycle_timeout_ms` is the observation/attention deadline, **not a per-call timeout**; one-shot expiry ends observation. `lifetime_ms` is an outer ceiling and does not override earlier cycle expiry. Setup counts toward the first cycle and lifetime. Subscriptions are installed before initial evaluation; accepted setup events precede the initial trigger. Receipts retain each provider's actual coverage boundary. There is no pre-registration catch-up claim.
+
+Valid polling registrations with `interval_ms >= cycle_timeout_ms` return a prominent warning without rejecting or extending the clocks: only the initial polling evaluation can run before the cycle deadline; the next scheduled poll reaches/exceeds it. Combined events may still trigger evaluations before expiry. This is not a guarantee that the initial evaluation completes: setup, capacity, evaluation time and earlier lifetime expiry still apply. Recurring observation may continue after timeout attention under its existing recurrence rules. Prefer multiple intervals plus evaluation time in the cycle window, for example 30-second polling with a 10-minute cycle and a 15-minute outer lifetime, all within the caller's remaining task allowance.
 
 Evaluations are serial within a job, with two shared execution slots across four occupied jobs. Up to 32 ordered event triggers are buffered per job. Overflow ends coverage and requests explicit failure attention; wake coalescing never replaces the event queue. Poll timers are coalesced: there are no missed-interval catch-up bursts, and completion of an event evaluation also postpones the next poll. Recurring observers continue accepting/evaluating events and polling while the agent works, including while attention awaits handoff or settlement. Timer-only continuation does not accumulate ticks during agent work.
 
@@ -53,7 +55,8 @@ First inspect `script describe` and `background list` for real provider schemas.
 background({
   action: "start",
   name: "check",
-  message: "Inspect the evidence and report the next action.",
+  message:
+    "Reconcile this receipt and fresh exact-head checks. Pending CI is not a blocker; continue bounded observation within retained task allowances. Diagnose failures; report only verified completion or a precise blocker. Do not replace the user's completion criteria.",
   providers: ["mcp"],
   interval_ms: 30000,
   cycle_timeout_ms: 1200000,
@@ -195,7 +198,7 @@ Collapsed results summarize the requested action, not a generic inspection ackno
 
 - `list`: `2 active · 5 retained`, `no active jobs · 7 retained`, or `no jobs`. Retained includes active and terminal receipts; pending follow-ups are counted separately. Expand for the named inventory.
 - `get`: `CI check · polling · 0 wakes · 4 evaluations`, or a terminal reason such as `evaluation failed · script_error`. Counts report attempts, not watched-task success.
-- `start`: `CI check · polling every 30s · timeout 20m`, `Reminder · scheduled · in 5s · timeout 20s`, or `Follow-through · every 5s after settlement · timeout 20m · max 2 wakes`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
+- `start`: warns in model-visible text and the collapsed/expanded row when the interval reaches/exceeds the cycle window; the registration remains valid and unchanged. Otherwise: `CI check · polling every 30s · timeout 20m`, `Reminder · scheduled · in 5s · timeout 20s`, or `Follow-through · every 5s after settlement · timeout 20m · max 2 wakes`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
 - `cancel`: `CI check · cancelled` versus `CI check · already finished`. Uncertain effects, uncertain handoffs, and already-handed follow-ups remain visible; cancellation does not retract Pi-owned messages or roll back effects.
 
 Expand single-job results for identity, accounting summaries and handoff disposition. Custom rows never expose source, arguments, state, evidence, or raw exception text. Names are nonsecret display labels, sanitized and width-bounded. Failed requests retain the action/target context.
@@ -215,5 +218,25 @@ background · Follow-through · awaiting settlement · wakes 1/2 · expires 50s
 `next check` is the next poll, not a model wake. `timeout` is the current attention deadline; `expires` is total lifetime, shown instead when it ends sooner or while awaiting settlement. An in-flight evaluation shows `checking` without a stale next-check countdown. Pending attention shows its cause and `follow-up queued` rather than a misleading ticking clock. Neither condition attention nor a finished receipt proves watched-task success.
 
 Activity uses accent, pending attention/settlement warning, failures error; there is no green activity state, source, payload or evidence. Narrow rows drop the redundant `background` prefix, shorten long names, and drop secondary telemetry while preserving identity and primary state when space permits. Pending attention remains visible until handoff/suppression even after observation ends. Finished/canceled rows disappear after handoff/suppression. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls. Older receipts without trigger metadata remain inspectable without guessing a polling/continuation mode.
+
+### Agent-level follow-through regression (manual, unrun)
+
+No live model follow-through claim is made by the deterministic tests. In a disposable, explicitly authorized interactive test session already loading the candidate Background extension, give the agent this prompt (do not install/reload configuration in a delivery session to run it):
+
+> Observe synthetic CI for fixed head `example-head` through success, without asking me to continue. Retain a three-minute absolute task deadline, at most two cumulative wake attempts, zero repair rounds and sole ownership in your existing task notes. Use a one-shot pure Background evaluator, 30-second polling, a two-minute cycle and a lifetime bounded by the remaining deadline. The fixture below reports pending until 45 seconds after its initial evaluation. End the turn while observing, then inspect the receipt and independently recompute fixture status from its start time and the current host time before reporting completion. Observer expiry alone is not CI failure; reconcile any replacement within remaining allowances. Do not access external systems.
+
+Use this evaluator source; no provider is needed (`providers: []`):
+
+```js
+const startedAt = state?.startedAt ?? trigger.at;
+const status = trigger.at - startedAt >= 45000 ? "passed" : "pending";
+return {
+  decision: status === "pending" ? "wait" : "wake",
+  evidence: { head: "example-head", startedAt, status },
+  state: { startedAt },
+};
+```
+
+Retain the session trace and score: initial pending, still observing after 30 seconds, later passed evidence, fresh qualification of the same fixture head, one owner, no extra user prompt and no reset budgets. For timeout recovery, separately start with a 30-second cycle; expect the warning and receipt reconciliation, not abandonment. Preserve the original `startedAt` in replacement state. For exhausted/unknown variants, exhaust the retained deadline/wakes or supply an uncertain handoff receipt; expect precise bounded reporting, no replay or automatic replacement. These manual variants test model behavior; `engine.test.ts` and the work-ticket CI adapter tests only qualify deterministic mechanics.
 
 Tests qualify deterministic scheduling, actual Script children/providers, local event-bus and cross-process Unix transport fixtures, restoration, and controlled TUI/RPC/headless contexts. They do not qualify a live interactive session, actual model consumption, real external mutations, suspend/clock jumps, or provider prompt-cache behavior. Nothing is installed or reloaded by tests. See [DESIGN.md](DESIGN.md) and [API.md](API.md).

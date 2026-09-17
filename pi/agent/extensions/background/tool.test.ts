@@ -4,6 +4,8 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { theme } from "./test-support.ts";
 import type { Receipt } from "./contract.ts";
 import {
+  parameters,
+  pollingWarning,
   renderers,
   summary,
   widgetLines,
@@ -89,6 +91,70 @@ test("start describes timer, recurrence, event and compound registrations withou
     assert.match(line, /CI check.*timeout 18s/);
     assert.doesNotMatch(line, /finished|success/);
   }
+});
+
+test("clock schema describes settlement delay, observation expiry and outer ceiling", () => {
+  const fields = JSON.parse(
+    JSON.stringify(
+      parameters({
+        maxCycleTimeoutMs: 3600000,
+        maxLifetimeMs: 172800000,
+        valid: true,
+      }),
+    ),
+  ).properties as Record<string, { description: string; maximum: number }>;
+  assert.equal(fields.cycle_timeout_ms.maximum, 3600000);
+  assert.equal(fields.interval_ms.maximum, 3600000);
+  assert.equal(fields.lifetime_ms.maximum, 172800000);
+  assert.match(
+    fields.interval_ms.description!,
+    /after each evaluation settles/,
+  );
+  assert.match(fields.cycle_timeout_ms.description!, /NOT a per-call timeout/);
+  assert.match(
+    fields.cycle_timeout_ms.description!,
+    /One-shot expiry ends observation/,
+  );
+  assert.match(
+    fields.lifetime_ms.description!,
+    /Does not override earlier cycle expiry/,
+  );
+});
+
+test("polling warning is bounded, prominent, event-aware and display-safe", () => {
+  for (const intervalMs of [30000, 60000]) {
+    for (const eventCount of [0, 1]) {
+      const r = display(
+        receipt({
+          intervalMs,
+          cycleMs: 30000,
+          eventCount,
+          name: "\u001b]0;hostile\u0007CI\ncheck",
+          evidence: "SECRET",
+        }),
+      );
+      const warning = pollingWarning(r)!;
+      assert.ok(warning.length < 600);
+      assert.match(warning, /at or beyond that deadline/);
+      assert.equal(
+        warning.includes("Events may still trigger"),
+        eventCount > 0,
+      );
+      for (const expanded of [false, true]) {
+        const details = { action: "start", receipt: r };
+        assert.match(text(details, expanded), /Warning:/);
+        const component = render(details, expanded);
+        for (let width = 0; width < 100; width++)
+          for (const line of component.render(width)) {
+            assert.ok(visibleWidth(line) <= width);
+            assert.doesNotMatch(line, /hostile|SECRET|\u0007|\n/);
+          }
+      }
+      assert.doesNotMatch(text({ action: "get", receipt: r }), /Warning:/);
+    }
+  }
+  for (const patch of [{ intervalMs: undefined }, { intervalMs: 1000 }])
+    assert.equal(pollingWarning(display(receipt(patch))), undefined);
 });
 
 test("get shows selected job state, counters and honest terminal reasons", () => {

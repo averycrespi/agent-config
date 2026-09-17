@@ -192,6 +192,54 @@ test("25-minute attention renews only the remaining cumulative allowance", async
   f.engine.close(false);
 });
 
+test("timeout accounts observation only; fresh CI distinguishes pending, failed and passed", async () => {
+  for (const [state, disposition] of [
+    ["pending", "waiting"],
+    ["failed", "repair"],
+    ["passed", "passed"],
+  ]) {
+    const f = await fixture();
+    const id = await f.start();
+    await f.advance(1500000);
+    assert.equal(f.engine.get(id).attention.reason, "timeout");
+    assert.equal(f.reconcile(id).disposition, "paused");
+    assert.equal(f.ledger.observation.outcome, "pending");
+    assert.equal(f.update(observation(state)).disposition, disposition);
+    assert.equal(f.ledger.waitUsedMs, 1500000);
+    f.engine.close(false);
+  }
+});
+
+test("uncertain registration cannot be replayed or rebound before inactivity recovery", async () => {
+  const f = await fixture();
+  f.update({ operation: "prepare" });
+  const before = structuredClone(f.ledger);
+  for (const request of [
+    { operation: "prepare" },
+    {
+      operation: "watch",
+      pr,
+      head: "b".repeat(40),
+      previousHead: head,
+      required: ["Verify"],
+    },
+    { operation: "extend", additionalMs: 60000 },
+    observation("passed"),
+  ]) {
+    assert.throws(() => f.update(request), /registered Monitor/);
+    assert.deepEqual(f.ledger, before);
+  }
+  await f.advance(30000);
+  f.update({
+    operation: "recover",
+    reference: "fixture proves registration never dispatched",
+  });
+  assert.equal(f.ledger.waitUsedMs, 30000);
+  assert.equal(f.ledger.lastWatcher.state, "unavailable");
+  assert.equal(f.ledger.disposition, "paused");
+  f.engine.close(false);
+});
+
 test("raw active or legacy receipts cannot settle a new job; interruption retains usage", async () => {
   const f = await fixture(),
     id = await f.start();
