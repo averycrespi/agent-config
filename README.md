@@ -59,7 +59,7 @@ Use the activities that fit the request rather than treating every skill as a ma
 
 ### Manage unattended session context
 
-[Idle compaction](pi/agent/extensions/idle-compaction/README.md) optionally summarizes large, inactive open terminal sessions without starting an agent turn. It is disabled by default, costs summarization tokens, and loses some detail; native navigation races and incomplete dialog visibility remain documented limitations. Use `/idle-compaction` for a persistent session override and status.
+[Idle compaction](pi/agent/extensions/idle-compaction/README.md) optionally summarizes large, inactive open terminal sessions without starting an agent turn. It is disabled by default, costs summarization tokens, and loses some detail; native navigation races and incomplete dialog visibility remain documented limitations. Use `/idle-compaction-enable` or `/idle-compaction-disable` for a persistent session override, and `/idle-compaction-status` to inspect status.
 
 ### Ticket-driven delivery
 
