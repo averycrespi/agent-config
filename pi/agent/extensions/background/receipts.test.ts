@@ -5,6 +5,7 @@ import { runScript } from "../script/runtime.ts";
 import { createBridge } from "../script/bridge.ts";
 import { parseReceipt, restore, RECEIPT_TYPE } from "./receipts.ts";
 import type { Receipt } from "./contract.ts";
+import { MAX_DURATION_MS } from "./config.ts";
 
 function receipt(): Receipt {
   return {
@@ -31,6 +32,22 @@ function receipt(): Receipt {
     outcomeUnknown: false,
   };
 }
+
+test("historical configured ceilings restore against technical safety, not current policy", () => {
+  const r = {
+    ...receipt(),
+    deadline: 1000 + MAX_DURATION_MS,
+    cycleMs: MAX_DURATION_MS,
+    delayMs: MAX_DURATION_MS,
+  };
+  assert.deepEqual(parseReceipt(r), r);
+  for (const patch of [
+    { deadline: r.deadline + 1 },
+    { cycleMs: MAX_DURATION_MS + 1 },
+    { delayMs: MAX_DURATION_MS + 1 },
+  ])
+    assert.equal(parseReceipt({ ...r, ...patch }), undefined);
+});
 
 test("legacy successful runtime accounting restores latest in-memory receipt like disk JSON", async () => {
   const result = await runScript(

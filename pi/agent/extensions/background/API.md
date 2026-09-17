@@ -1,6 +1,6 @@
 # Background provider API
 
-Trusted sibling extensions import `registerBackgroundProvider` and types from `../background/api.ts`. This combines ordinary Script method registration with typed host event sources. Providers retain full host authority; this API is not a sandbox for extension authors. Tool controls remain immutable `start/list/get/cancel`; engine modules are internal.
+Trusted sibling extensions import `registerBackgroundProvider` and types from `../background/api.ts`. This combines ordinary Script method registration with typed host event sources. Providers retain full host authority; this API is not a sandbox for extension authors. Tool controls remain immutable `start/list/get/cancel`; engine modules are internal. Cycle/lifetime policy ceilings come from Background's [global/environment configuration](README.md#configuration), snapshotted at extension load; per-job bounds remain explicit.
 
 ## Typed event registration
 
@@ -13,7 +13,7 @@ An `EventSource` supplies:
 - `payloadSchema`: strict schema for safe projected payloads. Both schemas are snapshotted plain JSON, each at most 16 KiB; no async schemas or remote references.
 - `subscribe(args, context): Promise<Subscription>`, invoked by the host, never a persistent guest. `context` contains `signal`, absolute `deadlineMs`, `emit(payload)` and `lost()`.
 
-The returned `Subscription` contains `coverage` (bounded plain JSON describing actual subscription identity/boundary) and idempotent `close()`. Install callbacks before acknowledging coverage. Call `lost()` for disconnect, invalid identity, dropped coverage or malformed input; never reconnect or replay. Honor signal/deadline and close underlying resources. Host setup is bounded to two seconds and remaining lifetime; a late return is closed without replay. Do not expose transcript/event-bus objects, questions/answers/options, credentials, raw errors or session control in payloads.
+The returned `Subscription` contains `coverage` (bounded plain JSON describing actual subscription identity/boundary) and idempotent `close()`. Install callbacks before acknowledging coverage. Call `lost()` for disconnect, invalid identity, dropped coverage or malformed input; never reconnect or replay. Honor signal/deadline and close underlying resources. The absolute lifetime deadline can exceed 24 hours under configured policy; do not impose the former fixed ceiling or silently shorten coverage. Host setup is bounded to two seconds and remaining lifetime; a late return is closed without replay. Do not expose transcript/event-bus objects, questions/answers/options, credentials, raw errors or session control in payloads.
 
 Each emitted payload and coverage record is copied and bounded to 4096 UTF-8 bytes. Payload validation failure reports coverage loss rather than invoking the evaluator with malformed data. Background buffers accepted events separately from attention coalescing. Provider disposal aborts active event selections as well as Script executions. Script's host allowlist and the registration's explicit provider selection both apply; registration alone grants no authority. Policy is sampled at registration/evaluation, not continuously watched. A provider availability callback change blocks new selection, while active revocation requires disposal.
 

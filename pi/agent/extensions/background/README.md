@@ -15,14 +15,14 @@ Start requires:
 | `name`             | Nonsecret display label, 1–80 characters; control characters are removed.                                               |
 | `message`          | Authorized attention instruction, 1–2000 characters; never sent to an observed session.                                 |
 | `providers`        | Explicit Script namespaces; `[]` permits pure computation. `trigger` and `state` are reserved evaluator argument names. |
-| `cycle_timeout_ms` | Required attention deadline for each cycle: 1000–1,500,000 ms, hard capped at 25 minutes.                               |
-| `lifetime_ms`      | Required total wall-clock lifetime: 1000–86,400,000 ms, including setup and time awaiting settlement.                   |
+| `cycle_timeout_ms` | Required attention deadline per cycle: 1000–`maxCycleTimeoutMs` ms (default ceiling: 29 minutes).                       |
+| `lifetime_ms`      | Required total lifetime: 1000–`maxLifetimeMs` ms (default ceiling: 24 hours), including setup and awaiting settlement.  |
 | `max_wakes`        | Required maximum handoff attempts: 1–100. One-shot default requires 1.                                                  |
 
 Optional `recurring: true` enables recurrence. Select at least one trigger:
 
-- `interval_ms` (1000–1,500,000) plus `source`: initial evaluation after subscriptions are established, then polling no sooner than one interval after the previous evaluation settles. Events can be combined with polling.
-- `delay_ms` (1000–1,500,000): timer-only, no-code continuation. Incompatible with source, polling, and events. The first delay starts on admission; subsequent delays start after the awakened run settles.
+- `interval_ms` (1000–`maxCycleTimeoutMs`) plus `source`: initial evaluation after subscriptions are established, then polling no sooner than one interval after the previous evaluation settles. Events can be combined with polling.
+- `delay_ms` (1000–`maxCycleTimeoutMs`): timer-only, no-code continuation. Incompatible with source, polling, and events. The first delay starts on admission; subsequent delays start after the awakened run settles.
 - `events`: up to four `{provider, event, args}` subscriptions. Without source, any selected event requests attention. With source, the evaluator receives its safe payload and can implement a compound condition. Subscriptions activate on any selected source, not an implicit AND.
 
 `source` is an async JavaScript body, at most 232 KiB UTF-8, reserving space for safely encoded trigger/state under Script's source ceiling. `state` is optional initial plain JSON, default `null`, at most 4096 bytes. Return `{decision: "wait" | "wake", evidence: JSON, state?: JSON}`. Evidence and replacement state are each at most 4096 UTF-8 bytes. Omit state to retain it; return `state: null` to replace it with null. `stop` is not an evaluator decision: agent/user cancellation and host lifecycle/failure/budgets own termination.
@@ -153,7 +153,33 @@ background({
 
 Only explicitly authorized monitoring/continuation may be registered. Repeated provider mutations are supported when applicable user authority covers them. Provider permission is not approval. Nested calls retain Script admission, redaction, cancellation, host traces, and isolation; no synthetic nested Pi tool hooks are emitted. Trusted providers must not expose secrets in schemas or payloads.
 
-No Background settings or environment overrides exist; ceilings are fixed. Provider policy and evaluator limits come from [Script's global/environment configuration](../script/README.md#policy-and-configuration), never project settings. Enable only needed namespaces, for example `allowedProviders: ["sessions", "mcp"]`; editing/installing configuration and reloading a live session require separate authorization. Invalid Script policy fails closed. Event registration alone grants no permission. The optional session provider may be unavailable on unsupported/unsafe transports; timer-only jobs still work.
+### Configuration
+
+Configure `extension:background` in global `~/.pi/agent/settings.json` (or `$PI_CODING_AGENT_DIR/settings.json`). Project settings are deliberately ignored: a repository cannot expand host observation/continuation allowances. Environment values take precedence over the corresponding global field.
+
+| Field               | Default                | Environment override              | Description                                                                                            |
+| ------------------- | ---------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `maxCycleTimeoutMs` | `1740000` (29 minutes) | `BACKGROUND_MAX_CYCLE_TIMEOUT_MS` | Ceiling for required `cycle_timeout_ms` and optional `interval_ms`/`delay_ms`.                         |
+| `maxLifetimeMs`     | `86400000` (24 hours)  | `BACKGROUND_MAX_LIFETIME_MS`      | Ceiling for required total `lifetime_ms`; includes setup, observation, pending handoff and agent work. |
+
+```json
+{
+  "extension:background": {
+    "maxCycleTimeoutMs": 1740000,
+    "maxLifetimeMs": 86400000
+  }
+}
+```
+
+These are **policy ceilings, not per-job argument defaults**. Each start still requires explicit cycle, lifetime and wake bounds. Both settings accept integer milliseconds (or decimal digit strings) from 1000 through 2,147,481,647, reserving two seconds of transport expiry grace below Node's signed 32-bit timer ceiling. For example, `maxCycleTimeoutMs: 3600000` and `maxLifetimeMs: 172800000` permit one-hour cycles and two-day lifetimes. Interval/delay retain their existing coupling to the cycle ceiling; their individual values remain independent of a job's cycle and lifetime, so a deadline may win over a longer trigger delay. No other counts or evaluator budgets change.
+
+The 29-minute default aims to request attention one minute before an assumed 30-minute cache timeout. It does not guarantee provider prompt-cache retention, delivery, or model-consumption timing.
+
+Configuration is snapshotted when the extension loads. `/background-config` displays that effective snapshot and its `valid` flag, without rereading or changing it. Settings/environment changes take effect only on extension reload; tree navigation keeps the snapshot. Unknown fields, invalid numbers, malformed global JSON/section, or unreadable settings disable new starts rather than silently falling back to looser limits. A missing settings file/section uses defaults. Inspection and cancellation remain available. Reload still invalidates old work and restores receipts only; historical receipts are validated against technical safety bounds, not today's policy. Editing/installing configuration and reloading a live session require separate authorization.
+
+Cross-session subscriptions support the same technical duration range without a hidden 24-hour clamp. Both participating sessions must load the updated transport for durations above the old ceiling; older peers reject those subscriptions without retry or partial admission.
+
+Provider policy and evaluator limits come from [Script's global/environment configuration](../script/README.md#policy-and-configuration), never project settings. Enable only needed namespaces, for example `allowedProviders: ["sessions", "mcp"]`; editing/installing configuration and reloading a live session require separate authorization. Invalid Script policy fails closed. Event registration alone grants no permission. The optional session provider may be unavailable on unsupported/unsafe transports; timer-only jobs still work.
 
 Hard bounds: 4 occupied jobs (including registration, cleanup and pending attention), 2 concurrent evaluations, 32 event triggers per job, 10,000 evaluations per job, 8 provider calls and 2 concurrent calls per evaluation, and 30 seconds per evaluation tightened by Script. Script's source/IPC/output and isolation limits still apply. At most 32 receipts are retained/restored, examining 4096 ancestors. Source is released when observation ends. Accounting retains the latest bounded trace plus cumulative counts/possible-effect flags, not an unbounded call log. Inspection output is capped at 48,000 bytes and fails rather than spilling/replaying when oversized.
 

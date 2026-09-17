@@ -17,7 +17,9 @@ import {
   type Notice,
 } from "./session-events.ts";
 
-export const MAX_TIMEOUT = 86_400_000;
+import { MAX_DURATION_MS } from "./config.ts";
+
+export const MAX_TIMEOUT = MAX_DURATION_MS;
 const HANDSHAKE_MS = 2000;
 export interface Target {
   incarnation: string;

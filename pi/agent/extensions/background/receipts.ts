@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { snapshotScriptJson } from "../script/api.ts";
 import { isId, label, LIMITS, type Receipt } from "./contract.ts";
+import { MAX_DURATION_MS } from "./config.ts";
 export const RECEIPT_TYPE = "background:receipt-v1";
 // Older successful evaluations retained an own code: undefined in memory,
 // although disk JSON omitted it. Normalize only that field, without invoking
@@ -93,9 +94,9 @@ export function parseReceipt(value: unknown): Receipt | undefined {
         r.calls,
       ].every((n) => Number.isSafeInteger(n) && n >= 0) ||
       r.deadline < r.createdAt ||
-      r.deadline - r.createdAt > LIMITS.lifetime ||
+      r.deadline - r.createdAt > MAX_DURATION_MS ||
       r.cycleMs < 1000 ||
-      r.cycleMs > LIMITS.cycle ||
+      r.cycleMs > MAX_DURATION_MS ||
       r.maxWakes < 1 ||
       r.maxWakes > LIMITS.wakes ||
       r.wakes > r.maxWakes ||
@@ -125,7 +126,7 @@ export function parseReceipt(value: unknown): Receipt | undefined {
       [r.intervalMs, r.delayMs].some(
         (n) =>
           n !== undefined &&
-          (!Number.isSafeInteger(n) || n < 1000 || n > LIMITS.cycle),
+          (!Number.isSafeInteger(n) || n < 1000 || n > MAX_DURATION_MS),
       ) ||
       (r.intervalMs !== undefined && r.delayMs !== undefined) ||
       (r.eventCount !== undefined &&

@@ -6,13 +6,16 @@ import {
   type RunResult,
 } from "../script/api.ts";
 import type { Selection } from "./providers.ts";
+import {
+  DEFAULT_CONFIG,
+  CONFIG_WARNING,
+  type BackgroundConfig,
+} from "./config.ts";
 export const LIMITS = Object.freeze({
   active: 4,
   concurrent: 2,
   queue: 32,
   receipts: 32,
-  cycle: 1_500_000,
-  lifetime: 86_400_000,
   wakes: 100,
   evaluations: 10000,
   source: 232 * 1024,
@@ -100,7 +103,11 @@ export interface Receipt {
 }
 const int = (v: unknown, min: number, max: number): v is number =>
   Number.isSafeInteger(v) && (v as number) >= min && (v as number) <= max;
-export function registration(raw: Record<string, unknown>): Registration {
+export function registration(
+  raw: Record<string, unknown>,
+  config: Readonly<BackgroundConfig> = DEFAULT_CONFIG,
+): Registration {
+  if (!config.valid) throw new RequestError(CONFIG_WARNING);
   const errors: string[] = [];
   const allowed = [
     "action",
@@ -141,10 +148,12 @@ export function registration(raw: Record<string, unknown>): Registration {
     errors.push(
       "Explicit unique providers are required (use [] for pure evaluation).",
     );
-  if (!int(raw.cycle_timeout_ms, 1000, LIMITS.cycle))
-    errors.push("cycle_timeout_ms is required: 1000–1500000.");
-  if (!int(raw.lifetime_ms, 1000, LIMITS.lifetime))
-    errors.push("lifetime_ms is required: 1000–86400000.");
+  if (!int(raw.cycle_timeout_ms, 1000, config.maxCycleTimeoutMs))
+    errors.push(
+      `cycle_timeout_ms is required: 1000–${config.maxCycleTimeoutMs}.`,
+    );
+  if (!int(raw.lifetime_ms, 1000, config.maxLifetimeMs))
+    errors.push(`lifetime_ms is required: 1000–${config.maxLifetimeMs}.`);
   if (!int(raw.max_wakes, 1, LIMITS.wakes))
     errors.push("max_wakes is required: 1–100.");
   if (raw.recurring !== undefined && typeof raw.recurring !== "boolean")
@@ -159,8 +168,11 @@ export function registration(raw: Record<string, unknown>): Registration {
   )
     errors.push("source must be nonblank, at most 232 KiB.");
   for (const field of ["interval_ms", "delay_ms"])
-    if (raw[field] !== undefined && !int(raw[field], 1000, LIMITS.cycle))
-      errors.push(`${field} must be 1000–1500000.`);
+    if (
+      raw[field] !== undefined &&
+      !int(raw[field], 1000, config.maxCycleTimeoutMs)
+    )
+      errors.push(`${field} must be 1000–${config.maxCycleTimeoutMs}.`);
   if (raw.interval_ms !== undefined && raw.delay_ms !== undefined)
     errors.push(
       "Polling interval and continuation delay are alternative timer modes.",
