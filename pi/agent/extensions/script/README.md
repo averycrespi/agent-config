@@ -1,6 +1,6 @@
 # Script
 
-Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway and coexists with [Code mode](../code-mode/README.md). [Background](../background/README.md) owns observation and continuation using this runtime. [MCP Gateway](../mcp-gateway/README.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-provider) optionally supplies `web.search` and `web.fetch`, independently of Gateway. [Builtins](../builtins/README.md#script-provider) optionally supplies active stock filesystem/shell methods with structured results; image reads require direct `read`.
+Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway. [Background](../background/README.md) owns observation and continuation using this runtime. [MCP Gateway](../mcp-gateway/README.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-provider) optionally supplies `web.search` and `web.fetch`, independently of Gateway. [Builtins](../builtins/README.md#script-provider) optionally supplies active stock filesystem/shell methods with structured results; image reads require direct `read`.
 
 ## Usage
 
@@ -77,7 +77,7 @@ Cancellation/deadline closes admission, aborts handlers, kills the child with SI
 
 ## Isolation and bounds
 
-The legacy executor's permissioned Node child and separate VM pattern are retained here without a runtime dependency on Code mode or Gateway. The child receives an empty environment, trusted bootstrap/source via stdin, ignored stdout/stderr, and string-only JSON IPC. Node permission mode grants no filesystem, network, subprocess, worker, addon or inspector access. Guest imports and string/Wasm code generation are disabled; host objects, credentials and the event bus are never guest bindings. Required flags must exist or execution fails closed. Node 25.9.0 is fixture-qualified; use the repository's pinned version.
+Script uses a permissioned Node child and a separate VM, without a runtime dependency on Gateway. The child receives an empty environment, trusted bootstrap/source via stdin, ignored stdout/stderr, and string-only JSON IPC. Node permission mode grants no filesystem, network, subprocess, worker, addon or inspector access. Guest imports and string/Wasm code generation are disabled; host objects, credentials and the event bus are never guest bindings. Required flags must exist or execution fails closed. Node 25.9.0 is fixture-qualified; use the repository's pinned version.
 
 Source is at most 256 KiB; each serialized IPC envelope at most 16 MiB; explicit returned JSON at most 24,000 UTF-8 bytes. Oversized returns fail (`output_limit` or `ipc_limit`), are not spilled or silently truncated, and must not trigger automatic replay. Tool discovery also rejects over-limit output. Accounting contains at most 128 traces. These limits do not prevent all allocations before size checks.
 
