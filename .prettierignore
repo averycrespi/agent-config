@@ -1,2 +1,3 @@
 pi/agent/extensions/herdr-agent-state.ts
 .pi/tickets/
+.handoffs/

@@ -436,6 +436,31 @@ test("path, identity, malformed state and lock conflicts cannot be overridden", 
   assert.deepEqual(await readdir(join(f.cwd, "outside")), []);
 });
 
+test("artifact directories in the strict store reject mutations without changing bytes", async (t) => {
+  const f = await fixture(t);
+  await f.init();
+  const before = await readFile(f.file);
+  const store = join(f.cwd, ".git", "pi-ticket-checkpoints");
+  const artifact = join(store, "artifacts");
+  await mkdir(artifact);
+  await writeFile(join(artifact, "review.json"), "original artifact bytes");
+  for (const request of [
+    { action: "checkpoint", patch: { progress: "must not persist" } },
+    { action: "release" },
+  ]) {
+    await assert.rejects(f.call(request), /unexpected checkpoint/);
+    assert.deepEqual(await readFile(f.file), before);
+    assert.equal(
+      await readFile(join(artifact, "review.json"), "utf8"),
+      "original artifact bytes",
+    );
+    assert.deepEqual(
+      (await readdir(store)).sort(),
+      ["artifacts", `${ticketId}.json`].sort(),
+    );
+  }
+});
+
 test("concurrent helpers do not interleave writes and failed CLI requests report recoverable errors", async (t) => {
   const f = await fixture(t);
   await f.init();
