@@ -162,7 +162,7 @@ export function harness(
       usage = value;
     },
     start: () => emit("session_start"),
-    command: (action = "status") =>
-      commands.get("idle-compaction").handler(action, ctx),
+    command: (action: "enable" | "disable" | "status" = "status") =>
+      commands.get(`idle-compaction-${action}`).handler("", ctx),
   };
 }

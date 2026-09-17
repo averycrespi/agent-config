@@ -7,15 +7,17 @@ This can shrink the context sent on a later cold resume. Compaction itself costs
 ## Commands
 
 ```text
-/idle-compaction on
-/idle-compaction off
-/idle-compaction status
+/idle-compaction-enable
+/idle-compaction-disable
+/idle-compaction-status
 /idle-compaction-config
 ```
 
-`on` and `off` save a **session-wide override**, retained across reload/resume and branch navigation, without changing global settings. A fork inherits metadata present in its copied history. Neither toggling nor reloading permits another attempt on an already-attempted unchanged conversation. Invalid configuration or saved metadata cannot be overridden on.
+All four commands are standalone and available through Pi's native command completion. The former `/idle-compaction` argument interface is removed; there are no compatibility aliases.
 
-`status` (also the default with no arguments) shows the effective switch, session override, thresholds, and last attempt time/outcome across the session. An attempt recorded as started without a valid completion callback is shown as **interrupted/unknown**, not successful and not retried. `off` prevents future initiation; it does not cancel an already-running native compaction.
+`-enable` and `-disable` save a **session-wide override**, retained across reload/resume and branch navigation, without changing global settings. A fork inherits metadata present in its copied history. Neither toggling nor reloading permits another attempt on an already-attempted unchanged conversation. Invalid configuration or saved metadata cannot be overridden on.
+
+`-status` shows the effective switch, session override, thresholds, and last attempt time/outcome across the session. An attempt recorded as started without a valid completion callback is shown as **interrupted/unknown**, not successful and not retried. `-disable` prevents future initiation; it does not cancel an already-running native compaction.
 
 `-config` displays the global/environment configuration loaded at session startup or reload, independently of the session override. Settings edits require a subsequent session start or reload to take effect. No tool or model-context status messages are registered or injected.
 
@@ -64,7 +66,7 @@ Absolute native navigation isolation and complete blocking-UI exclusion are ther
 
 State is stored as `idle-compaction` custom metadata entries in Pi's normal session JSONL, outside model context. Records contain switches, conversation entry IDs, attempt timestamps, and fixed outcome names, not prompts or error text. They remain until the session is deleted; in-memory sessions retain them only for their lifetime. There are no separate retained logs or temporary output files.
 
-If compaction does not start, inspect `/idle-compaction status` and `/idle-compaction-config`: check terminal mode, opt-in/override, known usage above the threshold, observed activity, and whether this conversation already has an attempt. Pi may reject small/already-compacted sessions; that still consumes the attempt. Invalid saved metadata fails closed rather than risking a repeat attempt.
+If compaction does not start, inspect `/idle-compaction-status` and `/idle-compaction-config`: check terminal mode, opt-in/override, known usage above the threshold, observed activity, and whether this conversation already has an attempt. Pi may reject small/already-compacted sessions; that still consumes the attempt. Invalid saved metadata fails closed rather than risking a repeat attempt.
 
 ## Verification and design
 

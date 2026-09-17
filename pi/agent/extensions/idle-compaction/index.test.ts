@@ -10,6 +10,70 @@ import { STATE_TYPE } from "./state.ts";
 
 const minute = 60_000;
 
+test("standalone commands are registered for native completion without legacy aliases", () => {
+  const h = harness();
+  assert.deepEqual([...h.commands.keys()].sort(), [
+    "idle-compaction-config",
+    "idle-compaction-disable",
+    "idle-compaction-enable",
+    "idle-compaction-status",
+  ]);
+  assert.equal(h.commands.has("idle-compaction"), false);
+});
+
+test("enable and disable persist session-wide overrides across navigation and reload", async () => {
+  const h = harness({ config: { enabled: false } });
+  const leaf = h.sm.getLeafId()!;
+  const messages = h.sm.buildSessionContext().messages;
+  await h.start();
+  await h.command("enable");
+  assert.match(
+    h.notifications.at(-1)!,
+    /^idle-compaction on\nSession override: on/,
+  );
+  await h.emit("session_before_tree");
+  h.sm.branch(leaf);
+  await h.emit("session_tree");
+  await h.start();
+  await h.command("status");
+  assert.match(h.notifications.at(-1)!, /Session override: on/);
+  await h.command("disable");
+  assert.match(
+    h.notifications.at(-1)!,
+    /^idle-compaction off\nSession override: off/,
+  );
+  await h.emit("session_shutdown");
+  const resumed = harness({ session: h.sm });
+  await resumed.start();
+  await resumed.command("status");
+  assert.match(resumed.notifications.at(-1)!, /Session override: off/);
+  resumed.time.advance(minute * 2);
+  assert.equal(resumed.requests.length, 0);
+  assert.deepEqual(h.sm.buildSessionContext().messages, messages);
+});
+
+for (const action of ["enable", "status"] as const)
+  test(`${action} resets inactivity and status does not save an override`, async () => {
+    const h = harness();
+    await h.start();
+    h.time.advance(minute - 1);
+    const entries = h.sm.getEntries();
+    await h.command(action);
+    if (action === "status") {
+      assert.deepEqual(h.sm.getEntries(), entries);
+      assert.match(h.notifications.at(-1)!, /Session override: none/);
+      assert.match(
+        h.notifications.at(-1)!,
+        /Threshold: 1 idle minutes; context > 40%/,
+      );
+      assert.match(h.notifications.at(-1)!, /Last attempt: none/);
+    }
+    h.time.advance(1);
+    assert.equal(h.requests.length, 0);
+    h.time.advance(minute - 1);
+    assert.equal(h.requests.length, 1);
+  });
+
 test("factory opens no resources; opt-in timer invokes native callback API without instructions or messages", async () => {
   const h = harness();
   assert.equal(h.time.timers.size, 0);
@@ -46,7 +110,7 @@ for (const config of [
   test(`configuration gate ${JSON.stringify(config)}`, async () => {
     const h = harness({ config });
     await h.start();
-    if (!config.valid && config.valid !== undefined) await h.command("on");
+    if (!config.valid && config.valid !== undefined) await h.command("enable");
     h.time.advance(minute * 2);
     assert.equal(h.requests.length, 0);
   });
@@ -187,8 +251,8 @@ for (const outcome of [
         ),
       );
     h.sm.appendCustomEntry("unrelated", { changed: true });
-    await h.command("off");
-    await h.command("on");
+    await h.command("disable");
+    await h.command("enable");
     h.time.advance(minute * 2);
     assert.equal(h.requests.length, 1);
     await h.emit("session_shutdown");
@@ -288,7 +352,7 @@ test("invalid metadata fails closed and cannot be overridden on", async () => {
   const h = harness();
   h.sm.appendCustomEntry(STATE_TYPE, { version: 9000 });
   await h.start();
-  await h.command("on");
+  await h.command("enable");
   h.time.advance(minute);
   assert.equal(h.requests.length, 0);
   assert.match(h.notifications.join("\n"), /invalid saved metadata/);
@@ -314,7 +378,7 @@ test("session override and started attempt survive actual file resume without mo
   const before = sm.buildSessionContext().messages;
   const h = harness({ session: sm, config: { enabled: false } });
   await h.start();
-  await h.command("on");
+  await h.command("enable");
   h.time.advance(minute);
   assert.equal(h.requests.length, 1);
   assert.deepEqual(sm.buildSessionContext().messages, before);

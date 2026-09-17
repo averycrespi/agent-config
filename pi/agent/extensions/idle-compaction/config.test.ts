@@ -93,7 +93,7 @@ test("inspection command displays loaded configuration and never mutates it", as
   await h.commands.get("idle-compaction-config").handler("", h.ctx);
   assert.match(h.notifications.at(-1)!, /"enabled": true/);
   assert.match(h.notifications.at(-1)!, /"idleMinutes": 1/);
-  await h.command("off");
+  await h.command("disable");
   await h.commands.get("idle-compaction-config").handler("", h.ctx);
   assert.match(h.notifications.at(-1)!, /"enabled": true/);
 });
