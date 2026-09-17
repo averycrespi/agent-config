@@ -130,7 +130,7 @@ export class SessionProvider {
               this.root,
               target,
               events,
-              Math.min(86400000, Math.max(1000, ctx.deadlineMs - Date.now())),
+              Math.max(1000, ctx.deadlineMs - Date.now()),
               (n) => ctx.emit({ ...n }),
               ctx.lost,
               ctx.signal,

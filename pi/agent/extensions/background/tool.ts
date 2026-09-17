@@ -6,41 +6,46 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { label, type Receipt } from "./contract.ts";
+import { DEFAULT_CONFIG, type BackgroundConfig } from "./config.ts";
 const finite = (max: number) =>
   Type.Optional(Type.Integer({ minimum: 1000, maximum: max }));
-export const PARAMETERS = Type.Object(
-  {
-    action: StringEnum(["start", "list", "get", "cancel"] as const),
-    id: Type.Optional(Type.String()),
-    name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
-    message: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
-    providers: Type.Optional(
-      Type.Array(Type.String(), { maxItems: 32, uniqueItems: true }),
-    ),
-    source: Type.Optional(Type.String({ minLength: 1, maxLength: 237568 })),
-    cycle_timeout_ms: finite(1500000),
-    lifetime_ms: finite(86400000),
-    max_wakes: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-    recurring: Type.Optional(Type.Boolean()),
-    interval_ms: finite(1500000),
-    delay_ms: finite(1500000),
-    events: Type.Optional(
-      Type.Array(
-        Type.Object(
-          {
-            provider: Type.String(),
-            event: Type.String(),
-            args: Type.Array(Type.Any()),
-          },
-          { additionalProperties: false },
-        ),
-        { maxItems: 4 },
+export const parameters = (
+  config: Readonly<BackgroundConfig> = DEFAULT_CONFIG,
+) =>
+  Type.Object(
+    {
+      action: StringEnum(["start", "list", "get", "cancel"] as const),
+      id: Type.Optional(Type.String()),
+      name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
+      message: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+      providers: Type.Optional(
+        Type.Array(Type.String(), { maxItems: 32, uniqueItems: true }),
       ),
-    ),
-    state: Type.Optional(Type.Any()),
-  },
-  { additionalProperties: false },
-);
+      source: Type.Optional(Type.String({ minLength: 1, maxLength: 237568 })),
+      cycle_timeout_ms: finite(config.maxCycleTimeoutMs),
+      lifetime_ms: finite(config.maxLifetimeMs),
+      max_wakes: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+      recurring: Type.Optional(Type.Boolean()),
+      interval_ms: finite(config.maxCycleTimeoutMs),
+      delay_ms: finite(config.maxCycleTimeoutMs),
+      events: Type.Optional(
+        Type.Array(
+          Type.Object(
+            {
+              provider: Type.String(),
+              event: Type.String(),
+              args: Type.Array(Type.Any()),
+            },
+            { additionalProperties: false },
+          ),
+          { maxItems: 4 },
+        ),
+      ),
+      state: Type.Optional(Type.Any()),
+    },
+    { additionalProperties: false },
+  );
+export const PARAMETERS = parameters();
 export function summary(r: Receipt) {
   return {
     id: r.id,
