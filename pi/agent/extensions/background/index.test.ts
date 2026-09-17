@@ -165,6 +165,41 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   assert.doesNotMatch(JSON.stringify(observed), /safe name|Inspect|evidence/);
 });
 
+test("accepted polling registrations warn in model content without extending clocks", async (t) => {
+  const h = await harness(t, "json");
+  for (const [interval, cycle, events, warn] of [
+    [30000, 30000, [], true],
+    [60000, 30000, input.events, true],
+    [30000, 600000, [], false],
+  ] as const) {
+    const result = await h.call({
+      ...input,
+      interval_ms: interval,
+      cycle_timeout_ms: cycle,
+      lifetime_ms: 900000,
+      events,
+      source: "return {decision: 'wait', evidence: {status: 'pending'}};",
+    });
+    assert.equal(result.details.backgroundError, false);
+    const r = value(result);
+    assert.equal(r.intervalMs, interval);
+    assert.equal(r.cycleDeadline - r.createdAt, cycle);
+    assert.equal(r.deadline - r.createdAt, 900000);
+    const text = result.content[0].text;
+    assert.equal(text.startsWith("Warning:"), warn);
+    if (warn) {
+      assert.match(text, /Only the initial polling evaluation/);
+      assert.match(text, /lifetime_ms does not extend the cycle/);
+      assert.equal(
+        text.includes("Events may still trigger"),
+        events.length > 0,
+      );
+      assert.ok(text.indexOf("Warning:") < text.indexOf("BEGIN UNTRUSTED"));
+    }
+    await h.call({ action: "cancel", id: r.id });
+  }
+});
+
 test("action details select one job and distinguish cancellation from a no-op", async (t) => {
   const h = await harness(t);
   const first = value(await h.call(input));

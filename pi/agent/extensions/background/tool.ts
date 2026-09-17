@@ -6,8 +6,8 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { label, type Receipt } from "./contract.ts";
-const finite = (max: number) =>
-  Type.Optional(Type.Integer({ minimum: 1000, maximum: max }));
+const finite = (max: number, description: string) =>
+  Type.Optional(Type.Integer({ minimum: 1000, maximum: max, description }));
 export const PARAMETERS = Type.Object(
   {
     action: StringEnum(["start", "list", "get", "cancel"] as const),
@@ -18,12 +18,24 @@ export const PARAMETERS = Type.Object(
       Type.Array(Type.String(), { maxItems: 32, uniqueItems: true }),
     ),
     source: Type.Optional(Type.String({ minLength: 1, maxLength: 237568 })),
-    cycle_timeout_ms: finite(1500000),
-    lifetime_ms: finite(86400000),
+    cycle_timeout_ms: finite(
+      1500000,
+      "Observation/attention deadline per cycle, including setup; NOT a per-call timeout. One-shot expiry ends observation. For repeated polling, allow multiple intervals plus evaluation time.",
+    ),
+    lifetime_ms: finite(
+      86400000,
+      "Outer wall-clock ceiling including setup and settlement waits. Does not override earlier cycle expiry or renew caller-owned task allowances.",
+    ),
     max_wakes: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     recurring: Type.Optional(Type.Boolean()),
-    interval_ms: finite(1500000),
-    delay_ms: finite(1500000),
+    interval_ms: finite(
+      1500000,
+      "Polling delay after each evaluation settles (including event evaluations), not evaluation runtime or observation lifetime. Initial evaluation runs after setup; interval >= cycle timeout permits no subsequent poll before that deadline.",
+    ),
+    delay_ms: finite(
+      1500000,
+      "Timer-only continuation delay: first from admission, subsequent delays after positively correlated wake settlement. Alternative to polling/events/source.",
+    ),
     events: Type.Optional(
       Type.Array(
         Type.Object(
@@ -67,6 +79,16 @@ export function summary(r: Receipt) {
   };
 }
 export type DisplayReceipt = Pick<Receipt, keyof ReturnType<typeof summary>>;
+export function pollingWarning(r: DisplayReceipt): string | undefined {
+  if (r.intervalMs === undefined || r.intervalMs < r.cycleMs) return;
+  return (
+    "Warning: interval_ms >= cycle_timeout_ms. Only the initial polling evaluation can run before the cycle deadline; the next poll is scheduled after evaluation settlement plus interval_ms, at or beyond that deadline." +
+    (r.eventCount
+      ? " Events may still trigger evaluations before expiry."
+      : "") +
+    " One-shot expiry ends observation; lifetime_ms does not extend the cycle. Registration accepted unchanged."
+  );
+}
 export interface DisplayDetails {
   backgroundError?: boolean;
   action?: string;
@@ -268,11 +290,14 @@ export const renderers: Pick<
       d.receipt?.lastAttention?.disposition === "handoff_unknown" ||
       reason === "evaluation_failure" ||
       reason === "coverage_failure";
+    const polling =
+      action === "start" && d.receipt ? pollingWarning(d.receipt) : undefined;
     const caution =
-      d.receipt &&
-      (d.receipt.failureCode ||
-        reason === "timeout" ||
-        d.receipt.attention?.disposition === "pending");
+      polling ||
+      (d.receipt &&
+        (d.receipt.failureCode ||
+          reason === "timeout" ||
+          d.receipt.attention?.disposition === "pending"));
     const partial =
       action === "start"
         ? "registering…"
@@ -299,6 +324,15 @@ export const renderers: Pick<
             : resultLine(d, action),
       ),
     ];
+    if (polling && !failed && !isPartial)
+      lines.push(
+        theme.fg(
+          "warning",
+          expanded
+            ? polling
+            : "Warning: interval >= cycle; no subsequent poll before timeout",
+        ),
+      );
     if (expanded && !failed && !isPartial) {
       if (action === "list")
         for (const r of d.receipts ?? []) lines.push(jobLine(r));
