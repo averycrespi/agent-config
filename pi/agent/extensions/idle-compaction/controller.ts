@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { IdleConfig } from "./config.ts";
+import { DEFAULT_CONFIG, type IdleConfig } from "./config.ts";
 import {
   conversationId,
   restore,
@@ -107,7 +107,7 @@ export class IdleController {
     return [
       `idle-compaction ${this.enabled() ? "on" : "off"}${this.ctx?.mode !== "tui" ? " (terminal only)" : ""}`,
       `Session override: ${this.state.override === undefined ? "none" : this.state.override ? "on" : "off"}`,
-      `Threshold: ${this.config?.idleMinutes ?? 30} idle minutes; context > ${this.config?.contextPercent ?? 40}%`,
+      `Threshold: ${this.config?.idleMinutes ?? DEFAULT_CONFIG.idleMinutes} idle minutes; context > ${this.config?.contextPercent ?? 40}%`,
       ...(this.fault || this.config?.valid === false
         ? ["Automatic action disabled by invalid configuration or metadata."]
         : []),

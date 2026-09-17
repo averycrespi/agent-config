@@ -10,7 +10,7 @@ export type BackgroundConfig = {
   valid: boolean;
 };
 export const DEFAULT_CONFIG: Readonly<BackgroundConfig> = Object.freeze({
-  maxCycleTimeoutMs: 1_740_000,
+  maxCycleTimeoutMs: 1_680_000,
   maxLifetimeMs: 86_400_000,
   valid: true,
 });

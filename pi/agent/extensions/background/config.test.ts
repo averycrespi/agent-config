@@ -18,22 +18,29 @@ const input = {
   message: "Inspect",
   providers: [],
   max_wakes: 1,
-  cycle_timeout_ms: 1_740_000,
+  cycle_timeout_ms: 1_680_000,
   lifetime_ms: 86_400_000,
-  delay_ms: 1_740_000,
+  delay_ms: 1_680_000,
 };
-test("default ceilings are 29 minutes and 24 hours; job arguments stay required", () => {
+test("default ceilings are 28 minutes and 24 hours; job arguments stay required", () => {
   const config = parseConfig({}, {});
   assert.deepEqual(config, DEFAULT_CONFIG);
-  assert.equal(registration(input).cycleMs, 1_740_000);
+  assert.equal(config.maxCycleTimeoutMs, 1_680_000);
+  assert.equal(registration(input).cycleMs, 1_680_000);
+  const schema = parameters(config).properties as Record<
+    string,
+    { maximum?: number }
+  >;
+  for (const field of ["cycle_timeout_ms", "interval_ms", "delay_ms"] as const)
+    assert.equal(schema[field].maximum, 1_680_000);
   for (const key of ["cycle_timeout_ms", "lifetime_ms", "max_wakes"]) {
     const raw: Record<string, unknown> = { ...input };
     delete raw[key];
     assert.throws(() => registration(raw), new RegExp(key));
   }
   assert.throws(
-    () => registration({ ...input, cycle_timeout_ms: 1_740_001 }),
-    /1740000/,
+    () => registration({ ...input, cycle_timeout_ms: 1_680_001 }),
+    /1680000/,
   );
   assert.throws(
     () => registration({ ...input, lifetime_ms: 86_400_001 }),

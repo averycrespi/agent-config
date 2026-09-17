@@ -129,7 +129,7 @@ test("observation end time excludes queued delivery and later cancellation", asy
 test("atomic invalid registration and mandatory immutable bounds", () => {
   for (const patch of [
     { cycle_timeout_ms: undefined },
-    { cycle_timeout_ms: 1740001 },
+    { cycle_timeout_ms: 1680001 },
     { lifetime_ms: Infinity },
     { max_wakes: 0 },
     { recurring: false, max_wakes: 2 },

@@ -16,7 +16,7 @@ export type IdleConfig = {
 
 export const DEFAULT_CONFIG: IdleConfig = {
   enabled: false,
-  idleMinutes: 30,
+  idleMinutes: 29,
   contextPercent: 40,
   valid: true,
 };

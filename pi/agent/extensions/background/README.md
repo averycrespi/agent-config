@@ -15,7 +15,7 @@ Start requires:
 | `name`             | Nonsecret display label, 1–80 characters; control characters are removed.                                               |
 | `message`          | Authorized attention instruction, 1–2000 characters; never sent to an observed session.                                 |
 | `providers`        | Explicit Script namespaces; `[]` permits pure computation. `trigger` and `state` are reserved evaluator argument names. |
-| `cycle_timeout_ms` | Required attention deadline per cycle: 1000–`maxCycleTimeoutMs` ms (default ceiling: 29 minutes).                       |
+| `cycle_timeout_ms` | Required attention deadline per cycle: 1000–`maxCycleTimeoutMs` ms (default ceiling: 28 minutes).                       |
 | `lifetime_ms`      | Required total lifetime: 1000–`maxLifetimeMs` ms (default ceiling: 24 hours), including setup and awaiting settlement.  |
 | `max_wakes`        | Required maximum handoff attempts: 1–100. One-shot default requires 1.                                                  |
 
@@ -162,13 +162,13 @@ Configure `extension:background` in global `~/.pi/agent/settings.json` (or `$PI_
 
 | Field               | Default                | Environment override              | Description                                                                                            |
 | ------------------- | ---------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `maxCycleTimeoutMs` | `1740000` (29 minutes) | `BACKGROUND_MAX_CYCLE_TIMEOUT_MS` | Ceiling for required `cycle_timeout_ms` and optional `interval_ms`/`delay_ms`.                         |
+| `maxCycleTimeoutMs` | `1680000` (28 minutes) | `BACKGROUND_MAX_CYCLE_TIMEOUT_MS` | Ceiling for required `cycle_timeout_ms` and optional `interval_ms`/`delay_ms`.                         |
 | `maxLifetimeMs`     | `86400000` (24 hours)  | `BACKGROUND_MAX_LIFETIME_MS`      | Ceiling for required total `lifetime_ms`; includes setup, observation, pending handoff and agent work. |
 
 ```json
 {
   "extension:background": {
-    "maxCycleTimeoutMs": 1740000,
+    "maxCycleTimeoutMs": 1680000,
     "maxLifetimeMs": 86400000
   }
 }
@@ -176,7 +176,7 @@ Configure `extension:background` in global `~/.pi/agent/settings.json` (or `$PI_
 
 These are **policy ceilings, not per-job argument defaults**. Each start still requires explicit cycle, lifetime and wake bounds. Both settings accept integer milliseconds (or decimal digit strings) from 1000 through 2,147,481,647, reserving two seconds of transport expiry grace below Node's signed 32-bit timer ceiling. For example, `maxCycleTimeoutMs: 3600000` and `maxLifetimeMs: 172800000` permit one-hour cycles and two-day lifetimes. Interval/delay retain their existing coupling to the cycle ceiling; their individual values remain independent of a job's cycle and lifetime, so a deadline may win over a longer trigger delay. No other counts or evaluator budgets change.
 
-The 29-minute default aims to request attention one minute before an assumed 30-minute cache timeout. It does not guarantee provider prompt-cache retention, delivery, or model-consumption timing.
+The 28-minute default aims to request attention before [idle compaction's 29-minute default](../idle-compaction/README.md#behavior-and-lifecycle), with both below an assumed 30-minute cache TTL. Admitted wake activity resets the idle-compaction interval; queued messages also block compaction. These independent clocks do not guarantee ordering, provider prompt-cache retention, delivery, or model-consumption timing, especially with overrides or delayed timers.
 
 Configuration is snapshotted when the extension loads. `/background-config` displays that effective snapshot and its `valid` flag, without rereading or changing it. Settings/environment changes take effect only on extension reload; tree navigation keeps the snapshot. Unknown fields, invalid numbers, malformed global JSON/section, or unreadable settings disable new starts rather than silently falling back to looser limits. A missing settings file/section uses defaults. Inspection and cancellation remain available. Reload still invalidates old work and restores receipts only; historical receipts are validated against technical safety bounds, not today's policy. Editing/installing configuration and reloading a live session require separate authorization.
 

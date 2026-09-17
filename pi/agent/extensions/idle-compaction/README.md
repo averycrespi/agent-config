@@ -28,14 +28,14 @@ Configure `extension:idle-compaction` in the global Pi `settings.json` (normally
 | Field            | Default | Environment override              | Description                                                                                                  |
 | ---------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `enabled`        | `false` | `IDLE_COMPACTION_ENABLED`         | Global opt-in. Boolean environment values accept `1`/`true`, `0`/`false` (also `yes`/`no`).                  |
-| `idleMinutes`    | `30`    | `IDLE_COMPACTION_IDLE_MINUTES`    | Continuous observed inactivity, greater than zero and at most 10080 minutes (one week); fractions supported. |
+| `idleMinutes`    | `29`    | `IDLE_COMPACTION_IDLE_MINUTES`    | Continuous observed inactivity, greater than zero and at most 10080 minutes (one week); fractions supported. |
 | `contextPercent` | `40`    | `IDLE_COMPACTION_CONTEXT_PERCENT` | Pi-reported usage must be **strictly greater** than this percentage, from 0 through 100.                     |
 
 ```json
 {
   "extension:idle-compaction": {
     "enabled": true,
-    "idleMinutes": 30,
+    "idleMinutes": 29,
     "contextPercent": 40
   }
 }
@@ -44,6 +44,8 @@ Configure `extension:idle-compaction` in the global Pi `settings.json` (normally
 Invalid merged values, malformed/unreadable global settings, and invalid environment overrides disable automatic action with a bounded warning. A missing global settings file uses defaults. Unknown keys are ignored and never displayed. Warnings do not echo raw configuration, file contents, or provider errors. Unknown/non-finite Pi usage skips the check rather than estimating it.
 
 ## Behavior and lifecycle
+
+The 29-minute default leaves one minute before an assumed 30-minute cache TTL. [Background's default cycle ceiling](../background/README.md#configuration) is 28 minutes so attention can arrive first: admitted wake activity resets the idle interval, and queued messages block compaction. These independent clocks do not guarantee delivery ordering or provider cache retention; overrides and delayed timers can change the ordering.
 
 - Runs only in terminal (`tui`) mode, never RPC, JSON, or print mode. It is not a closed-session or detached service.
 - Terminal input, input/message/agent activity, user shell commands, model changes, observed UI prompt events, and lifecycle events reset a monotonic inactivity interval. Opening a session starts a fresh interval; there is no overdue catch-up after opening/resuming. A paused process may run its existing timer when resumed, subject to fresh eligibility checks.

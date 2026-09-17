@@ -8,6 +8,7 @@ import { harness } from "./test-support.ts";
 
 test("default is opt-out; global settings merge with environment overrides", () => {
   assert.deepEqual(parseConfig({}, {}), DEFAULT_CONFIG);
+  assert.equal(parseConfig({}, {}).idleMinutes, 29);
   assert.deepEqual(
     parseConfig(
       {

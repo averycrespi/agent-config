@@ -159,6 +159,34 @@ for (const event of [
     assert.equal(h.requests.length, 1);
   });
 
+test("default idle deadline is 29 minutes and an admitted 28-minute wake resets it", async () => {
+  const quiet = harness({
+    config: { idleMinutes: DEFAULT_CONFIG.idleMinutes },
+  });
+  await quiet.start();
+  quiet.time.advance(29 * minute - 1);
+  assert.equal(quiet.requests.length, 0);
+  quiet.time.advance(1);
+  assert.equal(quiet.requests.length, 1);
+
+  const awakened = harness({
+    config: { idleMinutes: DEFAULT_CONFIG.idleMinutes },
+  });
+  await awakened.start();
+  awakened.time.advance(28 * minute);
+  await awakened.emit("message_start", {
+    message: { role: "custom", customType: "background" },
+  });
+  await awakened.emit("agent_start");
+  await awakened.emit("agent_settled");
+  awakened.time.advance(minute);
+  assert.equal(awakened.requests.length, 0);
+  awakened.time.advance(28 * minute - 1);
+  assert.equal(awakened.requests.length, 0);
+  awakened.time.advance(1);
+  assert.equal(awakened.requests.length, 1);
+});
+
 test("terminal input at timer boundary invalidates even an already-dispatched callback", async () => {
   const h = harness();
   await h.start();
