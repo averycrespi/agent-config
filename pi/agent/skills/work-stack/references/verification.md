@@ -45,6 +45,14 @@ Add these focused read-only interruption fixtures; supply observations without t
 | Serial cleanup interrupted   | A is merged, settled, archived and released with pending removal; A path/inventory absent; B is still present; original archive/checkpoint survives | Confirm A from survivor rather than removing again; verify B's independent merge/scope/authority and archive before its removal intent/release; preserve all branches and evidence |
 | Cleanup verification failure | Same-size archive corruption or recreated target path; pending removal exists                                                                       | Stop with original sources/archives and uncertain intent retained; no overwrite, force removal, duplicate effects or advancement                                                   |
 
+Exercise the parent observation policy with these additional read-only scenarios; these are model decision checks, not deterministic enforcement:
+
+- Default allowance, 25-minute timeout, proven ongoing child work, one reconciled attempted wake: retain the original two-hour deadline and 30-attempt ceiling; register another cycle of at most 25 minutes, lifetime bounded by remaining time, and `max_wakes: 1`.
+- Default allowance, 110 minutes elapsed, attempts remaining: register at most a 10-minute cycle/lifetime, never another full 25-minute cycle or a fresh two-hour allowance.
+- Two hours elapsed with attempts remaining, or 30 attempts consumed with time remaining: reconcile once, stop parent observation and successor launch, retain resources and name the next actor/action; do not terminate the child or extend its CI allowance.
+- Explicit initial policy of four hours per child without an attempt override: retain four hours and 30 attempts. On recovery preserve that original deadline and usage; a later explicit one-hour addition extends the retained deadline by one hour, not from recovery time.
+- Recovery of a historical 30-minute/10-attempt checkpoint under the updated skill: preserve its retained limits and consumption unless explicit additive user authority extends them; new defaults do not replenish an existing child's budget.
+
 Additionally exercise cycle-timeout renewal within the same absolute parent deadline/wake allowance; input attention followed by exact-job cancellation; fast completion during registration; unknown handoff without replay; and disconnect/reload coverage loss. Use stable settlement/input/shutdown filters across all replacements. A terminal job, outer attention handoff, child CI handoff, and semantic delivery are separate evidence.
 
 ## Controlled two-child exercise
