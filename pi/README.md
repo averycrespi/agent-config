@@ -88,6 +88,7 @@ Skills provide on-demand guidance, not additional tools by themselves. Pi discov
 | [shape-ticket](agent/skills/shape-ticket/SKILL.md)           | Preparing and explicitly approving a verifiable Plane ticket                      |
 | [simplify](agent/skills/simplify/SKILL.md)                   | Explicitly requested checks for unnecessary complexity before implementation      |
 | [spin-out](agent/skills/spin-out/SKILL.md)                   | Explicitly requested delegation to a fresh agent in a Herdr worktree              |
+| [typesafe](agent/skills/typesafe/SKILL.md)                   | Building and evaluating TypeSafe AI integrations                                  |
 | [wiki](agent/skills/wiki/SKILL.md)                           | Maintaining a persistent Markdown wiki from source documents                      |
 | [work-stack](agent/skills/work-stack/SKILL.md)               | Coordinating an explicitly ordered stack with one isolated ticket child at a time |
 | [work-ticket](agent/skills/work-ticket/SKILL.md)             | Owning one selected ticket through its authorized delivery boundary               |
