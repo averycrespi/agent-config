@@ -19,7 +19,7 @@ Example: “Work ABC-1 then ABC-2 serially from main as stacked review-ready PRs
 4. Resolve actual user authority and boundary for every child: local-only or review-ready PR. In-scope local commits follow work-ticket unless excluded. PR delivery requires publication authority and its bounded review/CI repair/promotion contract. Do not infer merge, deployment, cleanup, history rewriting, global setup, Stow linking or live reload authority.
 5. Inspect Git history/status, branches/worktrees, portable claims, ticket/stack checkpoints and live Herdr agents. Reconcile competing writers before launch. Require both sessions to already load Background and permit its `sessions` provider. Missing policy/capacity blocks unattended continuation, not an excuse for polling or installation.
 
-Retain reconciled order/authority in the [stack checkpoint](references/checkpoint.md); recheck mutable facts before each launch.
+Retain reconciled order/authority in the [stack checkpoint](references/checkpoint.md) as a replace-in-place current-state snapshot. Reference child-owned delivery records and retained history rather than copying their contents; recheck mutable facts before each launch.
 
 ## Launch one isolated owner
 
@@ -34,7 +34,7 @@ The self-contained handoff must carry:
 - Initial and immediate predecessor source/base/head, assigned worktree/branch, exact creation SHA, separate PR target. Review incremental base-to-head changes while testing the cumulative tree.
 - Required checks and target-applicable CI coverage. Missing stack-base coverage blocks; never weaken checks or silently change the target.
 - Authorized locked checkout-local dependency preparation after inspecting setup/lifecycle effects, preserving lockfiles and actual user restrictions. Missing dependencies, setup completion or unfinished implementation errors are not handoff boundaries.
-- Final exact branch/base/head, clean committed output, local/review/check references, PR identity/state, unresolved findings, retained allowances, pending-effect/observer reconciliation and explicit owner release or no-further-writes quiescence.
+- Required final report: exact branch/base/head, clean committed output, local/review/check references, PR identity/state, unresolved findings, retained child allowances, pending-effect/child-observer reconciliation and explicit owner release or no-further-writes quiescence. Reference the parent checkpoint for parent observation state; never copy its changing deadlines or wake counts into child reports.
 
 Read back the handoff before prompting. After startup/readiness, discover with `script describe` and selected `sessions.list()`; correlate returned persistent session UUID to Herdr's child identity, then pin its exact live incarnation. Never select by display name, PID, list position or persistent UUID alone. Inspect typed schemas with `background list`. Register attention **before** spin-out's non-waiting prompt submission. Failed registration leaves the unprompted child retained; do not launch a substitute.
 
@@ -42,11 +42,13 @@ The parent may write the initial handoff before submission, never edit the child
 
 ## Wait for attention, then reconcile
 
-Register one-shot `sessions.lifecycle` on the exact child incarnation with the stable filters `agent_settled`, `ask-user:input_requested`, and `session_shutdown`. Do not dynamically narrow filters while child CI is active. Supply `providers: ["sessions"]`, `max_wakes: 1`, explicit `cycle_timeout_ms` ≤1,500,000 and `lifetime_ms` within the remaining parent allowance. No evaluator is needed. Retain job ID, coverage boundary and incarnation. **End the parent turn while pending**; do not poll with model turns, repeated Herdr reads or get calls.
+Register one-shot `sessions.lifecycle` on the exact child incarnation with the stable filters `agent_settled`, `ask-user:input_requested`, and `session_shutdown`. Do not dynamically narrow filters while child CI is active. Supply `providers: ["sessions"]`, `max_wakes: 1`, explicit `cycle_timeout_ms` ≤1,500,000 and `lifetime_ms` within the remaining parent allowance. No evaluator is needed. Retain job ID, coverage boundary and incarnation. Keep the observer message path-based: “Reconcile this receipt for child `<identity>` using stack checkpoint `<absolute path>`. Attention is not completion.” Read the referenced current state on wake; do not repeat criteria, progress, budgets or historical results in the message. **End the parent turn while pending**; do not poll with model turns, repeated Herdr reads or get calls.
 
 Default parent observation allowance per child is **2 hours wall-clock from the first registration and 30 cumulative Background handoff attempts** across registrations. Handoff attempts count attempted attention delivery to the parent, not child launches or ticket handoffs. Honor an explicit finite user policy for the stack, such as 4 hours per child; retain the selected duration, attempt ceiling, absolute deadline and consumed attempts in the checkpoint across recovery. Each registration remains one-shot with `max_wakes: 1`, cycle `min(25 minutes, remaining time)` and lifetime equal to remaining time, subject to host policy ceilings. Do not renew deadlines or counts on re-registration, reload, skill updates or head changes; extensions to retained allowances require explicit additive user authority. Stop parent observation and successor launch when either cumulative limit is exhausted, reconcile once and report the next actor/action with resources retained. Parent expiry does not terminate the child or extend its authority. Child CI retains its separate work-ticket ledger and owner.
 
-On attention, inspect exact Background receipt, child checkpoint, Herdr report/state and authoritative Git/PR/check evidence. Correlate job/incarnation/session/ticket/revision before acting:
+On routine attention, reconcile the exact Background receipt and parent allowance, then inspect the child's checkpoint and current Herdr state/report to distinguish ongoing work, pending child CI, input blockage and a claimed delivery boundary. Correlate job/incarnation/session/ticket and relevant checkpoint revision before acting. Read only enough recent output to resolve ambiguous or stale checkpoint progress; do not copy that output into the parent snapshot.
+
+Reserve full authoritative Git/PR/review/check reconciliation for a claimed delivery boundary, recovery, before successor launch or final handoff, or evidence of inconsistency such as changed identity/head or conflicting ownership. A routine timeout with proven ongoing work needs observation reconciliation, not repeated delivery qualification. Leave child-owned CI observation and qualification to the child; investigate uncertainty rather than assuming progress or completion.
 
 - Settlement means runtime idleness, not completed delivery. A child may be waiting on its own Background CI job. Reconcile semantic progress; leave qualification and repair to that child, never create a competing parent CI observer.
 - Input attention grants no authority to answer or approve. Report the concrete unresolved question and stop successor launch. Communicate already-authorized evidence through Herdr only without inventing user choices.
@@ -65,7 +67,7 @@ Before a successor:
 - Require released child ownership or explicit no-further-writes quiescence; reconcile pending effects and child-owned jobs. Persist evidence/artifact references and allowances before releasing ownership. Cancel/reconcile only the parent's corresponding attention job before advancing.
 - Recheck earlier stack heads/dependencies and published remote source/base relationships. A changed predecessor pauses the stack; never auto-restack, retarget, reset, force-push or silently use a newer tip.
 
-Record accepted evidence and next ticket before launch. Failed boundaries, exhausted allowances or uncertain ownership/effects stop the stack with resources retained; do not skip to an apparently independent ticket.
+Record accepted revision-bound evidence references and next ticket before launch; do not duplicate the child's check history. Failed boundaries, exhausted allowances or uncertain ownership/effects stop the stack with resources retained; do not skip to an apparently independent ticket.
 
 ## Resume and hand off
 
