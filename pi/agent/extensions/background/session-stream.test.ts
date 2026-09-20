@@ -50,6 +50,7 @@ test(
       [root],
       {
         execArgv: ["--import", "tsx"],
+        env: { ...process.env, PI_ASK_USER_MODE: undefined },
         stdio: ["ignore", "ignore", "ignore", "ipc"],
       },
     );

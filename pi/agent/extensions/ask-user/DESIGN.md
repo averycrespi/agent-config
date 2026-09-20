@@ -1,6 +1,6 @@
 # ask-user Design
 
-`ask-user` gives agents one narrow escape hatch for interactive human choice: a multiple-choice question with an automatic free-text fallback. The extension is intentionally UI-only and does not persist state.
+`ask-user` gives agents one narrow escape hatch for interactive human choice: a multiple-choice question with an automatic free-text fallback. The default path is interactive; an environment-only parent mode returns a non-answer instead of opening UI. Neither path persists state.
 
 ## Architecture
 
@@ -21,9 +21,11 @@ Important contract details:
 - Agents provide 2–5 options.
 - The extension appends `Type something.` automatically; callers must not provide their own `Other` option.
 - `recommended` is a 0-indexed input option, not including the automatic free-text row.
-- Non-interactive sessions return an error immediately instead of trying to print a prompt for later.
+- With mode unset, non-interactive sessions return an error immediately instead of trying to print a prompt for later.
+- Capture `PI_ASK_USER_MODE` at extension load. Reject configured values other than exact `parent` before any UI access; never echo raw configuration in diagnostics.
+- In parent mode, validate and honor pre-abort, then return a fresh decision-request UUID and explicit non-answer details before UI/event setup. This ID is for checkpoint/report correlation, not a pending UI handle or lifecycle event. The parent resolves through the existing child, not through this extension.
 
-The text response is optimized for the model transcript. The `details` object is the structured surface for programmatic consumers and always includes `cancelled`; successful responses also include `answerLabel`, `answerIndex`, and `isCustom`.
+The text response is optimized for the model transcript. Interactive `details` preserve `cancelled`, `answerLabel`, `answerIndex`, and `isCustom`. The exported `DecisionRequiredDetails` discriminator must be checked before interpreting `cancelled: false` as an answer. Parent results explicitly deny supplying an answer or approval and render as a warning, never success or cancellation. No `terminate` hint is returned: the child needs a follow-up turn to investigate, checkpoint, report and yield; settlement is not delivery.
 
 ## UI lifecycle
 
@@ -47,10 +49,11 @@ Do not rely on prompt guidance alone for reserved labels or duplicate options; i
 
 ## Boundaries and non-goals
 
-- No retained state, logs, or configuration.
+- No retained state, logs, settings-file configuration, decision inbox or remote answering.
+- Parent mode is a coordination convention, not a security boundary; it does not grant authority or enforce child/parent model compliance.
 - No background/asynchronous answering in v1.
 - No multi-select or multi-question form flow.
-- No use in headless mode.
+- No interactive prompt in headless mode; parent-managed non-answers require no UI.
 - No arbitrary Markdown rendering in the prompt body; keep displayed text simple and bounded by wrapping/truncation helpers.
 
 ## Change guidance
