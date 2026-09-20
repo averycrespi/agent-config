@@ -14,10 +14,16 @@ function registerAskUser(
   tools: Map<string, any>,
   emit: (channel: string, data: unknown) => void = () => {},
 ): void {
-  askUser({
-    registerTool: (def: any) => tools.set(def.name, def),
-    events: { emit },
-  } as any);
+  const previous = process.env.PI_ASK_USER_MODE;
+  delete process.env.PI_ASK_USER_MODE;
+  try {
+    askUser({
+      registerTool: (def: any) => tools.set(def.name, def),
+      events: { emit },
+    } as any);
+  } finally {
+    if (previous !== undefined) process.env.PI_ASK_USER_MODE = previous;
+  }
 }
 
 test("custom UI wraps long question text instead of truncating it", async () => {

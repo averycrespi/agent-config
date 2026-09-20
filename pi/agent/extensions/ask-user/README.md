@@ -1,6 +1,6 @@
 # ask-user
 
-Pi extension that provides an `ask_user` tool for interactive multiple-choice decisions.
+Pi extension that provides an `ask_user` tool for interactive multiple-choice decisions, with an opt-in nonblocking mode for parent-managed children.
 
 ## Tools
 
@@ -25,7 +25,7 @@ An "Other (type your own)" option is always appended automatically — do not in
 - `"User wrote: <text>"` — free-text answer via the Other path
 - `"User cancelled — no option selected."` — user pressed Escape or the tool call was aborted
 
-The `details` object always contains `cancelled`; successful answers also include `answerLabel`, `answerIndex`, and `isCustom` for structured access by other extensions.
+Interactive `details` contain `cancelled`; successful answers also include `answerLabel`, `answerIndex`, and `isCustom`. Parent-managed calls instead return `status: "decision_required"`, a fresh `requestId`, `mode: "parent"`, `cancelled: false`, `answerSupplied: false`, and `approvalSupplied: false`, with no answer fields. Check the discriminator before treating a non-cancelled result as an answer. This is neither a user selection nor cancellation. See [API.md](API.md#parent-managed-result).
 
 ## UI behavior
 
@@ -40,15 +40,25 @@ Renders a custom TUI widget at the bottom of the terminal:
 - Context (if provided) appears between the question and the options
 - While the prompt is open, the extension emits balanced `herdr:blocked` events so an installed Herdr integration reports the agent as blocked; the event is harmless when no listener is installed
 
-In non-interactive mode (`!ctx.hasUI`) the tool returns an error immediately.
+With the environment mode unset, non-interactive execution (`!ctx.hasUI`) returns an error immediately. Parent mode works without UI.
 
 ## Extension events
 
-`ask-user:input_requested` and `ask-user:input_resolved` on `pi.events` correlate actual input waits with a generated request UUID and `answered`, `cancelled`, or `failed` outcome. They omit question/answer content and grant no authority to answer for the user. Invalid requests, pre-abort, headless mode, and RPC's unsupported custom UI do not announce a wait. Existing Herdr signaling is preserved. See [API.md](API.md) for types, timing, privacy, and subscription examples.
+`ask-user:input_requested` and `ask-user:input_resolved` on `pi.events` correlate actual input waits with a generated request UUID and `answered`, `cancelled`, or `failed` outcome. They omit question/answer content and grant no authority to answer for the user. Parent-managed results and invalid mode configuration emit neither input events nor Herdr blocked signals. Invalid requests, pre-abort, headless mode, and RPC's unsupported custom UI do not announce a wait. Existing Herdr signaling is preserved. See [API.md](API.md) for types, timing, privacy, and subscription examples.
 
 ## Configuration
 
-No user-facing configuration.
+`PI_ASK_USER_MODE` is an environment-only launch setting, captured when the extension loads; it deliberately has no settings-file field or config command. Unset preserves existing interactive behavior. The only configured value is the exact string `parent`; any other value (including empty or whitespace) rejects calls with an explicit configuration error, without opening UI or echoing the value. Reconcile invalid launch configuration with the parent/operator; do not bypass the mode.
+
+For a parent-managed child process:
+
+```bash
+PI_ASK_USER_MODE=parent pi
+```
+
+Valid, unaborted calls return immediately with a decision-required result and guidance: resolve from existing evidence within authority where possible; otherwise report the request ID, question/options/recommendation, evidence and blocked work with current ticket/run/session/revision to the parent. Checkpoint and yield when no authorized independent work remains, retaining sole ownership. Do not retry the same question or bypass the mode. The extension neither sends the request to another session nor answers it, and keeps no pending inbox.
+
+[Work-stack](../../skills/work-stack/SKILL.md) sets this only for its child process and uses ordinary `agent_settled` attention and existing checkpoint/report/continuation paths. Human-facing parents and standalone spin-outs remain unchanged unless explicitly configured. This is coordination, not a security boundary or approval mechanism; it does not intercept other UI tools. No installation or live reload is implied.
 
 ## Logging
 

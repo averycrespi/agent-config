@@ -6,6 +6,7 @@ import { afterEach, test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import extensionDefault from "./index.ts";
+import { _dns } from "./url-safety.ts";
 
 const OLD_ENV = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -365,7 +366,10 @@ test("web_search renderer previews result content instead of envelope boilerplat
   );
 });
 
-test("web_fetch wraps fetched page content in an untrusted-content envelope", async () => {
+test("web_fetch wraps fetched page content in an untrusted-content envelope", async (t) => {
+  t.mock.method(_dns, "lookup", async () => [
+    { address: "93.184.216.34", family: 4 },
+  ]);
   delete process.env.TAVILY_API_KEY;
   delete process.env.JINA_API_KEY;
   const body = `<html><head><title>Example Page</title></head><body><article><h1>Example Page</h1><p>${"Readable content. ".repeat(20)}</p></article></body></html>`;
@@ -391,7 +395,10 @@ test("web_fetch wraps fetched page content in an untrusted-content envelope", as
   assert.match(text, /END UNTRUSTED EXTERNAL WEB CONTENT/);
 });
 
-test("web_fetch spills oversized wrapped page content", async () => {
+test("web_fetch spills oversized wrapped page content", async (t) => {
+  t.mock.method(_dns, "lookup", async () => [
+    { address: "93.184.216.34", family: 4 },
+  ]);
   delete process.env.TAVILY_API_KEY;
   delete process.env.JINA_API_KEY;
   const body = `<html><head><title>Large Page</title></head><body><article><h1>Large Page</h1><p>${"Readable content. ".repeat(3_000)}</p></article></body></html>`;

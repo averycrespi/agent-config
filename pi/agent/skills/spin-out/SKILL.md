@@ -107,6 +107,8 @@ Read the completed file once before starting Pi. Confirm that it describes the d
 
 Derive a useful unique agent name from the branch slug. It must match `[a-z][a-z0-9_-]{0,31}`. Inspect `herdr agent list`, truncate before adding a numeric suffix when needed, and never replace an existing agent.
 
+Standalone spin-outs leave ask-user mode unchanged. For work-stack children only, follow its [child-only parent-managed launch](../work-stack/references/decisions.md#child-only-launch) instead of the default startup command below; include that decision escalation contract in the initial handoff. Do not change the parent/global environment.
+
 Start Pi in the returned root pane:
 
 ```bash
