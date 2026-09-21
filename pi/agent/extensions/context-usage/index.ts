@@ -1,7 +1,10 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-  SessionEntry,
+import { stripVTControlCharacters } from "node:util";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { getCurrentTools } from "@earendil-works/pi-ai";
+import {
+  convertToLlm,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
 
 type Group = {
@@ -71,7 +74,10 @@ function contentToText(content: unknown): string {
 }
 
 function preview(text: string): string {
-  const singleLine = text.replace(/\s+/g, " ").trim();
+  const singleLine = stripVTControlCharacters(text)
+    .replace(/\s+/g, " ")
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, "")
+    .trim();
   if (!singleLine) return "empty";
   return singleLine.length > 72 ? `${singleLine.slice(0, 69)}...` : singleLine;
 }
@@ -107,20 +113,21 @@ function toolCallLabel(message: Record<string, unknown>): string {
   return toolCallId ? `${toolName} (${toolCallId})` : toolName;
 }
 
-function addMessageEntry(
+function addMessage(
   groups: Map<string, Group>,
   toolResultCalls: ToolResultCall[],
-  entry: Extract<SessionEntry, { type: "message" }>,
+  message: AgentMessage,
 ): void {
-  const message = entry.message;
+  // Native conversion excludes !! shell output and context-invisible roles.
+  const converted = convertToLlm([message])[0];
+  if (!converted || message.role === "system") return;
+  const text = contentToText(converted.content);
   switch (message.role) {
     case "user": {
-      const text = contentToText(message.content);
       addGroup(groups, "User messages", estimateTokens(text), preview(text));
       break;
     }
     case "assistant": {
-      const text = contentToText(message.content);
       addGroup(
         groups,
         "Assistant messages",
@@ -130,7 +137,6 @@ function addMessageEntry(
       break;
     }
     case "toolResult": {
-      const text = contentToText(message.content);
       const tokens = estimateTokens(text);
       const textPreview = preview(text);
       addGroup(groups, `Tool result: ${message.toolName}`, tokens, textPreview);
@@ -142,56 +148,21 @@ function addMessageEntry(
       break;
     }
     default: {
-      const text = safeStringify(message);
-      addGroup(groups, "Other messages", estimateTokens(text), preview(text));
-    }
-  }
-}
-
-function addEntry(
-  groups: Map<string, Group>,
-  toolResultCalls: ToolResultCall[],
-  entry: SessionEntry,
-): void {
-  switch (entry.type) {
-    case "message":
-      addMessageEntry(groups, toolResultCalls, entry);
-      break;
-    case "compaction":
-      addGroup(
-        groups,
-        "Compaction summaries",
-        estimateTokens(entry.summary),
-        preview(entry.summary),
-      );
-      break;
-    case "branch_summary":
-      addGroup(
-        groups,
-        "Branch summaries",
-        estimateTokens(entry.summary),
-        preview(entry.summary),
-      );
-      break;
-    case "custom_message": {
-      const text = contentToText(entry.content);
-      addGroup(
-        groups,
-        `Custom context: ${entry.customType}`,
-        estimateTokens(text),
-        preview(text),
-      );
-      break;
-    }
-    case "custom":
-    case "label":
-    case "model_change":
-    case "session_info":
-    case "thinking_level_change":
-      break;
-    default: {
-      const text = safeStringify(entry);
-      addGroup(groups, "Other context", estimateTokens(text), preview(text));
+      const label =
+        message.role === "compactionSummary"
+          ? "Compaction summaries"
+          : message.role === "branchSummary"
+            ? "Branch summaries"
+            : message.role === "custom"
+              ? `Custom context: ${message.customType}`
+              : message.role === "bashExecution"
+                ? "Shell executions"
+                : "Other messages";
+      const example =
+        message.role === "compactionSummary" || message.role === "branchSummary"
+          ? message.summary
+          : text;
+      addGroup(groups, label, estimateTokens(text), preview(example));
     }
   }
 }
@@ -219,8 +190,18 @@ function buildReport(ctx: ExtensionCommandContext): ContextReport {
     "Pi prompt, AGENTS.md, loaded extension guidance",
   );
 
-  for (const entry of ctx.sessionManager.getBranch()) {
-    addEntry(groups, toolResultCalls, entry);
+  const { messages } = ctx.sessionManager.buildSessionProjection();
+  // Count current prompt/tool state once, not every historical system patch.
+  for (const tool of getCurrentTools(convertToLlm(messages))) {
+    addGroup(
+      groups,
+      `Tool schema: ${tool.name}`,
+      estimateTokens(safeStringify(tool)),
+      preview(tool.name),
+    );
+  }
+  for (const message of messages) {
+    addMessage(groups, toolResultCalls, message);
   }
 
   const sortedGroups = [...groups.values()].sort((a, b) => b.tokens - a.tokens);
@@ -241,9 +222,9 @@ function buildReport(ctx: ExtensionCommandContext): ContextReport {
   );
   const sourceNote = usage
     ? reportedTokens === null
-      ? "Pi usage unavailable; showing local current-branch estimate"
-      : "Pi-reported current usage + local current-branch blame estimate"
-    : "Local current-branch estimate only";
+      ? "Pi usage unavailable; showing local effective-context estimate"
+      : "Pi-reported current usage + local effective-context blame estimate"
+    : "Local effective-context estimate only";
 
   return {
     estimatedTokens,
@@ -277,7 +258,7 @@ export function renderContextReport(
   groups.forEach((group, index) => {
     const suffix = group.count === 1 ? "1 item" : `${group.count} items`;
     lines.push(
-      `${index + 1}. ${group.label.padEnd(42)} ${formatTokens(group.tokens).padStart(7)}  ${formatPercent(group.tokens, totalForShare).padStart(4)}  ${suffix}`,
+      `${index + 1}. ${preview(group.label).padEnd(42)} ${formatTokens(group.tokens).padStart(7)}  ${formatPercent(group.tokens, totalForShare).padStart(4)}  ${suffix}`,
     );
     if (detailed) lines.push(`   e.g. ${group.examples.join(" · ")}`);
   });
@@ -290,7 +271,7 @@ export function renderContextReport(
     lines.push("", "Largest individual tool results");
     toolResultCalls.forEach((call, index) => {
       lines.push(
-        `${index + 1}. ${call.label.padEnd(42)} ${formatTokens(call.tokens).padStart(7)}  ${formatPercent(call.tokens, totalForShare).padStart(4)}`,
+        `${index + 1}. ${preview(call.label).padEnd(42)} ${formatTokens(call.tokens).padStart(7)}  ${formatPercent(call.tokens, totalForShare).padStart(4)}`,
       );
       if (detailed) lines.push(`   e.g. ${call.preview}`);
     });
@@ -301,7 +282,7 @@ export function renderContextReport(
       `${groups.length + 1}. ${"Unattributed provider/framing overhead".padEnd(42)} ${formatTokens(report.unattributedTokens).padStart(7)}  ${formatPercent(report.unattributedTokens, totalForShare).padStart(4)}`,
     );
     lines.push(
-      "   Difference between provider usage and local branch estimate",
+      "   Difference between provider usage and local effective-context estimate",
     );
   }
 

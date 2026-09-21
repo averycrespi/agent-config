@@ -29,6 +29,8 @@ function nativeHarness() {
   const settings = { enabled: true, keepRecentTokens: 30, reserveTokens: 10 };
   session.sessionManager = h.sm;
   session._isAgentRunActive = false;
+  // Constructor-owned provenance used by native finalized-context refresh.
+  session._entryIdsByMessage = new WeakMap();
   session.agent = {
     state: {
       model: { id: "fixture" },
@@ -99,6 +101,11 @@ test("idle extension uses native preparation, hooks, history and usage without a
   await h.task();
   assert.equal(h.summaries(), 1);
   assert.equal(h.turns(), 0);
+  assert.equal(h.session.isIdle, true);
+  assert.deepEqual(
+    h.session.agent.state.messages,
+    h.sm.buildSessionContext().messages,
+  );
   const compaction = h.sm.getEntries().find((e) => e.type === "compaction");
   assert.ok(compaction && compaction.type === "compaction");
   assert.equal(compaction.fromHook, false);
@@ -144,6 +151,7 @@ test("native cancellation after generation starts records cancelled and never re
   h.session.abortCompaction();
   h.release.resolve();
   await h.task();
+  assert.equal(h.session.isIdle, true);
   assert.equal(
     h.sm.getEntries().filter((e) => e.type === "compaction").length,
     0,
@@ -171,7 +179,7 @@ test("native failure is recorded without exposing raw error or triggering agent 
   assert.equal(h.requests.length, 1);
 });
 
-test("accepted Pi 0.85.1 limitation: navigation can misattach native summary; stale extension callback writes nothing", async () => {
+test("Pi rejects navigation during native compaction and completes on the original branch", async () => {
   const h = nativeHarness();
   const originalLeaf = h.sm.getLeafId()!;
   const root = h.sm.getBranch()[0].id;
@@ -182,18 +190,25 @@ test("accepted Pi 0.85.1 limitation: navigation can misattach native summary; st
   await h.start();
   h.time.advance(60_000);
   await h.entered.promise;
-  await h.session.navigateTree(other, { summarize: false });
-  const metadataCount = h.sm
-    .getEntries()
-    .filter((e) => e.type === "custom").length;
+  const compactionParent = h.sm.getLeafId();
+  const entriesBeforeNavigation = h.sm.getEntries();
+  await assert.rejects(
+    h.session.navigateTree(other, { summarize: false }),
+    /Wait for the current compaction or tree navigation to finish/,
+  );
+  assert.equal(h.sm.getLeafId(), compactionParent);
+  assert.deepEqual(h.sm.getEntries(), entriesBeforeNavigation);
+  assert.equal(h.session.isIdle, false);
   h.release.resolve();
   await h.task();
-  const last = h.sm.getEntries().at(-1);
-  assert.equal(last?.type, "compaction");
-  assert.equal(last?.parentId, other);
-  assert.equal(
-    h.sm.getEntries().filter((e) => e.type === "custom").length,
-    metadataCount,
-  );
+  const compaction = h.sm.getEntries().find((e) => e.type === "compaction");
+  assert.ok(compaction);
+  assert.equal(compaction.parentId, compactionParent);
+  assert.ok(h.sm.getBranch().some((e) => e.id === originalLeaf));
+  assert.ok(!h.sm.getBranch().some((e) => e.id === other));
+  assert.equal(h.session.isIdle, true);
+  await h.command();
+  assert.match(h.notifications.at(-1)!, /completed/);
+  assert.doesNotMatch(h.notifications.at(-1)!, /Native navigation races/);
   assert.equal(h.turns(), 0);
 });

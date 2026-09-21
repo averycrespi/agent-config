@@ -16,7 +16,9 @@ There is no persistent state, configuration, retained logging, or agent tool sur
 The command combines two kinds of context information:
 
 - Pi-reported usage from `ctx.getContextUsage()`, when available.
-- Locally visible branch content from `ctx.sessionManager.getBranch()` plus the effective system prompt from `ctx.getSystemPrompt()`.
+- Canonical messages from `ctx.sessionManager.buildSessionProjection()` plus the effective system prompt from `ctx.getSystemPrompt()`.
+
+Use the supported projection rather than interpreting raw history or `buildContextEntries()` alone: projection applies compaction and latest selected context edits without mutating source entries. `convertToLlm()` handles summary/custom/shell conversion and excludes context-invisible shell messages. Preserve the projected message's role for attribution while estimating converted content. Replay tool declarations with Pi AI's `getCurrentTools()`; count the current prompt and each current schema once, skipping system messages themselves.
 
 The local estimate is intentionally approximate: `Math.ceil(text.length / 4)`. Do not replace this with provider-specific tokenization unless the design also handles model/provider differences and test stability. The command is meant to identify obvious context hogs, not produce billing-grade token counts.
 
@@ -25,15 +27,18 @@ The local estimate is intentionally approximate: `Math.ceil(text.length / 4)`. D
 The report groups visible context into stable human-readable buckets:
 
 - system prompt and project instructions;
+- current transcript-backed tool schemas by name;
 - user messages;
 - assistant messages, including serialized tool-call arguments;
 - tool results grouped by tool name;
 - individual large tool-result calls;
 - compaction and branch summaries;
 - custom context messages from extensions;
-- fallback buckets for unknown message or entry shapes.
+- context-visible shell executions.
 
-If provider-reported usage is larger than the local branch estimate, the difference is reported as `Unattributed provider/framing overhead`. This is expected and can include tool schemas, provider serialization, tokenization differences, or context unavailable through the session branch API.
+Do not serialize arbitrary entries or message metadata as context. Bookkeeping, tool details, usage, and omitted content must not inflate the estimate.
+
+If Pi-reported usage is larger than the local estimate, the difference is reported as `Unattributed provider/framing overhead`; the header always preserves Pi's available total. Current-state attribution deliberately does not model provider-specific retention of historical system patches, pending loadout changes, request-time hooks, image tokens, or serialization. See the [estimation limits](README.md#estimation-limits).
 
 ## Rendering contract
 
@@ -57,4 +62,4 @@ This extension should remain read-only. It must not mutate session entries, trig
 
 ## Change guidance
 
-When adding support for new `SessionEntry` or content block shapes, update the grouping logic and tests together. Prefer conservative fallback serialization for unknown shapes so the command remains robust across Pi API changes. Keep the estimator and output stable unless the README is updated to explain a user-visible behavior change.
+When adding support for new projected message or content block shapes, update the grouping logic and real SessionManager regression tests together. Keep context selection delegated to Pi rather than adding raw-entry fallback serialization. Keep the estimator and output stable unless the README is updated to explain a user-visible behavior change.
