@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   lstat,
@@ -17,6 +17,7 @@ import {
   updateMonitor,
   validateMonitor,
   remainingWaitMs,
+  remainingBounds,
 } from "./ci-background.js";
 
 const LIMIT = 64 * 1024;
@@ -168,6 +169,7 @@ function apply(s, r) {
       checkpoint(s, r.patch);
       break;
     case "release":
+      if (r.patch !== undefined) checkpoint(s, r.patch);
       s.released = true;
       break;
     case "repair": {
@@ -237,15 +239,21 @@ function apply(s, r) {
       }
       if (o.budget !== undefined) {
         need(
-          ["review", "ci", "wait"].includes(o.budget) &&
+          ["review", "ci", "wait", "wakes", "deadline"].includes(o.budget) &&
             integer(o.additional) > 0,
           "override requires a positive allowance addition",
         );
-        if (o.budget === "wait") {
+        if (["wait", "wakes", "deadline"].includes(o.budget)) {
           need(s.monitor, "start monitoring before extending its allowance");
           s.monitor = updateMonitor(s.monitor, {
-            operation: "extend",
+            operation:
+              o.budget === "wait"
+                ? "extend"
+                : o.budget === "wakes"
+                  ? "extend-wakes"
+                  : "extend-deadline",
             additionalMs: o.additional,
+            additional: o.additional,
           });
         } else s.repairs[o.budget].limit += o.additional;
       } else
@@ -284,13 +292,14 @@ function apply(s, r) {
           target: s.pendingEffect.target,
           reference: r.reference,
         };
+        s.evidenceRefs = [...new Set([...s.evidenceRefs, r.reference])];
         s.pendingEffect = null;
       }
       break;
     }
     case "ci":
       need(
-        r.operation !== "extend",
+        !["extend", "extend-wakes", "extend-deadline"].includes(r.operation),
         "use a scoped user override to extend CI waiting",
       );
       s.monitor = updateMonitor(s.monitor, {
@@ -485,7 +494,43 @@ export async function ticketState(r) {
               git(root, "symbolic-ref", "--short", "HEAD") === s.branch),
           "checkout/branch or released ownership conflict; reconcile with claim",
         );
-        apply(s, r);
+        let request = r;
+        if (r.action === "ci" && r.receiptArtifact !== undefined) {
+          const artifact = r.receiptArtifact;
+          const dir = join(common, "pi-delivery-artifacts", "background");
+          await directory(dir);
+          need(
+            typeof artifact.path === "string" &&
+              artifact.path === join(dir, `${artifact.sha256}.json`) &&
+              /^[a-f0-9]{64}$/.test(artifact.sha256),
+            "invalid host receipt artifact reference",
+          );
+          const stat = await lstat(artifact.path);
+          need(
+            stat.isFile() &&
+              !stat.isSymbolicLink() &&
+              stat.size <= 4 * 1024 * 1024,
+            "invalid host receipt artifact file",
+          );
+          const bytes = await readFile(artifact.path);
+          need(
+            createHash("sha256").update(bytes).digest("hex") ===
+              artifact.sha256,
+            "host receipt artifact digest mismatch",
+          );
+          const retained = JSON.parse(bytes);
+          need(
+            retained.schemaVersion === 1 && retained.receipt,
+            "host receipt artifact missing receipt",
+          );
+          request = {
+            ...r,
+            receipt: retained.receipt,
+            reference: `${r.pr} head ${r.head}: ${artifact.path} sha256 ${artifact.sha256}`,
+          };
+          s.evidenceRefs = [...new Set([...s.evidenceRefs, request.reference])];
+        }
+        apply(s, request);
       }
     }
     for (const entry of await readdir(store)) {
@@ -537,6 +582,7 @@ export async function ticketState(r) {
             waitLimitMs: s.monitor.waitLimitMs,
             nextPollAt: s.monitor.nextPollAt,
             waitRemainingMs: remainingWaitMs(s.monitor),
+            bounds: remainingBounds(s.monitor),
             watcher: s.monitor.watcher ?? null,
             lastWatcher: s.monitor.lastWatcher ?? null,
           }

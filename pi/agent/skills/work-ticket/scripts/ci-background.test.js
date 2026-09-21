@@ -3,7 +3,11 @@ import test from "node:test";
 import { BackgroundEngine } from "../../../extensions/background/engine.ts";
 import { registration } from "../../../extensions/background/contract.ts";
 import { parseReceipt } from "../../../extensions/background/receipts.ts";
-import { updateMonitor, validateMonitor } from "./ci-background.js";
+import {
+  updateMonitor,
+  validateMonitor,
+  remainingBounds,
+} from "./ci-background.js";
 
 const pr = "https://github.com/example/project/pull/1",
   head = "a".repeat(40);
@@ -75,6 +79,7 @@ async function fixture() {
         source: "fixture",
         cycle_timeout_ms: w.cycleMs,
         lifetime_ms: w.timeoutMs,
+        deadline_ms: ledger.bounds.deadline,
         max_wakes: 1,
       }),
     );
@@ -141,6 +146,87 @@ async function fixture() {
     },
   };
 }
+
+test("absolute clock survives repair pauses; uncertain reservations survive recovery", async () => {
+  const f = await fixture();
+  f.update({ operation: "prepare" });
+  await f.advance(2000);
+  const receipt = await f.register();
+  assert.equal(
+    receipt.deadline,
+    1800000,
+    "admission clamps stale relative lifetime",
+  );
+  f.attach(receipt);
+  f.engine.cancel(receipt.id);
+  f.reconcile(receipt.id);
+  assert.equal(
+    remainingBounds(f.ledger, 2000).wakesRemaining,
+    6,
+    "proven unused wake is refundable",
+  );
+  await f.advance(1799000);
+  assert.equal(f.update({ operation: "prepare" }).disposition, "limit");
+  assert.equal(
+    f.ledger.waitUsedMs,
+    0,
+    "paused repair does not consume cumulative clock",
+  );
+  f.engine.close(false);
+
+  let s = updateMonitor(
+    null,
+    { operation: "watch", pr, head, required: ["Verify"] },
+    0,
+  );
+  for (let i = 0; i < 6; i++) {
+    s = updateMonitor(s, observation("pending"), i * 60000);
+    s = updateMonitor(s, { operation: "prepare" }, i * 60000);
+    s = updateMonitor(
+      s,
+      {
+        operation: "recover",
+        reference: "Originating owner proved inactive; receipt unavailable",
+      },
+      i * 60000 + 1000,
+    );
+    assert.throws(
+      () => updateMonitor(s, { operation: "prepare" }, i * 60000 + 1000),
+      /unknown handoff/,
+    );
+    s = updateMonitor(
+      s,
+      {
+        operation: "resolve-handoff",
+        id: s.bounds.attempts.at(-1).id,
+        reference:
+          "Originating owner reconciled notification; preserve charged reservation, no replay",
+      },
+      i * 60000 + 1000,
+    );
+  }
+  assert.equal(remainingBounds(s, 361000).wakesRemaining, 0);
+  assert.equal(
+    updateMonitor(s, { operation: "prepare" }, 361000).disposition,
+    "limit",
+  );
+  const prior = JSON.stringify(s);
+  const legacy = structuredClone(s);
+  delete legacy.bounds;
+  assert.throws(
+    () => updateMonitor(legacy, { operation: "prepare" }, 361000),
+    /legacy CI bounds/,
+  );
+  assert.equal(JSON.stringify(s), prior);
+  const extended = updateMonitor(
+    s,
+    { operation: "extend", additionalMs: 60000 },
+    361000,
+  );
+  assert.equal(extended.bounds.deadline, s.bounds.deadline + 60000);
+  assert.equal(extended.waitUsedMs, s.waitUsedMs);
+  assert.deepEqual(extended.bounds.attempts, s.bounds.attempts);
+});
 
 test("migrated CI polling waits without messages, then reconciles success/failure and exact head", async () => {
   for (const outcome of ["passed", "failed"]) {
@@ -233,6 +319,7 @@ test("25-minute attention renews only the remaining cumulative allowance", async
     id = await f.start();
   await f.advance(1500000);
   assert.equal(f.engine.get(id).attention.reason, "timeout");
+  f.engine.cancel(id);
   f.reconcile(id);
   assert.equal(f.ledger.waitUsedMs, 1500000);
   f.update(observation("pending"));
@@ -240,6 +327,7 @@ test("25-minute attention renews only the remaining cumulative allowance", async
   assert.equal(f.ledger.watcher.timeoutMs, 300000);
   await f.advance(300000);
   assert.equal(f.engine.get(second).attention.reason, "budget_exhausted");
+  f.engine.cancel(second);
   f.reconcile(second);
   assert.equal(f.update(observation("pending")).disposition, "limit");
   assert.equal(f.update({ operation: "prepare" }).watcher, null);

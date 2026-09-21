@@ -7,6 +7,7 @@ import { createPersistentWidget } from "../_shared/widget.ts";
 import { registerConfigCommand } from "../_shared/config.ts";
 import { loadBackgroundConfig, CONFIG_WARNING } from "./config.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
+import { retainDeliveryArtifact } from "../_shared/delivery-artifacts.ts";
 import { BackgroundEngine } from "./engine.ts";
 import { evaluateBackground } from "./execution.ts";
 import { registration, RequestError, isId, type Receipt } from "./contract.ts";
@@ -188,6 +189,9 @@ export default async function background(
         let value: unknown;
         let selected: Receipt | undefined;
         let cancelChanged = false;
+        let registrationArtifact:
+          | ReturnType<typeof retainDeliveryArtifact>
+          | undefined;
         if (params.action === "start") {
           const reg = registration(params, config);
           await describeScriptProviders(
@@ -201,13 +205,23 @@ export default async function background(
             throw new RequestError(
               "Context changed or registration cancelled.",
             );
+          if (params.retain)
+            registrationArtifact = retainDeliveryArtifact(
+              ctx.cwd,
+              "background",
+              {
+                schemaVersion: 1,
+                toolCallId: _id,
+                registration: params,
+              },
+            );
           selected = await owner.start(reg, signal);
           value = selected;
         } else {
           const allowed =
             params.action === "list"
               ? ["action", "providers"]
-              : ["action", "id"];
+              : ["action", "id", "retain"];
           if (Object.keys(params).some((k) => !allowed.includes(k)))
             throw new RequestError("Unexpected fields for action.");
           if (params.action === "list")
@@ -239,10 +253,35 @@ export default async function background(
           throw new RequestError(
             "Session changed; inspect destination receipts.",
           );
-        const warning =
-          params.action === "start" && selected
-            ? pollingWarning(summary(selected))
-            : undefined;
+        let artifact: ReturnType<typeof retainDeliveryArtifact> | undefined;
+        let retentionWarning: string | undefined;
+        if (params.retain && selected) {
+          try {
+            artifact = retainDeliveryArtifact(ctx.cwd, "background", {
+              schemaVersion: 1,
+              toolCallId: _id,
+              action: params.action,
+              ...(registrationArtifact ? { registrationArtifact } : {}),
+              receipt: selected,
+            });
+          } catch {
+            retentionWarning =
+              "Host receipt retention failed; reconcile this exact receipt, never replay the operation.";
+          }
+        }
+        const warning = [
+          ...(params.action === "start" && selected
+            ? [pollingWarning(summary(selected))]
+            : []),
+          retentionWarning,
+          ...(artifact
+            ? [
+                `Host receipt artifact: ${artifact.path} (sha256 ${artifact.sha256})`,
+              ]
+            : []),
+        ]
+          .filter(Boolean)
+          .join("\n");
         return {
           content: [
             {
@@ -260,6 +299,8 @@ export default async function background(
           ],
           details: {
             backgroundError: false,
+            ...(artifact ? { artifact } : {}),
+            ...(retentionWarning ? { retentionWarning } : {}),
             action: params.action,
             receipt: selected && summary(selected),
             cancelChanged,

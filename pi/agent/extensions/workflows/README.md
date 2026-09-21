@@ -8,11 +8,11 @@ This is read-mostly orchestration, not parallel implementation or workspace muta
 
 `workflow` accepts:
 
-| Action     | Fields                                                             |
-| ---------- | ------------------------------------------------------------------ |
-| `list`     | No other fields; returns the current saved-workflow inventory.     |
-| `validate` | Exactly one of `script` or `name`; parses without execution.       |
-| `run`      | Exactly one of `script` or `name`, plus optional cloneable `args`. |
+| Action     | Fields                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------- |
+| `list`     | No other fields; returns the current saved-workflow inventory.                                    |
+| `validate` | Exactly one of `script` or `name`; parses without execution.                                      |
+| `run`      | Exactly one of `script` or `name`, plus optional cloneable `args` and review-only `retain: true`. |
 
 Every script starts with literal metadata and contains a direct `agent()` or `verify()` call:
 
@@ -185,7 +185,7 @@ The removed workflow model-tier fields and environment variables remain ignored 
 
 ## Logging and retained output
 
-Every run persists an exact owner-only source copy under the system temporary workflow-script directory before sandbox execution. Source copies are lazily removed after seven days. Successful workflow results are not journaled.
+Every run persists an exact owner-only source copy under the system temporary workflow-script directory before sandbox execution. Source copies are lazily removed after seven days. Successful workflow results are not journaled by default. For Git delivery reviews, `run` accepts `retain: true`: the host captures HEAD plus the binary tracked-delta SHA-256 before execution, then retains exact original result strings, supplied scope and source under `<git-common-dir>/pi-delivery-artifacts/review/`, returning its immutable digest/reference. Stage intended untracked files first; non-Git reviews can omit retention. A changed/unavailable final revision is retained as a qualification gap, not silently rebound. Storage failure preserves the original displayed result and warning; never rerun solely to recover evidence. Artifacts are owner-only, bounded to 4 MiB each, never automatically deleted or published, and may contain private review context. This opt-in review artifact is not a general successful-run journal.
 
 After abnormal termination, settled structured successes and typed failures may be retained in one owner-only `.json.gz` recovery envelope under `${tmpdir()}/pi-retained-diagnostics`. It excludes prompts, workflow args, successful prose, raw activity/stdout/stderr, tool traces, environment, credentials, and source. It may include identity/policy metadata, timings, attempts, effective timeouts, usage, validated structured values, failures, and child-log paths.
 

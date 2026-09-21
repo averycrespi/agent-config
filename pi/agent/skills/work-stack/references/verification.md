@@ -4,10 +4,13 @@ Use three distinct evidence layers: discovery/link checks, read-only model scena
 
 ## Deterministic checks
 
-Run the repository's skill discovery/link tests and formatting checks. The work-ticket skill test follows local Markdown links recursively; include work-stack in that inventory. These checks validate packaging, not obedience, stack completion, or external qualification. There is no new stack helper/state machine to unit-test. Run applicable full checks if code or runtime configuration changes.
+Run the repository's skill discovery/link tests and formatting checks. The work-ticket skill test follows local Markdown links recursively; include work-stack in that inventory. These checks validate packaging, not obedience, stack completion, or external qualification. The narrow parent observation helper has accounting tests; it is not a delivery state machine. Run applicable full checks if code or runtime configuration changes.
 
-Run `npx tsx --test pi/agent/skills/work-stack/*.test.js pi/agent/skills/work-ticket/scripts/*.test.js pi/agent/skills/work-ticket/skill.test.js` for the integrated fixtures:
+Run `npx tsx --test pi/agent/skills/work-stack/*.test.js pi/agent/skills/work-stack/scripts/*.test.js pi/agent/skills/work-ticket/scripts/*.test.js pi/agent/skills/work-ticket/skill.test.js` for the integrated fixtures:
 
+- `scripts/observation-state.test.js`: parent-owned machine accounting, exact owner/incarnation rejection, idempotent receipts, additive extensions, uncertainty and durable atomic mutation. No child delivery state is owned here.
+- `bookkeeping.test.js`: measured fixed three-ticket snapshot byte sizes and explicit modeled baseline/revised operation inventories. Those inventory counts are synthetic, not observed model calls; compare separately with bounded reasoning scenarios and report regressions honestly.
+- `collect-ci.test.js`: parameterized GitHub projection fixtures plus actual fresh Script evaluator execution, pagination, current attempts and fail-closed identity/coverage limits.
 - `ci-background.test.js`: actual Background engine plus CI adapter; terminal-before-attachment, interrupted preparation/registration/attachment, identity rejection, idempotent reconciliation and preserved consumption. Receipt restoration simulates owner interruption, not a live Pi restart.
 - `observation.test.js`: actual engine and disposable Unix session transport; stable exact-incarnation settlement/input/shutdown selections, pre-registration gap exclusion, events during registration, pending child CI unchanged, admission distinct from handoff, stale incarnation rejection and unknown handoff without resend. The fixture supplies the child CI ledger; it does not call GitHub or prove model follow-through.
 - `lifecycle.test.js`: two serial disposable repositories with separate Git directories (not real linked worktrees). Exercise original-byte/SHA-256 archive checks, unmerged rejection, interrupted Plane/comment confirmation, competing-writer rejection, retained removal intent across release, absence confirmation from surviving checkouts, and branch/checkpoint/archive retention. Plane surfaces and non-force Herdr command effects are simulated; only fixture directories are removed. This is a protocol dry-run, not live cleanup qualification or a second production state machine.
@@ -54,6 +57,8 @@ Exercise the parent observation policy with these additional read-only scenarios
 - Recovery of a historical 30-minute/10-attempt checkpoint under the updated skill: preserve its retained limits and consumption unless explicit additive user authority extends them; new defaults do not replenish an existing child's budget.
 
 Additionally exercise cycle-timeout renewal within the same absolute parent deadline/wake allowance; input attention followed by exact-job cancellation; fast completion during registration; unknown handoff without replay; and disconnect/reload coverage loss. Use stable settlement/input/shutdown filters across all replacements. A terminal job, outer attention handoff, child CI handoff, and semantic delivery are separate evidence.
+
+See [bookkeeping qualification results](bookkeeping-results.md) for measured fixture sizes, modeled operation counts, bounded baseline/revised agent observations and their limitations.
 
 ## Compact-state regression scenarios
 

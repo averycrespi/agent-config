@@ -16,6 +16,12 @@ export const parameters = (
     {
       action: StringEnum(["start", "list", "get", "cancel"] as const),
       id: Type.Optional(Type.String()),
+      retain: Type.Optional(
+        Type.Boolean({
+          description:
+            "Retain original registration/host receipt under the current Git common directory; start/get/cancel only. Failure never permits replay.",
+        }),
+      ),
       name: Type.Optional(Type.String({ minLength: 1, maxLength: 80 })),
       message: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
       providers: Type.Optional(
@@ -29,6 +35,14 @@ export const parameters = (
       lifetime_ms: finite(
         config.maxLifetimeMs,
         "Outer wall-clock ceiling including setup and settlement waits. Does not override earlier cycle expiry or renew caller-owned task allowances.",
+      ),
+      deadline_ms: Type.Optional(
+        Type.Integer({
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+          description:
+            "Optional caller-owned absolute deadline. Admission clamps lifetime to this ceiling; less than one second remaining rejects. Never extends lifetime.",
+        }),
       ),
       max_wakes: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
       recurring: Type.Optional(Type.Boolean()),

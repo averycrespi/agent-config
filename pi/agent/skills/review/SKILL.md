@@ -27,7 +27,7 @@ Read [the workflow input contract](references/workflow-input.md) completely befo
 
 Treat workflow health and review outcome separately. Report agent/branch failures before findings. The workflow returns structured `complete`, `outcome`, `deliveryScope`, `blockingGaps`, `qualificationLimitations`, and deterministic Markdown `report`. Retain the full report without silently omitting, downgrading, rewriting, or re-adjudicating findings. Use `complete` rather than parsing prose when recording review completeness; findings and checks remain separate gates.
 
-For a short report, present it directly. For a long report, make the complete unchanged report accessible at a specific file path (use a temporary artifact outside the workspace if no report file exists) and provide a concise summary. Before repairs, the presentation must expose:
+For Git delivery reviews, use `workflow run` with `retain: true`; stage intended new files by name first so the captured HEAD/delta includes them. The host retains original output, source and supplied scope under `<git-common-dir>/pi-delivery-artifacts/review/` and returns its digest/reference. Reference this artifact without model transcription or transcript scraping. Retention failures or revision changes remain explicit gaps; never rerun solely to recover a missing receipt. Non-Git/ad-hoc reviews may omit retention. For a short report, present it directly; for a long retained report, reference the artifact and summarize. Before repairs, the presentation must expose:
 
 - review outcome and execution failures;
 - every blocker, needs-human finding, unresolved decision, and failed check;

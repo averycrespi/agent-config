@@ -40,6 +40,7 @@ export interface Registration {
   source?: string;
   cycleMs: number;
   lifetimeMs: number;
+  deadlineMs?: number;
   maxWakes: number;
   recurring: boolean;
   intervalMs?: number;
@@ -117,12 +118,14 @@ export function registration(
     "source",
     "cycle_timeout_ms",
     "lifetime_ms",
+    "deadline_ms",
     "max_wakes",
     "recurring",
     "interval_ms",
     "delay_ms",
     "events",
     "state",
+    "retain",
   ];
   if (Object.keys(raw).some((k) => !allowed.includes(k)))
     errors.push("Unexpected start fields.");
@@ -154,8 +157,15 @@ export function registration(
     );
   if (!int(raw.lifetime_ms, 1000, config.maxLifetimeMs))
     errors.push(`lifetime_ms is required: 1000–${config.maxLifetimeMs}.`);
+  if (
+    raw.deadline_ms !== undefined &&
+    !int(raw.deadline_ms, 0, Number.MAX_SAFE_INTEGER)
+  )
+    errors.push("deadline_ms must be a nonnegative absolute host timestamp.");
   if (!int(raw.max_wakes, 1, LIMITS.wakes))
     errors.push("max_wakes is required: 1–100.");
+  if (raw.retain !== undefined && typeof raw.retain !== "boolean")
+    errors.push("retain must be boolean.");
   if (raw.recurring !== undefined && typeof raw.recurring !== "boolean")
     errors.push("recurring must be boolean.");
   if (!raw.recurring && raw.max_wakes !== 1)
@@ -226,6 +236,9 @@ export function registration(
     source: raw.source as string | undefined,
     cycleMs: raw.cycle_timeout_ms as number,
     lifetimeMs: raw.lifetime_ms as number,
+    ...(raw.deadline_ms === undefined
+      ? {}
+      : { deadlineMs: raw.deadline_ms as number }),
     maxWakes: raw.max_wakes as number,
     recurring: raw.recurring === true,
     intervalMs: raw.interval_ms as number | undefined,

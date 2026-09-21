@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ticketState } from "./ticket-state.js";
+import { retainDeliveryArtifact } from "../../../extensions/_shared/delivery-artifacts.ts";
 
 const ticketId = "11111111-2222-3333-4444-555555555555";
 const otherId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -311,6 +312,72 @@ test("pending effects survive release; confirmation works from surviving reposit
   assert.equal((await f.status()).lastEffect.id, "remove-checkout");
 });
 
+test("confirmation retains evidence once and final patch plus release is atomic", async (t) => {
+  const f = await fixture(t);
+  await f.init();
+  for (const id of ["comment", "transition"]) {
+    await f.call({
+      action: "external",
+      operation: "begin",
+      id,
+      target: `exact ${id}`,
+      intent: "Authorized update",
+    });
+    const confirmation = {
+      action: "external",
+      operation: "confirm",
+      id,
+      reference: `Revision abc: authoritative ${id} receipt`,
+    };
+    await f.call(confirmation);
+    await f.call(confirmation);
+  }
+  assert.deepEqual((await f.status()).evidenceRefs, [
+    "Revision abc: authoritative comment receipt",
+    "Revision abc: authoritative transition receipt",
+  ]);
+  await f.call({
+    action: "external",
+    operation: "begin",
+    id: "uncertain",
+    target: "exact target",
+    intent: "Retain unresolved effect",
+  });
+  const before = await readFile(f.file);
+  await assert.rejects(
+    f.call({
+      action: "release",
+      patch: {
+        progress: "Must not persist",
+        next: { action: "Missing actor" },
+      },
+    }),
+  );
+  assert.deepEqual(await readFile(f.file), before);
+  await assert.rejects(
+    f.call({
+      action: "release",
+      owner: "wrong",
+      patch: {
+        next: { actor: "user", action: "Reconcile" },
+      },
+    }),
+  );
+  assert.deepEqual(await readFile(f.file), before);
+  await f.call({
+    action: "release",
+    patch: {
+      progress: "Stopped with uncertain effect",
+      next: { actor: "user", action: "Reconcile exact target" },
+    },
+  });
+  const state = await f.status();
+  assert.equal(state.released, true);
+  assert.equal(state.next.action, "Reconcile exact target");
+  assert.equal(state.pendingEffect.id, "uncertain");
+  assert.equal(state.evidenceRefs.length, 2);
+});
+
 test("legacy records are never rewritten or silently adopted; consumption cannot be refunded", async (t) => {
   const f = await fixture(t);
   const dir = join(f.cwd, ".pi", "tickets", ticketId);
@@ -486,6 +553,63 @@ test("concurrent helpers do not interleave writes and failed CLI requests report
   assert.match(JSON.parse(result.stdout).error, /invalid plan/);
 });
 
+test("accounting consumes original producer artifacts and rejects digest corruption atomically", async (t) => {
+  const f = await fixture(t);
+  await f.init();
+  let now = 1000;
+  t.mock.method(Date, "now", () => now);
+  const pr = "https://github.com/example/project/pull/1",
+    head = "a".repeat(40);
+  await f.call({
+    action: "ci",
+    operation: "watch",
+    pr,
+    head,
+    required: ["Verify"],
+  });
+  await f.call({
+    action: "ci",
+    operation: "observe",
+    observation: {
+      head,
+      requirementsKnown: true,
+      checks: [{ name: "Verify", state: "pending" }],
+      reference: "Exact authoritative fixture",
+    },
+  });
+  const prepared = await f.call({ action: "ci", operation: "prepare" });
+  now = 2000;
+  const receipt = {
+    id: otherId,
+    createdAt: now,
+    deadline: prepared.ci.bounds.deadline,
+    cycleMs: prepared.ci.watcher.cycleMs,
+    recurring: false,
+    maxWakes: 1,
+    status: "active",
+  };
+  const receiptArtifact = retainDeliveryArtifact(f.cwd, "background", {
+    schemaVersion: 1,
+    receipt,
+  });
+  await f.call({
+    action: "ci",
+    operation: "attach",
+    pr,
+    head,
+    receiptArtifact,
+  });
+  assert.equal((await f.status()).monitor.watcher.id, otherId);
+  const before = await readFile(f.file);
+  await writeFile(receiptArtifact.path, "corrupt");
+  await assert.rejects(
+    f.call({ action: "ci", operation: "attach", pr, head, receiptArtifact }),
+    /digest mismatch/,
+  );
+  assert.deepEqual(await readFile(f.file), before);
+  assert.equal((await f.status()).evidenceRefs.length, 1);
+});
+
 test("Monitor registration and terminal accounting persist atomically through the checkpoint interface", async (t) => {
   const f = await fixture(t);
   await f.init();
@@ -514,7 +638,7 @@ test("Monitor registration and terminal accounting persist atomically through th
   const receipt = {
     id: otherId,
     createdAt: now,
-    deadline: now + prepared.ci.watcher.timeoutMs,
+    deadline: prepared.ci.bounds.deadline,
     cycleMs: prepared.ci.watcher.cycleMs,
     recurring: false,
     maxWakes: 1,

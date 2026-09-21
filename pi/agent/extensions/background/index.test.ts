@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { writeFile, readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture } from "../script/fixture.ts";
@@ -119,6 +120,40 @@ const input = {
     },
   ],
 };
+
+test("retained registration and terminal host receipts preserve exact producer evidence", async (t) => {
+  const h = await harness(t, "json");
+  execFileSync("git", ["-C", h.dir, "init", "-q"], { stdio: "pipe" });
+  const started = await h.call({
+    ...input,
+    retain: true,
+    deadline_ms: Date.now() + 7000,
+  });
+  assert.equal(started.details.backgroundError, false, JSON.stringify(started));
+  const original = value(started);
+  const artifact = JSON.parse(
+    await readFile(started.details.artifact.path, "utf8"),
+  );
+  assert.deepEqual(artifact.receipt, original);
+  const binding = JSON.parse(
+    await readFile(artifact.registrationArtifact.path, "utf8"),
+  );
+  assert.deepEqual(binding.registration.events, input.events);
+  assert.equal(binding.registration.retain, true);
+  assert.ok(original.deadline - original.createdAt <= 7000);
+  const stopped = await h.call({
+    action: "cancel",
+    id: original.id,
+    retain: true,
+  });
+  const terminal = JSON.parse(
+    await readFile(stopped.details.artifact.path, "utf8"),
+  );
+  assert.deepEqual(terminal.receipt, value(stopped));
+  assert.equal(terminal.receipt.id, original.id);
+  assert.equal(terminal.receipt.status, "cancelled");
+  assert.equal(h.messages.length, 0);
+});
 
 test("configuration snapshot aligns tool schema and admission until extension reload", async (t) => {
   const h = await harness(t, "json", {

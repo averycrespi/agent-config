@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, mock } from "node:test";
-import { rm } from "node:fs/promises";
+import { rm, mkdtemp, writeFile, readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -71,6 +72,68 @@ function successfulOutcome(stdout = "ok") {
     signal: null,
   } as const;
 }
+
+test("review tool retains exact original result and scope before formatting without rerun", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "review-retention-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", cwd, ...args], { stdio: "pipe" });
+  git("init", "-q");
+  git("config", "user.email", "test@example.com");
+  git("config", "user.name", "Example");
+  await writeFile(join(cwd, "code"), "fixture\n");
+  git("add", "code");
+  git("commit", "-qm", "test: fixture");
+  const h = harness();
+  h.context.cwd = cwd;
+  let calls = 0;
+  t.mock.method(_runSubagent, "fn", async () => {
+    calls++;
+    return successfulOutcome();
+  });
+  registerWorkflowTool(h.pi as any);
+  const report = "# Original\r\n\nExact café 🦊  \n";
+  const params = {
+    action: "run",
+    retain: true,
+    args: { report, boundary: "pre-publication" },
+    script: `export const meta = {name: "review", description: "fixture"}; export async function run() { await agent("fixture", {intent: "Read", capabilities: [], profile: "fast"}); return {report: args.report, complete: true}; }`,
+  };
+  const result = await h.tool.execute(
+    "retain-review",
+    params,
+    undefined,
+    undefined,
+    h.context,
+  );
+  assert.equal(calls, 1);
+  assert.ok(result.details.artifact, JSON.stringify(result));
+  const artifact = JSON.parse(
+    await readFile(result.details.artifact.path, "utf8"),
+  );
+  assert.deepEqual(Buffer.from(artifact.result.report), Buffer.from(report));
+  assert.deepEqual(artifact.scope, params.args);
+  assert.equal(artifact.stableRevision, true);
+  assert.equal(
+    artifact.revision.head,
+    git("rev-parse", "HEAD").toString().trim(),
+  );
+  assert.match(result.content[0].text, /Original review artifact/);
+  // Failure after the model returns preserves the original output, not a rerun.
+  const dir = join(cwd, ".git", "pi-delivery-artifacts", "review");
+  await rm(dir, { recursive: true });
+  await writeFile(dir, "not a directory");
+  const failed = await h.tool.execute(
+    "retain-failure",
+    params,
+    undefined,
+    undefined,
+    h.context,
+  );
+  assert.equal(calls, 2);
+  assert.match(failed.details.retentionWarning, /retention failed/);
+  assert.match(failed.content[0].text, /Original/);
+});
 
 test("tool guidance exposes only explicit workflow execution policy", () => {
   let registered: any;

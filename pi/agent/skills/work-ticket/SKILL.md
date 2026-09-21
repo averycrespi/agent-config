@@ -19,7 +19,7 @@ Keep one checkout writer and implement/repair in the owning session. Delegate re
 
 Plan implementation and verification proportionately; a short checklist suffices. Read [the helper interface](references/helper.md) before using `scripts/ticket-state.js`. Store concise intent, progress, evidence references, outstanding findings, allowances, and next actor/action. Checkpoint at consequential milestones, before stopping, and around consequential external effects—not every turn. Use compact mutation acknowledgments; reread full state only for recovery or an actual need.
 
-Git, Plane, and GitHub own their respective facts. A checkpoint is a recovery aid, not an independent approval or truth verifier. Keep full reports/logs in retained artifacts and reference their revision, scope, and location. Never stage checkpoints, handoffs, or secrets. For interruption, existing legacy records, ownership transfer, or changed scope, read [recovery](references/recovery.md).
+Git, Plane, and GitHub own their respective facts. A checkpoint is a recovery aid, not an independent approval or truth verifier. Keep full reports/logs in retained artifacts and reference their revision, scope, and location. For independent Git review, request `workflow run` with `retain: true` so the host stores the exact original output and supplied scope; do not manually transcribe an already returned report. Use Background `retain: true` receipts and helper artifact references rather than copying host fields. Never stage checkpoints, handoffs, or secrets. For interruption, existing legacy records, ownership transfer, or changed scope, read [recovery](references/recovery.md).
 
 ## Implement and review
 

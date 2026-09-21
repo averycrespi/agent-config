@@ -122,11 +122,18 @@ export class BackgroundEngine {
       LIMITS.active
     )
       throw new RequestError("Background capacity exhausted.");
+    const now = this.clock.now();
+    if (reg.deadlineMs !== undefined) {
+      reg.lifetimeMs = Math.min(reg.lifetimeMs, reg.deadlineMs - now);
+      if (reg.lifetimeMs < 1000)
+        throw new RequestError(
+          "Absolute deadline leaves less than one second; no registration admitted.",
+        );
+    }
     const controller = new AbortController();
     this.reservations.add(controller);
     const abort = () => controller.abort();
     signal?.addEventListener("abort", abort, { once: true });
-    const now = this.clock.now();
     const r: Receipt = {
       id: uuid(),
       name: reg.name,

@@ -19,6 +19,10 @@ Start requires:
 | `lifetime_ms`      | Required total lifetime: 1000–`maxLifetimeMs` ms (default ceiling: 24 hours), including setup and awaiting settlement.  |
 | `max_wakes`        | Required maximum handoff attempts: 1–100. One-shot default requires 1.                                                  |
 
+Optional `deadline_ms` is an absolute caller-owned host timestamp. Admission clamps `lifetime_ms` to that ceiling and rejects if less than one second remains; it never extends either clock. Use it with machine-prepared delivery bounds so registration delay cannot overrun the original deadline.
+
+Optional `retain: true` on start/get/cancel retains original registration arguments and/or exact host receipts under `<git-common-dir>/pi-delivery-artifacts/background/`, returning SHA-256 artifact references. Start retains its source-bound intent before admission and the host receipt afterward; get/cancel retain that job's current receipt without transcript scraping. Retention after an effect can fail: the original receipt and warning remain visible; never replay the effect to get evidence. Requires a Git checkout; ordinary nonretained jobs are unchanged. Artifacts are owner-only, capped at 4 MiB each, not automatically deleted or published. They can contain private source/evidence; portable summaries use safe external identities, not local paths.
+
 Optional `recurring: true` enables recurrence. Select at least one trigger:
 
 - `interval_ms` (1000–`maxCycleTimeoutMs`) plus `source`: initial evaluation after subscriptions are established, then polling no sooner than one interval after the previous evaluation settles. Events can be combined with polling.
@@ -190,7 +194,7 @@ Receipts include optional `endedAt`, the first host observation-stop timestamp. 
 
 Jobs belong to the originating session branch. Shutdown, reload, replacement and reached before-tree navigation invalidate observations and suppress extension-owned pending handoffs. Before-tree invalidation is conservative even if navigation is later canceled; no history is appended during tree preparation. Destination history restores **receipts only**, never subscriptions, children or notifications. Stale callbacks cannot wake another context. No work continues while Pi is closed, and timers/sockets do not keep a print/JSON process alive.
 
-No standalone logs, source files or result spills are written. Ordinary Pi history retains original arguments, state, evidence and `background:receipt-v1` entries. Entries are individually bounded; append-only history is not globally bounded. Abrupt exit may lose final accounting, and old receipts can fall outside the restoration window. Providers can have their own audit/clone/spill retention. Generic JSON framing is not secret detection; choose evidence carefully.
+No standalone logs, source files or result spills are written by default. Explicit `retain: true` writes the durable evidence artifacts described above. Ordinary Pi history retains original arguments, state, evidence and `background:receipt-v1` entries. Entries are individually bounded; append-only history is not globally bounded. Abrupt exit may lose final accounting, and old receipts can fall outside the restoration window. Providers can have their own audit/clone/spill retention. Generic JSON framing is not secret detection; choose evidence carefully.
 
 ## Tool display
 

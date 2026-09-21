@@ -5,6 +5,10 @@ import {
   type RetainedArtifactResult,
 } from "../_shared/retained-artifacts.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
+import {
+  deliveryRevision,
+  retainDeliveryArtifact,
+} from "../_shared/delivery-artifacts.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import { loadWorkflowConfig, type WorkflowConfig } from "./config.ts";
 import { parseWorkflowScript } from "./parser.ts";
@@ -44,6 +48,12 @@ const workflowParamsSchema = Type.Object(
       Type.String({
         description:
           "Saved workflow name. Accepted by run and validate instead of script.",
+      }),
+    ),
+    retain: Type.Optional(
+      Type.Boolean({
+        description:
+          "For review runs in Git: retain original result and revision/scope-bound evidence outside tracked files. Stage intended new files first.",
       }),
     ),
     args: Type.Optional(
@@ -171,6 +181,8 @@ function recoveryEnvelope(
 
 function validateCombination(params: WorkflowParams): string[] {
   const errors: string[] = [];
+  if (params.retain !== undefined && params.action !== "run")
+    errors.push("retain is only accepted by run.");
   const hasScript = params.script !== undefined;
   const hasName = params.name !== undefined;
   if (params.action === "run" || params.action === "validate") {
@@ -357,6 +369,23 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
         };
       }
 
+      let reviewRevision: ReturnType<typeof deliveryRevision> | undefined;
+      if (params.retain && parsed.meta.name !== "review") {
+        return {
+          content: text("Retention is supported only for review workflows."),
+          details: { action: "run", artifactError: true, scriptFile },
+        };
+      }
+      if (params.retain) {
+        try {
+          reviewRevision = deliveryRevision(ctx.cwd);
+        } catch (error) {
+          return {
+            content: text(formatError(error)),
+            details: { action: "run", artifactError: true, scriptFile },
+          };
+        }
+      }
       const ledger = createWorkflowRunLedger({
         maxTokens: currentConfig.maxTokensPerRun,
         maxAgents: currentConfig.maxAgentsPerRun,
@@ -404,13 +433,52 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
           maxConcurrency: currentConfig.maxConcurrency,
           ledger,
         });
-        const finalText = formatFinal(result, scriptFile, sourceFile);
+        let artifact: ReturnType<typeof retainDeliveryArtifact> | undefined;
+        let retentionWarning: string | undefined;
+        if (reviewRevision) {
+          try {
+            let after: ReturnType<typeof deliveryRevision> | null = null;
+            try {
+              after = deliveryRevision(ctx.cwd);
+            } catch {
+              /* Retain original output with unknown final identity. */
+            }
+            artifact = retainDeliveryArtifact(ctx.cwd, "review", {
+              schemaVersion: 1,
+              toolCallId,
+              revision: reviewRevision,
+              after,
+              stableRevision:
+                JSON.stringify(reviewRevision) === JSON.stringify(after),
+              source: parsed.script,
+              scope: params.args,
+              result: result.result,
+            });
+            if (JSON.stringify(reviewRevision) !== JSON.stringify(after))
+              retentionWarning =
+                "Reviewed revision changed during execution; retained output does not qualify the new state.";
+          } catch {
+            retentionWarning =
+              "Review evidence retention failed; original result follows. Do not rerun to obtain a receipt.";
+          }
+        }
+        const finalText = [
+          formatFinal(result, scriptFile, sourceFile),
+          ...(artifact
+            ? [
+                `Original review artifact: ${artifact.path} (sha256 ${artifact.sha256})`,
+              ]
+            : []),
+          ...(retentionWarning ? [`Warning: ${retentionWarning}`] : []),
+        ].join("\n");
         const spilled = await spillIfNeeded(text(finalText), toolCallId);
         return {
           content: spilled.content as { type: "text"; text: string }[],
           details: {
             action: "run",
             meta: result.meta,
+            ...(artifact ? { artifact } : {}),
+            ...(retentionWarning ? { retentionWarning } : {}),
             scriptFile,
             ...(sourceFile ? { sourceFile } : {}),
             durationMs: result.durationMs,
