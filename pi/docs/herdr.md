@@ -17,7 +17,7 @@ herdr integration install pi
 herdr integration status
 ```
 
-The generated bridge is a local installer artifact: do not edit or commit it. Re-running the install command may overwrite it. Restart Pi or run `/reload` after installing or updating the bridge. The repository's [provisioning script](../../scripts/provision.sh) performs the installation automatically.
+The generated bridge is a local installer artifact: do not edit or commit it. Re-running the install command may overwrite it. Restart Pi or run `/reload` after installing or updating the bridge.
 
 ## macOS client with a Lima guest
 
