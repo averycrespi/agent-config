@@ -117,7 +117,7 @@ Use the kind requested by the user. Run `herdr agent` to inspect the installed k
 herdr agent start reviewer --kind codex --pane <returned-pane-id> -- <agent-args...>
 ```
 
-`agent start` returns only after Herdr detects the expected agent in the same pane and considers it ready for interactive input. It defaults to a 30-second startup timeout.
+`agent start` returns after Herdr detects the expected agent in the same pane and considers it ready for interactive input. It defaults to a 30-second startup timeout. Treat `interactive_ready` as detected readiness, not an acknowledgment from the agent's input consumer. Neither readiness nor `idle`/`done` proves acceptance of a particular prompt.
 
 Submit work through the agent surface:
 
@@ -125,9 +125,9 @@ Submit work through the agent surface:
 herdr agent prompt reviewer "Review the current diff and report only actionable findings." --wait --timeout 120000
 ```
 
-`agent prompt` atomically submits text and encoded Enter while honoring the pane's live bracketed-paste mode. For normal agent work, `--wait` is enough: it waits for the first settled `idle`, `done`, or `blocked` state. Do not repeat those defaults with `--until`.
+Treat `agent_prompted` as a submission acknowledgment, not proof that the agent accepted the prompt or started work. Submission guarantees vary by version: [Herdr 0.8.2](https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/agents.rs#L121-L130) queues text, schedules encoded Enter 300 ms later, and returns success without waiting for Enter delivery. Do not describe this as atomic submission or assume newer versions provide application-level acknowledgment. Inspect `herdr --version` and `herdr status server` when diagnosing version-dependent behavior; do not upgrade or restart without authorization.
 
-A prompt sent from a non-working state must produce an observed lifecycle change within five seconds. Otherwise Herdr returns `agent_prompt_stalled` instead of waiting indefinitely. This wait tracks lifecycle state, not an individual turn; if the agent is already working, completion of the active turn may satisfy it.
+With `--wait`, a prompt sent from a non-working state must produce an observed lifecycle change within five seconds or Herdr returns `agent_prompt_stalled`. Without `--wait`, this stalled-submission check does not run. The normal `--wait` completion condition is the first settled `idle`, `done`, or `blocked` state; do not repeat those defaults with `--until`. This wait tracks lifecycle state, not an individual turn: if the agent is already working, completion of the active turn may satisfy it. A timeout or stalled result does not prove non-delivery.
 
 Use `--until` only for a state-specific workflow, such as waiting for an already-running agent to request input:
 
@@ -152,6 +152,22 @@ herdr agent read reviewer --source recent-unwrapped --lines 120
 ```
 
 If a wait fails or returns `blocked`, inspect `agent get` and `agent read` before deciding what input to send. Use the pane surface only when raw terminal control is intentional.
+
+### Confirm asynchronous launch
+
+Use this handshake when delegating to a newly started agent without waiting for the whole task to finish. Preserve any workflow-required observer registration before submission; this short acceptance check does not replace completion monitoring.
+
+1. Before sending, record the resolved agent name, pane/terminal identity, available session reference, and `state_change_seq` from `agent get`. Use a task-specific marker already in the brief, such as its unique handoff path.
+2. Submit the prompt once without `--wait`, then make one bounded start-of-work wait using the installed syntax, for example:
+
+   ```bash
+   herdr agent wait <agent-name> --until working --until blocked --until done --timeout 15000
+   ```
+
+   This waits for activity, not full task completion. Do not use sleeps or repeated model-turn polling. A fast task may already have returned to `idle`; reconcile the evidence even after timeout rather than resubmitting.
+
+3. Read `agent get` and `agent read --source recent-unwrapped` after the wait, including on error. Verify the same occupant/session and require both task-specific input evidence and execution evidence: the prompt recorded as submitted (not merely text in the editor) plus a post-submission lifecycle transition into work, or assistant/tool activity processing the named handoff. Use the exact reported session transcript if terminal output is insufficient; an absent file or missing scrollback alone does not prove non-delivery. Old output, unrelated state changes, and the wait result alone do not qualify. Inspect `blocked` before deciding whether it is a task question or a pre-execution approval; never answer it automatically.
+4. Report **submitted, execution unconfirmed**, **execution confirmed**, or **blocked**, with the evidence. Reserve **completed** for verified task acceptance criteria, not Herdr's `done` label. If execution remains unconfirmed at the wait bound, retain the resources and report uncertainty rather than claiming success or launching a replacement. Reconcile before any retry: establish non-delivery and continuing authority first; never replay an uncertain prompt, restart the agent, or send diagnostic prompts to manufacture acknowledgment. Preserve stricter workflow no-retry rules.
 
 ## Run an ordinary command in another pane
 

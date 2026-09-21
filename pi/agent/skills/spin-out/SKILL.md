@@ -115,17 +115,17 @@ Start Pi in the returned root pane:
 herdr agent start <agent-name> --kind pi --pane <root-pane-id>
 ```
 
-After Herdr reports that Pi is ready, submit a short prompt through the agent surface without `--wait`:
+After Herdr reports that Pi is ready, follow Herdr's [asynchronous launch handshake](../herdr/SKILL.md#confirm-asynchronous-launch): capture the pre-submission identity/state baseline, then submit a short prompt once through the agent surface without `--wait`. For work-stack children, preserve its required attention registration before submission.
 
 ```text
 Read `.handoffs/<filename>.md` completely before taking any action. Treat it as the task brief. Then inspect the worktree and its AGENTS.md instructions, execute the objective, and verify the acceptance criteria. Investigate answerable uncertainty and use reasonable, reversible defaults within scope. Stop and ask when unresolved ambiguity or conflicting repository state materially affects scope, authorization, correctness, identity, or required source state; do not proceed with required source changes unavailable in this checkout.
 ```
 
-Keep the prompt path-based; do not duplicate the handoff body into it. Sending without `--wait` lets the delegated agent continue asynchronously.
+Keep the prompt path-based; do not duplicate the handoff body into it. Use the unique handoff path to correlate the handshake's bounded start-of-work check with this task. Confirm execution from the submitted prompt and fresh work activity, or the child reading/acting on this handoff, before reporting a successful launch. Sending without `--wait` keeps task execution asynchronous; it does not waive launch verification or require waiting for task completion.
 
 ## Failure and finish behavior
 
-If worktree creation fails, stop without writing a handoff or starting Pi. If a later step fails, leave the created worktree and workspace intact, do not attempt destructive rollback, and report the completed resources plus the exact failed step. If Pi starts but prompting fails, report its agent name and pane so the user can recover manually.
+If worktree creation fails, stop without writing a handoff or starting Pi. If a later step fails, leave the created worktree and workspace intact, do not attempt destructive rollback, and report the completed resources plus the exact failed step. If prompting fails, blocks, or remains unconfirmed at the handshake bound, report the agent name, pane, submission status, evidence and next action. Do not treat a timeout as non-delivery or resend an uncertain prompt; follow the handshake's reconciliation rules and any stricter workflow no-retry boundary.
 
 On success, report:
 
@@ -134,6 +134,7 @@ On success, report:
 - Herdr workspace and pane IDs
 - Pi agent name
 - repo-relative handoff path
-- confirmation that the handoff is ignored and the initial prompt was accepted
+- confirmation that the handoff is ignored
+- launch status and task-correlated evidence of execution; do not infer acceptance from `agent_prompted`, readiness, or `idle`/`done` alone
 
 Keep the original workspace focused unless the user explicitly requested otherwise.
