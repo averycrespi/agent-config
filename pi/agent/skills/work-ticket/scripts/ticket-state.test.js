@@ -109,6 +109,7 @@ test("patches are atomic and preserve evidence through scope, commits and follow
     { next: { action: "missing actor" } },
     { evidenceRefs: [null] },
     { owner: "steal" },
+    { initialWaitLimitMs: 86_400_000 },
   ]) {
     await assert.rejects(f.call({ action: "checkpoint", patch }));
     assert.deepEqual(await readFile(f.file), before);
@@ -229,6 +230,109 @@ test("review and CI repairs retain independent allowances, resume identities and
   );
 });
 
+test("new tickets allow five CI repairs and reject a sixth without changing state", async (t) => {
+  const f = await fixture(t);
+  const initialized = await f.init();
+  assert.equal(initialized.repairs.review.limit, 2);
+  assert.equal(initialized.repairs.ci.limit, 5);
+  for (let i = 1; i <= 5; i++) {
+    const request = {
+      action: "repair",
+      operation: "begin",
+      kind: "ci",
+      id: `ci-${i}`,
+      plan: `Diagnosed corrective batch ${i}`,
+    };
+    await f.call(request);
+    await f.call(request);
+    await f.call({ ...request, operation: "finish" });
+  }
+  const before = await readFile(f.file);
+  await assert.rejects(
+    f.call({
+      action: "repair",
+      operation: "begin",
+      kind: "ci",
+      id: "ci-6",
+      plan: "Another repair",
+    }),
+    /allowance exhausted/,
+  );
+  assert.deepEqual(await readFile(f.file), before);
+  assert.equal((await f.status()).repairs.ci.batches.length, 5);
+});
+
+test("existing ticket allowances survive checkpoint updates, transfer and new CI heads", async (t) => {
+  const f = await fixture(t);
+  await f.init();
+  const head = "a".repeat(40);
+  const pr = "https://github.com/example/project/pull/1";
+  await f.call({
+    action: "ci",
+    operation: "watch",
+    pr,
+    head,
+    required: ["Tests"],
+  });
+  const historical = await f.status();
+  historical.repairs.ci = {
+    limit: 2,
+    active: null,
+    batches: [
+      { id: "old-1", plan: "First historical repair" },
+      { id: "old-2", plan: "Second historical repair" },
+    ],
+  };
+  historical.monitor.waitLimitMs = 30 * 60_000;
+  historical.monitor.waitUsedMs = 30 * 60_000;
+  await writeFile(f.file, JSON.stringify(historical));
+  await f.call({
+    action: "checkpoint",
+    patch: { progress: "Resume under retained policy" },
+  });
+  await f.call({ action: "release" });
+  await f.call({
+    action: "claim",
+    previousOwner: f.request.owner,
+    instruction: "Resume the existing ticket",
+    evidence: "Prior ownership released; no live writer",
+  });
+  const nextHead = "b".repeat(40);
+  await f.call({
+    action: "ci",
+    operation: "watch",
+    pr,
+    head: nextHead,
+    previousHead: head,
+    required: ["Tests"],
+  });
+  const retained = await f.status();
+  assert.deepEqual(retained.repairs, historical.repairs);
+  assert.equal(retained.monitor.waitLimitMs, historical.monitor.waitLimitMs);
+  assert.equal(retained.monitor.waitUsedMs, historical.monitor.waitUsedMs);
+  await assert.rejects(
+    f.call({
+      action: "repair",
+      operation: "begin",
+      kind: "ci",
+      id: "extra",
+      plan: "No extension granted",
+    }),
+    /allowance exhausted/,
+  );
+  const pending = await f.call({
+    action: "ci",
+    operation: "observe",
+    observation: {
+      head: nextHead,
+      requirementsKnown: true,
+      checks: [{ name: "Tests", state: "pending" }],
+      reference: "Fresh exact-head pending batch",
+    },
+  });
+  assert.equal(pending.ci.disposition, "limit");
+});
+
 test("ownership protects checkout across tickets; explicit claim preserves all state", async (t) => {
   const f = await fixture(t);
   await f.init();
@@ -339,6 +443,60 @@ test("legacy records are never rewritten or silently adopted; consumption cannot
   assert.equal((await f.status()).repairs.review.batches.length, 2);
   assert.equal((await f.status()).recoveredWaitingMs, 1800000);
   assert.equal(await readFile(legacy, "utf8"), bytes);
+});
+
+test("legacy adoption and pre-monitor checkpoints retain the historical wait allowance", async (t) => {
+  for (const mode of ["adoption", "existing"]) {
+    await t.test(mode, async (t) => {
+      const f = await fixture(t);
+      const waitingMs = 6 * 60_000;
+      if (mode === "adoption") {
+        await f.init({
+          recovery: {
+            reference:
+              "Historical 30-minute allowance and six minutes consumed",
+            instruction: "Resume without additional allowance",
+            reviewUsed: 0,
+            ciUsed: 0,
+            waitingMs,
+            effectsReconciled: true,
+          },
+        });
+      } else {
+        await f.init();
+        const historical = await f.status();
+        delete historical.initialWaitLimitMs;
+        historical.recoveredWaitingMs = waitingMs;
+        await writeFile(f.file, JSON.stringify(historical));
+      }
+      t.mock.method(Date, "now", () => 0);
+      const head = "a".repeat(40);
+      const watch = {
+        action: "ci",
+        operation: "watch",
+        pr: "https://github.com/example/project/pull/1",
+        head,
+        required: ["Tests"],
+      };
+      // Caller-supplied bounds cannot overwrite the checkpoint-owned initial policy.
+      await f.call({ ...watch, waitLimitMs: 7_200_000 });
+      const s = await f.status();
+      assert.equal(s.monitor.waitLimitMs, 30 * 60_000);
+      assert.equal(s.monitor.waitUsedMs, waitingMs);
+      await f.call({
+        action: "ci",
+        operation: "observe",
+        observation: {
+          head,
+          requirementsKnown: true,
+          checks: [{ name: "Tests", state: "pending" }],
+          reference: "Fresh pending CI",
+        },
+      });
+      const prepared = await f.call({ action: "ci", operation: "prepare" });
+      assert.equal(prepared.ci.watcher.timeoutMs, 24 * 60_000);
+    });
+  }
 });
 
 test("legacy recovery retains active repair identities without recharging resume", async (t) => {
@@ -509,7 +667,7 @@ test("Monitor registration and terminal accounting persist atomically through th
   await f.call({ action: "ci", operation: "observe", observation });
   now = 1000;
   const prepared = await f.call({ action: "ci", operation: "prepare" });
-  assert.equal(prepared.ci.watcher.timeoutMs, 1799000);
+  assert.equal(prepared.ci.watcher.timeoutMs, 7_199_000);
   now = 2000;
   const receipt = {
     id: otherId,
@@ -559,7 +717,7 @@ test("Monitor registration and terminal accounting persist atomically through th
     reference: "Background get host receipt",
   });
   assert.equal(done.ci.waitUsedMs, 11000);
-  assert.equal(done.ci.waitRemainingMs, 1789000);
+  assert.equal(done.ci.waitRemainingMs, 7_189_000);
   assert.equal(done.ci.lastWatcher.id, otherId);
   assert.equal(done.ci.disposition, "paused");
   await f.call({
@@ -611,5 +769,5 @@ test("CI state persists and requires an explicit, idempotent user allowance addi
   };
   await f.call({ action: "override", override });
   await f.call({ action: "override", override });
-  assert.equal((await f.status()).monitor.waitLimitMs, 1860000);
+  assert.equal((await f.status()).monitor.waitLimitMs, 7_260_000);
 });

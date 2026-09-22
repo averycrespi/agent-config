@@ -24,11 +24,22 @@ test("work-stack scopes parent-managed launch and binds handoff to escalation co
   assert.match(decisions, /confirms submission, not Pi readiness/);
   assert.match(decisions, /do not submit another launch/);
   assert.match(spinOut, /Standalone spin-outs leave ask-user mode unchanged/);
-  for (const content of [skill, decisions]) {
-    assert.match(content, /decision_required/);
-    assert.match(content, /sole implementation owner|sole ownership/);
+  assert.match(
+    skill,
+    /read the exact available work-ticket skill.*\[parent-managed decision contract\]\(references\/decisions.md\) before work/,
+  );
+  assert.match(
+    skill,
+    /Verify all referenced task criteria and shared contracts are readable/,
+  );
+  assert.match(decisions, /decision_required/);
+  assert.match(
+    decisions,
+    /Reference this contract by a resolved readable path/,
+  );
+  assert.match(decisions, /sole implementation owner|sole ownership/);
+  for (const content of [skill, decisions])
     assert.match(content, /agent_settled/);
-  }
 });
 
 test("decision reconciliation retains identity, authority, serial ownership and allowances", async () => {

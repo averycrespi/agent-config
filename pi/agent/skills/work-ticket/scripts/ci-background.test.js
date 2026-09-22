@@ -228,22 +228,29 @@ test("fast terminal attachment survives interruption with exact identity and no 
   }
 });
 
-test("25-minute attention renews only the remaining cumulative allowance", async () => {
-  const f = await fixture(),
-    id = await f.start();
-  await f.advance(1500000);
-  assert.equal(f.engine.get(id).attention.reason, "timeout");
-  f.reconcile(id);
-  assert.equal(f.ledger.waitUsedMs, 1500000);
-  f.update(observation("pending"));
-  const second = await f.start();
-  assert.equal(f.ledger.watcher.timeoutMs, 300000);
-  await f.advance(300000);
-  assert.equal(f.engine.get(second).attention.reason, "budget_exhausted");
-  f.reconcile(second);
+test("25-minute attention renews only the remaining two-hour cumulative allowance", async (t) => {
+  const f = await fixture();
+  t.after(() => f.engine.close(false));
+  for (let cycle = 0; cycle < 4; cycle++) {
+    const id = await f.start();
+    assert.equal(f.ledger.watcher.timeoutMs, 7_200_000 - cycle * 1_500_000);
+    assert.equal(f.ledger.watcher.cycleMs, 1_500_000);
+    await f.advance(1_500_000);
+    assert.equal(f.engine.get(id).attention.reason, "timeout");
+    f.reconcile(id);
+    f.engine.cancel(id);
+    f.restore();
+    assert.equal(f.ledger.waitUsedMs, (cycle + 1) * 1_500_000);
+    assert.equal(f.update(observation("pending")).disposition, "waiting");
+  }
+  const last = await f.start();
+  assert.equal(f.ledger.watcher.timeoutMs, 1_200_000);
+  await f.advance(1_200_000);
+  assert.equal(f.engine.get(last).attention.reason, "budget_exhausted");
+  f.reconcile(last);
+  assert.equal(f.ledger.waitUsedMs, 7_200_000);
   assert.equal(f.update(observation("pending")).disposition, "limit");
   assert.equal(f.update({ operation: "prepare" }).watcher, null);
-  f.engine.close(false);
 });
 
 test("timeout accounts observation only; fresh CI distinguishes pending, failed and passed", async () => {

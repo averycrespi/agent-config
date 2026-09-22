@@ -22,6 +22,30 @@ const observe = (state, overrides = {}) => ({
   },
 });
 
+test("new monitoring gets two hours while persisted limits survive repair pauses and heads", () => {
+  const fresh = updateMonitor(null, watch, 0);
+  assert.equal(fresh.waitLimitMs, 2 * 60 * 60_000);
+  const historical = { ...fresh, waitLimitMs: 30 * 60_000 };
+  for (const original of [fresh, historical]) {
+    let s = updateMonitor(original, observe("pending"), 0);
+    s = updateMonitor(s, { operation: "pause" }, 6 * 60_000);
+    s = updateMonitor(
+      JSON.parse(JSON.stringify(s)),
+      {
+        ...watch,
+        previousHead: head,
+        head: "b".repeat(40),
+      },
+      3 * 60 * 60_000,
+    );
+    assert.equal(s.waitUsedMs, 6 * 60_000);
+    assert.equal(s.waitLimitMs, original.waitLimitMs);
+    s = updateMonitor(s, observe("pending", { head: s.head }), 3 * 60 * 60_000);
+    s = updateMonitor(s, { operation: "prepare" }, 3 * 60 * 60_000);
+    assert.equal(s.watcher.timeoutMs, original.waitLimitMs - 6 * 60_000);
+  }
+});
+
 test("required exact-head CI passes; absent, stale, inaccessible, ambiguous and canceled results never pass", () => {
   const s = updateMonitor(null, watch, 0);
   assert.equal(updateMonitor(s, observe("passed"), 0).disposition, "passed");

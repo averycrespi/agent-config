@@ -1,5 +1,5 @@
 export const POLL_MS = 60_000;
-export const WAIT_MS = 30 * 60_000;
+export const WAIT_MS = 2 * 60 * 60_000;
 const HEAD = /^[a-f0-9]{40,64}$/;
 const STATES = new Set(["passed", "pending", "failed", "canceled", "unknown"]);
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -116,7 +116,7 @@ export function updateMonitor(previous, request, now = Date.now()) {
       head: request.head,
       required: request.required,
       waitUsedMs: request.waitUsedMs ?? 0,
-      waitLimitMs: WAIT_MS,
+      waitLimitMs: request.waitLimitMs ?? WAIT_MS,
       waitingSince: null,
       nextPollAt: null,
       disposition: "poll",

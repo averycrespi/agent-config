@@ -18,7 +18,9 @@ import {
   validateMonitor,
   remainingWaitMs,
 } from "./ci-background.js";
+import { WAIT_MS } from "./ci-monitor.js";
 
+const LEGACY_WAIT_MS = 30 * 60_000;
 const LIMIT = 64 * 1024;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/;
@@ -148,6 +150,11 @@ function validate(s) {
     }
   if (s.monitor !== null) validateMonitor(s.monitor);
   integer(s.recoveredWaitingMs);
+  if (s.initialWaitLimitMs !== undefined)
+    need(
+      integer(s.initialWaitLimitMs) > 0,
+      "invalid initial monitoring allowance",
+    );
 }
 function checkpoint(s, patch) {
   need(
@@ -296,6 +303,7 @@ function apply(s, r) {
       s.monitor = updateMonitor(s.monitor, {
         ...r,
         waitUsedMs: s.recoveredWaitingMs,
+        waitLimitMs: s.initialWaitLimitMs ?? LEGACY_WAIT_MS,
       });
       break;
     default:
@@ -416,7 +424,8 @@ export async function ticketState(r) {
           return [
             kind,
             {
-              limit: Math.max(2, used),
+              // Legacy adoption keeps its historical baseline; new defaults are not extensions.
+              limit: Math.max(recovery || kind === "review" ? 2 : 5, used),
               active: retained === undefined ? null : retained.active,
               batches:
                 retained === undefined
@@ -451,6 +460,7 @@ export async function ticketState(r) {
         pendingEffect: null,
         lastEffect: null,
         monitor: null,
+        initialWaitLimitMs: recovery ? LEGACY_WAIT_MS : WAIT_MS,
         recoveredWaitingMs: recovery?.waitingMs ?? 0,
       };
       checkpoint(s, r.patch);
