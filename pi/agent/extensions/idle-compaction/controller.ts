@@ -114,7 +114,7 @@ export class IdleController {
       attempt
         ? `Last attempt: ${new Date(attempt.at).toISOString()} · ${outcome}`
         : "Last attempt: none",
-      "Native navigation races and incomplete built-in dialog visibility remain; see idle-compaction README.",
+      "Incomplete built-in dialog visibility and non-operation-scoped cancellation remain; see idle-compaction README.",
     ].join("\n");
   }
 

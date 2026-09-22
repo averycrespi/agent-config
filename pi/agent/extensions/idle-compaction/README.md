@@ -1,6 +1,6 @@
 # idle-compaction
 
-Opt-in compaction of large, unattended **open terminal sessions**, using Pi's existing summarization pipeline. Requires Pi **0.85.1 or newer**; see the version-specific limitations below. Disabled by default.
+Opt-in compaction of large, unattended **open terminal sessions**, using Pi's existing summarization pipeline. Requires Pi **0.87.0 or newer**. Disabled by default.
 
 This can shrink the context sent on a later cold resume. Compaction itself costs tokens and loses some detail: it does **not** guarantee monetary savings, summary fidelity, a warm cache, or any particular provider cache expiry. The inactivity threshold is not evidence that a cache has expired.
 
@@ -58,11 +58,10 @@ The 29-minute default leaves one minute before an assumed 30-minute cache TTL. [
 
 These are best-effort guards, **not atomic exclusion** of Pi operations:
 
-1. **Pi 0.85.1 can attach a compaction summary to the wrong branch if `/tree` navigation succeeds during compaction.** This is an existing native bug, reproducible without this extension. Automatic initiation increases opportunities to encounter it. Avoid branch navigation during compaction; wait for completion or use Pi's native cancellation UI first. Upstream [PR #9179](https://github.com/earendil-works/pi/pull/9179) and its [TUI follow-up](https://github.com/earendil-works/pi/commit/47acd8e6cfa740bb8a09c5ebc8fe6181073d744e) add navigation guards after the 0.85.1 release; they are not bundled here.
-2. **Blocking-UI visibility is incomplete.** Pi's `ui_prompt_start/end` hooks cover extension dialogs, not all built-in selectors and prompts. An unattended built-in dialog can remain open while this extension considers the session idle. Prompt notifications themselves are asynchronous. Turn idle compaction off if this is unacceptable.
-3. **Native admission/cancellation is not operation-scoped.** `ctx.compact()` is fire-and-forget and begins an asynchronous abort/admission sequence. There is no public cancellation handle for this request, and TUI `ctx.abort()` does not cancel native compaction. Final checks and hooks cannot eliminate races after invocation or control later async hooks/other extensions. Ordinary input during native compaction uses Pi's native queueing. The extension does not intercept input, cancel user navigation, alter queues, patch Pi, or replace summarization.
+1. **Blocking-UI visibility is incomplete.** Pi's `ui_prompt_start/end` hooks cover extension dialogs, not all built-in selectors and prompts. An unattended built-in dialog can remain open while this extension considers the session idle. Prompt notifications themselves are asynchronous. Turn idle compaction off if this is unacceptable.
+2. **Native admission/cancellation is not operation-scoped.** `ctx.compact()` is fire-and-forget and begins an asynchronous abort/admission sequence. There is no public cancellation handle for this request, and TUI `ctx.abort()` does not cancel native compaction. Final checks and hooks cannot eliminate races after invocation or control later async hooks/other extensions. Ordinary input during native compaction uses Pi's native queueing. The extension does not intercept input, cancel user navigation, alter queues, patch Pi, or replace summarization.
 
-Absolute native navigation isolation and complete blocking-UI exclusion are therefore **not guaranteed**. The rest of the extension's attempt, persistence, and callback safeguards remain enforced and tested. Use a single active writer for a session file; concurrent Pi processes sharing one session file are not coordinated by this extension.
+Pi rejects tree navigation during active compaction, leaving the branch unchanged. Wait for completion or native cancellation before navigating. Complete blocking-UI exclusion is still **not guaranteed**. The extension's attempt, persistence, and callback safeguards remain enforced and tested. Use a single active writer for a session file; concurrent Pi processes sharing one session file are not coordinated by this extension.
 
 ## Persistence, logging, and troubleshooting
 
@@ -72,4 +71,4 @@ If compaction does not start, inspect `/idle-compaction-status` and `/idle-compa
 
 ## Verification and design
 
-[DESIGN.md](DESIGN.md) describes ownership and persistence invariants. Colocated tests cover deterministic timers, native preparation/hooks/history/usage, race boundaries, failure/cancellation, file-backed reload/resume, and the accepted native navigation defect. Native integration tests use real Pi session methods with fixture auth and summary generation, not live providers or a real interactive terminal. They establish neither summary fidelity nor monetary savings.
+[DESIGN.md](DESIGN.md) describes ownership and persistence invariants. Colocated tests cover deterministic timers, native preparation/hooks/history/usage, race boundaries, failure/cancellation, file-backed reload/resume, and native navigation rejection during active compaction. Native integration tests use real Pi session methods with fixture auth and summary generation, not live providers or a real interactive terminal. They establish neither summary fidelity nor monetary savings.
