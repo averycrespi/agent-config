@@ -9,6 +9,7 @@ for (const name of [
   "shape-ticket",
   "work-ticket",
   "work-stack",
+  "coordinate-repo",
   "spin-out",
   "review",
   "challenge",
