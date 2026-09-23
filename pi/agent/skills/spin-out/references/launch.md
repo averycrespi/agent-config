@@ -1,6 +1,6 @@
 # Shared exact-base launch
 
-Use this procedure from [spin-out](../SKILL.md), [coordinate-repo](../../coordinate-repo/SKILL.md), or [work-stack](../../work-stack/SKILL.md). The invoking workflow owns delegation authority and observation policy; this reference grants none. Standalone mode needs no coordinator/index and leaves question UI unchanged. Managed mode requires the assignment/parent reference and [decision contract](decisions.md). Never infer delegation from task size or potential parallelism.
+Use this procedure from [spin-out](../SKILL.md), [coordinate-repo](../../coordinate-repo/SKILL.md), or [work-stack](../../work-stack/SKILL.md). The active workflow owns delegation authority and observation policy; this reference grants none. Resolve it from the conversation and retained agreement/index before creation: calling spin-out within active coordinate-repo or work-stack does not select standalone mode, even for one worker. Standalone mode needs no coordinator/index and leaves question UI unchanged. Managed mode requires the assignment/parent reference and [decision contract](decisions.md). Never infer delegation from task size or potential parallelism.
 
 ## Preflight
 
@@ -118,11 +118,24 @@ Read `.handoffs/<filename>.md` completely before taking any action. Treat it as 
 
 Keep the prompt path-based; do not duplicate the handoff body into it. Use the unique handoff path to correlate the handshake's bounded start-of-work check with this task. Confirm execution from the submitted prompt and fresh work activity, or the child reading/acting on this handoff, before reporting a successful launch. Sending without `--wait` keeps task execution asynchronous; it does not waive launch verification or require waiting for task completion.
 
+## Managed launch completion gate
+
+For managed launches, require all four pieces of evidence in the existing coordinator index before marking the launch step complete:
+
+1. Persist the current assignment/revision and reporting contract: explicit mailbox, parent/index, child checkpoint and readable handoff references, with before-effect persistence confirmation/readback.
+2. Persist the exact worker session/incarnation and verified Herdr occupant/process identity after startup, before submission; make that identity available to the child through the handoff or its explicit parent-index reference.
+3. Retain an attached host receipt for matching bounded observation covering that assignment and exact worker **before the task prompt**, within the original deadline, consumed attempts and uncertain reservations. Registration intent, provider availability or a child's CI watcher is not parent coverage; reuse an active matching observer rather than duplicating it.
+4. Persist task-correlated execution confirmation from the shared handshake, not readiness, startup or prompt submission alone.
+
+The coordinator's delivery TODO remains open until the assigned completion boundary is evidenced and accepted under the active workflow. Launch completion is only an intermediate milestone, never delivery or permission to abandon supervision. End the turn with attached bounded observation while work is pending; do not model-turn poll or mirror worker CI.
+
+If the contract or observation is missing, retain unprompted resources and report blocked/uncertain launch with the missing evidence and next actor; no replay or restart. If submission may already have occurred, retain its uncertainty and reconcile the existing worker instead of calling it unprompted or sending again. Missing execution confirmation likewise retains the original submission and owner. Preserve authority and before-effect/readback gates during reconciliation; do not invent coverage or replenish allowances.
+
 ## Failure and finish behavior
 
 If worktree creation fails, stop without writing a handoff or starting Pi. If a later step fails, leave the created worktree and workspace intact, do not attempt destructive rollback, and report the completed resources plus the exact failed step. If prompting fails, blocks, or remains unconfirmed at the handshake bound, report the agent name, pane, submission status, evidence and next action. Do not treat a timeout as non-delivery or resend an uncertain prompt; follow the handshake's reconciliation rules and any stricter workflow no-retry boundary.
 
-On success, report:
+On launch success (subject to the managed gate above), report:
 
 - target branch and exact base commit
 - worktree path
