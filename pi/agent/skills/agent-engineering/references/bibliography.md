@@ -42,6 +42,9 @@ These are the load-bearing references. Read them directly when you need to groun
 
 ## 2. Model-specific guides
 
+- [Using GPT-6](https://developers.openai.com/api/docs/guides/latest-model) — Family migration guidance for Astra, Sol, and Luna: preserve effort, distinguish `none` support, use Responses for reasoning with tools, and validate Astra-derived prompting guidance per model.
+- [Introducing GPT-6 Sol and Luna](https://openai.com/index/introducing-gpt-6-sol-and-luna/) — Primary release announcement, model positioning, launch API pricing, and vendor benchmarks. Benchmark gains are not local harness qualification or Codex subscription cost estimates.
+
 - [Using GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra) — Primary Astra migration and prompting guide: initiative, instruction-file audits, writing style, delegation, proportional verification, Responses-only tool calling, reasoning updates, async tools, and steering. Vendor behavioral guidance; validate in the target harness.
 - [Using GPT-5.6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6) — GPT-5.6 migration and prompting baseline; model routing, shorter prompts, effort/pro mode, persisted reasoning, PTC, Multi-agent, caching, vision, and safety deltas.
 - [GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol), [Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra), and [Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) — Authoritative model roles, limits, and pricing references.

@@ -1,11 +1,11 @@
 ---
 name: agent-engineering
-description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra and GPT-5.6, and platform-specific patterns for Pi and Codex. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
+description: Use when designing, building, debugging, or reviewing AI coding agent harnesses — single-agent shape (tools, prompts, context, hooks, model selection) or multi-phase workflows (orchestration, subagents, verifiers, ticket-to-PR pipelines). Covers model-specific guidance for GPT-6 Astra, Sol, and Luna, plus the GPT-5.6 migration baseline, and platform-specific patterns for Pi and Codex. Invoke when the user asks about harness design, scaffold patterns, agent loops, subagent orchestration, verification strategy, context compaction, plan/implement/verify pipelines, or how a particular model changes harness choices.
 ---
 
 # Agent Engineering
 
-This skill teaches the engineering discipline of _building_ AI coding agents — the harness, the workflow, the model choices — not the discipline of _using_ one. Most of the literature came together in 2025–2026 under names like "harness engineering," "context engineering," and "agentic workflow design." Model-specific guidance is scoped to GPT-5.6 and GPT-6 Astra. Platform guidance focuses on Pi and Codex, alongside model-independent research from multiple sources. For other platforms and models, use these principles but re-check their primary docs. This is the distilled core; deep references live in `references/`.
+This skill teaches the engineering discipline of _building_ AI coding agents — the harness, the workflow, the model choices — not the discipline of _using_ one. Most of the literature came together in 2025–2026 under names like "harness engineering," "context engineering," and "agentic workflow design." Model-specific guidance covers GPT-6 Astra, Sol, and Luna, with GPT-5.6 retained as a migration baseline. Platform guidance focuses on Pi and Codex, alongside model-independent research from multiple sources. For other platforms and models, use these principles but re-check their primary docs. This is the distilled core; deep references live in `references/`.
 
 ## Mental model
 
@@ -94,6 +94,7 @@ Documented failure modes — short list. Full annotated catalog in `references/a
 Quick orientation; deep guidance in `references/models.md`.
 
 - **GPT-6 Astra**: define authorized follow-through, audit skills and `AGENTS.md` for conflicting instructions, specify delegation triggers, and bound verification to required checks and unresolved risks. Expect more clarification and detailed formatting unless prompted otherwise. Read the [Astra migration guidance](references/models.md#gpt-6-astra) before carrying over GPT-5.6 settings; tool calling requires Responses and `none` reasoning is unsupported.
+- **GPT-6 Sol and Luna**: use Sol for demanding bounded reasoning and Luna for efficient repeatable work. Preserve effective effort during migration; evaluate lower effort separately. Both support `none`, unlike Astra; use Responses for reasoning with tools. Read the [family migration guidance](references/models.md#gpt-6-sol-and-luna) and verify installed provider support before changing routing.
 - **GPT-5.6**: retain as an execution and migration baseline. For GPT-5.6, use Sol for flagship capability, Terra for a capability/cost balance, and Luna for efficient high-volume work.
 - **Model-specific prompting advice changes quickly.** Read the current migration/prompting guide for the exact model version before reusing an older harness prompt.
 
@@ -124,6 +125,6 @@ References cite primary sources where possible. When a claim has a known caveat 
 
 ## Local context
 
-The shipped subagent profiles are Luna/medium (`fast`), Sol/medium (`balanced`), and Astra/high (`strong`). Use fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Treat this routing as policy rather than a demonstrated performance improvement; observe verified results, rework, latency, and total usage before tuning further.
+The shipped subagent profiles are GPT-6 Luna/medium (`fast`), GPT-6 Sol/medium (`balanced`), and GPT-6 Astra/high (`strong`). Use fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Treat this routing as policy rather than a demonstrated performance improvement; observe verified results, rework, latency, and total usage before tuning further.
 
 In this repo, `pi/agent/extensions/subagents/` provides profile-routed delegation with explicit read, write, shell, MCP, and web capabilities. `work-ticket` keeps implementation in its owning session, with compact recovery checkpoints under `<git-common-dir>/pi-ticket-checkpoints/`, artifact references, and explicit authority. It reviews before publication and uses session-bound Background polling for bounded read-only CI waiting without recurring model turns. The owning session reconciles host receipts and fresh checks before repair or promotion; cumulative monitoring wall-clock allowance includes background polls and survives heads/reloads. The helper protects ownership and retained allowances, not delivery-state gates; scoped user exceptions preserve failed/incomplete evidence, and new delivery labels alone do not require duplicate review.

@@ -1,6 +1,6 @@
 # Model-specific guidance
 
-Use this reference for harness guidance on GPT-6 Astra and GPT-5.6. Keep platform APIs separate from model capabilities; see `platforms.md` for Pi and Codex. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
+Use this reference for harness guidance on GPT-6 Astra, Sol, and Luna, with GPT-5.6 retained as a migration baseline. Keep platform APIs separate from model capabilities; see `platforms.md` for Pi and Codex. Verify model names, beta features, pricing, and version-specific claims against primary sources before relying on them.
 
 ## GPT-6 Astra
 
@@ -27,6 +27,25 @@ Primary source: [Using GPT-6 Astra](https://developers.openai.com/api/docs/guide
 ### Migration acceptance checks
 
 Evaluate representative small edits, multi-file work, ambiguous requests, approval-gated actions, delegation opportunities, and resumed tasks. Record task correctness, completion evidence, unnecessary clarification, delegation usefulness, verification repetition, output completeness, latency, and cost. Compare the existing prompt with the revised prompt at a controlled effort setting before changing multiple knobs. Keep model-specific capabilities separate from what the installed harness actually exposes.
+
+## GPT-6 Sol and Luna
+
+Primary sources: [Using GPT-6](https://developers.openai.com/api/docs/guides/latest-model) and [Introducing GPT-6 Sol and Luna](https://openai.com/index/introducing-gpt-6-sol-and-luna/). Treat vendor capability and benchmark claims as evaluation inputs, not measured improvements in this harness.
+
+| Model         | Role                                          | Shipped profile | Migration effort |
+| ------------- | --------------------------------------------- | --------------- | ---------------- |
+| `gpt-6-luna`  | Efficient, repeatable work at scale           | `fast`          | `medium`         |
+| `gpt-6-sol`   | Strong reasoning on demanding tasks           | `balanced`      | `medium`         |
+| `gpt-6-astra` | Highest capability and consequential judgment | `strong`        | `high`           |
+
+These efforts are local routing policy, not API defaults or a universal optimum.
+
+1. **Preserve effort during migration.** Replace GPT-5.6 Luna/Sol with their GPT-6 counterparts while retaining effective reasoning effort. Compare lower effort separately on representative tasks. Sol and Luna support `none`; Astra does not. Map previous `minimal` to `low` initially.
+2. **Use Responses for reasoning with tools.** Sol and Luna support function calling through Chat Completions only with `reasoning_effort: "none"`. Verify the installed provider's model IDs, effort support, and tool round trips; catalog presence alone does not prove live inference works. In Pi, use the `openai-codex/gpt-6-luna` and `openai-codex/gpt-6-sol` selectors for the Codex provider rather than silently switching providers.
+3. **Check request compatibility.** With reasoning enabled, remove `temperature`, `top_p`, and `top_logprobs`; also remove Chat Completions `logprobs` and Responses `message.output_text.logprobs` includes. Keep adapter-specific changes separate from model routing. Async tools, steering, and effort updates require harness support; a model upgrade does not enable them automatically.
+4. **Evaluate family prompting guidance locally.** OpenAI offers Astra-derived prompts as a starting point for the family, not proof that Sol and Luna share every behavioral tendency. Preserve authorization boundaries, explicit delegation criteria, evidence requirements, and bounded verification; do not import broad vendor autonomy examples as permission.
+5. **Keep demanding review on Astra until evaluated.** Measure correctness, missed findings, rework, latency, and total usage before moving consequential work to Sol or lowering Luna effort. Fresh context and concrete evidence remain necessary across all three models.
+6. **Distinguish API prices from Codex usage.** Launch API input/output prices per million tokens are $0.10/$0.50 for Luna and $2/$10 for Sol. Recheck current pricing, caching, and context tiers before budgeting; those rates do not predict subscription quota consumption or total cost per successful task.
 
 ## GPT-5.6
 
