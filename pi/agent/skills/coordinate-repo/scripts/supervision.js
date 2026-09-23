@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { realpath } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 const signature = (r) =>
   createHash("sha256").update(JSON.stringify(r)).digest("hex");
@@ -184,7 +184,7 @@ export function supervision(current, operation, now = Date.now()) {
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+  import.meta.url === pathToFileURL(await realpath(process.argv[1])).href
 ) {
   try {
     let input = "";
