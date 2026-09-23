@@ -13,8 +13,8 @@ function files(path: string): string[] {
         : [],
   );
 }
-test("rename leaves no active Background entrypoint, public imports or tool calls", () => {
-  assert.equal(existsSync(join(root, "pi/agent/extensions/background")), false);
+test("rename leaves no active Background observer providers or model-facing tool", () => {
+  // Background now owns execution lifetime; historical observer APIs stay retired.
   for (const path of files(join(root, "pi"))) {
     if (
       !/\.(?:ts|js|md)$/.test(path) ||
@@ -25,16 +25,14 @@ test("rename leaves no active Background entrypoint, public imports or tool call
     const text = readFileSync(path, "utf8");
     assert.doesNotMatch(
       text,
-      /(?:from\s*|import\s*\()["'][^"']*\/background\//,
+      /registerBackgroundProvider|BackgroundProvider|BackgroundEvent/,
       path,
     );
     assert.doesNotMatch(
       text,
-      /registerBackgroundProvider|BackgroundProvider|BackgroundEvent/,
+      /registerTool\(\s*\{\s*name:\s*["']background["']/,
       path,
     );
-    assert.doesNotMatch(text, /\bbackground\s*\(\s*\{/, path);
-    assert.doesNotMatch(text, /\]\([^)]*\/background\//, path);
   }
 });
 

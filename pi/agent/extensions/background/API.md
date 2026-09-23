@@ -1,0 +1,31 @@
+# Background host API
+
+Trusted extensions import `getBackgroundService` and types from `../background/api.ts`. This host-only API grants no guest capabilities, permissions or user authorization. The service is discovered on Pi's session event bus, not through a module-global singleton. Missing/duplicate service fails closed. No Background tool or Script provider is registered.
+
+## Operations
+
+| Method                                   | Contract                                                                                                                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admit({owner, label, deadlineMs, run})` | Synchronously validate and persist admission, then return a copied `Execution` with stable ID. Invoke the adapter's prepared `run(signal)` once after admission. |
+| `list(owner)`                            | Copied bounded records visible on the current admission branch; adapters should omit results from inventories.                                                   |
+| `inspect(owner, id)`                     | One copied result/accounting record; owner and branch must match.                                                                                                |
+| `cancel(owner, id)`                      | Persist cancel request and abort the adapter signal. Terminal calls are idempotent, with no rollback claim.                                                      |
+| `dismiss(owner, id)`                     | Persist terminal-only dismissal; retain evidence and uncertain handoff.                                                                                          |
+
+`owner` is a stable lowercase ASCII adapter namespace (up to 48 characters), not a security boundary. `label` is a nonsecret display string up to 200 characters; terminal controls are removed. The adapter must validate all source, provider selection and authority **before** admission, pin execution-scoped context and the original finite absolute `deadlineMs`, and enforce that deadline in its existing executor. Background adds no execution engine or scheduler and must never be used to extend a budget. A stale service handle cannot admit or mutate work.
+
+`run` resolves an `Outcome`: `status` (`success`, `failed`, `timeout`, `cancelled`, `interrupted`), boolean `effectsMayPersist`/`outcomeUnknown`, and optional JSON `result` (64,000 UTF-8 bytes). Preserve the executor's original accounting in result. Rejection or invalid/oversized result becomes a failed unknown-effect outcome without exception text. Adapters must cooperate with abort and stop further dispatch; Background cannot stop arbitrary trusted host code or undo remote effects.
+
+`Execution` contains ID, owner, sanitized label, admission anchor, immutable creation/deadline timestamps, status/terminal time, cancellation/dismissal flags, result/effect evidence and notification identity/intent/handoff/consumption. Optional `persistenceFailed` is in-memory failure evidence, not proof the latest state reached disk. Inspection is not acceptance and does not hide attention.
+
+## Lifecycle integration
+
+The loaded extension owns session hooks, storage and notification delivery. On shutdown or successful tree navigation it closes the old handle, aborts work and persists interruption before ignoring old callbacks. On return it reconstructs receipts, not executors. An adapter must not retain a handle across session lifecycle changes or resubmit a failed/uncertain admission automatically. Read [retention and bounds](README.md#persistence-and-limits), including single-owner and sidecar retention requirements.
+
+Notifications use `background:execution-outcome-v1` custom messages containing only execution identity, outcome and an adapter inspection reference. Durable intent precedes a separately persisted uncertain handoff; successful `sendMessage` return records handoff, never consumption. Observed model-context inclusion followed by a 2xx provider response records consumption; adapters and callers must not interpret that as acceptance. Missing hook evidence remains unresolved rather than triggering resend.
+
+## Events
+
+`background:admitted`, `background:terminal`, `background:notification`, and `background:dismissed` are observational in-process events emitted after the corresponding persisted transition. Payloads contain only `{id, owner, status, notificationId, handoff, consumed}`. They contain no labels, source, results, credentials or error text. Observer failures cannot change authority, persistence, cleanup or notification counts. There is no periodic progress event and no event-triggered replay. Restoration and shutdown reconcile records without promising a live terminal event to absent consumers.
+
+`background:service-v1` is an internal synchronous host-only discovery query, not public telemetry. Use the exported helper rather than emitting its internal callback shape. Registration is session-local; the `Execution` and event types are the supported cross-extension data contract.

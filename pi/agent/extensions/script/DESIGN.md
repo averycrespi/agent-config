@@ -4,14 +4,14 @@ Script provides disposable computation with a narrow provider boundary. It is no
 
 ## Modules
 
-- `api.ts`: supported host/provider exports, current host policy, explicit selection, caller ceilings, setup deadline and discovery.
+- `api.ts`: supported host/provider exports, current host policy, explicit selection, caller ceilings, setup deadline, discovery and single-use background preparation without executor launch.
 - `provider.ts`: atomic registration validation, strict schema compilation, immutable schema snapshots, session-bus collection, conflicts and registration cancellation.
 - `bridge.ts`: selected method lookup, fresh availability, argument validation, provider invocation and JSON-only result translation. It knows nothing about MCP or web transports.
 - `config.ts`: global/environment policy and finite limits, fail closed on malformed restrictions.
 - `runtime.ts`: fresh permissioned process, IPC envelope validation, FIFO admission queue, immutable deadline, host traces, sticky failures and terminal cleanup.
 - `sandbox-source.ts`: trusted stdin bootstrap and separate VM setup; namespaced guest wrappers communicate through strings only. Captured intrinsics snapshot final JSON without guest serialization hooks.
 - `value.ts`: strict host JSON snapshots and fixed byte bounds.
-- `index.ts` / `tool.ts`: tool registration, discovery, bounded framed output, safe compact rendering and cancellation of owned runs on shutdown/navigation.
+- `index.ts` / `tool.ts`: tool registration, discovery, bounded framed output, safe compact rendering, foreground cancellation and optional Background admission/inspection/control. Background owns detached lifetime and terminal attention, never a second executor.
 - `diagnostics.ts`: fixed public error summaries and recovery guidance, with a closed allowlist for discovery exception categories.
 - `fixture.ts` and colocated tests: in-process trusted provider plus real permissioned children. No live credentials or external services are required.
 
@@ -33,7 +33,7 @@ The child has no inherited environment or privileged descriptors beyond stdin/IP
 
 ## Output and privacy
 
-Only explicit JSON enters final output. A bounded host receipt accompanies it, including failures even after guest catches. Schema/handler/guest errors never expose raw exception text. Unknown arbitrary method names remain `(not dispatched)`; only registered ASCII names can become trace labels. Child stdout/stderr are ignored. There are no argument previews, result previews, guest logs, source files, persistent interpreters, retained diagnostics or automatic spill/replay.
+Only explicit JSON enters final output. A bounded host receipt accompanies it, including failures even after guest catches. Schema/handler/guest errors never expose raw exception text. Unknown arbitrary method names remain `(not dispatched)`; only registered ASCII names can become trace labels. Child stdout/stderr are ignored. There are no argument previews, result previews, guest logs, source files, persistent interpreters, retained diagnostics or automatic spill/replay in the executor. Explicit background results/accounting are retained by the shared Background sidecar under its separate finite retention contract.
 
 The 24,000-byte result limit is deliberately smaller than IPC bounds and leaves room for bounded accounting in tool context. Oversized output fails rather than persisting data. Host API discovery returns copied definitions; agent discovery fails when its output is oversized. Providers must keep credentials out of public definitions and guest values. Explicit output is not secret-filtered; a generic core cannot know all provider credentials. Renderers show sanitized display labels and host metadata only, never source or returned payloads.
 

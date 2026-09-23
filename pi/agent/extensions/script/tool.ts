@@ -9,7 +9,16 @@ import { diagnostic, discoveryCode } from "./diagnostics.ts";
 import { jsonSnapshot, MAX_OUTPUT_BYTES } from "./value.ts";
 export const PARAMETERS = Type.Object(
   {
-    action: StringEnum(["run", "describe"] as const),
+    action: StringEnum([
+      "run",
+      "describe",
+      "list",
+      "inspect",
+      "cancel",
+      "dismiss",
+    ] as const),
+    execution: Type.Optional(StringEnum(["foreground", "background"] as const)),
+    id: Type.Optional(Type.String({ maxLength: 36 })),
     description: Type.String({
       minLength: 1,
       maxLength: 200,
@@ -17,12 +26,14 @@ export const PARAMETERS = Type.Object(
       description:
         "Short nonsecret action/target label. Never include source or payloads.",
     }),
-    providers: Type.Array(Type.String({ pattern: "^[a-z][a-z0-9_]{0,47}$" }), {
-      maxItems: 32,
-      uniqueItems: true,
-      description:
-        "Explicit provider selection; [] runs pure computation. For describe only, [] lists permitted registered APIs.",
-    }),
+    providers: Type.Optional(
+      Type.Array(Type.String({ pattern: "^[a-z][a-z0-9_]{0,47}$" }), {
+        maxItems: 32,
+        uniqueItems: true,
+        description:
+          "Explicit provider selection; [] runs pure computation. For describe only, [] lists permitted registered APIs.",
+      }),
+    ),
     source: Type.Optional(
       Type.String({
         minLength: 1,
@@ -137,12 +148,29 @@ export const renderers: Pick<
 > = {
   renderCall(args, theme, ctx) {
     return getTruncatedText(ctx.lastComponent, [
-      `${theme.fg("toolTitle", theme.bold("script"))} ${theme.fg("muted", `${args.action === "describe" ? "describe" : "run"} · ${providerLabel(args)} · ${display(args.description) || "bounded execution"}`)}`,
+      `${theme.fg("toolTitle", theme.bold("script"))} ${theme.fg("muted", `${display(args.action) || "run"} · ${providerLabel(args)} · ${display(args.description) || "bounded execution"}`)}`,
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
     const d = result.details as Record<string, unknown> | undefined;
     const args = ctx.args ?? {};
+    if (d?.background === true) {
+      const records = Array.isArray(d.records) ? d.records : [];
+      const lines = [
+        theme.fg(
+          ctx.isError ? "error" : "muted",
+          `background · ${display(d.action)} · ${records.length} execution(s)`,
+        ),
+      ];
+      for (const r of records.slice(0, expanded ? 32 : 1))
+        lines.push(
+          theme.fg(
+            r.status === "running" ? "accent" : "warning",
+            `${display(r.id)} · ${display(r.status)}`,
+          ),
+        );
+      return getTruncatedText(ctx.lastComponent, lines);
+    }
     const action =
       d?.action === "describe" || args.action === "describe"
         ? "describe"

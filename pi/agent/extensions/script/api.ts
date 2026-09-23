@@ -116,6 +116,89 @@ export async function describeScriptProviders(
   );
 }
 
+/** Validate and pin background authority without starting a child. Single-use, no renewal. */
+export async function prepareScript(
+  pi: Bus,
+  cwd: string,
+  options: ScriptOptions,
+) {
+  const started = Date.now();
+  if (
+    !options ||
+    !Number.isSafeInteger(options.deadlineMs) ||
+    !options.signal ||
+    !options.limits ||
+    (Object.keys(MAX_LIMITS) as Array<keyof ScriptLimits>).some(
+      (k) =>
+        !Number.isSafeInteger(options.limits[k]) ||
+        options.limits[k] < 1 ||
+        options.limits[k] > MAX_LIMITS[k],
+    )
+  )
+    throw new Error("invalid_config");
+  if (
+    typeof options.source !== "string" ||
+    !options.source.trim() ||
+    Buffer.byteLength(options.source) > 262144
+  )
+    throw new Error("invalid_source");
+  const source = options.source;
+  const execution = Object.freeze({
+    cwd,
+    ...(options.session
+      ? { session: Object.freeze({ ...options.session }) }
+      : {}),
+  });
+  const deadline = Math.min(
+    options.deadlineMs,
+    started + options.limits.timeoutMs,
+  );
+  const setup = AbortSignal.any([
+    options.signal,
+    AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+  ]);
+  const config = await loadScriptConfig(cwd, [], setup);
+  setup.throwIfAborted();
+  if (!config.valid) throw new Error("invalid_config");
+  const selected = select(
+    pi,
+    options.providers,
+    config.allowedProviders,
+    options.capabilityCeiling,
+  );
+  const deadlineMs = Math.min(deadline, started + config.timeoutMs);
+  if (Date.now() >= deadlineMs) throw new Error("deadline_exceeded");
+  const limits = {
+    ...config,
+    maxCalls: Math.min(config.maxCalls, options.limits.maxCalls),
+    maxConcurrency: Math.min(
+      config.maxConcurrency,
+      options.limits.maxConcurrency,
+    ),
+    timeoutMs: Math.min(config.timeoutMs, options.limits.timeoutMs),
+  };
+  const bridge = createBridge(selected, execution);
+  let used = false;
+  return {
+    deadlineMs,
+    run(signal: AbortSignal) {
+      if (used) throw new Error("prepared_execution_consumed");
+      used = true;
+      return runScript(
+        source,
+        bridge,
+        limits,
+        AbortSignal.any([
+          signal,
+          options.signal,
+          ...selected.map((p) => p.signal),
+        ]),
+        deadlineMs,
+      );
+    },
+  };
+}
+
 /** Execute once. Caller owns scheduling, shutdown signal, and presentation; no replay. */
 export async function executeScript(
   pi: Bus,

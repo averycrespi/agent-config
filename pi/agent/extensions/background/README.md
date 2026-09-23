@@ -1,0 +1,37 @@
+# Background execution
+
+Keep the conversation available while an extension's existing executor runs. Background owns persisted admission, retained outcomes, below-editor rows and automatic notifications. It registers **no model-facing tool** and is not Monitor, an executor, or a polling scheduler.
+
+[Script](../script/README.md#background-execution) is the first adapter. Both extensions must be loaded. Installing files does not reload existing sessions. Missing Background or an ephemeral session fails admission; there is no foreground fallback. No user-facing configuration or additional permissions are introduced.
+
+## Lifecycle and attention
+
+An admitted execution receives a stable UUID before work starts. Its adapter retains the original provider policy, execution context, cancellation and finite deadline. Background never renews a deadline or resumes work. Cancellation requests abort; it does not roll back external effects. Dismissal is terminal-only: it clears attention but preserves results/accounting, and cannot retract a message already handed to Pi.
+
+Every admitted execution has one sanitized, width-bounded row below the editor: `background <state> · <label> · <effects warning> · <short ID>`. Rows contain genuine lifecycle state, not simulated progress. Terminal rows remain until observed notification consumption or explicit dismissal. The widget repaints in place without reordering sibling widgets.
+
+Success, failure, timeout, cancellation and interruption record notification intent. A bounded identity/outcome/result-reference message is handed to Pi automatically when idle, without a visible TUI draft, pending messages or extension dialog. A one-second readiness timer notices cleared drafts; it never runs executor work or polls a model. Headless/RPC delivery also uses the ordinary follow-up queue. A process that exits cannot deliver until the original session returns.
+
+Intent, handoff (`none`, `unknown`, `handed_to_pi`) and observed consumption are separate. Consumption means the notification appeared in observed model context followed by a successful provider HTTP response; it is **not semantic acceptance**. Providers without that response hook leave consumption unconfirmed and the row visible; use explicit dismissal. Other trusted extensions can transform context/payloads, so this is an observation, not proof of model comprehension. Handoff is persisted as uncertain before sending. Throws, crashes and uncertain delivery never cause automatic replay.
+
+Shutdown/reload and successful tree navigation revoke the old service and request abort. Pending work becomes interrupted with conservative unknown-effect evidence. Restoration exposes receipts on their original admission branch, never launches work or renews budgets. Late callbacks cannot update a replacement service. A canceled navigation does not revoke ownership. Forked sessions do not adopt the original session's sidecar or executions.
+
+## Persistence and limits
+
+Each persistent Pi session has a separate owner-only `<session-file>.background-executions-v1.json` sidecar. It contains labels, IDs, lifecycle/notification metadata and adapter results/accounting, **not source or provider credentials**. Explicit results can nevertheless contain sensitive data; this is not a secret filter. Script arguments remain in normal Pi history. No diagnostic logs or result spills are added.
+
+Limits are fixed: **4 active executions, 32 retained records and 32 outstanding notifications per session**, a 64,000-byte adapter result, and a 2,200,000-byte sidecar. Updates validate before atomic replacement and filesystem synchronization. Capacity or storage failure rejects admission before work. Persistence failure during execution closes further admission, aborts owned work and exposes in-memory uncertainty; retained disk bytes must be reconciled, never replayed.
+
+There is no silent eviction, age expiry or automatic deletion, even after dismissal. At 32 retained executions use a new session; preserve old evidence according to your session-retention policy. Sidecars must be retained with their sessions. A failed filesystem operation may leave an owner-only staging file; it is not replayed or silently cleaned up. Same-user hostile filesystem mutation and concurrently opening the same session in multiple Pi processes are outside the cooperative single-owner contract.
+
+New records never read or overwrite historical `background:receipt-v1` observer entries. [Monitor](../monitor/README.md) alone interprets those receipts.
+
+## Troubleshooting
+
+- `background_unavailable`: load the service in a persistent session; inspect storage errors. Do not silently fall back.
+- `background_capacity`: active work must finish, or the retained session is full. Dismissal does not delete evidence.
+- `background_storage_failed_no_replay`: inspect retained sidecar and reconcile effects before further work. No retry is automatic, including when atomic publication may have succeeded.
+- `background_active_execution`: cancel or wait for the terminal outcome before dismissal.
+- `background_unknown_execution`: check the adapter owner and active session branch.
+
+See [API.md](API.md) for the host contract and [DESIGN.md](DESIGN.md) for invariants.

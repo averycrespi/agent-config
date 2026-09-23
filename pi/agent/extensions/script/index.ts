@@ -1,6 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerConfigCommand } from "../_shared/config.ts";
-import { describeScriptProviders, executeScript, MAX_LIMITS } from "./api.ts";
+import {
+  describeScriptProviders,
+  executeScript,
+  prepareScript,
+  MAX_LIMITS,
+} from "./api.ts";
+import { getBackgroundService, type Execution } from "../background/api.ts";
+import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { loadScriptConfig } from "./config.ts";
 import {
   PARAMETERS,
@@ -43,7 +50,7 @@ export default function (pi: ExtensionAPI) {
     parameters: PARAMETERS,
     ...renderers,
     description:
-      "Describe selected provider APIs or execute one fresh bounded JavaScript child using explicitly selected host-permitted providers. [] runs pure JSON computation without providers. Describe [] lists permitted registered APIs. Use namespaced methods with the documented positional argument schemas and parallel(thunks). Explicitly return JSON (null for empty) and await all calls. No ambient filesystem/network/process/imports or credentials. Defaults: 32 calls, concurrency 4, 120s; returned JSON limited to 24000 bytes. Host failures and unknown effects survive guest catches. No automatic retries, grants, replay or background jobs.",
+      "Describe selected provider APIs or execute one fresh bounded JavaScript child using explicitly selected host-permitted providers. [] runs pure JSON computation without providers. Describe [] lists permitted registered APIs. Use namespaced methods with the documented positional argument schemas and parallel(thunks). Explicitly return JSON (null for empty) and await all calls. No ambient filesystem/network/process/imports or credentials. Defaults: 32 calls, concurrency 4, 120s; returned JSON limited to 24000 bytes. Host failures and unknown effects survive guest catches. Foreground default. execution:background returns a persisted ID and automatic outcome notification; requires Background service. list/inspect/cancel/dismiss control Script executions (id required except list). No automatic retries, grants or replay.",
     promptSnippet:
       "Run isolated JavaScript with explicitly selected extension capabilities",
     promptGuidelines: [
@@ -57,6 +64,53 @@ export default function (pi: ExtensionAPI) {
         !/[^\s\p{Cf}]/u.test(params.description)
       )
         throw new Error("script description must be nonblank and bounded");
+      const backgroundResult = (records: Execution[]) => ({
+        content: [
+          {
+            type: "text" as const,
+            text: wrapUntrustedContent(
+              "SCRIPT BACKGROUND",
+              JSON.stringify(records),
+            ),
+          },
+        ],
+        details: {
+          background: true,
+          action: params.action,
+          records: records.map(({ result: _result, ...r }) => r),
+        },
+      });
+      if (["list", "inspect", "cancel", "dismiss"].includes(params.action)) {
+        if (
+          params.source !== undefined ||
+          params.execution !== undefined ||
+          params.providers !== undefined
+        )
+          throw new Error("Unexpected fields for background control");
+        const service = getBackgroundService(pi);
+        if (params.action === "list") {
+          if (params.id !== undefined)
+            throw new Error("Unexpected id for list");
+          return backgroundResult(
+            service.list("script").map(({ result: _result, ...r }) => r),
+          );
+        }
+        if (!params.id) throw new Error("Execution id required");
+        return backgroundResult([
+          params.action === "inspect"
+            ? service.inspect("script", params.id)
+            : params.action === "cancel"
+              ? service.cancel("script", params.id)
+              : service.dismiss("script", params.id),
+        ]);
+      }
+      if (
+        params.id !== undefined ||
+        !params.providers ||
+        (params.action === "describe" &&
+          (params.execution !== undefined || params.source !== undefined))
+      )
+        throw new Error("Invalid Script action fields");
       const session = {
         id: ctx.sessionManager.getSessionId(),
         file: ctx.sessionManager.getSessionFile(),
@@ -69,6 +123,37 @@ export default function (pi: ExtensionAPI) {
         lifetime.signal,
         ...(signal ? [signal] : []),
       ]);
+      if (params.action === "run" && params.execution === "background") {
+        const service = getBackgroundService(pi);
+        // Pin the original policy, provider records, context and deadline before admission.
+        // Tool-turn cancellation gates admission; admitted work has its own session lifetime.
+        const prepared = await prepareScript(pi, cwd, {
+          session,
+          source: params.source!,
+          providers: params.providers,
+          limits: MAX_LIMITS,
+          signal: lifetime.signal,
+          deadlineMs: Date.now() + MAX_LIMITS.timeoutMs,
+        });
+        combined.throwIfAborted();
+        return backgroundResult([
+          service.admit({
+            owner: "script",
+            label: params.description,
+            deadlineMs: prepared.deadlineMs,
+            run: async (signal) => {
+              const run = await prepared.run(signal);
+              return {
+                status: run.status,
+                effectsMayPersist: run.effectsMayPersist,
+                outcomeUnknown: run.outcomeUnknown,
+                result: JSON.parse(JSON.stringify(run)),
+              };
+            },
+          }),
+        ]);
+      }
+      const providers = params.providers;
       const task = (async () => {
         if (params.action === "describe") {
           try {
@@ -76,7 +161,7 @@ export default function (pi: ExtensionAPI) {
               await describeScriptProviders(
                 pi,
                 cwd,
-                params.providers,
+                providers,
                 undefined,
                 combined,
               ),
@@ -94,7 +179,7 @@ export default function (pi: ExtensionAPI) {
           await executeScript(pi, cwd, {
             session,
             source: params.source!,
-            providers: params.providers,
+            providers,
             limits: MAX_LIMITS,
             signal: combined,
             deadlineMs: Date.now() + MAX_LIMITS.timeoutMs,

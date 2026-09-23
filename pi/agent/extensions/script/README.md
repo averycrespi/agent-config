@@ -35,6 +35,39 @@ The fixture example requires a separately registered provider and host allowlist
 
 Supply an async JavaScript **body**, not a module. Explicitly return JSON (`null` for no output), and await every call. Missing, cyclic, non-finite, function, bigint, non-plain-object, accessor, symbol, non-enumerable, sparse-array and extra-array-property results reject. Captured intrinsics and descriptor snapshots avoid guest serialization hooks. Values have a 100-level nesting bound. `parallel(thunks)` bounds independent work and preserves order; arbitrary `Promise.all` calls also obey the host queue. There is no guest logging/progress API.
 
+## Background execution
+
+Foreground remains the default. To keep the conversation available, pass `execution: "background"` to `run`. The loaded [Background service](../background/README.md) validates and persists admission before returning a stable ID; missing service or nonpersistent sessions fail closed, never fall back. The same Script executor, provider records, scoped context, policy limits and original deadline apply. No retries or longer deadlines are added.
+
+```js
+script({
+  action: "run",
+  execution: "background",
+  description: "Compute a summary",
+  providers: [],
+  source: "return { total: 10 };",
+});
+script({ action: "list", description: "List background executions" });
+// Replace EXECUTION_ID with the UUID returned by admission.
+script({
+  action: "inspect",
+  description: "Inspect execution",
+  id: "EXECUTION_ID",
+});
+script({
+  action: "cancel",
+  description: "Request cancellation",
+  id: "EXECUTION_ID",
+});
+script({
+  action: "dismiss",
+  description: "Dismiss terminal attention",
+  id: "EXECUTION_ID",
+});
+```
+
+Control actions omit `providers`, `source` and `execution`. `list` omits results; `inspect` returns one bounded result plus original executor accounting. Cancellation requests abort, not rollback. Dismissal rejects active work and clears terminal attention without deleting evidence. Background automatically sends a bounded terminal notification with an inspection reference, including failures and interruptions; the model need not poll. Its below-editor row respects drafts, active turns and sibling widgets. See [notification integrity, retention and limits](../background/README.md) before interpreting handoff or consumption as completion.
+
 ## Tool display
 
 The call row shows the action, provider selection or discovery scope, and nonsecret description. Execution uses `providers: web, mcp` or `providers: none`; discovery uses `scope: web, mcp` or `scope: all` for `[]`. Here, **all** means currently registered, host-permitted providers, not unrestricted access. Selection is a request, not proof of permission, availability, or user approval. More than three selected names use a `+N more` suffix; expand for the full selection.
@@ -85,7 +118,7 @@ This is **not a hostile multi-tenant OS sandbox**. There are no CPU/memory quota
 
 ## Retention and troubleshooting
 
-No retained logs, temporary source files or result spills are written. Pi session history retains submitted arguments and returned output/accounting. Descriptions are display-only: keep them nonsecret. Renderers sanitize terminal controls and bound labels, but generic secret detection is not possible. Providers must exclude credentials from public schemas, descriptions, and values delivered to the guest. Explicitly returning sensitive data includes it in history; the runtime is not a general secret filter.
+Foreground writes no retained logs, temporary source files or result spills. Background retains bounded outcomes/accounting in a separate [session sidecar](../background/README.md#persistence-and-limits), not source. Pi session history retains submitted arguments and returned output/accounting. Descriptions are display-only: keep them nonsecret. Renderers sanitize terminal controls and bound labels, but generic secret detection is not possible. Providers must exclude credentials from public schemas, descriptions, and values delivered to the guest. Explicitly returning sensitive data includes it in history; the runtime is not a general secret filter.
 
 - `capability_denied`: check the global allowlist and caller ceiling; policy changes require authorization.
 - `invalid_selection`: supply explicit, unique provider names, or `[]` for pure computation.
@@ -111,4 +144,4 @@ No retained logs, temporary source files or result spills are written. Pi sessio
 
 After any dispatched failure, reconcile provider effects before further action. Recovery guidance never authorizes automatic replay.
 
-No persistence/resume, subscriptions, background jobs, model continuation or session control is added. Future supervisors may call the host API but must own scheduling and lifetime separately. See [DESIGN.md](DESIGN.md) for invariants and fixture coverage.
+The executor itself adds no persistence/resume, subscriptions, scheduling or session control. Optional background tool execution uses the separate shared Background lifecycle service; restoration never resumes an executor. Host callers still own scheduling and lifetime separately. See [DESIGN.md](DESIGN.md) for invariants and fixture coverage.
