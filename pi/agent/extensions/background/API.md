@@ -59,7 +59,7 @@ const dispose = registerBackgroundProvider(pi, {
 pi.on("session_shutdown", dispose);
 ```
 
-`producer` is illustrative trusted application code. Background never supplies a raw event-bus object or arbitrary session controller to evaluators. The built-in `sessions.lifecycle` provider is documented in [README.md](README.md#cross-session-events).
+`producer` is illustrative trusted application code. Background never supplies a raw event-bus object or arbitrary session controller to evaluators. The mailbox extension supplies [durable report hints](../mailbox/API.md); there is no built-in session provider or cross-session lifecycle transport.
 
 ## Evaluator input
 
@@ -74,7 +74,7 @@ Each fresh Script child receives `trigger` and `state` function arguments. Trigg
 - `terminated`: observation ends or pending attention is suppressed, before persistence. A later cancellation/invalidation can publish another terminal transition to record suppression.
 - `notification`: persisted `handoff_unknown` before the Pi API call, then `handed_to_pi` after its synchronous return.
 
-Only UUID and closed status/disposition enums are emitted. No source, names, message text, state, evidence, raw errors or tool payloads cross this surface. Observer failures are isolated. Polls/countdowns and restoration emit nothing; lifecycle observation adds no model calls, replay or permission. These events are deliberately absent from the built-in session provider's selectable inventory to avoid bookkeeping feedback loops.
+Only UUID and closed status/disposition enums are emitted. No source, names, message text, state, evidence, raw errors or tool payloads cross this surface. Observer failures are isolated. Polls/countdowns and restoration emit nothing; lifecycle observation adds no model calls, replay or permission. These events remain process-local and are not forwarded as cross-session selectors.
 
 ```ts
 const off = pi.events.on("background:terminated", (data) => {
@@ -84,4 +84,4 @@ const off = pi.events.on("background:terminated", (data) => {
 pi.on("session_shutdown", off);
 ```
 
-No watcher is required for this in-process observation. Pi's bus and same-user session transport are cooperative trusted-host boundaries, not hostile multi-tenant authentication.
+No watcher is required for this in-process observation. Pi's bus is a cooperative trusted-host boundary, not hostile multi-tenant authentication.

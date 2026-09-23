@@ -129,7 +129,9 @@ export function supervision(current, operation, now = Date.now()) {
         r.deadline > r.createdAt &&
         r.deadline <= s.deadline &&
         r.deadline - r.createdAt <= p.lifetimeMs &&
-        r.cycleMs === p.cycleMs &&
+        integer(r.cycleMs) &&
+        r.cycleMs >= 1000 &&
+        r.cycleMs <= p.cycleMs &&
         r.maxWakes === 1 &&
         r.recurring === false &&
         (!p.id ||

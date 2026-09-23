@@ -11,7 +11,6 @@ import {
 } from "./config.ts";
 import { registration } from "./contract.ts";
 import { parameters } from "./tool.ts";
-import { finiteTimeout } from "./session-transport.ts";
 
 const input = {
   name: "limits",
@@ -172,8 +171,6 @@ test("invalid numeric policy disables admission; environment has precedence", ()
     ).cycleMs,
     MAX_DURATION_MS,
   );
-  assert.equal(finiteTimeout(MAX_DURATION_MS), true);
-  assert.equal(finiteTimeout(MAX_DURATION_MS + 1), false);
   assert.ok(MAX_DURATION_MS + 2000 <= 2_147_483_647);
 });
 test("global loader rejects malformed or unreadable settings, ignores project policy", async (t) => {

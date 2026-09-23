@@ -7,7 +7,6 @@
 
 import { randomUUID } from "node:crypto";
 import type {
-  DecisionRequiredDetails,
   InputOutcome,
   InputRequestedEvent,
   InputResolvedEvent,
@@ -82,7 +81,7 @@ interface InteractiveDetails {
   isCustom?: boolean;
 }
 
-type AskDetails = InteractiveDetails | DecisionRequiredDetails;
+type AskDetails = InteractiveDetails;
 
 const ASK_DESCRIPTION = `
 Ask the user a multiple-choice question when a decision materially affects the outcome.
@@ -97,7 +96,7 @@ Ask the user a multiple-choice question when a decision materially affects the o
 - Use descriptions for trade-offs, not labels.
 - Do NOT include an 'Other' option — it is added automatically.
 - Do NOT use this for trivial proceed/confirm prompts.
-- In parent-managed mode, ask_user returns decision_required without an answer or approval. Resolve from existing evidence within authority; otherwise report the decision to the parent, checkpoint and yield. Do not retry the same question or bypass the mode.
+- Managed workers use their explicit mailbox handoff for questions, not ask_user. Standalone interactive questions remain unchanged.
 `.trim();
 
 function validationError(message: string) {
@@ -120,7 +119,6 @@ function cancelledResult(message = "User cancelled — no option selected.") {
 }
 
 export default function (pi: ExtensionAPI) {
-  const mode = process.env.PI_ASK_USER_MODE;
   pi.registerTool({
     name: "ask_user",
     label: "Ask User",
@@ -128,34 +126,6 @@ export default function (pi: ExtensionAPI) {
     parameters: askParams,
 
     async execute(_toolCallId, params: AskParams, signal, _onUpdate, ctx) {
-      if (mode !== undefined && mode !== "parent") {
-        throw new Error(
-          "Invalid PI_ASK_USER_MODE: expected parent or an unset variable. No UI opened; no answer or approval supplied. Reconcile launch configuration with the parent/operator; do not bypass the mode.",
-        );
-      }
-      if (mode === "parent") {
-        const validationMessage = validateAskParams(params);
-        if (validationMessage) return validationError(validationMessage);
-        if (signal?.aborted)
-          return cancelledResult("User prompt aborted — no option selected.");
-        const requestId = randomUUID();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Decision required (parent-managed ask_user; request ${requestId}). No answer or approval was supplied. No user interaction occurred. Resolve from existing evidence within delegated authority where possible. Otherwise report this request ID, question, options, recommendation, evidence, and blocked work to the parent with assignment/revision, run/session/incarnation identity, and ticket identity when applicable. Retain the correlated pending request in the existing child checkpoint before yielding. Checkpoint and yield when no authorized independent work remains; retain sole implementation ownership. Do not retry the same ask_user call or bypass the mode.`,
-            },
-          ],
-          details: {
-            status: "decision_required",
-            mode: "parent",
-            requestId,
-            cancelled: false,
-            answerSupplied: false,
-            approvalSupplied: false,
-          } as DecisionRequiredDetails,
-        };
-      }
       if (!ctx.hasUI) {
         return {
           content: [
@@ -431,16 +401,7 @@ export default function (pi: ExtensionAPI) {
 
     renderResult(result, { isPartial }, theme, context) {
       if (isPartial) {
-        return new Text(
-          theme.fg(
-            "warning",
-            mode === undefined
-              ? "Waiting for answer..."
-              : "Checking decision mode...",
-          ),
-          0,
-          0,
-        );
+        return new Text(theme.fg("warning", "Waiting for answer..."), 0, 0);
       }
 
       if (context.isError) {
@@ -455,17 +416,6 @@ export default function (pi: ExtensionAPI) {
       }
 
       const details = result.details as AskDetails | undefined;
-
-      if (details && "status" in details) {
-        return new Text(
-          theme.fg(
-            "warning",
-            "Decision required — no answer or approval supplied",
-          ),
-          0,
-          0,
-        );
-      }
 
       if (!details || details.cancelled) {
         return new Text(theme.fg("warning", "Cancelled"), 0, 0);
