@@ -25,6 +25,29 @@ Messages are limited to 8192 UTF-8 bytes and 8500 serialized payload bytes. Each
 
 List returns `{mailbox, messages, nextCursor, pending, oldestAt}`. Supply `next_cursor` to the direct tool for subsequent pages. Pages contain at most the requested 1–50 messages (default 20) and 16 KiB serialized message data. The cursor captures an incarnation and sequence high-water mark: concurrent sends do not enter that scan, and concurrent acknowledgments can remove rows without shifting positions. Start a fresh scan after the final page to discover later arrivals. Counts describe the current inbox, not the cursor snapshot. Listing an absent mailbox does not create it.
 
+## Tool display
+
+The TUI shows a stable `mailbox <action> <address>` header and a compact result:
+`Sent result`, `3 shown | 7 pending | more pages`, or `Acknowledged 3 messages`.
+Sending, listing and acknowledging use warning styling while in flight; settled
+operations use success styling, and failures or uncertain publication use error styling.
+Sent means persisted, not consumed, accepted or completed. Ack is not task resolution.
+
+Expand results for full message IDs, UTC timestamps, and explicitly untrusted message
+previews (up to 1200 characters for send, 240 per listed message). Controls and line
+breaks are sanitized before styling; longer previews are marked `[truncated]`.
+Rows truncate rather than wrap at narrow widths. Full content remains in the unchanged
+model-facing untrusted result envelope; report JSON is never interpreted as UI state.
+
+List summaries distinguish this page's shown count from the current inbox's pending
+count. `scan complete` does not imply the inbox is empty: later arrivals require a fresh
+scan. Opaque cursors are not displayed. Expanded acknowledgments show requested IDs
+and acknowledged/requested counts, never which IDs were removed (storage returns only
+a count). `No messages acknowledged` is a successful no-op, not a resolved task.
+Diagnostics are bounded and only shown expanded; uncertain publication calls for
+reconciliation before resending, never automatic replay. Renderer fixtures do not
+qualify a live TUI session.
+
 ## Storage and failures
 
 Storage is local and untracked at `<Pi agent directory>/mailboxes/` (normally `~/.pi/agent/mailboxes/`). The root must be a real current-user-owned mode-0700 directory; state files are mode 0600. Each mailbox has an atomic JSON state file. Cooperative cross-process exclusive lock directories serialize writes without retry. Temporary bytes are fsynced before rename and the containing directory is fsynced before success. Local filesystems with atomic same-directory rename/fsync are required; network filesystems and hostile same-user mutation are not supported.
