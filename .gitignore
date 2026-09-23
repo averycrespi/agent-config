@@ -1,5 +1,6 @@
 .DS_Store
 .playwright-cli/
 pi/agent/settings.json
+pi/agent/mailboxes/
 pi/agent/extensions/herdr-agent-state.ts
 node_modules/

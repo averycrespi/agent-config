@@ -102,7 +102,7 @@ Read the completed file once before starting Pi. Confirm that it describes the d
 
 Derive a useful unique agent name from the branch slug. It must match `[a-z][a-z0-9_-]{0,31}`. Inspect `herdr agent list`, truncate before adding a numeric suffix when needed, and never replace an existing agent.
 
-Standalone spin-outs leave ask-user mode unchanged. For managed children, follow [child-only parent-managed launch](decisions.md#child-only-launch) instead of the default startup command below. Include assignment ID/revision, exact parent identity/index and child checkpoint path, and resolved readable role/workflow references in the handoff. Require the child to read them; do not copy procedures or parent counters. Do not change the parent/global environment.
+Standalone spin-outs leave ordinary interactive questions unchanged. Managed children use the same startup command and the [explicit mailbox reporting contract](decisions.md#child-only-launch). Include mailbox address, assignment ID/revision, exact parent identity/index, child checkpoint path and resolved readable workflow references in the handoff. Require checkpoint-before-report for meaningful questions, blockers and results; routine progress stays in the checkpoint. Require the child to read the shared protocol; do not copy parent counters or change environment-based routing.
 
 Start Pi in the returned root pane:
 
@@ -110,7 +110,7 @@ Start Pi in the returned root pane:
 herdr agent start <agent-name> --kind pi --pane <root-pane-id>
 ```
 
-After Herdr reports that Pi is ready, follow Herdr's [asynchronous launch handshake](../../herdr/SKILL.md#confirm-asynchronous-launch): capture the pre-submission identity/state baseline, then submit a short prompt once through the agent surface without `--wait`. For managed children, correlate the session UUID with a freshly discovered exact incarnation and confirm bounded attention coverage before submission, under the invoking workflow's retained allowance. Reconcile current child state once after registration to cover ACK gaps. Failed registration retains the unprompted child; never launch a substitute.
+After Herdr reports that Pi is ready, follow Herdr's [asynchronous launch handshake](../../herdr/SKILL.md#confirm-asynchronous-launch): capture the pre-submission identity/state baseline, then submit a short prompt once through the agent surface without `--wait`. For managed children, correlate the session UUID with the verified Herdr occupant/process identity and retain it as the worker incarnation. Confirm mailbox availability and bounded mailbox observation before submission under the retained allowance. Initial durable list plus polling catches reports before and during registration; notification loss never discards messages. Failed registration retains the unprompted child; never launch a substitute.
 
 ```text
 Read `.handoffs/<filename>.md` completely before taking any action. Treat it as the task brief. Then inspect the worktree and its AGENTS.md instructions, execute the objective, and verify the acceptance criteria. Investigate answerable uncertainty and use reasonable, reversible defaults within scope. Stop and ask when unresolved ambiguity or conflicting repository state materially affects scope, authorization, correctness, identity, or required source state; do not proceed with required source changes unavailable in this checkout.

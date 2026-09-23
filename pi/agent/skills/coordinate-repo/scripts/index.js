@@ -4,11 +4,11 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   lstat,
   mkdir,
+  open,
   readFile,
   realpath,
   rename,
   unlink,
-  writeFile,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -17,6 +17,7 @@ export const sections = [
   "Owner and authority",
   "Decisions",
   "Assignments",
+  "Mailbox",
   "Unresolved control",
   "Observation",
   "Next",
@@ -102,8 +103,20 @@ export async function replaceIndex({ cwd, id, expected, values }) {
   if (current === text) return { path, digest: digest(text), written: false };
   const temp = `${path}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temp, text, { flag: "wx", mode: 0o600 });
+    const file = await open(temp, "wx", 0o600);
+    try {
+      await file.writeFile(text);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
     await rename(temp, path);
+    const dir = await open(resolve(path, ".."), "r");
+    try {
+      await dir.sync();
+    } finally {
+      await dir.close();
+    }
   } finally {
     await unlink(temp).catch((e) => {
       if (e.code !== "ENOENT") throw e;

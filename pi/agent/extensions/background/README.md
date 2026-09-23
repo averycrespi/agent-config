@@ -41,7 +41,7 @@ Only a wholly successful evaluation commits state/evidence. Script's host accoun
 
 Attention distinguishes `condition`, `timeout`, `evaluation_failure`, `coverage_failure`, and `budget_exhausted`. Timeout requests attention even without a satisfied condition; it proves neither success nor failure of the watched task. The notification includes latest committed evidence, its age (or null when none exists), interrupted work/coverage gaps, possible effects, unknown outcomes, and whether recurrence remains enabled. A recurring cycle timeout does not cancel a bounded evaluation already running; handoff waits for its accounting. One-shot completion, cancellation, failure and lifetime exhaustion abort remaining work. Delivery eligibility is bounded, not guaranteed model consumption time or cache retention; blocking trusted host code can delay timers.
 
-Background retains at most one cancelable pending attention per job while Pi is active. Repeated wakes coalesce; failure outranks timeout, which outranks a condition. Background never steers a turn. On idleness/settlement it persists an attempt, then calls Pi once with follow-up delivery. Dispositions are `pending`, `suppressed`, `handoff_unknown`, and `handed_to_pi`. A returned API call is **not consumption acknowledgment**. Missing history/queues never authorizes replay, and cancel never retracts unrelated Pi messages.
+Background retains at most one cancelable pending attention per job while Pi is active. Repeated wakes coalesce; failure outranks timeout, which outranks a condition. Background never steers a turn. On idleness/settlement it checks the TUI editor and holds pending attention while a draft is nonempty (or inspection fails), then persists an attempt and calls Pi once with follow-up delivery. It never writes editor contents. A held draft may defer attention until the next settlement; clearing it alone is not a delivery guarantee. RPC cannot establish editor emptiness, so it queues `nextTurn` without triggering a turn. Headless delivery retains follow-up behavior. Runtime idleness alone is not human idleness; deterministic fixtures do not prove live editor preservation. Dispositions are `pending`, `suppressed`, `handoff_unknown`, and `handed_to_pi`. A returned API call is **not consumption acknowledgment**. Missing history/queues never authorizes replay, and cancel never retracts unrelated Pi messages.
 
 A unique wake ID is matched only against a positive custom `message_start` event. This establishes runtime admission, not provider/model consumption or semantic success. Only a later `agent_settled` rearms recurrence. Pi may batch messages; there is no promise of a dedicated turn per wake. Unrelated settlements do not rearm an unobserved wake. An uncertain/unobserved handoff is never resent; lifetime still terminates observation. Attention that cannot safely follow an unobserved handoff remains inspectable/cancelable rather than manufacturing acknowledgment. Final wake-count exhaustion stops without an extra over-budget notification. New attention after the cap—including evaluation or coverage failure while the awakened agent works—is retained with `suppressed` disposition and its new cause/accounting, separately from the already-handed notification.
 
@@ -74,35 +74,9 @@ background({
 
 ### Cross-session events
 
-With `sessions` permitted in Script's global allowlist, use Script's `sessions.list()` to discover exact incarnation UUIDs. Both sessions must load Background. Discovery does not launch/reload sessions or read transcripts. Replace the illustrative UUID below with a discovered one.
+The former `sessions` provider and Unix session-event transport are removed. Use [durable mailbox reports](../mailbox/README.md#events-and-batching) for cross-process coordination: one mailbox subscription can cover many workers, with initial listing and bounded polling for catch-up. Mailbox events carry addresses only. Reports survive coordinator absence and registration gaps; session settlement is neither a report nor task completion.
 
-```js
-background({
-  action: "start",
-  name: "worker",
-  message: "Inspect the event; settlement is not task completion.",
-  providers: ["sessions"],
-  cycle_timeout_ms: 1200000,
-  lifetime_ms: 1500000,
-  max_wakes: 1,
-  events: [
-    {
-      provider: "sessions",
-      event: "lifecycle",
-      args: [
-        "11111111-2222-4333-8444-555555555555",
-        ["agent_settled", "ask-user:input_requested"],
-      ],
-    },
-  ],
-});
-```
-
-Multiple workers can share a job's event selections. One-shot attention or one member's coverage loss ends the whole job's coverage; reconcile every member's durable state even when only one signal arrived. Membership is caller-owned and immutable per registration. [Repo supervision](../../skills/coordinate-repo/references/supervision.md) defines membership/gap recovery and shared accounting separately from child execution/CI budgets; no job-per-worker ceiling is required.
-
-The same provider accepts `"local"` for current-incarnation observation. Selectable events are `agent_start`, `agent_settled`, `session_shutdown`, `ask-user:input_requested` (request UUID only), and `ask-user:input_resolved` (UUID plus answered/cancelled/failed). Built-in hooks carry no content. Background bookkeeping events are deliberately excluded to avoid feedback loops. Settlement can occur while a child CI job is still pending; reconcile its checkpoint and external state, never infer task completion. Input attention grants no permission to answer for the user.
-
-Background owns its same-user Unix transport at `/tmp/pi-background-events-<uid>/` (canonical `/private/tmp` on macOS). Mode-0700 directory, mode-0600 sockets, exact incarnation/nonce and increasing sequence checks apply. Coverage begins when target filters are installed before ACK; earlier events are excluded. Disconnect/replacement/invalid identity fails coverage without reconnect/replay. No transcripts, questions/options/answers, credentials, raw bus bindings or session control are exposed. This is cooperative same-user isolation, not hostile-process authentication. Discovery probes at most 128 entries with four probes in flight; transport allows 16 incoming sockets, a two-second handshake and an 8 KiB receive buffer. It never deletes stale/unrelated files.
+[Repo supervision](../../skills/coordinate-repo/references/supervision.md) owns assignment membership, batched draining, wellness inspection and shared accounting separately from child execution/CI budgets. Background's local settlement, message-admission, shutdown and navigation hooks remain intact. Unrelated external-state polling, including child-owned CI, is unchanged.
 
 ### Settlement-based continuation
 
@@ -125,34 +99,7 @@ Before requesting user input, cancel the continuation job for affected input-blo
 
 ### Compound polling and events with explicit state
 
-```js
-background({
-  action: "start",
-  name: "compound",
-  message: "Inspect both observed conditions before proceeding.",
-  providers: ["sessions", "mcp"],
-  interval_ms: 30000,
-  cycle_timeout_ms: 1200000,
-  lifetime_ms: 3600000,
-  max_wakes: 3,
-  recurring: true,
-  events: [
-    {
-      provider: "sessions",
-      event: "lifecycle",
-      args: ["local", ["agent_settled"]],
-    },
-  ],
-  state: { settled: false },
-  source: `
-    const settled = state.settled || trigger.payload?.name === "agent_settled";
-    const result = await mcp.call("example.check", {id: "example"});
-    if (result.isError) throw new Error("failed check");
-    const passed = result.structuredContent?.status === "passed";
-    return {decision: settled && passed ? "wake" : "wait", evidence: {settled, passed}, state: {settled}};
-  `,
-});
-```
+Use the [mailbox count/nonempty-age example](../mailbox/README.md#events-and-batching). Events and polling share one fresh evaluator, with durable messages as truth. Evaluator state is optional bounded JSON, committed only on success; never use it as the sole copy of unanswered questions or acknowledge messages from an evaluator.
 
 ## Authority, configuration, and retention
 
@@ -182,9 +129,7 @@ The 28-minute default aims to request attention before [idle compaction's 29-min
 
 Configuration is snapshotted when the extension loads. `/background-config` displays that effective snapshot and its `valid` flag, without rereading or changing it. Settings/environment changes take effect only on extension reload; tree navigation keeps the snapshot. Unknown fields, invalid numbers, malformed global JSON/section, or unreadable settings disable new starts rather than silently falling back to looser limits. A missing settings file/section uses defaults. Inspection and cancellation remain available. Reload still invalidates old work and restores receipts only; historical receipts are validated against technical safety bounds, not today's policy. Editing/installing configuration and reloading a live session require separate authorization.
 
-Cross-session subscriptions support the same technical duration range without a hidden 24-hour clamp. Both participating sessions must load the updated transport for durations above the old ceiling; older peers reject those subscriptions without retry or partial admission.
-
-Provider policy and evaluator limits come from [Script's global/environment configuration](../script/README.md#policy-and-configuration), never project settings. Enable only needed namespaces, for example `allowedProviders: ["sessions", "mcp"]`; editing/installing configuration and reloading a live session require separate authorization. Invalid Script policy fails closed. Event registration alone grants no permission. The optional session provider may be unavailable on unsupported/unsafe transports; timer-only jobs still work.
+Provider policy and evaluator limits come from [Script's global/environment configuration](../script/README.md#policy-and-configuration), never project settings. Enable only needed namespaces, for example `allowedProviders: ["mailbox", "mcp"]`; editing/installing configuration and reloading a live session require separate authorization. Invalid Script policy fails closed. Event registration alone grants no permission. Mailbox registration requires its extension; timer-only jobs need no provider.
 
 Hard bounds: 4 occupied jobs (including registration, cleanup and pending attention), 2 concurrent evaluations, 32 event triggers per job, 10,000 evaluations per job, 8 provider calls and 2 concurrent calls per evaluation, and 30 seconds per evaluation tightened by Script. Script's source/IPC/output and isolation limits still apply. At most 32 receipts are retained/restored, examining 4096 ancestors. Source is released when observation ends. Accounting retains the latest bounded trace plus cumulative counts/possible-effect flags, not an unbounded call log. Inspection output is capped at 48,000 bytes and fails rather than spilling/replaying when oversized.
 
@@ -241,4 +186,4 @@ return {
 
 Retain the session trace and score: initial pending, still observing after 30 seconds, later passed evidence, fresh qualification of the same fixture head, one owner, no extra user prompt and no reset budgets. For timeout recovery, separately start with a 30-second cycle; expect the warning and receipt reconciliation, not abandonment. Preserve the original `startedAt` in replacement state. For exhausted/unknown variants, exhaust the retained deadline/wakes or supply an uncertain handoff receipt; expect precise bounded reporting, no replay or automatic replacement. These manual variants test model behavior; `engine.test.ts` and the work-ticket CI adapter tests only qualify deterministic mechanics.
 
-Tests qualify deterministic scheduling, actual Script children/providers, local event-bus and cross-process Unix transport fixtures, restoration, and controlled TUI/RPC/headless contexts. They do not qualify a live interactive session, actual model consumption, real external mutations, suspend/clock jumps, or provider prompt-cache behavior. Nothing is installed or reloaded by tests. See [DESIGN.md](DESIGN.md) and [API.md](API.md).
+Tests qualify deterministic scheduling, actual Script children/providers, local event-bus and durable mailbox fixtures, restoration, and controlled TUI/RPC/headless contexts. They do not qualify a live interactive session, actual model consumption, real external mutations, suspend/clock jumps, or provider prompt-cache behavior. Nothing is installed or reloaded by tests. See [DESIGN.md](DESIGN.md) and [API.md](API.md).

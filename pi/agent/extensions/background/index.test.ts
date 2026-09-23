@@ -5,7 +5,8 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture } from "../script/fixture.ts";
-import { temporaryRoot, pause, theme, value } from "./test-support.ts";
+import { pause, theme, value } from "./test-support.ts";
+import { registerBackgroundProvider } from "./api.ts";
 import background from "./index.ts";
 import { restore, parseReceipt } from "./receipts.ts";
 import { widgetLines, renderers, notificationContent } from "./tool.ts";
@@ -17,18 +18,18 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
   await writeFile(
     join(f.dir, "settings.json"),
     JSON.stringify({
-      "extension:script": { allowedProviders: ["sessions"] },
+      "extension:script": { allowedProviders: ["fixture"] },
       "extension:background": config,
     }),
   );
-  const temp = temporaryRoot(),
-    handlers = new Map<string, any>(),
+  const handlers = new Map<string, any>(),
     tools = new Map<string, any>(),
     commands = new Map<string, any>();
   const entries: any[] = [],
     messages: any[] = [],
     mounts: any[] = [];
   let busy = true,
+    draft = "",
     component: any,
     paints = 0;
   const ctx: any = {
@@ -44,6 +45,8 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
     ui: {
       theme,
       notify() {},
+      getEditorText: () => draft,
+      setEditorText: () => assert.fail("Background must not write the editor"),
       setWidget(key: string, content: any) {
         mounts.push({ key, content });
         component?.dispose?.();
@@ -73,11 +76,36 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
       busy = true;
     },
   };
-  await background(pi, () => temp.root);
-  const hook = (name: string, event = {}) => handlers.get(name)?.(event, ctx);
+  const off = registerBackgroundProvider(pi, {
+    namespace: "fixture",
+    available: () => true,
+    methods: {
+      status: {
+        description: "Fixture status",
+        inputSchema: { type: "array", maxItems: 0 },
+        handler: async () => ({ value: true }),
+      },
+    },
+    events: {
+      changed: {
+        description: "Fixture change",
+        inputSchema: { type: "array", maxItems: 0 },
+        payloadSchema: { type: "boolean" },
+        async subscribe(_args, { emit }) {
+          const close = pi.events.on("fixture:changed", () => emit(true));
+          return { coverage: { fixture: true }, close };
+        },
+      },
+    },
+  });
+  await background(pi);
+  const hook = (name: string, event = {}) => {
+    if (name === "agent_start") pi.events.emit("fixture:changed", true);
+    return handlers.get(name)?.(event, ctx);
+  };
   t.after(async () => {
     await hook("session_shutdown");
-    temp.remove();
+    off();
   });
   await hook("session_start");
   const call = (args: any, signal?: AbortSignal) =>
@@ -91,6 +119,9 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
     entries,
     messages,
     mounts,
+    draft: (text: string) => {
+      draft = text;
+    },
     get component() {
       return component;
     },
@@ -107,15 +138,15 @@ const input = {
   action: "start",
   name: "safe name",
   message: "Inspect latest evidence",
-  providers: ["sessions"],
+  providers: ["fixture"],
   cycle_timeout_ms: 5000,
   lifetime_ms: 10000,
   max_wakes: 1,
   events: [
     {
-      provider: "sessions",
-      event: "lifecycle",
-      args: ["local", ["agent_start"]],
+      provider: "fixture",
+      event: "changed",
+      args: [],
     },
   ],
 };
@@ -141,7 +172,7 @@ test("configuration snapshot aligns tool schema and admission until extension re
   await writeFile(
     join(h.dir, "settings.json"),
     JSON.stringify({
-      "extension:script": { allowedProviders: ["sessions"] },
+      "extension:script": { allowedProviders: ["fixture"] },
       "extension:background": { maxCycleTimeoutMs: 1000, maxLifetimeMs: 1000 },
     }),
   );
@@ -279,7 +310,7 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   const reject = await h.call({ action: "get", id, max_wakes: 5 });
   assert.equal(reject.details.backgroundError, true);
   const listed = value(await h.call({ action: "list" }));
-  assert.equal(listed.eventProviders[0].provider, "sessions");
+  assert.equal(listed.eventProviders[0].provider, "fixture");
   await h.hook("session_before_tree");
   await h.hook("session_tree");
   assert.equal(value(await h.call({ action: "get", id })).status, "finished");
@@ -296,6 +327,36 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
     ),
   );
   assert.doesNotMatch(JSON.stringify(observed), /safe name|Inspect|evidence/);
+});
+
+test("visible human draft holds coalesced attention; RPC queues next turn conservatively", async (t) => {
+  const h = await harness(t);
+  h.draft("unsent human\nmessage");
+  const id = value(await h.call(input)).id;
+  await h.hook("agent_start");
+  await h.idle();
+  await pause();
+  assert.equal(h.messages.length, 0);
+  assert.equal(
+    value(await h.call({ action: "get", id })).attention.disposition,
+    "pending",
+  );
+  await h.hook("agent_start");
+  await pause();
+  assert.equal(h.messages.length, 0);
+  h.draft("");
+  await h.idle();
+  await pause();
+  assert.equal(h.messages.length, 1);
+  const rpc = await harness(t, "rpc");
+  await rpc.call(input);
+  await rpc.hook("agent_start");
+  await rpc.idle();
+  await pause();
+  assert.deepEqual(rpc.messages[0].options, {
+    deliverAs: "nextTurn",
+    triggerTurn: false,
+  });
 });
 
 test("accepted polling registrations warn in model content without extending clocks", async (t) => {
