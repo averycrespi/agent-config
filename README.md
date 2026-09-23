@@ -71,13 +71,15 @@ Ticket implementation includes in-scope local commits unless excluded; pushing a
 
 ## Delegation and automation
 
-### Delegate and coordinate reasoning
+### Delegate reasoning and implementation
 
 | Mechanism                                            | Use it for                                                                                                                                                                                                                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Subagents](pi/agent/extensions/subagents/README.md) | Isolated questions where parallelism, context isolation, or independent judgment outweighs delegation overhead. Each child receives a self-contained prompt, explicit capabilities, and a configured profile.                                              |
 | [Workflows](pi/agent/extensions/workflows/README.md) | Repeatable research or review coordinated by deterministic JavaScript, with bounded subagents and verification gates. Saved definitions include `review` and `deep-research`; workflow subagents cannot receive writable filesystem or shell capabilities. |
 | [Spin-out](pi/agent/skills/spin-out/SKILL.md)        | Explicitly requested delegation to a fresh Pi agent in a Herdr-managed worktree, with a durable local task brief.                                                                                                                                          |
+
+For ongoing independent work, [repo coordination](pi/agent/skills/coordinate-repo/SKILL.md) supervises isolated workers under a scoped delegation agreement. It keeps a local recovery index, routes pending human questions without blocking unrelated results, and reuses child-owned verification. There is no default worker ceiling; actual capacity and user budgets remain limits. Handover is explicit, and existing serial work-stacks are not automatically adopted.
 
 The main session owns implementation and execution evidence by default. Writable delegation requires an explicit user request and the [bounded execution safeguards](pi/agent/extensions/subagents/README.md#delegation-guidance); parent and child writes must never overlap in one checkout.
 

@@ -19,6 +19,7 @@ import {
   remainingWaitMs,
 } from "./ci-background.js";
 import { WAIT_MS } from "./ci-monitor.js";
+import { validateCoordination } from "../../spin-out/scripts/coordination.js";
 
 const LEGACY_WAIT_MS = 30 * 60_000;
 const LIMIT = 64 * 1024;
@@ -29,6 +30,7 @@ const FIELDS = [
   "authorization",
   "plan",
   "progress",
+  "coordination",
   "blocker",
   "next",
   "evidenceRefs",
@@ -105,6 +107,7 @@ function validate(s) {
   text(s.branch, "branch");
   for (const key of ["scope", "authorization", "plan", "progress"])
     text(s[key], key);
+  if (s.coordination !== undefined) validateCoordination(s.coordination);
   if (s.blocker !== null) text(s.blocker, "blocker");
   text(s.next?.actor, "next actor", 200);
   text(s.next?.action, "next action");

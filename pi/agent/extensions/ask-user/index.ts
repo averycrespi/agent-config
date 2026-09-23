@@ -143,7 +143,7 @@ export default function (pi: ExtensionAPI) {
           content: [
             {
               type: "text" as const,
-              text: `Decision required (parent-managed ask_user; request ${requestId}). No answer or approval was supplied. No user interaction occurred. Resolve from existing evidence within delegated authority where possible. Otherwise report this request ID, question, options, recommendation, evidence, and blocked work to the parent with ticket/run/session identity and current revision. Checkpoint and yield when no authorized independent work remains; retain sole implementation ownership. Do not retry the same ask_user call or bypass the mode.`,
+              text: `Decision required (parent-managed ask_user; request ${requestId}). No answer or approval was supplied. No user interaction occurred. Resolve from existing evidence within delegated authority where possible. Otherwise report this request ID, question, options, recommendation, evidence, and blocked work to the parent with assignment/revision, run/session/incarnation identity, and ticket identity when applicable. Retain the correlated pending request in the existing child checkpoint before yielding. Checkpoint and yield when no authorized independent work remains; retain sole implementation ownership. Do not retry the same ask_user call or bypass the mode.`,
             },
           ],
           details: {

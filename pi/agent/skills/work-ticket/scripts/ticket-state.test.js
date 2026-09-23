@@ -76,6 +76,50 @@ test("inspection is nonmutating; checkpoint persists across CLI processes outsid
   assert.equal((await lstat(f.file)).mode & 0o777, 0o600);
 });
 
+test("managed coordination is child-owned, optional, atomic and leaves delivery budgets unchanged", async (t) => {
+  const f = await fixture(t);
+  await f.init();
+  const original = await f.status();
+  assert.equal(original.coordination, undefined);
+  const coordination = {
+    assignmentId: "task-a",
+    revision: 1,
+    disposition: "decision needed",
+    pendingRef: "/retained/request.json",
+    nextActor: "human",
+    furtherWrites: false,
+  };
+  await f.call({ action: "checkpoint", patch: { coordination } });
+  const current = await f.status();
+  assert.deepEqual(current.coordination, coordination);
+  assert.deepEqual(current.repairs, original.repairs);
+  assert.deepEqual(current.monitor, original.monitor);
+  assert.equal(current.released, false);
+  const bytes = await readFile(f.file);
+  await assert.rejects(
+    f.call({
+      action: "checkpoint",
+      owner: "coordinator",
+      patch: { coordination: { ...coordination, disposition: "working" } },
+    }),
+  );
+  for (const patch of [
+    { pendingRef: null },
+    { revision: 0 },
+    { disposition: "done" },
+    { furtherWrites: "no" },
+    { copiedTests: [] },
+  ]) {
+    await assert.rejects(
+      f.call({
+        action: "checkpoint",
+        patch: { coordination: { ...coordination, ...patch } },
+      }),
+    );
+    assert.deepEqual(await readFile(f.file), bytes);
+  }
+});
+
 test("patches are atomic and preserve evidence through scope, commits and follow-ups", async (t) => {
   const f = await fixture(t);
   await f.init();

@@ -17,7 +17,7 @@ const details: DecisionRequiredDetails = {
 };
 ```
 
-Check `status` before interpreting interactive fields. There are no `answerLabel`, `answerIndex` or `isCustom` fields, and neither an answer nor approval was supplied. The generated UUID distinguishes calls; it is not a UI wait, durable inbox entry or remote-resolution capability. Question/options remain in tool arguments, not in lifecycle payloads. The child adds identity, current revision and evidence to its existing checkpoint/report; [work-stack's decision contract](../../skills/work-stack/references/decisions.md) owns correlation and continuation. No events, messages or model turns are added by this result. No `terminate` hint skips the child's checkpoint/report turn.
+Check `status` before interpreting interactive fields. There are no `answerLabel`, `answerIndex` or `isCustom` fields, and neither an answer nor approval was supplied. The generated UUID distinguishes calls; it is not a UI wait, durable inbox entry or remote-resolution capability. Question/options remain in tool arguments, not in lifecycle payloads. The child adds identity, current revision and evidence to its existing checkpoint/report; the [shared managed decision contract](../../skills/spin-out/references/decisions.md) owns correlation and continuation. No events, messages or model turns are added by this result. No `terminate` hint skips the child's checkpoint/report turn.
 
 Validation and pre-abort still reject/cancel before a parent decision result. Invalid configured modes throw a fixed diagnostic before UI access (including in headless execution); unset mode retains interactive behavior. See [README configuration](README.md#configuration) for launch scope and guidance.
 

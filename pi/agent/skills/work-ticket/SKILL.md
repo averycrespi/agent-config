@@ -13,6 +13,8 @@ Read [plane](../plane/SKILL.md) before Plane access. Resolve immutable ticket UU
 
 Implementation requests authorize in-scope edits, checks, and local commits unless excluded. Require explicit push/PR authority; a request to deliver a review-ready PR includes bounded read-only CI observation through session-bound Background polling, in-scope corrective commits/pushes, and promotion. Respect narrower requests such as draft-only or no further pushes. Settlement, cancellation, cleanup, merge, and deployment need their own authority; never merge or deploy automatically.
 
+For an explicitly managed assignment, read the [shared decision protocol](../spin-out/references/decisions.md), retain its minimal coordination section in this checkpoint, and keep execution/evidence/CI ownership here. The coordinator indexes references; it never becomes a competing delivery owner.
+
 Keep one checkout writer and implement/repair in the owning session. Delegate read-only questions when isolation, parallelism, or independent judgment offers a clear benefit. Use the current checkout when safe; load [herdr](../herdr/SKILL.md) for requested or necessary linked worktree operations. Preserve unrelated work.
 
 ## Retain a small checkpoint

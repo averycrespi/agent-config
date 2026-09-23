@@ -5,9 +5,9 @@ description: Use when the user explicitly requests an ordered series of tickets 
 
 # Work stack
 
-Coordinate an explicit ordered stack, delegating exactly one ticket at a time. A request to use this skill authorizes isolated ticket children and session-bound observation, not parallel implementation. Keep implementation and ticket checkpoints in the owning child; the parent owns only orchestration.
+Coordinate an explicit ordered stack, delegating exactly one ticket at a time. Keep existing stack records/recovery; [coordinate-repo](../coordinate-repo/SKILL.md) handles independent/general assignments, not automatic stack adoption, migration or a concurrent controller. A request to use this skill authorizes isolated ticket children and session-bound observation, not parallel implementation. Keep implementation and ticket checkpoints in the owning child; the parent owns only orchestration.
 
-Read [spin-out](../spin-out/SKILL.md), [work-ticket](../work-ticket/SKILL.md), [Herdr](../herdr/SKILL.md), and [Background](../../extensions/background/README.md). Use Herdr for creation/explicit communication, Background for attention, and work-ticket for delivery, independent [review](../review/SKILL.md), publication, CI and recovery. Do not build a second delivery state machine.
+Read the [shared launch procedure](../spin-out/references/launch.md), [work-ticket](../work-ticket/SKILL.md), [Herdr](../herdr/SKILL.md), and [Background](../../extensions/background/README.md). Use Herdr for creation/explicit communication, Background for attention, and work-ticket for delivery, independent [review](../review/SKILL.md), publication, CI and recovery. Do not build a second delivery state machine.
 
 Example: “Work ABC-1 then ABC-2 serially from main as stacked review-ready PRs; publish is authorized, do not merge.” A local-only request never authorizes pushing.
 
@@ -23,7 +23,7 @@ Retain reconciled order/authority in the [stack checkpoint](references/checkpoin
 
 ## Launch one isolated owner
 
-Follow spin-out's exact-base creation and ignored handoff procedure. Read [parent-managed decisions](references/decisions.md) before child startup: set `PI_ASK_USER_MODE=parent` for the child process only, using its scoped launch alternative when Herdr has no child-environment option. Leave the human-facing parent and standalone spin-outs unchanged. Record intent before resource creation and confirm each worktree/pane/agent/prompt effect before another consequential action. Never retry an uncertain launch or prompt.
+Follow the shared exact-base creation and ignored handoff procedure. Read [parent-managed decisions](references/decisions.md) before child startup: set `PI_ASK_USER_MODE=parent` for the child process only, using its scoped launch alternative when Herdr has no child-environment option. Leave the human-facing parent and standalone spin-outs unchanged. Record intent before resource creation and confirm each worktree/pane/agent/prompt effect before another consequential action. Never retry an uncertain launch or prompt.
 
 Ticket one uses the initial SHA/target. Each successor uses the verified predecessor head as creation base and predecessor branch as PR target. Reconcile all predecessor heads first; preserve both exact SHA and branch identity. Verify ancestry and complete outgoing history for unrelated commits. Branch labels alone are insufficient.
 
@@ -34,7 +34,7 @@ Make the handoff self-contained in task context, not a copy of shared workflow p
 - Initial and predecessor source/base/head, assigned worktree/branch, exact creation SHA and separate PR target; incremental review and cumulative-tree testing scope.
 - Ticket/repository-specific required checks and target-applicable CI coverage, setup constraints and any scoped exceptions.
 - Selected finite child policy upfront: by default two review/five CI repair batches, two hours cumulative CI monitoring, eight hours from first post-publication check and 12 attention attempts. The child consumes these within existing authority without per-batch parent approval. Existing child limits/usage remain in its checkpoint, never copied into a second ledger.
-- Explicit instructions to read the exact available work-ticket skill and this skill's [parent-managed decision contract](references/decisions.md) before work. Provide resolved readable paths; do not paste their review/publication/recovery procedures or decision protocol. Reference the parent checkpoint for its changing observation state, not copied deadlines/counts.
+- Explicit instructions to read the exact available work-ticket skill and this skill's [parent-managed decision contract](references/decisions.md) before work, including its shared protocol reference. Provide resolved readable paths; do not paste their review/publication/recovery procedures or decision protocol. Reference the parent checkpoint for its changing observation state, not copied deadlines/counts.
 - Final report contract: concise outcome/blocker, exact branch/base/head and PR identity/state, child checkpoint and revision-bound evidence references, unresolved findings/exceptions, and explicit released/no-further-writes disposition with pending effects/child observers reconciled. Reference child-owned allowance and delivery details rather than repeating counters, check inventories or review narratives.
 
 Verify all referenced task criteria and shared contracts are readable by the child during handoff readback; resolve missing references before prompting. Shared policy references do not replace explicit ticket-specific authority or acceptance criteria.

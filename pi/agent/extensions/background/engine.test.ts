@@ -398,6 +398,52 @@ test("event overflow terminates with explicit coverage loss, retains committed s
   assert.equal(f.messages[0].lastAttention!.reason, "coverage_failure");
 });
 
+test("shared overflow loses four-member coverage but leaves fifth worker independent", async () => {
+  let finish!: (r: RunResult) => void;
+  const emitters: ((v: JsonValue) => void)[] = [];
+  const f = fixture({
+    evaluate: async () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    subscribe: async (selection, _r, _signal, _deadline, emit) => {
+      emitters.push(emit);
+      return { coverage: { worker: selection.args[0] }, close() {} };
+    },
+  });
+  const members = ["a", "b", "c", "d", "e"].map((worker) => ({
+    provider: "fixture",
+    event: "change",
+    args: [worker],
+  }));
+  const group = await f.engine.start(
+    f.reg({
+      recurring: false,
+      max_wakes: 1,
+      interval_ms: undefined,
+      events: members.slice(0, 4),
+    }),
+  );
+  const fifth = await f.engine.start(
+    f.reg({
+      recurring: false,
+      max_wakes: 1,
+      interval_ms: undefined,
+      source: undefined,
+      events: members.slice(4),
+    }),
+  );
+  await f.advance();
+  for (let i = 0; i < 33; i++) emitters[i % 4](i);
+  assert.equal(f.engine.get(group.id)!.attention!.reason, "coverage_failure");
+  assert.equal(f.engine.get(group.id)!.coverage.length, 4);
+  assert.equal(f.engine.get(fifth.id)!.status, "active");
+  finish(success("wake", "late"));
+  await f.advance();
+  assert.equal(f.engine.get(group.id)!.evidence, null);
+  f.engine.close(false);
+});
+
 test("caught host failure cannot commit returned state/evidence or retry", async () => {
   let calls = 0;
   const f = fixture({
