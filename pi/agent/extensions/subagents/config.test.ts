@@ -23,12 +23,12 @@ test("config exposes centralized policy defaults", () => {
   assert.deepEqual(normalizeSubagentsConfig({}, {}), DEFAULT_SUBAGENTS_CONFIG);
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileFastModel,
-    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-6-luna",
   );
   assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileFastEffort, "medium");
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileBalancedModel,
-    "openai-codex/gpt-5.6-sol",
+    "openai-codex/gpt-6-sol",
   );
   assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "medium");
   assert.equal(

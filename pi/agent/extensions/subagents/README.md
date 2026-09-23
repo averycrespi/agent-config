@@ -108,28 +108,28 @@ Default output shows the `spawn_agents` aggregate line followed by each agent on
 
 Settings are global/env-only under `extension:subagents`; project settings cannot widen policy. Environment values override global settings. An invalid capability ceiling denies all capabilities with a diagnostic rather than widening to defaults. Replace retired capability names in local settings and launch environments; see the [gateway migration guide](../mcp-gateway/README.md#migration-and-qualification). Use `/subagents-config` to inspect effective parsed configuration.
 
-| Field                   | Default                     | Environment override                | Description                                                           |
-| ----------------------- | --------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
-| `maxConcurrency`        | `4`                         | `SUBAGENTS_MAX_CONCURRENCY`         | Shared direct-child limit, clamped to `1..16`.                        |
-| `profileFastModel`      | `openai-codex/gpt-5.6-luna` | `SUBAGENTS_PROFILE_FAST_MODEL`      | Full `provider/model` selector for `fast`.                            |
-| `profileFastEffort`     | `medium`                    | `SUBAGENTS_PROFILE_FAST_EFFORT`     | Reasoning effort coupled to `fast`.                                   |
-| `profileBalancedModel`  | `openai-codex/gpt-5.6-sol`  | `SUBAGENTS_PROFILE_BALANCED_MODEL`  | Full selector for `balanced`.                                         |
-| `profileBalancedEffort` | `medium`                    | `SUBAGENTS_PROFILE_BALANCED_EFFORT` | Reasoning effort coupled to `balanced`.                               |
-| `profileStrongModel`    | `openai-codex/gpt-6-astra`  | `SUBAGENTS_PROFILE_STRONG_MODEL`    | Full selector for `strong`.                                           |
-| `profileStrongEffort`   | `high`                      | `SUBAGENTS_PROFILE_STRONG_EFFORT`   | Reasoning effort coupled to `strong`.                                 |
-| `allowedCapabilities`   | all five built-ins          | `SUBAGENTS_ALLOWED_CAPABILITIES`    | Array in settings; comma-separated global ceiling in the environment. |
+| Field                   | Default                    | Environment override                | Description                                                           |
+| ----------------------- | -------------------------- | ----------------------------------- | --------------------------------------------------------------------- |
+| `maxConcurrency`        | `4`                        | `SUBAGENTS_MAX_CONCURRENCY`         | Shared direct-child limit, clamped to `1..16`.                        |
+| `profileFastModel`      | `openai-codex/gpt-6-luna`  | `SUBAGENTS_PROFILE_FAST_MODEL`      | Full `provider/model` selector for `fast`.                            |
+| `profileFastEffort`     | `medium`                   | `SUBAGENTS_PROFILE_FAST_EFFORT`     | Reasoning effort coupled to `fast`.                                   |
+| `profileBalancedModel`  | `openai-codex/gpt-6-sol`   | `SUBAGENTS_PROFILE_BALANCED_MODEL`  | Full selector for `balanced`.                                         |
+| `profileBalancedEffort` | `medium`                   | `SUBAGENTS_PROFILE_BALANCED_EFFORT` | Reasoning effort coupled to `balanced`.                               |
+| `profileStrongModel`    | `openai-codex/gpt-6-astra` | `SUBAGENTS_PROFILE_STRONG_MODEL`    | Full selector for `strong`.                                           |
+| `profileStrongEffort`   | `high`                     | `SUBAGENTS_PROFILE_STRONG_EFFORT`   | Reasoning effort coupled to `strong`.                                 |
+| `allowedCapabilities`   | all five built-ins         | `SUBAGENTS_ALLOWED_CAPABILITIES`    | Array in settings; comma-separated global ceiling in the environment. |
 
 `allowedEffortLevels`, `allowedThinkingLevels`, `SUBAGENTS_ALLOWED_EFFORT_LEVELS`, and `SUBAGENTS_ALLOWED_THINKING_LEVELS` are removed and ignored with diagnostics. Configure effort directly on each profile; the selected model's runtime-supported effort levels remain authoritative.
 
-The shipped routing is a policy choice, not a measured performance improvement. `strong` uses Astra/high to avoid a deliberate capability downgrade for demanding work delegated by an Astra implementer; independent context still shares possible model blind spots. Compare verified task success, rework, latency, and total usage before further tuning. Change one variable at a time when attributing improvements, while always checking model/effort compatibility; unsupported combinations fail closed.
+The shipped routing uses GPT-6 Luna/medium for `fast`, GPT-6 Sol/medium for `balanced`, and GPT-6 Astra/high for `strong`. The Luna and Sol generation upgrade preserves reasoning effort as a migration baseline, following [OpenAI's migration guidance](https://developers.openai.com/api/docs/guides/latest-model). This is a policy choice, not a measured performance improvement. `strong` uses Astra/high to avoid a deliberate capability downgrade for demanding work delegated by an Astra implementer; independent context still shares possible model blind spots. Compare verified task success, rework, latency, and total usage before further tuning. Change one variable at a time when attributing improvements, while always checking model/effort compatibility; unsupported combinations fail closed.
 
 ```json
 {
   "extension:subagents": {
     "maxConcurrency": 4,
-    "profileFastModel": "openai-codex/gpt-5.6-luna",
+    "profileFastModel": "openai-codex/gpt-6-luna",
     "profileFastEffort": "medium",
-    "profileBalancedModel": "openai-codex/gpt-5.6-sol",
+    "profileBalancedModel": "openai-codex/gpt-6-sol",
     "profileBalancedEffort": "medium",
     "profileStrongModel": "openai-codex/gpt-6-astra",
     "profileStrongEffort": "high",

@@ -73,8 +73,8 @@ test("resolver creates an internal invocation from central policy", () => {
 
 test("shipped profiles resolve to explicit child routing", () => {
   for (const [profile, id, thinking] of [
-    ["fast", "gpt-5.6-luna", "medium"],
-    ["balanced", "gpt-5.6-sol", "medium"],
+    ["fast", "gpt-6-luna", "medium"],
+    ["balanced", "gpt-6-sol", "medium"],
     ["strong", "gpt-6-astra", "high"],
   ] as const) {
     const result = resolveSubagentRequest(
