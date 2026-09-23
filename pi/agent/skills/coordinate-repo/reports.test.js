@@ -11,7 +11,7 @@ import {
   relayIntent,
   wellness,
 } from "./scripts/reports.js";
-import { replaceIndex, readIndex } from "./scripts/index.js";
+import { persistIndex, readIndex } from "./scripts/index.js";
 
 test("two pending questions, independent result and persist-before-ack replacement retain every obligation", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "reports-"));
@@ -53,14 +53,18 @@ test("two pending questions, independent result and persist-before-ack replaceme
       "c: evidence-qualified fixture result; no further writes; /release",
     Next: "human answers a/b; c accepted independently",
   };
-  await replaceIndex({ cwd: root, id: "project", expected: null, values });
+  await persistIndex({
+    cwd: root,
+    id: "project",
+    expected: null,
+    values,
+    attemptId: "incorporate-batch-1",
+  });
   // Simulate coordinator loss after persisted incorporation, before ack.
   assert.equal(store.list("project").pending, 3);
   const saved = await readIndex(root, "project");
   assert.match(await readFile(saved.path, "utf8"), /question-0/);
-  const state = JSON.parse(
-    saved.text.split("## Mailbox\n\n")[1].split("\n\n##")[0],
-  );
+  const state = JSON.parse(saved.values.Mailbox);
   const repeated = incorporate(
     state,
     new MailboxStore(store.root).list("project").messages,

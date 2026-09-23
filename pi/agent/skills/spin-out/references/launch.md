@@ -4,7 +4,7 @@ Use this procedure from [spin-out](../SKILL.md), [coordinate-repo](../../coordin
 
 ## Preflight
 
-Require scoped delegation authority covering the assignment, local branch/worktree, Herdr workspace, handoff and Pi process. A covering allowance needs no per-launch approval. Distinguish child execution/commit/publication authority from launch authority. Do not focus or remove resources without authority. Managed parents record consequential intent before each creation/start/submission and confirm its exact identity afterward; unresolved effects remain unresolved, never replayed.
+Require scoped delegation authority covering the assignment, local branch/worktree, Herdr workspace, handoff and Pi process. A covering allowance needs no per-launch approval. Distinguish child execution/commit/publication authority from launch authority. Do not focus or remove resources without authority. Managed parents record consequential intent before each creation/start/submission and confirm its exact identity afterward; unresolved effects remain unresolved, never replayed. Use the [canonical index helper and persistence gate](../../coordinate-repo/references/index.md#confirm-before-effects): validate the response identity/path/base/digest and read back the complete intended state before each effect. Exit zero or a shell `&&` chain is not confirmation. Missing/malformed output blocks the effect pending reconciliation, never automatic write replay.
 
 1. Require a concrete task. If the invocation does not provide one and the intended task cannot be inferred safely from the conversation, ask for it before creating anything.
 2. Verify `HERDR_ENV=1`. If not, stop because the worktree cannot be managed through the active Herdr session.
