@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { fixture } from "../script/fixture.ts";
 import { describeScriptProviders } from "../script/api.ts";
-import { subscribeProvider, describeEvents } from "../background/providers.ts";
+import { subscribeProvider, describeEvents } from "../monitor/providers.ts";
 import mailbox from "./index.ts";
 import { MailboxStore } from "./store.ts";
 

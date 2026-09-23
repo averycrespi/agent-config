@@ -6,12 +6,10 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { label, type Receipt } from "./contract.ts";
-import { DEFAULT_CONFIG, type BackgroundConfig } from "./config.ts";
+import { DEFAULT_CONFIG, type MonitorConfig } from "./config.ts";
 const finite = (max: number, description: string) =>
   Type.Optional(Type.Integer({ minimum: 1000, maximum: max, description }));
-export const parameters = (
-  config: Readonly<BackgroundConfig> = DEFAULT_CONFIG,
-) =>
+export const parameters = (config: Readonly<MonitorConfig> = DEFAULT_CONFIG) =>
   Type.Object(
     {
       action: StringEnum(["start", "list", "get", "cancel"] as const),
@@ -95,7 +93,7 @@ export function pollingWarning(r: DisplayReceipt): string | undefined {
   );
 }
 export interface DisplayDetails {
-  backgroundError?: boolean;
+  monitorError?: boolean;
   action?: string;
   status?: string;
   receipts?: DisplayReceipt[];
@@ -242,7 +240,7 @@ export function widgetLines(
     const separator = theme.fg("dim", " · ");
     // Drop the redundant extension prefix before squeezing away job identity.
     const prefix =
-      width >= 60 ? `${theme.fg("muted", "background")}${separator}` : "";
+      width >= 60 ? `${theme.fg("muted", "monitor")}${separator}` : "";
     const primary = theme.fg(color, state);
     // Reserve identity and the primary state before optional telemetry.
     while (
@@ -272,7 +270,7 @@ export function notificationContent(
   message: string,
   now = Date.now(),
 ) {
-  return `${message}\n\nBackground attention: ${r.lastAttention?.reason}. This is not watched-condition success/failure or acknowledgment of model consumption. Recurrence ${r.status === "active" && r.recurring ? "remains enabled" : "disabled"}. Inspect background get; cancel when no further work is authorized.\n${wrapUntrustedContent("BACKGROUND EVIDENCE", JSON.stringify({ id: r.id, reason: r.lastAttention?.reason, latestCommittedEvidence: r.evidence, evidenceAgeMs: r.evidenceAt === undefined ? null : Math.max(0, now - r.evidenceAt), gap: r.gap, interrupted: r.interrupted, failureCode: r.failureCode, effectsMayPersist: r.effectsMayPersist, outcomeUnknown: r.outcomeUnknown }))}`;
+  return `${message}\n\nMonitor attention: ${r.lastAttention?.reason}. This is not watched-condition success/failure or acknowledgment of model consumption. Recurrence ${r.status === "active" && r.recurring ? "remains enabled" : "disabled"}. Inspect monitor get; cancel when no further work is authorized.\n${wrapUntrustedContent("MONITOR EVIDENCE", JSON.stringify({ id: r.id, reason: r.lastAttention?.reason, latestCommittedEvidence: r.evidence, evidenceAgeMs: r.evidenceAt === undefined ? null : Math.max(0, now - r.evidenceAt), gap: r.gap, interrupted: r.interrupted, failureCode: r.failureCode, effectsMayPersist: r.effectsMayPersist, outcomeUnknown: r.outcomeUnknown }))}`;
 }
 export const renderers: Pick<
   ToolDefinition<typeof PARAMETERS>,
@@ -280,13 +278,13 @@ export const renderers: Pick<
 > = {
   renderCall(args, theme, ctx) {
     return getTruncatedText(ctx.lastComponent, [
-      `${theme.fg("toolTitle", theme.bold("background"))} ${theme.fg("muted", label(args.action, 16))} ${theme.fg("text", label(args.name ?? args.id))}`,
+      `${theme.fg("toolTitle", theme.bold("monitor"))} ${theme.fg("muted", label(args.action, 16))} ${theme.fg("text", label(args.name ?? args.id))}`,
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
     const d = (result.details ?? {}) as DisplayDetails;
     const action = label(d.action ?? ctx.args?.action, 16);
-    const failed = ctx.isError || d.backgroundError;
+    const failed = ctx.isError || d.monitorError;
     const target = label(d.receipt?.name ?? ctx.args?.name ?? ctx.args?.id);
     const reason =
       d.receipt?.attention?.reason ?? d.receipt?.lastAttention?.reason;
@@ -323,7 +321,7 @@ export const renderers: Pick<
         isPartial
           ? partial
           : failed
-            ? ["background", action, target, "request failed"]
+            ? ["monitor", action, target, "request failed"]
                 .filter(Boolean)
                 .join(" · ")
             : resultLine(d, action),

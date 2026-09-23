@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fixture, echo } from "../script/fixture.ts";
-import { evaluateBackground } from "./execution.ts";
+import { evaluateMonitor } from "./execution.ts";
 import { LIMITS, observation, registration } from "./contract.ts";
 const reg = (source: string) =>
   registration({
@@ -20,7 +20,7 @@ test("actual Script children receive only explicit trigger/state, fresh globals,
     "globalThis.local = (globalThis.local ?? 0) + 1; const n = await fixture.echo(state + 1); return {decision:'wait', evidence:{local:globalThis.local, trigger, fs:typeof process}, state:n};",
   );
   const run = (state: number) =>
-    evaluateBackground(
+    evaluateMonitor(
       f.pi,
       f.dir,
       input,
@@ -38,7 +38,7 @@ test("actual Script children receive only explicit trigger/state, fresh globals,
     fs: "undefined",
   });
 });
-test("actual caught provider failure cannot become a committed Background observation", async (t) => {
+test("actual caught provider failure cannot become a committed Monitor observation", async (t) => {
   const f = await fixture(t, {
     echo: {
       ...echo,
@@ -49,7 +49,7 @@ test("actual caught provider failure cannot become a committed Background observ
       }),
     },
   });
-  const r = await evaluateBackground(
+  const r = await evaluateMonitor(
     f.pi,
     f.dir,
     reg(
@@ -70,7 +70,7 @@ test("actual evaluator respects malformed global policy and cannot bypass cancel
   await f.config({ allowedProviders: null });
   const c = new AbortController();
   const run = () =>
-    evaluateBackground(
+    evaluateMonitor(
       f.pi,
       f.dir,
       reg("return {decision:'wake', evidence:null};"),
@@ -89,7 +89,7 @@ test("state and event JSON preserve own nested __proto__ properties in actual ch
   const data = JSON.parse(
     '{"__proto__":{"ready":true},"nested":{"__proto__":{"secret":1}},"text":"quote \\\" and newline\\n"}',
   );
-  const result = await evaluateBackground(
+  const result = await evaluateMonitor(
     f.pi,
     f.dir,
     reg(
@@ -114,7 +114,7 @@ test("maximum source leaves room for escaped state and trigger input", async (t)
   const f = await fixture(t, { echo });
   const body = "return {decision:'wait', evidence:trigger.payload, state};";
   const data = '\\"'.repeat(1000);
-  const result = await evaluateBackground(
+  const result = await evaluateMonitor(
     f.pi,
     f.dir,
     reg(" ".repeat(LIMITS.source - body.length) + body),

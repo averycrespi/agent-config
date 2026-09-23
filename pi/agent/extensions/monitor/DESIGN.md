@@ -1,6 +1,6 @@
-# Background design
+# Monitor design
 
-A deterministic host supervisor separates observation from cognition. Timers and typed provider subscriptions invoke fresh Script children; only bounded attention crosses into Pi. Background owns observation/continuation; migration never transfers uncertain historical jobs or notifications.
+A deterministic host supervisor separates observation from cognition. Timers and typed provider subscriptions invoke fresh Script children; only bounded attention crosses into Pi. Monitor owns observation/continuation; migration never transfers uncertain historical jobs or notifications.
 
 ## Modules
 
@@ -9,18 +9,20 @@ A deterministic host supervisor separates observation from cognition. Timers and
 - `engine.ts`: synchronous reservations, staged subscription admission, serial per-job FIFO evaluations, two shared execution slots, four occupied jobs, host clocks, committed state/evidence, coalesced attention and causal recurrence.
 - `execution.ts`: supported Script host API adapter. A fresh guest parses encoded JSON trigger/state arguments (including own `__proto__` data keys), with source headroom reserved for encoding overhead; selected provider globals and Script limits remain authoritative. No alternate executor or persistent interpreter exists.
 - `providers.ts` / `api.ts`: typed, schema-checked host subscription contracts with atomic registration alongside Script, policy intersection, bounded payloads and cancellation. The private event-bus query avoids module-cache singleton assumptions; it is not a guest bus binding.
-- Cross-session reports use the separate durable mailbox provider; no session provider or session-event transport remains in Background.
+- Cross-session reports use the separate durable mailbox provider; no session provider or session-event transport remains in Monitor.
 - `index.ts`: current context/generation, lifecycle binding, positive wake-message correlation, persistence, tool boundary and stable widget.
 - `receipts.ts`: bounded ancestor traversal and receipt validation; execution is never restored.
 - `tool.ts`: snake-case schema, safe rendering, compact summaries and untrusted evidence framing.
 
 ## Admission and observation
 
+The single Monitor extension factory registers only `monitor`, `/monitor-config`, and the Monitor provider API; no Background alias or second engine remains. New storage is `monitor:receipt-v2` to avoid the retired Monitor v1 collision; restoration accepts historical `background:receipt-v1` under the same bounded validation. Legacy configuration aliases warn and conflicting old/new values disable starts before precedence can conceal a conflict. Historical storage is never rewritten or used to replay work. Lifecycle events and provider query use the `monitor` namespace only; wake messages use `monitor-wake`.
+
 The async extension factory snapshots global/environment configuration before registering tools; no resources start there. Project settings cannot expand host policy. The shared config command reports the same snapshot. Tool schema, description and runtime admission use that snapshot until reload (not tree navigation); invalid policy blocks starts while preserving inspection/cancellation. Cycle and lifetime defaults are policy ceilings, never implicit job arguments. Interval and delay retain their coupling to the cycle ceiling. Technical duration safety is separate: the existing 2,147,481,647 ms bound leaves timer headroom below Node's maximum timer delay. Receipt validation uses that technical bound so lowering policy cannot erase historical accounting.
 
 Registration validates before reservation; reservations include asynchronous setup in the capacity count. All subscriptions are staged before committing one job. Callbacks can enqueue bounded events during setup, before acknowledgment returns. Setup loss/overflow/cancellation closes every staged subscription and leaves no admitted receipt. Once admitted, registration-tool cancellation no longer owns the job. The job has its own cancellation controller.
 
-Subscriptions and evaluations have separate lifetimes. Event sources run in trusted host code, not long-lived guests. Providers supply safe projected metadata and explicit coverage; Background validates/copies bounded JSON against snapshotted schemas. A two-second setup race rejects uncooperative providers, aborts their setup, and closes late returned subscriptions without retry. It cannot forcibly stop arbitrary synchronous trusted code or undo external effects.
+Subscriptions and evaluations have separate lifetimes. Event sources run in trusted host code, not long-lived guests. Providers supply safe projected metadata and explicit coverage; Monitor validates/copies bounded JSON against snapshotted schemas. A two-second setup race rejects uncooperative providers, aborts their setup, and closes late returned subscriptions without retry. It cannot forcibly stop arbitrary synchronous trusted code or undo external effects.
 
 Every job queues accepted events in order. Timer triggers do not accumulate: the next poll moves to one interval after evaluation settlement, including event evaluations. No job overlaps evaluations; shared slots remain occupied through child cleanup. Queue overflow is terminal coverage loss, not an implicit latest-event policy. Initial evaluation follows staged events. Recurring observation remains active during agent work and pending attention; only timer-only continuation waits for the correlated settlement before arming another delay.
 

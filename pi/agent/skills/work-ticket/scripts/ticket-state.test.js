@@ -758,7 +758,7 @@ test("Monitor registration and terminal accounting persist atomically through th
     pr,
     head,
     receipt: terminal,
-    reference: "Background get host receipt",
+    reference: "Monitor get host receipt",
   });
   assert.equal(done.ci.waitUsedMs, 11000);
   assert.equal(done.ci.waitRemainingMs, 7_189_000);

@@ -13,6 +13,31 @@ function files(path: string): string[] {
         : [],
   );
 }
+test("rename leaves no active Background entrypoint, public imports or tool calls", () => {
+  assert.equal(existsSync(join(root, "pi/agent/extensions/background")), false);
+  for (const path of files(join(root, "pi"))) {
+    if (
+      !/\.(?:ts|js|md)$/.test(path) ||
+      path.endsWith("migration.test.ts") ||
+      path.endsWith("migrations.md")
+    )
+      continue;
+    const text = readFileSync(path, "utf8");
+    assert.doesNotMatch(
+      text,
+      /(?:from\s*|import\s*\()["'][^"']*\/background\//,
+      path,
+    );
+    assert.doesNotMatch(
+      text,
+      /registerBackgroundProvider|BackgroundProvider|BackgroundEvent/,
+      path,
+    );
+    assert.doesNotMatch(text, /\bbackground\s*\(\s*\{/, path);
+    assert.doesNotMatch(text, /\]\([^)]*\/background\//, path);
+  }
+});
+
 test("retired session provider and transport have no active imports or callers", () => {
   for (const name of [
     "sessions.ts",
@@ -20,7 +45,7 @@ test("retired session provider and transport have no active imports or callers",
     "session-transport.ts",
   ])
     assert.equal(
-      existsSync(join(root, "pi/agent/extensions/background", name)),
+      existsSync(join(root, "pi/agent/extensions/monitor", name)),
       false,
     );
   for (const path of files(join(root, "pi"))) {
@@ -35,7 +60,7 @@ test("retired session provider and transport have no active imports or callers",
     assert.doesNotMatch(text, /provider:\s*["']sessions["']/, path);
   }
   const index = readFileSync(
-    join(root, "pi/agent/extensions/background/index.ts"),
+    join(root, "pi/agent/extensions/monitor/index.ts"),
     "utf8",
   );
   for (const hook of [

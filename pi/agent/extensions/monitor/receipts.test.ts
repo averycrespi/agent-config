@@ -33,6 +33,30 @@ function receipt(): Receipt {
   };
 }
 
+test("mixed Background/current history preserves latest identity and ignores retired Monitor v1", () => {
+  const manager = SessionManager.inMemory();
+  const old = {
+    ...receipt(),
+    effectsMayPersist: true,
+    outcomeUnknown: true,
+    lastAttention: {
+      id: "22222222-2222-4333-8444-555555555555",
+      at: 5000,
+      reason: "condition",
+      disposition: "handoff_unknown",
+      admitted: false,
+    },
+  };
+  manager.appendCustomEntry("background:receipt-v1", old);
+  manager.appendCustomEntry("monitor:receipt-v1", { ...old, calls: 99 });
+  manager.appendCustomEntry("background:execution-v1", { ...old, calls: 88 });
+  assert.deepEqual(restore(manager), [old]);
+  const latest = { ...old, calls: 1 };
+  manager.appendCustomEntry(RECEIPT_TYPE, latest);
+  assert.deepEqual(restore(manager), [latest]);
+  assert.equal(old.calls, 0);
+});
+
 test("historical configured ceilings restore against technical safety, not current policy", () => {
   const r = {
     ...receipt(),

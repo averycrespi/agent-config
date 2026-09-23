@@ -23,7 +23,7 @@ Review each child's incremental diff against its predecessor/base; run required 
 
 ## Advance only on evidence
 
-A question, setup milestone, commit, draft PR, mailbox message, Background timeout or runtime settlement never permits advancement. A pending question blocks successor launch; use the shared conversational answer/provenance/uncertain-relay protocol with the same owner. No replacement child or prompt replay.
+A question, setup milestone, commit, draft PR, mailbox message, Monitor timeout or runtime settlement never permits advancement. A pending question blocks successor launch; use the shared conversational answer/provenance/uncertain-relay protocol with the same owner. No replacement child or prompt replay.
 
 Before the next child, require:
 

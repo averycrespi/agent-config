@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BackgroundEngine, type Clock, type Host } from "./engine.ts";
+import { MonitorEngine, type Clock, type Host } from "./engine.ts";
 import { registration, type Receipt, type Trigger } from "./contract.ts";
 import { parseConfig, MAX_DURATION_MS } from "./config.ts";
 import type { RunResult, JsonValue } from "../script/api.ts";
@@ -63,7 +63,7 @@ function fixture(overrides: Partial<Host> = {}) {
     },
     ...overrides,
   };
-  const engine = new BackgroundEngine(host, clock);
+  const engine = new MonitorEngine(host, clock);
   const reg = (extra: Record<string, unknown> = {}) =>
     registration({
       name: "fixture",

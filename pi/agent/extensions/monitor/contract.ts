@@ -9,7 +9,7 @@ import type { Selection } from "./providers.ts";
 import {
   DEFAULT_CONFIG,
   CONFIG_WARNING,
-  type BackgroundConfig,
+  type MonitorConfig,
 } from "./config.ts";
 export const LIMITS = Object.freeze({
   active: 4,
@@ -105,7 +105,7 @@ const int = (v: unknown, min: number, max: number): v is number =>
   Number.isSafeInteger(v) && (v as number) >= min && (v as number) <= max;
 export function registration(
   raw: Record<string, unknown>,
-  config: Readonly<BackgroundConfig> = DEFAULT_CONFIG,
+  config: Readonly<MonitorConfig> = DEFAULT_CONFIG,
 ): Registration {
   if (!config.valid) throw new RequestError(CONFIG_WARNING);
   const errors: string[] = [];

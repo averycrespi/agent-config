@@ -5,7 +5,7 @@ Separate deterministic mechanics, independent reasoning review and live model be
 ## Deterministic checks
 
 ```sh
-npx tsx --test pi/agent/extensions/mailbox/*.test.ts pi/agent/extensions/background/*.test.ts pi/agent/extensions/ask-user/*.test.ts
+npx tsx --test pi/agent/extensions/mailbox/*.test.ts pi/agent/extensions/monitor/*.test.ts pi/agent/extensions/ask-user/*.test.ts
 npx tsx --test pi/agent/skills/coordinate-repo/*.test.js pi/agent/skills/work-stack/*.test.js pi/agent/skills/work-ticket/scripts/*.test.js pi/agent/skills/work-ticket/skill.test.js
 npm run lint
 npm run format:check
@@ -13,7 +13,7 @@ make typecheck
 make test
 ```
 
-Cover subprocess durability, publication before subscription and registration gaps, lost notifications with retained messages, cursor stability, idempotent ack and invalid atomic mutations. Exercise count/nonempty-age batching and empty inboxes separately from Background timeout attention. Multiple arrivals during pending attention must remain available without repeated handoffs. Controlled UI contexts test draft gating and conservative RPC delivery, not a real terminal.
+Cover subprocess durability, publication before subscription and registration gaps, lost notifications with retained messages, cursor stability, idempotent ack and invalid atomic mutations. Exercise count/nonempty-age batching and empty inboxes separately from Monitor timeout attention. Multiple arrivals during pending attention must remain available without repeated handoffs. Controlled UI contexts test draft gating and conservative RPC delivery, not a real terminal.
 
 Coordination fixtures persist project state before simulated coordinator loss/ack, then reopen it and deduplicate incorporated reports. Retain two independent unanswered questions alongside a qualified fixture result. Test stale/ambiguous/cancelled answers, provenance, answered-awaiting-relay state, uncertain Herdr intent without replay, matching resolution and healthy-quiet versus exited/stale workers. Helpers check correlation and arithmetic, not authority or semantic evidence quality. Keep one writer per checkout and original allowances through recovery; discovery/link tests establish only packaging.
 

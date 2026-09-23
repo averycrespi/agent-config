@@ -1,11 +1,11 @@
-export { registerBackgroundProvider } from "./providers.ts";
+export { registerMonitorProvider } from "./providers.ts";
 export type {
-  BackgroundProvider,
+  MonitorProvider,
   EventSource,
   Subscription,
   Selection,
 } from "./providers.ts";
-export interface BackgroundEvent {
+export interface MonitorEvent {
   type: "registered" | "attention" | "terminated" | "notification";
   id: string;
   status: "active" | "finished" | "cancelled" | "invalidated";

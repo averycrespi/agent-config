@@ -6,20 +6,27 @@ import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture } from "../script/fixture.ts";
 import { pause, theme, value } from "./test-support.ts";
-import { registerBackgroundProvider } from "./api.ts";
-import background from "./index.ts";
+import { registerMonitorProvider } from "./api.ts";
+import monitor from "./index.ts";
 import { restore, parseReceipt } from "./receipts.ts";
 import { widgetLines, renderers, notificationContent } from "./tool.ts";
 
-async function harness(t: any, mode = "tui", config: unknown = {}) {
+async function harness(
+  t: any,
+  mode = "tui",
+  config: unknown = {},
+  legacy = false,
+) {
   const f = await fixture(t);
+  delete process.env.MONITOR_MAX_CYCLE_TIMEOUT_MS;
+  delete process.env.MONITOR_MAX_LIFETIME_MS;
   delete process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS;
   delete process.env.BACKGROUND_MAX_LIFETIME_MS;
   await writeFile(
     join(f.dir, "settings.json"),
     JSON.stringify({
       "extension:script": { allowedProviders: ["fixture"] },
-      "extension:background": config,
+      [legacy ? "extension:background" : "extension:monitor"]: config,
     }),
   );
   const handlers = new Map<string, any>(),
@@ -27,7 +34,8 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
     commands = new Map<string, any>();
   const entries: any[] = [],
     messages: any[] = [],
-    mounts: any[] = [];
+    mounts: any[] = [],
+    notices: string[] = [];
   let busy = true,
     draft = "",
     component: any,
@@ -44,9 +52,11 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
     },
     ui: {
       theme,
-      notify() {},
+      notify(text: string) {
+        notices.push(text);
+      },
       getEditorText: () => draft,
-      setEditorText: () => assert.fail("Background must not write the editor"),
+      setEditorText: () => assert.fail("Monitor must not write the editor"),
       setWidget(key: string, content: any) {
         mounts.push({ key, content });
         component?.dispose?.();
@@ -76,7 +86,7 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
       busy = true;
     },
   };
-  const off = registerBackgroundProvider(pi, {
+  const off = registerMonitorProvider(pi, {
     namespace: "fixture",
     available: () => true,
     methods: {
@@ -98,7 +108,7 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
       },
     },
   });
-  await background(pi);
+  await monitor(pi);
   const hook = (name: string, event = {}) => {
     if (name === "agent_start") pi.events.emit("fixture:changed", true);
     return handlers.get(name)?.(event, ctx);
@@ -109,7 +119,7 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
   });
   await hook("session_start");
   const call = (args: any, signal?: AbortSignal) =>
-    tools.get("background").execute("fixture", args, signal, undefined, ctx);
+    tools.get("monitor").execute("fixture", args, signal, undefined, ctx);
   return {
     ...f,
     call,
@@ -119,6 +129,7 @@ async function harness(t: any, mode = "tui", config: unknown = {}) {
     entries,
     messages,
     mounts,
+    notices,
     draft: (text: string) => {
       draft = text;
     },
@@ -151,12 +162,38 @@ const input = {
   ],
 };
 
+test("single renamed surface warns on legacy config in UI, command and headless results", async (t) => {
+  const h = await harness(t, "tui", { maxLifetimeMs: 1000 }, true);
+  assert.deepEqual([...h.tools.keys()], ["monitor"]);
+  assert.deepEqual([...h.commands.keys()], ["monitor-config"]);
+  assert.ok(h.notices.some((s) => s.includes("Legacy Background")));
+  const started = await h.call({
+    ...input,
+    cycle_timeout_ms: 1000,
+    lifetime_ms: 1000,
+  });
+  assert.match(started.content[0].text, /Legacy Background/);
+  assert.equal(value(started).deadline - value(started).createdAt, 1000);
+  assert.equal(h.entries[0].customType, "monitor:receipt-v2");
+  assert.ok(h.mounts.some((m) => m.key === "monitor"));
+  await h.commands.get("monitor-config").handler("", {
+    cwd: h.dir,
+    ui: { notify: (s: string) => h.notices.push(s) },
+  });
+  assert.match(h.notices.at(-1)!, /Legacy Background/);
+  const headless = await harness(t, "json", {}, true);
+  assert.match(
+    (await headless.call({ action: "list" })).content[0].text,
+    /Legacy Background/,
+  );
+});
+
 test("configuration snapshot aligns tool schema and admission until extension reload", async (t) => {
   const h = await harness(t, "json", {
     maxCycleTimeoutMs: 3_600_000,
     maxLifetimeMs: 172_800_000,
   });
-  const tool = h.tools.get("background");
+  const tool = h.tools.get("monitor");
   assert.equal(tool.parameters.properties.cycle_timeout_ms.maximum, 3_600_000);
   assert.equal(tool.parameters.properties.lifetime_ms.maximum, 172_800_000);
   assert.match(tool.description, /1000–3600000 ms/);
@@ -166,31 +203,31 @@ test("configuration snapshot aligns tool schema and admission until extension re
     lifetime_ms: 172_800_000,
   };
   const started = await h.call(raw);
-  assert.equal(started.details.backgroundError, false);
+  assert.equal(started.details.monitorError, false);
   const r = value(started);
   assert.equal(r.deadline - r.createdAt, 172_800_000);
   await writeFile(
     join(h.dir, "settings.json"),
     JSON.stringify({
       "extension:script": { allowedProviders: ["fixture"] },
-      "extension:background": { maxCycleTimeoutMs: 1000, maxLifetimeMs: 1000 },
+      "extension:monitor": { maxCycleTimeoutMs: 1000, maxLifetimeMs: 1000 },
     }),
   );
-  process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS = "1000";
+  process.env.MONITOR_MAX_CYCLE_TIMEOUT_MS = "1000";
   await h.hook("session_before_tree");
   await h.hook("session_tree");
   assert.equal(
     value(await h.call({ action: "get", id: r.id })).status,
     "invalidated",
   );
-  assert.equal((await h.call(raw)).details.backgroundError, false);
+  assert.equal((await h.call(raw)).details.monitorError, false);
   assert.equal(
     (await h.call({ ...raw, cycle_timeout_ms: 3_600_001 })).details
-      .backgroundError,
+      .monitorError,
     true,
   );
   const notices: string[] = [];
-  await h.commands.get("background-config").handler("", {
+  await h.commands.get("monitor-config").handler("", {
     cwd: h.dir,
     ui: { notify: (s: string) => notices.push(s) },
   });
@@ -198,13 +235,13 @@ test("configuration snapshot aligns tool schema and admission until extension re
   assert.match(notices[0], /"valid": true/);
   // A new factory (reload) takes the new policy; it does not mutate old jobs.
   const reloaded = new Map<string, any>();
-  await background({
+  await monitor({
     registerCommand() {},
     on() {},
     registerTool: (t: any) => reloaded.set(t.name, t),
   } as any);
   assert.equal(
-    reloaded.get("background").parameters.properties.cycle_timeout_ms.maximum,
+    reloaded.get("monitor").parameters.properties.cycle_timeout_ms.maximum,
     1000,
   );
 });
@@ -214,13 +251,13 @@ test("invalid policy blocks starts without disabling inspection or cancellation"
     maxLifetimeMs: "PRIVATE invalid value",
   });
   const result = await h.call(input);
-  assert.equal(result.details.backgroundError, true);
+  assert.equal(result.details.monitorError, true);
   assert.match(result.content[0].text, /starts disabled/);
   assert.doesNotMatch(result.content[0].text, /PRIVATE/);
   assert.deepEqual(value(await h.call({ action: "list" })).receipts, []);
   assert.equal(h.entries.length, 0);
   const notices: string[] = [];
-  await h.commands.get("background-config").handler("", {
+  await h.commands.get("monitor-config").handler("", {
     cwd: h.dir,
     ui: { notify: (s: string) => notices.push(s) },
   });
@@ -264,7 +301,7 @@ test("invalid policy blocks starts without disabling inspection or cancellation"
   );
   assert.equal(
     (await h.call({ action: "cancel", id: historical.id })).details
-      .backgroundError,
+      .monitorError,
     false,
   );
 });
@@ -273,9 +310,9 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   const h = await harness(t);
   const observed: any[] = [];
   for (const type of ["registered", "attention", "terminated", "notification"])
-    h.pi.events.on(`background:${type}`, (e) => observed.push(e));
+    h.pi.events.on(`monitor:${type}`, (e) => observed.push(e));
   const started = await h.call(input);
-  assert.equal(started.details.backgroundError, false, JSON.stringify(started));
+  assert.equal(started.details.monitorError, false, JSON.stringify(started));
   const id = value(started).id;
   assert.equal(started.details.action, "start");
   assert.equal(started.details.receipt.eventCount, 1);
@@ -308,7 +345,7 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
     true,
   );
   const reject = await h.call({ action: "get", id, max_wakes: 5 });
-  assert.equal(reject.details.backgroundError, true);
+  assert.equal(reject.details.monitorError, true);
   const listed = value(await h.call({ action: "list" }));
   assert.equal(listed.eventProviders[0].provider, "fixture");
   await h.hook("session_before_tree");
@@ -374,7 +411,7 @@ test("accepted polling registrations warn in model content without extending clo
       events,
       source: "return {decision: 'wait', evidence: {status: 'pending'}};",
     });
-    assert.equal(result.details.backgroundError, false);
+    assert.equal(result.details.monitorError, false);
     const r = value(result);
     assert.equal(r.intervalMs, interval);
     assert.equal(r.cycleDeadline - r.createdAt, cycle);
@@ -484,6 +521,68 @@ test("successful Script receipts survive in-memory reload without replay", async
   }
 });
 
+test("historical Background active and uncertain receipts restore accounting without replay", async (t) => {
+  const h = await harness(t);
+  const old = value(await h.call(input));
+  await h.call({ action: "cancel", id: old.id });
+  const historical = {
+    ...old,
+    recurring: true,
+    maxWakes: 5,
+    wakes: 2,
+    evaluations: 9,
+    calls: 12,
+    inFlight: true,
+    awaitingSettlement: true,
+    effectsMayPersist: true,
+    outcomeUnknown: true,
+    lastAttention: {
+      id: "22222222-2222-4333-8444-555555555555",
+      at: old.createdAt,
+      reason: "condition",
+      disposition: "handoff_unknown",
+      admitted: false,
+    },
+  };
+  h.entries.push({
+    type: "custom",
+    customType: "background:receipt-v1",
+    data: historical,
+    id: "historical",
+    parentId: h.entries.at(-1).id,
+  });
+  const bytes = JSON.stringify(h.entries);
+  await h.hook("session_before_tree");
+  await h.hook("session_tree");
+  const restored = value(await h.call({ action: "get", id: old.id }));
+  for (const key of [
+    "id",
+    "createdAt",
+    "deadline",
+    "cycleDeadline",
+    "cycleMs",
+    "maxWakes",
+    "wakes",
+    "evaluations",
+    "calls",
+    "effectsMayPersist",
+    "outcomeUnknown",
+    "lastAttention",
+  ])
+    assert.deepEqual(restored[key], historical[key]);
+  assert.equal(restored.status, "invalidated");
+  assert.equal(restored.inFlight, false);
+  assert.equal(JSON.stringify(h.entries), bytes);
+  await h.hook("agent_start");
+  await h.idle();
+  await pause();
+  assert.equal(h.messages.length, 0);
+  assert.deepEqual(
+    value(await h.call({ action: "get", id: old.id })),
+    restored,
+  );
+});
+
 test("receipt-only recovery is bounded and malformed receipts cannot resume execution", async (t) => {
   const h = await harness(t);
   const r = value(await h.call(input));
@@ -544,7 +643,7 @@ test("widget and tool renderers are width bounded and never expose scripts, evid
         {
           content: [],
           details: {
-            backgroundError: error,
+            monitorError: error,
             action: "list",
             receipts: [r],
           },

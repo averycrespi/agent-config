@@ -5,7 +5,7 @@ description: Use when the user explicitly requests repository coordination with 
 
 # Coordinate Repo
 
-Own one human-facing coordination index, not the workers' execution ledgers. Coordinate independent/general assignments concurrently through existing Herdr, Background and task workflows. Keep short inline questions inline; use short-lived read-only helpers for bounded reasoning, not as persistent task owners. For an ordered series of stacked tickets, apply [work-stack's serial policy](../work-stack/SKILL.md) to the shared mechanics here in the same coordinator session. Retain existing records as recovery evidence; no automatic migration, intermediate manager or competing controller. Use [spin-out](../spin-out/SKILL.md) for shared launch mechanics; it is standalone only outside active managed coordination.
+Own one human-facing coordination index, not the workers' execution ledgers. Coordinate independent/general assignments concurrently through existing Herdr, Monitor and task workflows. Keep short inline questions inline; use short-lived read-only helpers for bounded reasoning, not as persistent task owners. For an ordered series of stacked tickets, apply [work-stack's serial policy](../work-stack/SKILL.md) to the shared mechanics here in the same coordinator session. Retain existing records as recovery evidence; no automatic migration, intermediate manager or competing controller. Use [spin-out](../spin-out/SKILL.md) for shared launch mechanics; it is standalone only outside active managed coordination.
 
 ## Preserve the active mode
 

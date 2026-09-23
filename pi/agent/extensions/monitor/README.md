@@ -1,12 +1,12 @@
-# Background
+# Monitor
 
-Observe conditions or continue an explicitly authorized task without model turns while waiting. Background owns host timers and typed subscriptions; each optional evaluator runs in a fresh [Script](../script/README.md) child. It is a session-bound supervisor, not a persistent JavaScript process, detached service, completion judge, or prompt-cache guarantee.
+Observe conditions or continue an explicitly authorized task without model turns while waiting. Monitor owns host timers and typed subscriptions; each optional evaluator runs in a fresh [Script](../script/README.md) child. It is a session-bound supervisor, not a persistent JavaScript process, detached service, completion judge, or prompt-cache guarantee.
 
-Background is the repository-supported observer and continuation primitive. See the [retirement inventory and safe transition guide](../../../docs/migrations.md#observer-retirement) before replacing historical jobs. Never register two schedulers for the same work.
+Monitor is the repository-supported observer and continuation primitive. See the [Background-to-Monitor cutover](../../../docs/migrations.md#background-to-monitor) and [retirement inventory and safe transition guide](../../../docs/migrations.md#observer-retirement) before replacing historical jobs. Never register two schedulers for the same work.
 
 ## Tool and bounds
 
-`background` exposes immutable `start`, `list`, `get`, and `cancel` actions. No update, pause, resume, extend, reconnect, retry, or automatic restoration of work exists.
+`monitor` exposes immutable `start`, `list`, `get`, and `cancel` actions. No update, pause, resume, extend, reconnect, retry, or automatic restoration of work exists.
 
 Start requires:
 
@@ -41,18 +41,18 @@ Only a wholly successful evaluation commits state/evidence. Script's host accoun
 
 Attention distinguishes `condition`, `timeout`, `evaluation_failure`, `coverage_failure`, and `budget_exhausted`. Timeout requests attention even without a satisfied condition; it proves neither success nor failure of the watched task. The notification includes latest committed evidence, its age (or null when none exists), interrupted work/coverage gaps, possible effects, unknown outcomes, and whether recurrence remains enabled. A recurring cycle timeout does not cancel a bounded evaluation already running; handoff waits for its accounting. One-shot completion, cancellation, failure and lifetime exhaustion abort remaining work. Delivery eligibility is bounded, not guaranteed model consumption time or cache retention; blocking trusted host code can delay timers.
 
-Background retains at most one cancelable pending attention per job while Pi is active. Repeated wakes coalesce; failure outranks timeout, which outranks a condition. Background never steers a turn. On idleness/settlement it checks the TUI editor and holds pending attention while a draft is nonempty (or inspection fails), then persists an attempt and calls Pi once with follow-up delivery. It never writes editor contents. A held draft may defer attention until the next settlement; clearing it alone is not a delivery guarantee. RPC cannot establish editor emptiness, so it queues `nextTurn` without triggering a turn. Headless delivery retains follow-up behavior. Runtime idleness alone is not human idleness; deterministic fixtures do not prove live editor preservation. Dispositions are `pending`, `suppressed`, `handoff_unknown`, and `handed_to_pi`. A returned API call is **not consumption acknowledgment**. Missing history/queues never authorizes replay, and cancel never retracts unrelated Pi messages.
+Monitor retains at most one cancelable pending attention per job while Pi is active. Repeated wakes coalesce; failure outranks timeout, which outranks a condition. Monitor never steers a turn. On idleness/settlement it checks the TUI editor and holds pending attention while a draft is nonempty (or inspection fails), then persists an attempt and calls Pi once with follow-up delivery. It never writes editor contents. A held draft may defer attention until the next settlement; clearing it alone is not a delivery guarantee. RPC cannot establish editor emptiness, so it queues `nextTurn` without triggering a turn. Headless delivery retains follow-up behavior. Runtime idleness alone is not human idleness; deterministic fixtures do not prove live editor preservation. Dispositions are `pending`, `suppressed`, `handoff_unknown`, and `handed_to_pi`. A returned API call is **not consumption acknowledgment**. Missing history/queues never authorizes replay, and cancel never retracts unrelated Pi messages.
 
 A unique wake ID is matched only against a positive custom `message_start` event. This establishes runtime admission, not provider/model consumption or semantic success. Only a later `agent_settled` rearms recurrence. Pi may batch messages; there is no promise of a dedicated turn per wake. Unrelated settlements do not rearm an unobserved wake. An uncertain/unobserved handoff is never resent; lifetime still terminates observation. Attention that cannot safely follow an unobserved handoff remains inspectable/cancelable rather than manufacturing acknowledgment. Final wake-count exhaustion stops without an extra over-budget notification. New attention after the cap—including evaluation or coverage failure while the awakened agent works—is retained with `suppressed` disposition and its new cause/accounting, separately from the already-handed notification.
 
 ## Examples
 
-First inspect `script describe` and `background list` for real provider schemas. Examples use fictional domain calls where noted; substitute discovered names and validate their actual envelopes.
+First inspect `script describe` and `monitor list` for real provider schemas. Examples use fictional domain calls where noted; substitute discovered names and validate their actual envelopes.
 
 ### Polling
 
 ```js
-background({
+monitor({
   action: "start",
   name: "check",
   message:
@@ -76,12 +76,12 @@ background({
 
 The former `sessions` provider and Unix session-event transport are removed. Use [durable mailbox reports](../mailbox/README.md#events-and-batching) for cross-process coordination: one mailbox subscription can cover many workers, with initial listing and bounded polling for catch-up. Mailbox events carry addresses only. Reports survive coordinator absence and registration gaps; session settlement is neither a report nor task completion.
 
-[Repo supervision](../../skills/coordinate-repo/references/supervision.md) owns assignment membership, batched draining, wellness inspection and shared accounting separately from child execution/CI budgets. Background's local settlement, message-admission, shutdown and navigation hooks remain intact. Unrelated external-state polling, including child-owned CI, is unchanged.
+[Repo supervision](../../skills/coordinate-repo/references/supervision.md) owns assignment membership, batched draining, wellness inspection and shared accounting separately from child execution/CI budgets. Monitor's local settlement, message-admission, shutdown and navigation hooks remain intact. Unrelated external-state polling, including child-owned CI, is unchanged.
 
 ### Settlement-based continuation
 
 ```js
-background({
+monitor({
   action: "start",
   name: "bounded follow-through",
   message:
@@ -107,16 +107,16 @@ Only explicitly authorized monitoring/continuation may be registered. Repeated p
 
 ### Configuration
 
-Configure `extension:background` in global `~/.pi/agent/settings.json` (or `$PI_CODING_AGENT_DIR/settings.json`). Project settings are deliberately ignored: a repository cannot expand host observation/continuation allowances. Environment values take precedence over the corresponding global field.
+Configure `extension:monitor` in global `~/.pi/agent/settings.json` (or `$PI_CODING_AGENT_DIR/settings.json`). Project settings are deliberately ignored: a repository cannot expand host observation/continuation allowances. Environment values take precedence over the corresponding global field. Legacy `extension:background` fields and `BACKGROUND_MAX_CYCLE_TIMEOUT_MS` / `BACKGROUND_MAX_LIFETIME_MS` remain fallback inputs with a visible warning (startup UI, tool results and `/monitor-config`). Complementary fields merge; overlapping old/new fields must agree numerically, even when an environment override would hide the conflict. Equal aliases are accepted with the warning. Conflicting environment aliases also disable starts; neither alias wins silently. Invalid/malformed legacy sections and unknown fields fail closed. Recognized environment values retain precedence over numeric settings as before. Remove old aliases during an explicitly authorized cutover; they belong to the historical observer, not a future execution service.
 
-| Field               | Default                | Environment override              | Description                                                                                            |
-| ------------------- | ---------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `maxCycleTimeoutMs` | `1680000` (28 minutes) | `BACKGROUND_MAX_CYCLE_TIMEOUT_MS` | Ceiling for required `cycle_timeout_ms` and optional `interval_ms`/`delay_ms`.                         |
-| `maxLifetimeMs`     | `86400000` (24 hours)  | `BACKGROUND_MAX_LIFETIME_MS`      | Ceiling for required total `lifetime_ms`; includes setup, observation, pending handoff and agent work. |
+| Field               | Default                | Environment override           | Description                                                                                            |
+| ------------------- | ---------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `maxCycleTimeoutMs` | `1680000` (28 minutes) | `MONITOR_MAX_CYCLE_TIMEOUT_MS` | Ceiling for required `cycle_timeout_ms` and optional `interval_ms`/`delay_ms`.                         |
+| `maxLifetimeMs`     | `86400000` (24 hours)  | `MONITOR_MAX_LIFETIME_MS`      | Ceiling for required total `lifetime_ms`; includes setup, observation, pending handoff and agent work. |
 
 ```json
 {
-  "extension:background": {
+  "extension:monitor": {
     "maxCycleTimeoutMs": 1680000,
     "maxLifetimeMs": 86400000
   }
@@ -127,7 +127,7 @@ These are **policy ceilings, not per-job argument defaults**. Each start still r
 
 The 28-minute default aims to request attention before [idle compaction's 29-minute default](../idle-compaction/README.md#behavior-and-lifecycle), with both below an assumed 30-minute cache TTL. Admitted wake activity resets the idle-compaction interval; queued messages also block compaction. These independent clocks do not guarantee ordering, provider prompt-cache retention, delivery, or model-consumption timing, especially with overrides or delayed timers.
 
-Configuration is snapshotted when the extension loads. `/background-config` displays that effective snapshot and its `valid` flag, without rereading or changing it. Settings/environment changes take effect only on extension reload; tree navigation keeps the snapshot. Unknown fields, invalid numbers, malformed global JSON/section, or unreadable settings disable new starts rather than silently falling back to looser limits. A missing settings file/section uses defaults. Inspection and cancellation remain available. Reload still invalidates old work and restores receipts only; historical receipts are validated against technical safety bounds, not today's policy. Editing/installing configuration and reloading a live session require separate authorization.
+Configuration is snapshotted when the extension loads. `/monitor-config` displays that effective snapshot and its `valid` flag, without rereading or changing it. Settings/environment changes take effect only on extension reload; tree navigation keeps the snapshot. Unknown fields, invalid numbers, malformed global JSON/section, or unreadable settings disable new starts rather than silently falling back to looser limits. A missing settings file/section uses defaults. Inspection and cancellation remain available. Reload still invalidates old work and restores receipts only; historical receipts are validated against technical safety bounds, not today's policy. Editing/installing configuration and reloading a live session require separate authorization.
 
 Provider policy and evaluator limits come from [Script's global/environment configuration](../script/README.md#policy-and-configuration), never project settings. Enable only needed namespaces, for example `allowedProviders: ["mailbox", "mcp"]`; editing/installing configuration and reloading a live session require separate authorization. Invalid Script policy fails closed. Event registration alone grants no permission. Mailbox registration requires its extension; timer-only jobs need no provider.
 
@@ -137,7 +137,7 @@ Receipts include optional `endedAt`, the first host observation-stop timestamp. 
 
 Jobs belong to the originating session branch. Shutdown, reload, replacement and reached before-tree navigation invalidate observations and suppress extension-owned pending handoffs. Before-tree invalidation is conservative even if navigation is later canceled; no history is appended during tree preparation. Destination history restores **receipts only**, never subscriptions, children or notifications. Stale callbacks cannot wake another context. No work continues while Pi is closed, and timers/sockets do not keep a print/JSON process alive.
 
-No standalone logs, source files or result spills are written. Ordinary Pi history retains original arguments, state, evidence and `background:receipt-v1` entries. Entries are individually bounded; append-only history is not globally bounded. Abrupt exit may lose final accounting, and old receipts can fall outside the restoration window. Providers can have their own audit/clone/spill retention. Generic JSON framing is not secret detection; choose evidence carefully.
+No standalone logs, source files or result spills are written. Ordinary Pi history retains original arguments, state, evidence and `monitor:receipt-v2` entries. Monitor also reads historical `background:receipt-v1` entries without rewriting them, preserving identity, clocks, consumed counts and uncertainty. The unrelated retired `monitor:receipt-v1` format is not accepted; future Background execution records are not observer receipts. Entries are individually bounded; append-only history is not globally bounded. Abrupt exit may lose final accounting, and old receipts can fall outside the restoration window. Providers can have their own audit/clone/spill retention. Generic JSON framing is not secret detection; choose evidence carefully.
 
 ## Tool display
 
@@ -155,22 +155,22 @@ Expand single-job results for identity, accounting summaries and handoff disposi
 One stable, width-bounded row per visible job appears below the editor. Identity comes before descriptive activity and labeled timing:
 
 ```text
-background · CI check · polling · next check 3s · timeout 12s
-background · Worker · watching events · timeout 15m
-background · Follow-through · continue in 5s · timeout 20s · wakes 0/2
-background · CI check · timed out · follow-up queued
-background · Follow-through · awaiting settlement · wakes 1/2 · expires 50s
+monitor · CI check · polling · next check 3s · timeout 12s
+monitor · Worker · watching events · timeout 15m
+monitor · Follow-through · continue in 5s · timeout 20s · wakes 0/2
+monitor · CI check · timed out · follow-up queued
+monitor · Follow-through · awaiting settlement · wakes 1/2 · expires 50s
 ```
 
 `next check` is the next poll, not a model wake. `timeout` is the current attention deadline; `expires` is total lifetime, shown instead when it ends sooner or while awaiting settlement. An in-flight evaluation shows `checking` without a stale next-check countdown. Pending attention shows its cause and `follow-up queued` rather than a misleading ticking clock. Neither condition attention nor a finished receipt proves watched-task success.
 
-Activity uses accent, pending attention/settlement warning, failures error; there is no green activity state, source, payload or evidence. Narrow rows drop the redundant `background` prefix, shorten long names, and drop secondary telemetry while preserving identity and primary state when space permits. Pending attention remains visible until handoff/suppression even after observation ends. Finished/canceled rows disappear after handoff/suppression. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls. Older receipts without trigger metadata remain inspectable without guessing a polling/continuation mode.
+Activity uses accent, pending attention/settlement warning, failures error; there is no green activity state, source, payload or evidence. Narrow rows drop the redundant `monitor` prefix, shorten long names, and drop secondary telemetry while preserving identity and primary state when space permits. Pending attention remains visible until handoff/suppression even after observation ends. Finished/canceled rows disappear after handoff/suppression. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls. Older receipts without trigger metadata remain inspectable without guessing a polling/continuation mode.
 
 ### Agent-level follow-through regression (manual, unrun)
 
-No live model follow-through claim is made by the deterministic tests. In a disposable, explicitly authorized interactive test session already loading the candidate Background extension, give the agent this prompt (do not install/reload configuration in a delivery session to run it):
+No live model follow-through claim is made by the deterministic tests. In a disposable, explicitly authorized interactive test session already loading the candidate Monitor extension, give the agent this prompt (do not install/reload configuration in a delivery session to run it):
 
-> Observe synthetic CI for fixed head `example-head` through success, without asking me to continue. Retain a three-minute absolute task deadline, at most two cumulative wake attempts, zero repair rounds and sole ownership in your existing task notes. Use a one-shot pure Background evaluator, 30-second polling, a two-minute cycle and a lifetime bounded by the remaining deadline. The fixture below reports pending until 45 seconds after its initial evaluation. End the turn while observing, then inspect the receipt and independently recompute fixture status from its start time and the current host time before reporting completion. Observer expiry alone is not CI failure; reconcile any replacement within remaining allowances. Do not access external systems.
+> Observe synthetic CI for fixed head `example-head` through success, without asking me to continue. Retain a three-minute absolute task deadline, at most two cumulative wake attempts, zero repair rounds and sole ownership in your existing task notes. Use a one-shot pure Monitor evaluator, 30-second polling, a two-minute cycle and a lifetime bounded by the remaining deadline. The fixture below reports pending until 45 seconds after its initial evaluation. End the turn while observing, then inspect the receipt and independently recompute fixture status from its start time and the current host time before reporting completion. Observer expiry alone is not CI failure; reconcile any replacement within remaining allowances. Do not access external systems.
 
 Use this evaluator source; no provider is needed (`providers: []`):
 

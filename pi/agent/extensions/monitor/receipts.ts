@@ -2,7 +2,9 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { snapshotScriptJson } from "../script/api.ts";
 import { isId, label, LIMITS, type Receipt } from "./contract.ts";
 import { MAX_DURATION_MS } from "./config.ts";
-export const RECEIPT_TYPE = "background:receipt-v1";
+// v1 monitor receipts belong to a different, retired observer.
+export const RECEIPT_TYPE = "monitor:receipt-v2";
+export const LEGACY_RECEIPT_TYPE = "background:receipt-v1";
 // Older successful evaluations retained an own code: undefined in memory,
 // although disk JSON omitted it. Normalize only that field, without invoking
 // accessors or changing the session manager's retained objects.
@@ -254,7 +256,10 @@ export function restore(
   for (let i = 0; id && i < 4096 && found.size < LIMITS.receipts; i++) {
     const entry = manager.getEntry(id);
     if (!entry) break;
-    if (entry.type === "custom" && entry.customType === RECEIPT_TYPE) {
+    if (
+      entry.type === "custom" &&
+      [RECEIPT_TYPE, LEGACY_RECEIPT_TYPE].includes(entry.customType)
+    ) {
       const r = parseReceipt(entry.data);
       if (r && !found.has(r.id)) found.set(r.id, r);
     }

@@ -5,10 +5,10 @@ import type {
 import { describeScriptProviders, snapshotScriptJson } from "../script/api.ts";
 import { createPersistentWidget } from "../_shared/widget.ts";
 import { registerConfigCommand } from "../_shared/config.ts";
-import { loadBackgroundConfig, CONFIG_WARNING } from "./config.ts";
+import { loadMonitorConfig, CONFIG_WARNING } from "./config.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
-import { BackgroundEngine } from "./engine.ts";
-import { evaluateBackground } from "./execution.ts";
+import { MonitorEngine } from "./engine.ts";
+import { evaluateMonitor } from "./execution.ts";
 import { registration, RequestError, isId, type Receipt } from "./contract.ts";
 import { subscribeProvider, describeEvents } from "./providers.ts";
 import { restore, RECEIPT_TYPE } from "./receipts.ts";
@@ -22,21 +22,23 @@ import {
   pollingWarning,
 } from "./tool.ts";
 
-export default async function background(pi: ExtensionAPI) {
-  const config = Object.freeze(await loadBackgroundConfig());
+export default async function monitor(pi: ExtensionAPI) {
+  const configWarnings: string[] = [];
+  const config = Object.freeze(await loadMonitorConfig(configWarnings));
   registerConfigCommand(pi, {
-    extensionName: "background",
+    extensionName: "monitor",
     sensitiveFields: [],
     loadConfig: (_cwd, warnings = []) => {
+      warnings.push(...configWarnings);
       if (!config.valid) warnings.push(CONFIG_WARNING);
       return { ...config };
     },
   });
   let generation = 0;
   let context: ExtensionContext | undefined;
-  let engine: BackgroundEngine | undefined;
+  let engine: MonitorEngine | undefined;
   let ticker: ReturnType<typeof setInterval> | undefined;
-  const widget = createPersistentWidget("background");
+  const widget = createPersistentWidget("monitor");
   const refresh = () => {
     if (!context) return;
     if (!engine?.list().some(visible)) {
@@ -63,12 +65,15 @@ export default async function background(pi: ExtensionAPI) {
   const initialize = (ctx: ExtensionContext) => {
     close(false);
     context = ctx;
-    if (!config.valid && ctx.hasUI) ctx.ui.notify(CONFIG_WARNING, "warning");
+    if (ctx.hasUI) {
+      for (const warning of configWarnings) ctx.ui.notify(warning, "warning");
+      if (!config.valid) ctx.ui.notify(CONFIG_WARNING, "warning");
+    }
     const token = generation;
     const current = () => {
       if (token !== generation) throw new Error("stale_context");
     };
-    engine = new BackgroundEngine({
+    engine = new MonitorEngine({
       idle: () => {
         if (token !== generation || !ctx.isIdle()) return false;
         // Runtime idleness is not human idleness. Never disturb a visible draft.
@@ -86,12 +91,12 @@ export default async function background(pi: ExtensionAPI) {
         pi.appendEntry(RECEIPT_TYPE, r);
       },
       changed: refresh,
-      event: (event) => pi.events.emit(`background:${event.type}`, event),
+      event: (event) => pi.events.emit(`monitor:${event.type}`, event),
       handoff: (r, message) => {
         current();
         pi.sendMessage(
           {
-            customType: "background-wake",
+            customType: "monitor-wake",
             content: notificationContent(r, message),
             display: true,
             details: { jobId: r.id, wakeId: r.lastAttention!.id },
@@ -102,15 +107,7 @@ export default async function background(pi: ExtensionAPI) {
         );
       },
       evaluate: (reg, trigger, state, signal, deadlineMs) =>
-        evaluateBackground(
-          pi,
-          ctx.cwd,
-          reg,
-          trigger,
-          state,
-          signal,
-          deadlineMs,
-        ),
+        evaluateMonitor(pi, ctx.cwd, reg, trigger, state, signal, deadlineMs),
       subscribe: (selection, reg, signal, deadlineMs, emit, lost) =>
         subscribeProvider(pi, ctx.cwd, reg.providers, selection, {
           signal,
@@ -133,30 +130,29 @@ export default async function background(pi: ExtensionAPI) {
     engine?.settled();
   });
   pi.on("message_start", ({ message }) => {
-    if (message.role === "custom" && message.customType === "background-wake") {
+    if (message.role === "custom" && message.customType === "monitor-wake") {
       const details = message.details as { wakeId?: unknown } | undefined;
       if (isId(details?.wakeId)) engine?.admitted(details.wakeId);
     }
   });
   pi.on("tool_result", (event) => {
     if (
-      event.toolName === "background" &&
-      (event.details as { backgroundError?: boolean } | undefined)
-        ?.backgroundError
+      event.toolName === "monitor" &&
+      (event.details as { monitorError?: boolean } | undefined)?.monitorError
     )
       return { isError: true };
     return undefined;
   });
   pi.registerTool({
-    name: "background",
-    label: "Background",
+    name: "monitor",
+    label: "Monitor",
     parameters: parameters(config),
     ...renderers,
     description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example (when configured ceilings permit): interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
     promptSnippet:
       "Observe typed events or poll in fresh Script evaluations; continue only within explicit finite bounds",
     promptGuidelines: [
-      "Use background only with explicit monitoring/continuation authority. Provider permission is not user approval; obtain authority covering repeated mutations. Discover Script and Background event schemas before use. Keep one owner per job; reconcile historical observers before replacement. No automatic retries, grants, approval polling or replay. Timeout and settlement do not prove condition or task success; cancel recurring jobs when no further authorized work is useful. Cancel and reconcile continuation for input-blocked work before requesting input. Explicitly authorized read-only shared observation of independent workers may continue under a nonblocking correlated-message contract, never modal-wait bypass or approval polling; immutable replacements preserve caller-owned cumulative time and wake allowances, including uncertain handoffs.",
+      "Use monitor only with explicit monitoring/continuation authority. Provider permission is not user approval; obtain authority covering repeated mutations. Discover Script and Monitor event schemas before use. Keep one owner per job; reconcile historical observers before replacement. No automatic retries, grants, approval polling or replay. Timeout and settlement do not prove condition or task success; cancel recurring jobs when no further authorized work is useful. Cancel and reconcile continuation for input-blocked work before requesting input. Explicitly authorized read-only shared observation of independent workers may continue under a nonblocking correlated-message contract, never modal-wait bypass or approval polling; immutable replacements preserve caller-owned cumulative time and wake allowances, including uncertain handoffs.",
     ],
     async execute(_id, params, signal) {
       const token = generation;
@@ -164,7 +160,7 @@ export default async function background(pi: ExtensionAPI) {
         ctx = context;
       try {
         if (!owner || !ctx || token !== generation || signal?.aborted)
-          throw new RequestError("Background unavailable or cancelled.");
+          throw new RequestError("Monitor unavailable or cancelled.");
         let value: unknown;
         let selected: Receipt | undefined;
         let cancelChanged = false;
@@ -206,7 +202,7 @@ export default async function background(pi: ExtensionAPI) {
             const before = owner.get(params.id);
             selected =
               params.action === "cancel" ? owner.cancel(params.id) : before;
-            if (!selected) throw new RequestError("Unknown Background job.");
+            if (!selected) throw new RequestError("Unknown Monitor job.");
             cancelChanged =
               params.action === "cancel" &&
               !!before &&
@@ -228,9 +224,12 @@ export default async function background(pi: ExtensionAPI) {
             {
               type: "text",
               text:
+                (configWarnings.length
+                  ? `${configWarnings.join("\n")}\n`
+                  : "") +
                 (warning ? `${warning}\n` : "") +
                 wrapUntrustedContent(
-                  "BACKGROUND RESULT",
+                  "MONITOR RESULT",
                   snapshotScriptJson(
                     JSON.parse(JSON.stringify(value)),
                     48000 - Buffer.byteLength(warning ?? ""),
@@ -239,7 +238,7 @@ export default async function background(pi: ExtensionAPI) {
             },
           ],
           details: {
-            backgroundError: false,
+            monitorError: false,
             action: params.action,
             receipt: selected && summary(selected),
             cancelChanged,
@@ -254,11 +253,11 @@ export default async function background(pi: ExtensionAPI) {
               text:
                 error instanceof RequestError
                   ? error.message
-                  : "Background operation failed: invalid policy, unavailable provider, subscription or bounded output. No automatic retry; inspect receipts before a new registration.",
+                  : "Monitor operation failed: invalid policy, unavailable provider, subscription or bounded output. No automatic retry; inspect receipts before a new registration.",
             },
           ],
           details: {
-            backgroundError: true,
+            monitorError: true,
             action: params.action,
             status: "failed",
             receipts: [],

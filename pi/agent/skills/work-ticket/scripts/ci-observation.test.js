@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BackgroundEngine } from "../../../extensions/background/engine.ts";
-import { registration } from "../../../extensions/background/contract.ts";
-import { parseReceipt } from "../../../extensions/background/receipts.ts";
-import { updateMonitor, validateMonitor } from "./ci-background.js";
+import { MonitorEngine } from "../../../extensions/monitor/engine.ts";
+import { registration } from "../../../extensions/monitor/contract.ts";
+import { parseReceipt } from "../../../extensions/monitor/receipts.ts";
+import { updateMonitor, validateMonitor } from "./ci-observation.js";
 
 const pr = "https://github.com/example/project/pull/1",
   head = "a".repeat(40);
@@ -30,7 +30,7 @@ async function fixture() {
   );
   const update = (request) => (ledger = updateMonitor(ledger, request, now));
   update(observation("pending"));
-  const engine = new BackgroundEngine(
+  const engine = new MonitorEngine(
     {
       idle: () => !busy,
       persist() {},
@@ -301,6 +301,39 @@ test("uncertain registration cannot be replayed or rebound before inactivity rec
   f.engine.close(false);
 });
 
+test("historical Background backend reconciles without relabeling or refunding allowance", async () => {
+  const f = await fixture();
+  const id = await f.start();
+  assert.equal(f.ledger.watcher.backend, "monitor");
+  const old = structuredClone(f.ledger);
+  old.watcher.backend = "background";
+  validateMonitor(old);
+  await f.advance(60000);
+  f.engine.cancel(id);
+  const request = {
+    operation: "reconcile",
+    pr,
+    head,
+    receipt: f.engine.get(id),
+    reference: "historical originating receipt",
+  };
+  const reconciled = updateMonitor(old, request, 60000);
+  assert.equal(reconciled.lastWatcher.backend, "background");
+  assert.equal(reconciled.waitUsedMs, 60000);
+  assert.equal(updateMonitor(reconciled, request, 61000).waitUsedMs, 60000);
+  const waiting = updateMonitor(reconciled, observation("pending"), 61000);
+  const prepared = updateMonitor(waiting, { operation: "prepare" }, 61000);
+  assert.equal(prepared.watcher.backend, "monitor");
+  assert.equal(prepared.watcher.timeoutMs, old.waitLimitMs - 60000);
+  assert.throws(() =>
+    validateMonitor({
+      ...old,
+      watcher: { ...old.watcher, backend: "execution" },
+    }),
+  );
+  f.engine.close(false);
+});
+
 test("raw active or legacy receipts cannot settle a new job; interruption retains usage", async () => {
   const f = await fixture(),
     id = await f.start();
@@ -321,7 +354,7 @@ test("raw active or legacy receipts cannot settle a new job; interruption retain
         },
         reference: "legacy",
       }),
-    /Background/,
+    /Monitor/,
   );
   await f.advance(5000);
   f.engine.close(true);

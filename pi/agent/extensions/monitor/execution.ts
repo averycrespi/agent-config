@@ -5,7 +5,7 @@ import {
   type JsonValue,
 } from "../script/api.ts";
 import type { Registration, Trigger } from "./contract.ts";
-export function evaluateBackground(
+export function evaluateMonitor(
   pi: Pick<ExtensionAPI, "events">,
   cwd: string,
   reg: Registration,
