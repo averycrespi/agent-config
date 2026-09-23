@@ -9,6 +9,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { registerBackgroundProvider } from "../background/api.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { MailboxError, MailboxStore, address } from "./store.ts";
+import { renderMailboxCall, renderMailboxResult } from "./render.ts";
 
 const mailboxSchema = {
   type: "string",
@@ -198,6 +199,8 @@ export default function mailboxExtension(
         }),
       ),
     }),
+    renderCall: renderMailboxCall,
+    renderResult: renderMailboxResult,
     async execute(_id, params, signal) {
       signal?.throwIfAborted();
       if (!active) throw new Error("Mailbox unavailable");
