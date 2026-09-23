@@ -11,7 +11,6 @@ import { BackgroundEngine } from "./engine.ts";
 import { evaluateBackground } from "./execution.ts";
 import { registration, RequestError, isId, type Receipt } from "./contract.ts";
 import { subscribeProvider, describeEvents } from "./providers.ts";
-import { SessionProvider, sessionRoot } from "./sessions.ts";
 import { restore, RECEIPT_TYPE } from "./receipts.ts";
 import {
   parameters,
@@ -23,10 +22,7 @@ import {
   pollingWarning,
 } from "./tool.ts";
 
-export default async function background(
-  pi: ExtensionAPI,
-  rootPath = sessionRoot,
-) {
+export default async function background(pi: ExtensionAPI) {
   const config = Object.freeze(await loadBackgroundConfig());
   registerConfigCommand(pi, {
     extensionName: "background",
@@ -39,8 +35,6 @@ export default async function background(
   let generation = 0;
   let context: ExtensionContext | undefined;
   let engine: BackgroundEngine | undefined;
-  let sessions: SessionProvider | undefined;
-  let ready: Promise<void> = Promise.resolve();
   let ticker: ReturnType<typeof setInterval> | undefined;
   const widget = createPersistentWidget("background");
   const refresh = () => {
@@ -62,8 +56,6 @@ export default async function background(
   const close = (persist: boolean) => {
     engine?.close(persist);
     generation++;
-    sessions?.close();
-    sessions = undefined;
     clearInterval(ticker);
     ticker = undefined;
     if (context) widget.update(context);
@@ -77,7 +69,18 @@ export default async function background(
       if (token !== generation) throw new Error("stale_context");
     };
     engine = new BackgroundEngine({
-      idle: () => token === generation && ctx.isIdle(),
+      idle: () => {
+        if (token !== generation || !ctx.isIdle()) return false;
+        // Runtime idleness is not human idleness. Never disturb a visible draft.
+        if (ctx.mode === "tui") {
+          try {
+            return ctx.ui.getEditorText().length === 0;
+          } catch {
+            return false;
+          }
+        }
+        return true;
+      },
       persist: (r) => {
         current();
         pi.appendEntry(RECEIPT_TYPE, r);
@@ -93,7 +96,9 @@ export default async function background(
             display: true,
             details: { jobId: r.id, wakeId: r.lastAttention!.id },
           },
-          { deliverAs: "followUp", triggerTurn: true },
+          ctx.mode === "rpc"
+            ? { deliverAs: "nextTurn", triggerTurn: false }
+            : { deliverAs: "followUp", triggerTurn: true },
         );
       },
       evaluate: (reg, trigger, state, signal, deadlineMs) =>
@@ -116,39 +121,15 @@ export default async function background(
     });
     engine.restore(restore(ctx.sessionManager));
     refresh();
-    ready = (async () => {
-      let next: SessionProvider | undefined;
-      try {
-        next = new SessionProvider(
-          pi,
-          ctx.sessionManager.getSessionId(),
-          rootPath(),
-        );
-        await next.start();
-        if (token !== generation) next.close();
-        else sessions = next;
-      } catch {
-        next?.close();
-        if (token === generation && ctx.hasUI)
-          ctx.ui.notify(
-            "Background session events unavailable; timer jobs remain available. No automatic retry.",
-            "warning",
-          );
-      }
-    })();
-    return ready;
   };
   pi.on("session_start", (_e, ctx) => initialize(ctx));
   pi.on("session_before_tree", () => close(false));
   pi.on("session_tree", (_e, ctx) => initialize(ctx));
   pi.on("session_shutdown", () => {
-    sessions?.publish("session_shutdown");
     close(true);
     context = undefined;
   });
-  pi.on("agent_start", () => sessions?.publish("agent_start"));
   pi.on("agent_settled", () => {
-    sessions?.publish("agent_settled");
     engine?.settled();
   });
   pi.on("message_start", ({ message }) => {
@@ -179,7 +160,6 @@ export default async function background(
     ],
     async execute(_id, params, signal) {
       const token = generation;
-      await ready;
       const owner = engine,
         ctx = context;
       try {
