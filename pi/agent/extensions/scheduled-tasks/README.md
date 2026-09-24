@@ -21,6 +21,10 @@ All persistent data lives under one configurable root directory:
 
 The extension creates these directories as needed with owner-only permissions where practical.
 
+## Tool display
+
+`scheduled_tasks` and `scheduled_task_handoff` use one contextual collapsed result line with typed counts/outcomes, not task bodies or log previews. Validation is not execution; `run` says `started, not completed` only after launch, and launch/validation failures remain explicit. Doctor reports cron availability and issue counts rather than claiming generic health. Handoff marker warnings stay visible. Expand for bounded original task text, logs and diagnostics. Display does not affect scheduling or handoff persistence.
+
 ## Configuration
 
 Settings are read from `extension:scheduled-tasks` plus environment overrides. Environment variables override settings when set.

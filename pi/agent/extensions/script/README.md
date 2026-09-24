@@ -129,6 +129,8 @@ The former background `list` action is now `executions`; `list` exclusively disc
 
 ## Tool display
 
+Background admission/executions/inspect/cancel/dismiss use contextual one-line summaries with status and uncertainty before optional names, never full IDs or a misleading provider-selection placeholder. Expand for retained records and framed evidence. Admission is not completion; cancellation is not rollback; dismissal retains evidence. The foreground run/progress and provider-discovery renderers below are unchanged.
+
 The call row shows the action, provider selection or discovery scope, and nonsecret description. Execution uses `providers: web, mcp` or `providers: none`; discovery uses `scope: web, mcp` or `scope: all` for `[]`. Here, **all** means currently registered, host-permitted providers, not unrestricted access. Selection is a request, not proof of permission, availability, or user approval. More than three selected names use a `+N more` suffix; expand for the full selection.
 
 Collapsed results show `completed · no calls` for successful zero-call runs, whether or not providers were selected; otherwise they show successful call counts or discovery provider/method counts. Empty discovery says no permitted providers were discovered; it does not imply that no extensions are installed. Failures show a safe reason rather than an unhelpful zero-call count. Cancellation, timeout, partial execution, and unknown outcomes remain distinct, with effect warnings visible even when collapsed.

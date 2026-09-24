@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import compactTools from "./index.ts";
@@ -10,341 +10,197 @@ import registerGrep from "./grep.ts";
 import registerLs from "./ls.ts";
 import registerRead from "./read.ts";
 
-const identityTheme = {
-  fg: (_color: string, text: string) => text,
-  bold: (text: string) => text,
+const theme: any = { fg: (_: string, s: string) => s, bold: (s: string) => s };
+const registrations = {
+  read: registerRead,
+  bash: registerBash,
+  ls: registerLs,
+  find: registerFind,
+  grep: registerGrep,
 };
-
-type RegisteredTool = {
-  renderCall: (
-    args: any,
-    theme: typeof identityTheme,
-    context: any,
-  ) => {
-    render: (width: number) => string[];
-  };
-  renderResult: (
-    result: AgentToolResult<unknown>,
-    options: { isPartial: boolean },
-    theme: typeof identityTheme,
-    context: any,
-  ) => { render: (width: number) => string[] };
-};
-
-function captureTool(register: (pi: any) => void): RegisteredTool {
-  let tool: RegisteredTool | undefined;
+function capture(register: (pi: any) => void): any {
+  let tool: any;
   register({
-    registerTool(def: RegisteredTool) {
-      tool = def;
+    registerTool: (t: any) => {
+      tool = t;
     },
   });
-  assert.ok(tool, "tool should be registered");
   return tool;
 }
-
-function renderCall(
-  tool: RegisteredTool,
-  args: Record<string, unknown>,
-  width: number,
-): string[] {
-  return tool
-    .renderCall(args, identityTheme, {
-      cwd: "/repo",
-      lastComponent: undefined,
-    })
-    .render(width);
-}
-
-function renderResult(
-  tool: RegisteredTool,
-  text: string,
-  width: number,
-  options: {
-    args?: Record<string, unknown>;
-    isError?: boolean;
-    isPartial?: boolean;
-  } = {},
-): string[] {
-  const context = {
-    cwd: "/repo",
-    args: options.args ?? {},
-    isError: options.isError ?? false,
-    state: {} as Record<string, unknown>,
-    invalidate() {},
-    lastComponent: undefined,
-  };
-  try {
-    return tool
+test("real stock bash failures retain exit/timeout/abort distinctions without output previews", async () => {
+  const tool = capture(registerBash);
+  for (const [args, signal, expected] of [
+    [
+      { command: "printf PRIVATE_OUTPUT; exit 7" },
+      undefined,
+      /failed · exit 7/,
+    ],
+    [{ command: "sleep 2", timeout: 0.05 }, undefined, /timed out/],
+    [{ command: "sleep 2" }, AbortSignal.abort(), /aborted/],
+  ] as const) {
+    let failure: Error | undefined;
+    try {
+      await tool.execute("failure-fixture", args, signal, undefined, {
+        cwd: process.cwd(),
+      });
+    } catch (error) {
+      failure = error as Error;
+    }
+    assert.ok(failure);
+    const result = { content: [{ type: "text", text: failure.message }] };
+    const context = {
+      cwd: process.cwd(),
+      args,
+      state: {},
+      isError: true,
+      invalidate() {},
+    };
+    const row = tool
       .renderResult(
-        {
-          content: [{ type: "text", text }],
-        } as unknown as AgentToolResult<unknown>,
-        { isPartial: options.isPartial ?? false },
-        identityTheme,
+        result,
+        { isPartial: false, expanded: false },
+        theme,
         context,
       )
-      .render(width);
-  } finally {
-    const timer = context.state.renderTimer;
-    if (timer) clearInterval(timer as ReturnType<typeof setInterval>);
-  }
-}
-
-function assertRenderedWidth(lines: string[], width: number) {
-  assert.ok(lines.length > 0, "expected visible lines");
-  for (const line of lines) {
-    assert.ok(
-      visibleWidth(line) <= width,
-      `expected line width <= ${width}, got ${visibleWidth(line)} for ${JSON.stringify(line)}`,
+      .render(48);
+    assert.equal(row.length, 1);
+    assert.match(row[0], expected);
+    assert.doesNotMatch(row[0], /PRIVATE_OUTPUT/);
+    assert.match(
+      tool
+        .renderResult(
+          result,
+          { isPartial: false, expanded: true },
+          theme,
+          context,
+        )
+        .render(120)
+        .join("\n"),
+      /Command/,
     );
   }
-}
+});
 
-test("extension registers all renderer overrides after session_start", async () => {
+test("file failures project closed stock error classes, not arbitrary diagnostics", () => {
+  for (const [name, register] of Object.entries(registrations).filter(
+    ([name]) => name !== "bash",
+  )) {
+    const tool = capture(register);
+    for (const [text, expected] of [
+      ["ENOENT: no such file or directory, open PRIVATE_PATH", "not found"],
+      ["EACCES: permission denied PRIVATE_PATH", "permission denied"],
+      ["Path not found: PRIVATE_PATH", "not found"],
+      ["Operation aborted", "aborted"],
+    ]) {
+      const row = tool
+        .renderResult(
+          { content: [{ type: "text", text }] },
+          { isPartial: false },
+          theme,
+          { cwd: process.cwd(), args: {}, state: {}, isError: true },
+        )
+        .render(100)[0];
+      assert.match(row, new RegExp(`^${name} · failed · ${expected}`));
+      assert.doesNotMatch(row, /PRIVATE_PATH/);
+    }
+  }
+});
+
+test("extension registers overrides once after session_start without activating tools", async () => {
   const registered: string[] = [];
   const handlers = new Map<string, Function>();
-  let setActiveToolsCalled = false;
-
+  let activated = false;
   compactTools({
     events: createEventBus(),
     getActiveTools: () => ["read"],
     getAllTools: () => registered.map((name) => ({ name })),
-    on(event: string, handler: Function) {
-      handlers.set(event, handler);
-    },
-    registerTool(def: { name: string }) {
-      registered.push(def.name);
-    },
-    setActiveTools() {
-      setActiveToolsCalled = true;
+    on: (e: string, f: Function) => handlers.set(e, f),
+    registerTool: (t: any) => registered.push(t.name),
+    setActiveTools: () => {
+      activated = true;
     },
   } as any);
-
   assert.deepEqual(registered, []);
   await handlers.get("session_start")?.({}, { cwd: "/repo" });
   await handlers.get("session_start")?.({}, { cwd: "/repo" });
-
   assert.deepEqual(registered.sort(), ["bash", "find", "grep", "ls", "read"]);
-  assert.equal(setActiveToolsCalled, false);
+  assert.equal(activated, false);
 });
-
-test("bash renderCall truncates long commands instead of wrapping", () => {
-  const tool = captureTool(registerBash);
-
-  const lines = renderCall(
-    tool,
-    { command: "printf 'abcdefghijklmnopqrstuvwxyz0123456789'" },
-    18,
-  );
-
-  assert.equal(lines.length, 1);
-  assertRenderedWidth(lines, 18);
-});
-
-test("read error rendering truncates long messages instead of wrapping", () => {
-  const tool = captureTool(registerRead);
-
-  const lines = renderResult(
-    tool,
-    "ENOENT: no such file or directory, open '/repo/some/really/long/path/to/a/file.txt'",
-    24,
-    { args: { path: "some/really/long/path/to/a/file.txt" }, isError: true },
-  );
-
-  assert.equal(lines.length, 1);
-  assertRenderedWidth(lines, 24);
-});
-
-test("ls success rendering truncates each preview line instead of wrapping", () => {
-  const tool = captureTool(registerLs);
-
-  const lines = renderResult(
-    tool,
-    [
-      "src/components/extremely-long-component-name-one.ts",
-      "src/components/extremely-long-component-name-two.ts",
-      "src/components/extremely-long-component-name-three.ts",
-      "src/components/extremely-long-component-name-four.ts",
-    ].join("\n"),
-    20,
-    { args: { path: "src/components" } },
-  );
-
-  assert.equal(lines.length, 4);
-  assertRenderedWidth(lines, 20);
-});
-
-test("find success rendering truncates each preview line instead of wrapping", () => {
-  const tool = captureTool(registerFind);
-
-  const lines = renderResult(
-    tool,
-    [
-      "src/routes/really-long-file-name-one.ts",
-      "src/routes/really-long-file-name-two.ts",
-      "src/routes/really-long-file-name-three.ts",
-      "src/routes/really-long-file-name-four.ts",
-    ].join("\n"),
-    18,
-    { args: { pattern: "*.ts", path: "src/routes" } },
-  );
-
-  assert.equal(lines.length, 4);
-  assertRenderedWidth(lines, 18);
-});
-
-test("grep error rendering truncates long messages instead of wrapping", () => {
-  const tool = captureTool(registerGrep);
-
-  const lines = renderResult(
-    tool,
-    "rg: /repo/src/a/really/long/path/to/search: IO error for operation on /repo/src/a/really/long/path/to/search: No such file or directory (os error 2)",
-    22,
-    { args: { pattern: "needle", path: "src" }, isError: true },
-  );
-
-  assert.equal(lines.length, 1);
-  assertRenderedWidth(lines, 22);
-});
-
-test("read success renders no result body", () => {
-  const tool = captureTool(registerRead);
-
-  assert.deepEqual(
-    renderResult(tool, "file contents", 80, { args: { path: "src/file.ts" } }),
-    [],
-  );
-});
-
-test("bash success renders the last three non-empty output lines", () => {
-  const tool = captureTool(registerBash);
-
-  assert.deepEqual(
-    renderResult(tool, "one\n\ntwo\nthree\nfour", 80, {
-      args: { command: "echo test" },
-    }),
-    ["two", "three", "four"],
-  );
-});
-
-test("bash error renders the first non-empty error line", () => {
-  const tool = captureTool(registerBash);
-
-  assert.deepEqual(
-    renderResult(tool, "\nfirst failure\nsecond failure", 80, {
-      args: { command: "false" },
-      isError: true,
-    }),
-    ["first failure"],
-  );
-});
-
-test("bash output expands tabs before compact rendering", () => {
-  const tool = captureTool(registerBash);
-
-  assert.deepEqual(
-    renderResult(tool, "     1\talpha\npath:161:\t\tenumerable: true,", 80, {
-      args: { command: "nl file" },
-    }),
-    ["     1   alpha", "path:161:      enumerable: true,"],
-  );
-});
-
-test("ls empty success renders empty", () => {
-  const tool = captureTool(registerLs);
-
-  assert.deepEqual(renderResult(tool, "", 80, { args: { path: "." } }), [
-    "empty",
-  ]);
-});
-
-test("ls error renders the first non-empty error line", () => {
-  const tool = captureTool(registerLs);
-
-  assert.deepEqual(
-    renderResult(tool, "\npermission denied", 80, {
-      args: { path: "private" },
-      isError: true,
-    }),
-    ["permission denied"],
-  );
-});
-
-test("find no-match success renders no matches", () => {
-  const tool = captureTool(registerFind);
-
-  assert.deepEqual(
-    renderResult(tool, "", 80, { args: { pattern: "*.missing" } }),
-    ["no matches"],
-  );
-});
-
-test("find error renders the first non-empty error line", () => {
-  const tool = captureTool(registerFind);
-
-  assert.deepEqual(
-    renderResult(tool, "\nfind failed", 80, {
-      args: { pattern: "*.ts" },
-      isError: true,
-    }),
-    ["find failed"],
-  );
-});
-
-test("grep success renders a match count", () => {
-  const tool = captureTool(registerGrep);
-
-  assert.deepEqual(
-    renderResult(tool, "a.ts:1:needle\nb.ts:2:needle", 80, {
-      args: { pattern: "needle" },
-    }),
-    ["2 matches"],
-  );
-});
-
-test("grep no-match success renders no matches", () => {
-  const tool = captureTool(registerGrep);
-
-  assert.deepEqual(
-    renderResult(tool, "", 80, { args: { pattern: "needle" } }),
-    ["no matches"],
-  );
-});
-
-test("running renderers show compact in-progress labels", () => {
-  const cases: Array<
-    [string, RegisteredTool, Record<string, unknown>, RegExp]
-  > = [
-    [
-      "read",
-      captureTool(registerRead),
-      { path: "src/file.ts" },
-      /^Reading src\/file\.ts\.\.\.$/,
-    ],
-    [
-      "bash",
-      captureTool(registerBash),
-      { command: "npm test" },
-      /^Running npm test\.\.\.$/,
-    ],
-    ["ls", captureTool(registerLs), { path: "src" }, /^Listing src\.\.\.$/],
-    [
-      "find",
-      captureTool(registerFind),
-      { pattern: "*.ts" },
-      /^Finding \*\.ts\.\.\.$/,
-    ],
-    [
-      "grep",
-      captureTool(registerGrep),
-      { pattern: "needle" },
-      /^Searching \/needle\/\.\.\.$/,
-    ],
-  ];
-
-  for (const [name, tool, args, expected] of cases) {
-    const lines = renderResult(tool, "", 80, { args, isPartial: true });
-    assert.equal(lines.length, 1, name);
-    assert.match(lines[0], expected, name);
-  }
-});
+for (const [name, register] of Object.entries(registrations)) {
+  test(`${name}: contextual collapsed results, expansion, errors, partial cleanup and safe widths`, () => {
+    const tool = capture(register);
+    const args = {
+      path: "src/世界\nfile\x1b]52;c;PRIVATE\x07.ts",
+      pattern: "needle\n\x1b[2J",
+      command: "echo PRIVATE_SCRIPT",
+    };
+    const context: any = {
+      cwd: "/repo",
+      args,
+      state: {},
+      invalidate() {},
+      isError: false,
+    };
+    const result = {
+      content: [{ type: "text", text: "PRIVATE_OUTPUT\nsecond\nthird\nlast" }],
+    };
+    const original = JSON.stringify(result);
+    const call = tool.renderCall(args, theme, context);
+    assert.equal(call.render(100).length, 1);
+    assert.doesNotMatch(call.render(100).join(""), /PRIVATE/);
+    const partial = tool.renderResult(
+      result,
+      { isPartial: true, expanded: false },
+      theme,
+      context,
+    );
+    assert.match(partial.render(120)[0], new RegExp(`^${name} · running`));
+    assert.ok(context.state.renderTimer);
+    context.lastComponent = partial;
+    const compact = tool.renderResult(
+      result,
+      { isPartial: false, expanded: false },
+      theme,
+      context,
+    );
+    assert.equal(compact, partial);
+    assert.equal(context.state.renderTimer, undefined);
+    assert.equal(compact.render(120).length, 1);
+    assert.match(compact.render(120)[0], /4 output lines/);
+    assert.doesNotMatch(compact.render(120)[0], /PRIVATE_OUTPUT|second|last/);
+    if (name === "read") assert.match(compact.render(120)[0], /read · read/);
+    if (name === "bash")
+      assert.match(compact.render(120)[0], /exited successfully/);
+    for (const width of [0, 1, 12, 32, 48, 80]) {
+      for (const component of [call, compact]) {
+        const lines = component.render(width);
+        assert.equal(lines.length, 1);
+        assert.ok(visibleWidth(lines[0]) <= width);
+        assert.doesNotMatch(
+          stripVTControlCharacters(lines[0]),
+          /[\p{Cc}\p{Cf}]/u,
+        );
+      }
+    }
+    const expanded = tool.renderResult(
+      result,
+      { isPartial: false, expanded: true },
+      theme,
+      context,
+    );
+    assert.match(
+      expanded.render(120).join("\n"),
+      /PRIVATE_OUTPUT\nsecond\nthird\nlast/,
+    );
+    context.isError = true;
+    const error = tool.renderResult(
+      result,
+      { isPartial: false, expanded: false },
+      theme,
+      context,
+    );
+    assert.match(error.render(100)[0], new RegExp(`^${name} · failed`));
+    assert.doesNotMatch(error.render(100)[0], /PRIVATE_OUTPUT|successfully/);
+    assert.equal(JSON.stringify(result), original);
+  });
+}

@@ -702,7 +702,8 @@ export default function (pi: ExtensionAPI) {
         const deadlineMs = Date.now() + (params.timeout_ms ?? 600000);
         const execution = service.admit({
           owner: "subagents",
-          label: `${specs.length} subagents`,
+          label:
+            specs.length === 1 ? specs[0].intent : `${specs.length} subagents`,
           deadlineMs,
           run: async (abort, report) => {
             const controller = new AbortController();

@@ -122,6 +122,7 @@ test("background returns before completion; mixed results and usage stay aligned
     ],
   });
   assert.equal(admission.usage, undefined);
+  assert.equal(admission.details.execution.label, "2 subagents");
   const id = admission.details.execution.id;
   for (let i = 0; !finish && i < 100; i++) await tick();
   assert.equal(h.service.inspect("subagents", id).status, "running");
@@ -144,6 +145,20 @@ test("background returns before completion; mixed results and usage stay aligned
   assert.equal(h.sent.length, 1);
   await h.call({ action: "dismiss", id });
   assert.equal(h.service.inspect("subagents", id).dismissed, true);
+});
+
+test("one-child background display identity uses the supplied intent without changing accounting", async (t) => {
+  const h = harness(t);
+  mock.method(_runSubagent, "fn", async () => ok);
+  const admission = await h.call({
+    execution: "background",
+    agents: [{ ...child(), intent: "Compare two powers" }],
+  });
+  assert.equal(admission.details.execution.label, "Compare two powers");
+  const r = await settled(h, admission.details.execution.id);
+  assert.deepEqual(r.progress, { total: 1, completed: 1, failed: 0 });
+  assert.equal((r.result as any).details.outcomes.length, 1);
+  assert.equal(h.sent.length, 1);
 });
 
 test("missing service and invalid batches launch no child and create no record", async (t) => {

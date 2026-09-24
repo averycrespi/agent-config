@@ -75,7 +75,7 @@ test("dynamic activity and initial references validate atomically without changi
   const theme = { fg: (_: string, s: string) => s } as any;
   assert.match(
     widgetLines([before], 150, theme)[0],
-    /1\/2 agents settled.*1 failed.*verify/,
+    /workflow running.*1\/2 settled.*1 failed.*verify/,
   );
   for (const width of [12, 32, 80])
     assert.ok(
@@ -85,4 +85,70 @@ test("dynamic activity and initial references validate atomically without changi
     );
   finish();
   service.close();
+});
+
+test("widget sources, singular batches and critical warnings precede optional identity", () => {
+  const theme = { fg: (_: string, s: string) => s } as any;
+  const base: Execution = {
+    id: "11111111-2222-4333-8444-555555555555",
+    owner: "script",
+    label: "OPTIONAL".repeat(20),
+    anchor: "anchor",
+    createdAt: 0,
+    deadlineMs: 1000,
+    status: "running",
+    cancelRequested: false,
+    dismissed: false,
+    effectsMayPersist: false,
+    outcomeUnknown: false,
+    notification: {
+      id: "notice",
+      intent: false,
+      handoff: "none",
+      consumed: false,
+    },
+  };
+  for (const [owner, total, expected] of [
+    ["script", undefined, "script"],
+    ["workflow", undefined, "workflow"],
+    ["subagents", 1, "subagent"],
+    ["subagents", 2, "subagents"],
+  ] as const) {
+    const r = {
+      ...base,
+      owner,
+      ...(total ? { progress: { total, completed: 0, failed: 0 } } : {}),
+    };
+    const before = JSON.stringify(r);
+    assert.match(
+      widgetLines([r], 160, theme)[0],
+      new RegExp(`^${expected} running`),
+    );
+    r.outcomeUnknown = true;
+    for (const width of [48, 64]) {
+      const line = widgetLines([r], width, theme)[0];
+      assert.match(line, /effects unknown/);
+      assert.doesNotMatch(line, /11111111/);
+      assert.ok(visibleWidth(line) <= width);
+    }
+    r.outcomeUnknown = false;
+    assert.equal(JSON.stringify(r), before);
+  }
+  const uncertain = {
+    ...base,
+    status: "interrupted" as const,
+    outcomeUnknown: true,
+    persistenceFailed: true,
+    notification: { ...base.notification, handoff: "unknown" as const },
+  };
+  const line = widgetLines([uncertain], 64, theme)[0];
+  assert.match(
+    line,
+    /^script interrupted · unknown\/persist failed\/handoff\?/,
+  );
+  assert.doesNotMatch(line, /11111111/);
+  assert.match(
+    widgetLines([{ ...base, effectsMayPersist: true }], 80, theme)[0],
+    /effects may persist/,
+  );
 });

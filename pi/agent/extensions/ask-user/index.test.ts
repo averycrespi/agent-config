@@ -335,6 +335,78 @@ for (const disposition of [
   });
 }
 
+test("tool rows hide question/answer bodies, preserve cancellation, and expand evidence", () => {
+  const tools = new Map<string, any>();
+  registerAskUser(tools);
+  const tool = tools.get("ask_user");
+  const theme: any = {
+    fg: (_: string, s: string) => s,
+    bold: (s: string) => s,
+  };
+  const ctx: any = {
+    args: {
+      question: "PRIVATE_QUESTION",
+      options: [{ label: "PRIVATE" }, { label: "PRIVATE" }],
+    },
+  };
+  assert.doesNotMatch(
+    tool.renderCall(ctx.args, theme, ctx).render(120).join("\n"),
+    /PRIVATE/,
+  );
+  for (const [details, expected] of [
+    [{ cancelled: true }, "cancelled"],
+    [
+      {
+        cancelled: false,
+        answerIndex: 1,
+        answerLabel: "PRIVATE",
+        isCustom: false,
+      },
+      "answered · option 1",
+    ],
+    [
+      { cancelled: false, answerLabel: "PRIVATE", isCustom: true },
+      "answered · custom response",
+    ],
+    [undefined, "status unavailable"],
+  ] as const) {
+    const result = {
+      content: [{ type: "text", text: "PRIVATE_ANSWER\nretained evidence" }],
+      details,
+    };
+    const before = JSON.stringify(result);
+    const row = tool
+      .renderResult(result, { expanded: false, isPartial: false }, theme, ctx)
+      .render(120);
+    assert.equal(row.length, 1);
+    assert.match(row[0], new RegExp(expected));
+    assert.doesNotMatch(row[0], /PRIVATE|approved|approval/);
+    assert.match(
+      tool
+        .renderResult(result, { expanded: true, isPartial: false }, theme, ctx)
+        .render(120)
+        .join("\n"),
+      /PRIVATE_ANSWER\nretained evidence/,
+    );
+    assert.match(
+      tool
+        .renderResult(result, { expanded: false, isPartial: false }, theme, {
+          ...ctx,
+          isError: true,
+        })
+        .render(120)[0],
+      /request failed/,
+    );
+    assert.match(
+      tool
+        .renderResult(result, { expanded: false, isPartial: true }, theme, ctx)
+        .render(120)[0],
+      /waiting for answer/,
+    );
+    assert.equal(JSON.stringify(result), before);
+  }
+});
+
 test("no input event for validation, unavailable custom UI, pre-abort, or failure before waiting", async () => {
   for (const kind of [
     "invalid",

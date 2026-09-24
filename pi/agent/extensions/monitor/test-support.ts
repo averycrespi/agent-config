@@ -9,6 +9,7 @@ export function temporaryRoot() {
 export const theme: any = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
+  bg: (_color: string, text: string) => text,
 };
 export function value(result: any) {
   const text = result.content[0].text as string;

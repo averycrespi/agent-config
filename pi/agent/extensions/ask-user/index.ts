@@ -17,12 +17,18 @@ import {
   type EditorTheme,
   Key,
   matchesKey,
-  Text,
   truncateToWidth,
   wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { Type, type Static } from "@sinclair/typebox";
-import { firstLine, getResultText } from "../_shared/render.ts";
+import {
+  firstLine,
+  getResultText,
+  displayLabel,
+  expandedResult,
+  getTruncatedText,
+  toolSummary,
+} from "../_shared/render.ts";
 import { OTHER_LABEL, validateAskParams } from "./validate.ts";
 
 const RECOMMENDED_SUFFIX = " (Recommended)";
@@ -279,11 +285,15 @@ export default function (pi: ExtensionAPI) {
             };
 
             add(theme.fg("accent", "─".repeat(width)));
-            addWrapped(theme.fg("text", ` ${params.question}`));
+            addWrapped(
+              theme.fg("text", ` ${displayLabel(params.question, 2000)}`),
+            );
 
             if (params.context) {
               lines.push("");
-              addWrapped(theme.fg("muted", ` ${params.context}`));
+              addWrapped(
+                theme.fg("muted", ` ${displayLabel(params.context, 2000)}`),
+              );
             }
 
             lines.push("");
@@ -293,7 +303,7 @@ export default function (pi: ExtensionAPI) {
               const selected = i === optionIndex;
               const prefix = selected ? theme.fg("accent", "> ") : "  ";
 
-              let labelText = opt.label;
+              let labelText = displayLabel(opt.label, 500);
               if (i === params.recommended) labelText += RECOMMENDED_SUFFIX;
 
               if (opt.isOther && editMode) {
@@ -305,7 +315,9 @@ export default function (pi: ExtensionAPI) {
               }
 
               if (opt.description) {
-                add(`   ${theme.fg("muted", opt.description)}`);
+                add(
+                  `   ${theme.fg("muted", displayLabel(opt.description, 1000))}`,
+                );
               }
             }
 
@@ -386,60 +398,52 @@ export default function (pi: ExtensionAPI) {
       };
     },
 
-    renderCall(args, theme, _context) {
-      const opts = Array.isArray(args.options) ? args.options : [];
-      const numbered = [
-        ...opts.map((o: { label: string }) => o.label),
-        OTHER_LABEL,
-      ].map((label, i) => `${i + 1}. ${label}`);
-      const text =
-        theme.fg("toolTitle", theme.bold("ask_user ")) +
-        theme.fg("muted", args.question) +
-        `\n${theme.fg("dim", ` Options: ${numbered.join(", ")}`)}`;
-      return new Text(text, 0, 0);
+    renderCall(args, theme, context) {
+      const options = Array.isArray(args.options) ? args.options : [];
+      return getTruncatedText(context.lastComponent, [
+        toolSummary(theme, "ask_user", "choice", `${options.length} options`),
+        ...(context.expanded
+          ? [
+              displayLabel(args.question, 2000),
+              ...options.map(
+                (o, i) => `${i + 1}. ${displayLabel(o.label, 500)}`,
+              ),
+            ]
+          : []),
+      ]);
     },
 
-    renderResult(result, { isPartial }, theme, context) {
-      if (isPartial) {
-        return new Text(theme.fg("warning", "Waiting for answer..."), 0, 0);
-      }
-
-      if (context.isError) {
-        return new Text(
-          theme.fg(
-            "error",
-            firstLine(getResultText(result)) || "ask_user error",
-          ),
-          0,
-          0,
-        );
-      }
-
+    renderResult(result, { isPartial, expanded }, theme, context) {
       const details = result.details as AskDetails | undefined;
-
-      if (!details || details.cancelled) {
-        return new Text(theme.fg("warning", "Cancelled"), 0, 0);
-      }
-
-      if (details.isCustom) {
-        return new Text(
-          theme.fg("success", "✓ ") +
-            theme.fg("muted", "(wrote) ") +
-            theme.fg("accent", details.answerLabel ?? ""),
-          0,
-          0,
-        );
-      }
-
-      const display =
-        details.answerIndex != null
-          ? `${details.answerIndex}. ${details.answerLabel}`
-          : (details.answerLabel ?? "");
-      return new Text(
-        theme.fg("success", "✓ ") + theme.fg("accent", display),
-        0,
-        0,
-      );
+      const failed =
+        context.isError ||
+        firstLine(getResultText(result)).startsWith("Error:");
+      const state = isPartial
+        ? "waiting for answer"
+        : failed
+          ? "request failed"
+          : !details
+            ? "status unavailable"
+            : details.cancelled
+              ? "cancelled"
+              : details.isCustom
+                ? "answered · custom response"
+                : `answered · option ${details.answerIndex ?? "selected"}`;
+      return getTruncatedText(context.lastComponent, [
+        toolSummary(
+          theme,
+          "ask_user",
+          "",
+          state,
+          "",
+          failed
+            ? "error"
+            : isPartial || details?.cancelled || !details
+              ? "warning"
+              : "success",
+        ),
+        ...(expanded ? expandedResult(result) : []),
+      ]);
     },
   });
 }

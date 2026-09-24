@@ -86,7 +86,9 @@ Environment inheritance is deliberate; `exec-shell` is not a security sandbox an
 
 ## Activity and rendering
 
-Default tool output includes the aggregate `subagents` line and the per-agent progress inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `profile (capabilities)`, maps fixed capabilities to `fs`, `write`, `shell`, `mcp`, and `web`, and omits empty capability sets. Expansion adds retained-log paths and secondary errors without replacing or duplicating the default progress rows. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths remain expanded diagnostics.
+Background controls route through `background/render.ts`, a display-only projection of retained receipts. Collapse keeps one contextual status line and prioritizes uncertain effects; expansion preserves bounded evidence. This does not change direct execution, usage or notification ownership.
+
+Default foreground tool output includes the aggregate `subagents` line and the per-agent progress inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `profile (capabilities)`, maps fixed capabilities to `fs`, `write`, `shell`, `mcp`, and `web`, and omits empty capability sets. Expansion adds retained-log paths and secondary errors without replacing or duplicating the default progress rows. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths remain expanded diagnostics.
 
 ## Recursion, cancellation, and diagnostics
 

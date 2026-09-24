@@ -19,21 +19,23 @@ export interface NotificationDisplay {
   effectsMayPersist?: boolean;
   interrupted?: boolean;
   gap?: boolean;
+  total?: number;
+  mode?: "timer" | "observation";
 }
 
 const EXECUTION: Record<string, [string, ThemeColor]> = {
-  success: ["execution succeeded", "success"],
-  failed: ["execution failed", "error"],
-  timeout: ["execution timed out", "warning"],
-  cancelled: ["execution cancelled", "muted"],
-  interrupted: ["execution interrupted", "warning"],
+  success: ["succeeded", "success"],
+  failed: ["failed", "error"],
+  timeout: ["timed out", "warning"],
+  cancelled: ["cancelled", "muted"],
+  interrupted: ["interrupted", "warning"],
 };
 const OBSERVATION: Record<string, [string, ThemeColor]> = {
-  condition: ["condition attention", "warning"],
-  timeout: ["observation timed out", "warning"],
+  condition: ["condition", "warning"],
+  timeout: ["timed out", "warning"],
   evaluation_failure: ["evaluation failed", "error"],
   coverage_failure: ["coverage lost", "error"],
-  budget_exhausted: ["observation budget exhausted", "warning"],
+  budget_exhausted: ["budget exhausted", "warning"],
 };
 const MAX_TEXT = 64_000;
 const MAX_ROWS = 2_000;
@@ -51,11 +53,16 @@ function safeText(value: unknown, limit: number, multiline = false): string {
     .trim();
 }
 
+export function executionType(owner: string, total?: unknown): string {
+  if (owner === "subagents") return total === 1 ? "subagent" : "subagents";
+  return owner === "script" || owner === "workflow" ? owner : "execution";
+}
+
 /** Pure TUI projection: no host callbacks, receipts, fetching, timers or mutations. */
 export function notificationRenderer(
   source: "background" | "monitor",
 ): MessageRenderer {
-  return (message, { expanded, outputPad }, theme) => {
+  return (message, { expanded }, theme) => {
     const details = message.details;
     const candidate = field(details, "display");
     const display = field(candidate, "version") === 1 ? candidate : undefined;
@@ -65,12 +72,58 @@ export function notificationRenderer(
     );
     const name = safeText(field(display, "name"), 200);
     const owner = safeText(field(display, "owner"), 48);
+    const type =
+      source === "monitor"
+        ? "monitor"
+        : executionType(owner, field(display, "total"));
     const status = field(display, "status");
     const vocabulary = source === "background" ? EXECUTION : OBSERVATION;
-    const [outcome, color] =
-      typeof status === "string" && Object.hasOwn(vocabulary, status)
-        ? vocabulary[status]
-        : ["notification · status unavailable", "muted" as const];
+    const optional = (key: string, type: string) =>
+      field(display, key) === undefined || typeof field(display, key) === type;
+    const total = field(display, "total");
+    const mode = field(display, "mode");
+    const dataOnly =
+      display &&
+      typeof display === "object" &&
+      !Array.isArray(display) &&
+      [
+        "name",
+        "status",
+        "owner",
+        "outcomeUnknown",
+        "effectsMayPersist",
+        "interrupted",
+        "gap",
+        "total",
+        "mode",
+      ].every((key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(display, key);
+        return !descriptor || "value" in descriptor;
+      });
+    const valid =
+      dataOnly &&
+      typeof field(display, "name") === "string" &&
+      typeof status === "string" &&
+      Object.hasOwn(vocabulary, status) &&
+      optional("owner", "string") &&
+      ["outcomeUnknown", "effectsMayPersist", "interrupted", "gap"].every(
+        (key) => optional(key, "boolean"),
+      ) &&
+      (total === undefined ||
+        (typeof total === "number" &&
+          Number.isSafeInteger(total) &&
+          total >= 0)) &&
+      (mode === undefined || mode === "timer" || mode === "observation");
+    const [outcome, color] = valid
+      ? vocabulary[status as string]
+      : ["status unavailable", "muted" as const];
+    const reason =
+      valid &&
+      source === "monitor" &&
+      status === "condition" &&
+      field(display, "mode") === "timer"
+        ? "timer elapsed"
+        : outcome;
     const warnings = [
       ...(field(display, "outcomeUnknown") === true ? ["effects unknown"] : []),
       ...(field(display, "interrupted") === true && status !== "interrupted"
@@ -82,62 +135,74 @@ export function notificationRenderer(
         ? ["effects may persist"]
         : []),
     ];
-    const identity = [name, id.slice(0, 8)].filter(Boolean).join(" · ");
     return {
       invalidate() {},
       render(width) {
         const w = Math.max(0, Math.floor(width));
-        const pad = Math.min(
-          Math.max(0, outputPad ?? 0),
-          Math.max(0, Math.floor((w - 32) / 2)),
-        );
-        const available = w - pad * 2;
-        const fit = (s: string) =>
-          " ".repeat(pad) + truncateToWidth(s, available);
         const separator = theme.fg("dim", " · ");
+        const title = theme.fg("toolTitle", theme.bold(type));
+        const state =
+          source === "monitor" && valid ? `attention · ${reason}` : reason;
+        let essential =
+          `${title} ${theme.fg(color, state)}` +
+          (warnings.length
+            ? separator + theme.fg("warning", warnings.join(" · "))
+            : "");
+        if (visibleWidth(essential) > w) {
+          const compactWarnings: Record<string, string> = {
+            "effects unknown": "unknown",
+            interrupted: "interrupted",
+            "coverage gap": "gap",
+            "effects may persist": "effects?",
+          };
+          // At narrow widths preserve every warning before optional identity.
+          const shortReason = reason
+            .replace("evaluation", "eval")
+            .replace("budget exhausted", "budget")
+            .replace("timed out", "timeout");
+          essential =
+            `${title} ${theme.fg(color, shortReason)}` +
+            (warnings.length
+              ? separator +
+                theme.fg(
+                  "warning",
+                  warnings.map((s) => compactWarnings[s]).join("/"),
+                )
+              : "");
+        }
+        const fit = (text: string) => {
+          const line = truncateToWidth(text, w).replace(
+            /\x1b\[0m/g,
+            "\x1b[22;23;24;25;27;28;29;39m",
+          );
+          return theme.bg(
+            "customMessageBg",
+            line + " ".repeat(Math.max(0, w - visibleWidth(line))),
+          );
+        };
         const lines = [
           fit(
-            theme.fg("toolTitle", theme.bold(source)) +
-              (identity ? separator + theme.fg("text", identity) : ""),
+            essential +
+              (name && w - visibleWidth(essential) >= 8
+                ? separator + theme.fg("text", name)
+                : ""),
           ),
-          fit(theme.fg(color, outcome)),
         ];
-        if (warnings.length) {
-          const full = warnings.join(" · ");
-          // All supplied warnings fit at 32 columns; do not hide a coverage gap
-          // behind effect uncertainty or interruption when the row is narrow.
-          const compact = warnings
-            .map((warning) =>
-              warning === "coverage gap"
-                ? "gap"
-                : warning === "effects may persist"
-                  ? "effects possible"
-                  : warning,
-            )
-            .join("/");
-          lines.push(
-            fit(
-              theme.fg(
-                "warning",
-                visibleWidth(full) <= available ? full : compact,
-              ),
-            ),
-          );
-        }
         if (!expanded) return lines;
-        // Text only: never interpret terminal links, images, Markdown HTML or escape sequences.
+        // Plain text only: expansion never interprets terminal links or fetches references.
         const content =
           typeof message.content === "string"
             ? message.content
             : message.content
-                .filter((block) => block.type === "text")
-                .map((block) => block.text)
+                .filter((b) => b.type === "text")
+                .map((b) => b.text)
                 .join("\n");
         const context = [
           ["Name", name],
           ["ID", id],
           ["Adapter", owner],
-          ...(warnings.length ? [["Warnings", warnings.join(" · ")]] : []),
+          ["Status", state],
+          ["Warnings", warnings.join(" · ")],
         ]
           .filter(([, value]) => value)
           .map(([label, value]) => `${label}: ${value}`)
@@ -145,16 +210,15 @@ export function notificationRenderer(
         const text = [context, safeText(content, MAX_TEXT, true)]
           .filter(Boolean)
           .join("\n");
-        const rows = available > 0 ? wrapTextWithAnsi(text, available) : [""];
-        const truncated = content.length > MAX_TEXT || rows.length > MAX_ROWS;
+        const rows = w > 0 ? wrapTextWithAnsi(text, w) : [""];
         lines.push(
           ...rows.slice(0, MAX_ROWS).map((line) => fit(theme.fg("text", line))),
         );
-        if (truncated) {
+        if (content.length > MAX_TEXT || rows.length > MAX_ROWS) {
           lines.push(
             ...wrapTextWithAnsi(
               "Display truncated; complete message remains in session/model context.",
-              Math.max(1, available),
+              Math.max(1, w),
             ).map((line) => fit(theme.fg("warning", line))),
           );
         }

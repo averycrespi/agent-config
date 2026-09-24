@@ -4,8 +4,13 @@ import {
   formatDuration,
   getTruncatedText,
   startPartialTimer,
+  toolSummary,
 } from "../_shared/render.ts";
 import type { SubagentRunState } from "./types.ts";
+import {
+  isBackgroundControl,
+  renderExecutionResult,
+} from "../background/render.ts";
 
 const CONTROL_SEQUENCES =
   /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)?|.)|[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f-\u009f]/g;
@@ -201,10 +206,14 @@ export function agentProgressLines(
 }
 
 export function renderAgentsCall(
-  _args: { agents?: unknown[] },
-  _theme: any,
+  args: { agents?: unknown[]; action?: unknown; execution?: unknown },
+  theme: any,
   context: any,
 ) {
+  if (isBackgroundControl("subagents", args))
+    return getTruncatedText(context.lastComponent, [
+      toolSummary(theme, "subagents", args.action ?? "run", ""),
+    ]);
   return getTruncatedText(context.lastComponent, []);
 }
 
@@ -230,21 +239,21 @@ export function renderAgentsResult(
   if (
     details.execution ||
     details.executions ||
-    details.validationError ||
-    context.isError
-  ) {
-    const failed =
-      context.isError ||
-      details.validationError ||
-      (details.execution &&
-        ["failed", "timeout", "interrupted", "cancelled"].includes(
-          details.execution.status,
-        ));
-    const summary = details.execution
-      ? `${details.execution.status} · ${safe(details.execution.id)}`
-      : details.executions
-        ? `${details.executions.length} executions`
-        : safe(result.content[0]?.text);
+    isBackgroundControl("subagents", context.args ?? {})
+  )
+    return renderExecutionResult(
+      "subagents",
+      details.executions ?? (details.execution ? [details.execution] : []),
+      result as any,
+      options,
+      theme,
+      context,
+      details.validationError === true,
+    );
+
+  if (details.validationError || context.isError) {
+    const failed = context.isError || details.validationError;
+    const summary = safe(result.content[0]?.text);
     const lines = [
       theme.fg("toolTitle", theme.bold("subagents")) +
         " · " +

@@ -122,6 +122,8 @@ Results use `## <intent>` headings followed by capability/profile metadata. `det
 
 ## UI
 
+Background run/list/inspect/cancel/dismiss use contextual one-line summaries with status and uncertainty before optional names. Full IDs, per-child output and retained evidence stay expanded; admission, cancellation requests and attention dismissal are distinct. The shared widget/notification uses singular `subagent` when typed progress identifies one child, otherwise `subagents`. New one-child background admissions use the child's bounded intent as their display label; batch labels retain the actual child count. Rendering never consumes or accepts results.
+
 Foreground output shows the `subagents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with the profile, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `write`, `shell`, `mcp`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
 
 ## Configuration

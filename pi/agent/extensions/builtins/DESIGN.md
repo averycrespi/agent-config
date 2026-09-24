@@ -1,12 +1,12 @@
 # Builtins design
 
-`builtins` keeps direct compact renderers unchanged and adapts active stock Pi tools to Script. It is not an arbitrary extension dispatcher or a second filesystem/shell implementation.
+`builtins` compacts direct tool rendering and adapts active stock Pi tools to Script without changing execution. It is not an arbitrary extension dispatcher or a second filesystem/shell implementation.
 
 ## Architecture
 
 - `index.ts` defers renderer override registration until `session_start` and registers each compact tool override exactly once.
 - `read.ts`, `bash.ts`, `ls.ts`, `find.ts`, and `grep.ts` each register a same-name tool with Pi's built-in schema/description and compact renderers.
-- `render.test.ts` verifies output shape, width behavior, and deferred registration.
+- `render.ts` owns the five builtins' display-only contextual summaries and bounded expanded text. `render.test.ts` verifies output shape, width behavior, timers, payload preservation and deferred registration.
 - `provider.ts` registers validated stock argument schemas, live method admission and structured result translation through the public Script API.
 - `provider.test.ts` exercises real filesystem/shell effects through Script IPC, cancellation, lifecycle, images, context isolation and fixture composition.
 - Shared formatting comes from `pi/agent/extensions/_shared/render.ts`.
@@ -51,11 +51,11 @@ The renderers optimize the terminal transcript for scanability:
 
 - Calls show one compact label.
 - Partial results show a short running message plus elapsed time from shared partial-timer helpers.
-- Errors show the first useful line.
-- Successful verbose tools show either nothing, a count, or a short head/tail preview.
+- Errors show contextual failure plus recognized stock-owned status suffixes/filesystem error classes. Bash exit, timeout, abort and termination remain distinct; arbitrary diagnostic text stays expanded. Classification is confined to the stock wrappers, not reused to interpret external payload prose.
+- Settled results show one contextual tool/outcome/count line, not raw head/tail previews. Stock truncation indicators remain visible; bounded expanded text preserves evidence without mutating results.
 - Width-aware output should go through `getTruncatedText(context.lastComponent, lines)` to avoid accidental wrapping.
 
-Tool-specific summaries are intentionally simple: `read` hides file contents, `bash` shows a short output tail, `ls` and `find` show a short head with truncation count, and `grep` shows match count.
+Tool-specific summaries are intentionally simple: `read` confirms a read, `bash` reports completed output-line count without echoing the command, `ls`/`find`/`grep` report nonempty output-line counts rather than guessing inventory or match counts from context/diagnostic lines. `toolSummary` computes optional target space at render width, sanitizes before styling, and preserves status first.
 
 ## Boundaries and non-goals
 

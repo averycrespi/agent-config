@@ -1,3 +1,4 @@
+import { visibleWidth } from "@earendil-works/pi-tui";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -6,6 +7,7 @@ import type {
 import { createPersistentWidget, fitWidgetRow } from "../_shared/widget.ts";
 import {
   notificationRenderer,
+  executionType,
   type NotificationDisplay,
 } from "../_shared/notification.ts";
 import {
@@ -18,39 +20,60 @@ import { fileStore } from "./store.ts";
 
 export const NOTIFICATION = "background:execution-outcome-v1";
 export function widgetLines(records: Execution[], width: number, theme: Theme) {
-  return records
-    .filter(visible)
-    .map((r) =>
-      fitWidgetRow(
-        `${theme.fg("muted", "background")} ${theme.fg(r.status === "running" ? "accent" : ["failed", "timeout", "interrupted"].includes(r.status) ? "error" : "warning", r.status)}`,
-        [
-          ...(r.outcomeUnknown ? [theme.fg("warning", "effects unknown")] : []),
-          ...(r.progress
-            ? [
-                theme.fg(
-                  r.progress.failed ? "warning" : "text",
-                  `${r.progress.completed}/${r.progress.total} settled${r.progress.failed ? ` · ${r.progress.failed} failed` : ""}`,
-                ),
-              ]
-            : []),
-          ...(r.activity
-            ? [
-                theme.fg(
-                  r.activity.failed ? "warning" : "text",
-                  `${r.activity.completed}/${r.activity.started} agents settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
-                ),
-                ...(r.activity.phase
-                  ? [theme.fg("muted", label(r.activity.phase))]
-                  : []),
-              ]
-            : []),
-          theme.fg("muted", r.id.slice(0, 8)),
-        ],
-        width,
-        theme.fg("dim", " · "),
-        theme.fg("text", label(r.label)),
-      ),
+  return records.filter(visible).map((r) => {
+    const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(r.status === "running" ? "accent" : ["failed", "timeout", "interrupted"].includes(r.status) ? "error" : "warning", r.status)}`;
+    const warnings = [
+      ...(r.outcomeUnknown
+        ? [["effects unknown", "unknown"]]
+        : r.effectsMayPersist
+          ? [["effects may persist", "effects?"]]
+          : []),
+      ...(r.persistenceFailed
+        ? [["persistence failed", "persist failed"]]
+        : []),
+      ...(r.notification.handoff === "unknown"
+        ? [["handoff unknown", "handoff?"]]
+        : []),
+    ];
+    const narrow =
+      visibleWidth([primary, ...warnings.map(([full]) => full)].join(" · ")) >
+      width;
+    return fitWidgetRow(
+      primary +
+        (warnings.length
+          ? theme.fg("dim", " · ") +
+            warnings
+              .map(([full, compact]) =>
+                theme.fg("warning", narrow ? compact : full),
+              )
+              .join(theme.fg("dim", narrow ? "/" : " · "))
+          : ""),
+      [
+        ...(r.progress
+          ? [
+              theme.fg(
+                r.progress.failed ? "warning" : "text",
+                `${r.progress.completed}/${r.progress.total} settled${r.progress.failed ? ` · ${r.progress.failed} failed` : ""}`,
+              ),
+            ]
+          : []),
+        ...(r.activity
+          ? [
+              theme.fg(
+                r.activity.failed ? "warning" : "text",
+                `${r.activity.completed}/${r.activity.started} settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
+              ),
+              ...(r.activity.phase
+                ? [theme.fg("muted", label(r.activity.phase))]
+                : []),
+            ]
+          : []),
+      ],
+      width,
+      theme.fg("dim", " · "),
+      theme.fg("text", label(r.label)),
     );
+  });
 }
 export default function background(pi: ExtensionAPI) {
   pi.registerMessageRenderer(NOTIFICATION, notificationRenderer("background"));
@@ -119,6 +142,7 @@ export default function background(pi: ExtensionAPI) {
                   version: 1,
                   name: r.label,
                   owner: r.owner,
+                  total: r.progress?.total,
                   status: r.status,
                   outcomeUnknown: r.outcomeUnknown,
                   effectsMayPersist: r.effectsMayPersist,

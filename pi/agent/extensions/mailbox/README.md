@@ -27,8 +27,11 @@ List returns `{mailbox, messages, nextCursor, pending, oldestAt}`. Supply `next_
 
 ## Tool display
 
-The TUI shows a stable `mailbox <action> <address>` header and a compact result:
-`Sent result`, `3 shown | 7 pending | more pages`, or `Acknowledged 3 messages`.
+The TUI shows a stable tool/action header and one contextual result line, such as
+`mailbox send · persisted · result · not consumed · reports`,
+`mailbox list · 3 shown | 7 pending | more pages · reports`, or
+`mailbox ack · acknowledged 3 messages · not task resolution · reports`.
+Status precedes optional address at narrow widths; full IDs and message bodies remain expanded.
 Sending, listing and acknowledging use warning styling while in flight; settled
 operations use success styling, and failures or uncertain publication use error styling.
 Sent means persisted, not consumed, accepted or completed. Ack is not task resolution.

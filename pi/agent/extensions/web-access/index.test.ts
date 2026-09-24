@@ -117,7 +117,7 @@ test("web_search renderCall truncates long queries instead of wrapping", () => {
   assertRenderedWidth(lines, 32);
 });
 
-test("web_search renderResult truncates each result line instead of wrapping", () => {
+test("web_search renderResult collapses result inventory to one bounded line", () => {
   const tool = loadRegisteredTool("web_search");
   const lines = tool
     .renderResult(
@@ -147,7 +147,8 @@ test("web_search renderResult truncates each result line instead of wrapping", (
     )
     .render(28);
 
-  assert.equal(lines.length, 4);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /web_search · 4 results/);
   assertRenderedWidth(lines, 28);
 });
 
@@ -328,7 +329,7 @@ test("web_search spills oversized wrapped results and bounds renderer details", 
   }
 });
 
-test("web_search renderer previews result content instead of envelope boilerplate", async () => {
+test("web_search renderer hides result snippets and envelope boilerplate when collapsed", async () => {
   const tool = registeredTools().get("web_search");
   const rendered = tool
     .renderResult(
@@ -358,7 +359,7 @@ test("web_search renderer previews result content instead of envelope boilerplat
 
   assert.deepEqual(
     rendered.map((line: string) => line.trimEnd()),
-    ["1. Example", "   https://example.com", "   External snippet"],
+    ["web_search · 1 result · example"],
   );
   assert.equal(
     rendered.some((line: string) => line.includes("UNTRUSTED")),
