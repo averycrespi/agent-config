@@ -111,9 +111,10 @@ The scheduled-tasks extension also bundles [manage-scheduled-tasks](agent/extens
 
 [Saved Scripts](agent/extensions/script/README.md#saved-scripts) compose selected tool providers or pure computation without subagent reasoning. Use `script list`, `validate`, and `run` with a saved `name`, structured `args`, and explicit `providers`; foreground is default and background reuses the shared service. Definitions live in one configurable user store, default `<agentDir>/scripts`, and edits are visible on the next call. Stow installs definitions, but does not load new extension code into running sessions. Metadata never grants capabilities or approval and limits only narrow host policy.
 
-| Definition                                               | Purpose                                                                           |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [summarize-values.js](agent/scripts/summarize-values.js) | Generic bounded numeric summary, with no providers; accepts `{values: number[]}`. |
+| Definition                                               | Purpose                                                                                                                                                                              |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [summarize-values.js](agent/scripts/summarize-values.js) | Generic bounded numeric summary, with no providers; accepts `{values: number[]}`.                                                                                                    |
+| [launch-worker.js](agent/scripts/launch-worker.js)       | Authorized managed worker launch in two phases with one durable identity; see the [brief, coverage and recovery contract](agent/skills/coordinate-repo/references/launch-script.md). |
 
 ### Saved workflows
 
