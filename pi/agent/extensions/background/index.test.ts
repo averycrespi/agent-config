@@ -164,7 +164,15 @@ test("Script background returns stable persisted ID, remains responsive, automat
   await h.hook("after_provider_response", { status: 200 });
   assert.equal(h.service().inspect("script", id).notification.consumed, true);
   assert.equal(h.events.length, 1);
-  assert.doesNotMatch(JSON.stringify(h.events), /source|answer|42|label/);
+  // Compare the payload contract, not substrings that may occur in opaque UUIDs.
+  assert.deepEqual(h.events[0], {
+    id,
+    owner: "script",
+    status: "success",
+    notificationId: h.messages[0].details.notificationId,
+    handoff: "none",
+    consumed: false,
+  });
 });
 test("provider revocation, explicit cancellation, timeout and guest failure retain existing executor accounting", async (t) => {
   const h = await harness(t, {
