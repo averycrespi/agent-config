@@ -242,7 +242,7 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
 test("widgets label polling clocks, preserve name and distinguish deadline from expiry", () => {
   assert.equal(
     widgetLines([receipt()], now, 120, theme)[0],
-    "background · CI check · polling · next check 3s · timeout 12s",
+    "monitor · CI check · polling · next check 3s · timeout 12s",
   );
   assert.match(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
@@ -258,7 +258,7 @@ test("widgets label polling clocks, preserve name and distinguish deadline from 
   );
   const narrow = widgetLines([receipt()], now, 40, theme)[0];
   assert.match(narrow, /CI check · polling/);
-  assert.doesNotMatch(narrow, /background|wake 3s/);
+  assert.doesNotMatch(narrow, /monitor|wake 3s/);
   const long = widgetLines(
     [
       receipt({
@@ -396,7 +396,7 @@ test("all tool actions are safe, bounded, reusable and contextual on failures", 
     }
     for (const options of [{ isError: true }, {}]) {
       const rendered = render(
-        { action, backgroundError: !options.isError },
+        { action, monitorError: !options.isError },
         false,
         { id: "job-id" },
         options,
@@ -405,7 +405,7 @@ test("all tool actions are safe, bounded, reusable and contextual on failures", 
         .join("\n");
       assert.match(
         rendered,
-        new RegExp(`background · ${action} · job-id · request failed`),
+        new RegExp(`monitor · ${action} · job-id · request failed`),
       );
     }
     assert.doesNotMatch(

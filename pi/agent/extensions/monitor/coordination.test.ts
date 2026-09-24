@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BackgroundEngine } from "./engine.ts";
+import { MonitorEngine } from "./engine.ts";
 import { registration, type Receipt } from "./contract.ts";
 import { temporaryRoot, pause } from "./test-support.ts";
 import { MailboxStore } from "../mailbox/store.ts";
@@ -11,7 +11,7 @@ test("durable reports batch once, survive pending attention and registration gap
   const store = new MailboxStore(tmp.root);
   let busy = true;
   const messages: Receipt[] = [];
-  const engine = new BackgroundEngine({
+  const engine = new MonitorEngine({
     idle: () => !busy,
     persist() {},
     changed() {},

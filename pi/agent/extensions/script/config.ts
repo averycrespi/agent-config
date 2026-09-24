@@ -1,5 +1,5 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { validName } from "./provider.ts";
 
@@ -9,6 +9,7 @@ export type ScriptConfig = {
   timeoutMs: number;
   valid: boolean;
   allowedProviders: string[];
+  userScriptsDir: string;
 };
 export const DEFAULT_CONFIG: ScriptConfig = {
   maxCalls: 32,
@@ -16,6 +17,7 @@ export const DEFAULT_CONFIG: ScriptConfig = {
   timeoutMs: 120_000,
   valid: true,
   allowedProviders: [],
+  userScriptsDir: join(getAgentDir(), "scripts"),
 };
 export const MAX_LIMITS = {
   maxCalls: 128,
@@ -26,7 +28,22 @@ export function parseConfig(
   settings: Record<string, unknown> = {},
   env: NodeJS.ProcessEnv = process.env,
 ): ScriptConfig {
-  const result = { ...DEFAULT_CONFIG };
+  const result = {
+    ...DEFAULT_CONFIG,
+    userScriptsDir: join(getAgentDir(), "scripts"),
+  };
+  const directory =
+    env.SCRIPT_USER_SCRIPTS_DIR ??
+    (settings.userScriptsDir === undefined
+      ? result.userScriptsDir
+      : settings.userScriptsDir);
+  if (
+    typeof directory !== "string" ||
+    !isAbsolute(directory) ||
+    /[\p{Cc}\p{Cf}]/u.test(directory)
+  )
+    result.valid = false;
+  else result.userScriptsDir = directory;
   const overrides = {
     maxCalls: "SCRIPT_MAX_CALLS",
     maxConcurrency: "SCRIPT_MAX_CONCURRENCY",

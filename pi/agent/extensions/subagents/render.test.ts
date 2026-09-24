@@ -166,7 +166,7 @@ test("aggregate and per-agent separators are muted", () => {
     context(),
   );
   assert.deepEqual(result.render(200), [
-    "✓ spawn_agents{ · }{1 done · 0 failed · 12s}",
+    "✓ subagents{ · }{1 done · 0 failed · 12s}",
     "",
     "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
     "  {balanced (fs)}",
@@ -194,7 +194,7 @@ test("default result includes progress rows but excludes diagnostics", () => {
     const partialLines = partial.render(200);
     assert.match(
       partialLines[0]!,
-      /^spawn_agents · 1 done · 1 running · 0 failed · \d+(?:m \d+s|s)$/,
+      /^subagents · 1 done · 1 running · 0 failed · \d+(?:m \d+s|s)$/,
     );
     assert.ok(partialLines.some((line) => line.startsWith("✓ docs · ")));
     assert.ok(partialLines.some((line) => line.startsWith("● tests · ")));
@@ -225,7 +225,7 @@ test("default result includes progress rows but excludes diagnostics", () => {
       ctx,
     );
     const finalLines = final.render(200);
-    assert.equal(finalLines[0], "✗ spawn_agents · 1 done · 1 failed · 12s");
+    assert.equal(finalLines[0], "✗ subagents · 1 done · 1 failed · 12s");
     assert.ok(finalLines.some((line) => line.startsWith("✓ docs · ")));
     assert.ok(finalLines.some((line) => line.startsWith("✗ tests · ")));
     assert.doesNotMatch(finalLines.join("\n"), /Log: \/tmp\/docs\.log/);
@@ -289,7 +289,7 @@ test("result renderer is width-aware for partial, final, and expanded states", (
       ctx,
     );
     const partialLines = partial.render(200);
-    assert.match(partialLines.join("\n"), /^spawn_agents · 1 done · 1 running/);
+    assert.match(partialLines.join("\n"), /^subagents · 1 done · 1 running/);
     assert.ok(
       partialLines.some((line: string) => line.startsWith("✓ docs · ")),
     );
@@ -333,6 +333,39 @@ test("renderer strips hostile controls and collapses line breaks", () => {
   assert.match(lines[0]!, /badlink next/);
   assert.match(lines[1]!, /Error: nope/);
   assert.doesNotMatch(lines.join("\n"), /secret/);
+});
+
+test("background controls and validation/framework failures render honest bounded status", () => {
+  for (const details of [
+    { execution: { id: "bad\x1b[2J\nlabel", status: "running" } },
+    { execution: { id: "id", status: "failed" } },
+    { executions: [] },
+    { validationError: true },
+  ]) {
+    const ctx = {
+      state: {},
+      invalidate() {},
+      lastComponent: undefined,
+      isError: false,
+    };
+    const component = renderAgentsResult(
+      { content: [{ type: "text", text: "Error: invalid\x1b[2J" }], details },
+      { isPartial: false, expanded: true },
+      theme,
+      ctx,
+    );
+    const lines = component.render(100);
+    assert.match(lines[0], /subagents/);
+    assert.doesNotMatch(lines.join("\n"), /\x1b|0 done|✓/);
+    assert.ok(component.render(12).every((line) => visibleWidth(line) <= 12));
+  }
+  const failed = renderAgentsResult(
+    { content: [{ type: "text", text: "execution error" }] },
+    { isPartial: false },
+    theme,
+    { state: {}, isError: true },
+  );
+  assert.match(failed.render(100)[0], /subagents · execution error/);
 });
 
 test("getActivity accepts nested or direct activity shapes", () => {

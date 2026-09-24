@@ -1,18 +1,20 @@
 # workflows extension
 
-Foreground deterministic JavaScript orchestration for bounded research, review, verification, and audit workflows. Workflow code runs in a permissioned child process; privileged subagent policy, model resolution, accounting, cancellation, and retention stay host-side.
+Foreground or background deterministic JavaScript orchestration for bounded research, review, verification, and audit workflows. Workflow code runs in a permissioned child process; privileged subagent policy, model resolution, accounting, cancellation, and retention stay host-side.
 
-This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it when dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow add value. Prefer [`spawn_agents`](../subagents/README.md) for a simple independent batch; parallelism or structured output alone does not require a workflow. Preserve skill-required workflows. Use [`script`](../script/README.md) with the selected `mcp` provider for gateway composition that needs no subagent reasoning.
+This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it when dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow add value. Prefer [`subagents`](../subagents/README.md) for a simple independent batch; parallelism or structured output alone does not require a workflow. Preserve skill-required workflows. Use [`script`](../script/README.md) with the selected `mcp` provider for gateway composition that needs no subagent reasoning.
 
 ## Tool
 
 `workflow` accepts:
 
-| Action     | Fields                                                             |
-| ---------- | ------------------------------------------------------------------ |
-| `list`     | No other fields; returns the current saved-workflow inventory.     |
-| `validate` | Exactly one of `script` or `name`; parses without execution.       |
-| `run`      | Exactly one of `script` or `name`, plus optional cloneable `args`. |
+| Action                         | Fields                                                                                                                            |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `list`                         | No other fields; returns the current saved-workflow inventory.                                                                    |
+| `validate`                     | Exactly one of `script` or `name`; parses without execution.                                                                      |
+| `run`                          | Exactly one of `script` or `name`, plus optional cloneable `args` and `execution: foreground \| background` (default foreground). |
+| `executions`                   | List retained background workflow executions, without results.                                                                    |
+| `inspect`, `cancel`, `dismiss` | Required background execution `id`; no source or args.                                                                            |
 
 Every script starts with literal metadata and contains a direct `agent()` or `verify()` call:
 
@@ -47,6 +49,26 @@ export async function run() {
 `run()` must return its final value. For ordinary results use `return results`; for verified results use `return await report(results, { gate: () => verdict })`. `report()` is an asynchronous gate, not an output emitter. Calling it without returning the result does not supply the workflow's output. Use `return null` for an intentional empty result.
 
 Both `validate` and `run` reject obvious straight-line `run()` bodies with no value-returning statement (including bare `return;`), and direct unshadowed `report()` calls with missing options or a literal options object missing `gate`, before any agents launch. These are conservative syntax checks, not full control-flow or type analysis: complex branches, dynamic options, spreads, and shadowed helper names remain runtime-validated. A successful validation does not prove every execution path returns a value or every gate is callable.
+
+## Background execution
+
+Use `execution: "background"` for authorized independent work while the conversation continues. Both Workflows and [Background](../background/README.md) must be loaded in a persistent session; missing service fails clearly, without foreground fallback. `list` and `validate` remain nonexecuting saved-definition operations.
+
+```json
+{
+  "action": "run",
+  "execution": "background",
+  "script": "export const meta = { name: 'inspect', description: 'Inspect one question' }; export async function run() { return await agent('Explain what a closure captures', { intent: 'Explain closures', capabilities: [], profile: 'fast' }); }"
+}
+```
+
+Admission resolves and validates inline/named source, clones arguments/configuration, pins cwd and the model-registry handle, and persists the exact source before starting. Later named-file edits do not affect that run. Central subagent policy/model resolution still occurs through the existing curated API on each call; background grants no additional authority.
+
+One execution owns the entire workflow, including awaited agents/verifiers; children are never detached Background jobs. The original absolute workflow deadline, per-attempt timeouts, concurrency, retries, logical-call limits and token ledger remain authoritative. Genuine phase and settled/started logical-call counts appear in the shared widget, not predicted percentages or retry-attempt counts. Wait for one automatic outcome notification instead of polling. Use `executions`, then `inspect`, `cancel`, or terminal-only `dismiss` with the returned ID.
+
+Inspection returns bounded accounting plus `resultFile` and exact-source references. Read `resultFile` for the complete final result, failure counts, typed cause and recovery/diagnostic paths. Rejected gates, failed branches, and explicitly incomplete review results are not labeled successful. A successfully executed workflow is still not acceptance: findings, qualification gaps and the returned report remain authoritative. Cancellation closes admission, aborts children and drains them before settlement. Background shutdown/navigation marks interruption immediately, preserves references and aborts work; cooperative draining may subsequently finalize the referenced outcome file. A pending file after process exit is incomplete evidence, never success. Restoration never replays/resumes work.
+
+Outcome files live in owner-only `${tmpdir()}/pi-workflow-outcome-*` directories, with mode-0600 `result.json`. They contain returned data/tool details and can contain sensitive model output; no automatic outbound disclosure. They have no automatic expiry and must be retained with the Background sidecar/session. Source and compressed abnormal-recovery files retain their existing seven-day policies. Failed outcome storage is reported as failure, not success. Background accounting is separate from Pi native session totals; inspection does not charge usage again. See [Background API](../background/API.md) for shared retention, controls and notification semantics.
 
 ## Script globals
 
@@ -185,7 +207,7 @@ The removed workflow model-tier fields and environment variables remain ignored 
 
 ## Logging and retained output
 
-Every run persists an exact owner-only source copy under the system temporary workflow-script directory before sandbox execution. Source copies are lazily removed after seven days. Successful workflow results are not journaled.
+Every run persists an exact owner-only source copy under the system temporary workflow-script directory before sandbox execution. Source copies are lazily removed after seven days. Foreground successful workflow results are not journaled; background outcomes use the retained files described above.
 
 After abnormal termination, settled structured successes and typed failures may be retained in one owner-only `.json.gz` recovery envelope under `${tmpdir()}/pi-retained-diagnostics`. It excludes prompts, workflow args, successful prose, raw activity/stdout/stderr, tool traces, environment, credentials, and source. It may include identity/policy metadata, timings, attempts, effective timeouts, usage, validated structured values, failures, and child-log paths.
 
@@ -193,8 +215,8 @@ Recovery files share the subagent diagnostic pool's seven-day lazy retention and
 
 ## Limitations
 
-- No project workflow stores, workflow mutation actions, nested workflows, background manager, or arbitrary script paths.
-- No writable coordination, worktrees, parallel implementation, session inheritance, resume/replay, successful-run journal, or response cache.
+- No project workflow stores, workflow mutation actions, nested workflows, independent background manager, or arbitrary script paths.
+- No writable coordination, worktrees, parallel implementation, session inheritance, resume/replay, or response cache.
 - No arbitrary model IDs, workflow-local profile maps, named-agent compatibility, hidden defaults, or generic quality framework beyond `verify()`/`report()`.
 
 ## Troubleshooting

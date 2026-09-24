@@ -29,7 +29,7 @@ Each composed call refreshes discovery under the active client configuration, va
 
 ### Availability
 
-When Gateway activates, it registers the optional `mcp` namespace using `registerScriptProvider` from `../script/api.ts`. Loading the `script` tool is not required for direct gateway tools or host-library use. Factory order does not matter. Script remains usable with `providers: []` without Gateway. Background selects this Script provider for gateway polling.
+When Gateway activates, it registers the optional `mcp` namespace using `registerScriptProvider` from `../script/api.ts`. Loading the `script` tool is not required for direct gateway tools or host-library use. Factory order does not matter. Script remains usable with `providers: []` without Gateway. Monitor selects this Script provider for gateway polling.
 
 Enable `mcp` in the trusted global Script `allowedProviders` policy, then explicitly select `providers: ["mcp"]` per execution. Registration alone grants no execution access; the Script host library must be installed even when its tool extension is not loaded.
 

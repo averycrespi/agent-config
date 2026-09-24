@@ -4,7 +4,7 @@ import { fixture, echo } from "../script/fixture.ts";
 import { describeScriptProviders } from "../script/api.ts";
 import {
   describeEvents,
-  registerBackgroundProvider,
+  registerMonitorProvider,
   subscribeProvider,
   type EventSource,
 } from "./providers.ts";
@@ -24,12 +24,12 @@ test("typed event registration is atomic, immutable and shares Script admission/
       change: { ...event, payloadSchema: { type: "string", nonsense: true } },
     },
   };
-  assert.throws(() => registerBackgroundProvider(f.pi, invalid));
+  assert.throws(() => registerMonitorProvider(f.pi, invalid));
   assert.deepEqual(await describeScriptProviders(f.pi, f.dir, []), []);
   let emit!: (value: any) => void,
     lost = 0,
     closed = 0;
-  const dispose = registerBackgroundProvider(f.pi, {
+  const dispose = registerMonitorProvider(f.pi, {
     ...invalid,
     events: {
       change: {
@@ -43,7 +43,7 @@ test("typed event registration is atomic, immutable and shares Script admission/
   });
   t.after(dispose);
   assert.throws(() =>
-    registerBackgroundProvider(f.pi, { ...invalid, events: { change: event } }),
+    registerMonitorProvider(f.pi, { ...invalid, events: { change: event } }),
   );
   const found = await describeEvents(f.pi, f.dir, []);
   assert.equal(found[0].provider, "fixture");
@@ -80,7 +80,7 @@ test("cancelled setup rejects promptly and closes a late provider subscription w
   const ready = new Promise<void>((r) => {
     entered = r;
   });
-  const dispose = registerBackgroundProvider(f.pi, {
+  const dispose = registerMonitorProvider(f.pi, {
     namespace: "fixture",
     available: () => true,
     methods: { echo },

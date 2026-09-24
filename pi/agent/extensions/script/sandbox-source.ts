@@ -3,6 +3,7 @@ export function buildSandboxSource(
   source: string,
   concurrency: number,
   bindings: Record<string, string[]>,
+  hasArgs = false,
 ): string {
   const setup = `(() => {
     const post = globalThis.__post;
@@ -88,6 +89,7 @@ export function buildSandboxSource(
       parallel: { value: parallel },
     });
     return {
+      initializeArgs: (json) => define(globalThis, "args", { value: parse(json) }),
       complete: (promise) => promiseThen(promise, result, () => post('{"type":"failure","code":"script_error"}')),
       receive: (json) => {
       const message = parse(json);
@@ -111,12 +113,27 @@ Object.setPrototypeOf(post, null);
 const context = createContext(Object.assign(Object.create(null), { __post: post }), {
   codeGeneration: { strings: false, wasm: false },
 });
-const { receive, complete } = new Script(${JSON.stringify(setup)}).runInContext(context);
+const { receive, complete, initializeArgs } = new Script(${JSON.stringify(setup)}).runInContext(context);
+let waitingForArgs = ${hasArgs};
+function start() {
+  try { complete(new Script(${JSON.stringify(program)}).runInContext(context)); }
+  catch { post('{"type":"failure","code":"script_error"}'); }
+}
 process.on("message", (json) => {
-  if (typeof json === "string") { try { receive(json); } catch { post('{"type":"failure","code":"script_error"}'); } }
+  if (typeof json === "string") {
+    try {
+      if (waitingForArgs) {
+        const message = JSON.parse(json);
+        if (message.type !== "arguments" || typeof message.json !== "string") throw new Error();
+        waitingForArgs = false;
+        initializeArgs(message.json);
+        start();
+      } else receive(json);
+    } catch { post('{"type":"failure","code":"script_error"}'); }
+  }
 });
 process.on("unhandledRejection", () => post('{"type":"failure","code":"script_error"}'));
-try { complete(new Script(${JSON.stringify(program)}).runInContext(context)); }
-catch { post('{"type":"failure","code":"script_error"}'); }
+if (waitingForArgs) post('{"type":"ready"}');
+else start();
 `;
 }

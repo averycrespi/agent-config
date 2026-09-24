@@ -1,12 +1,12 @@
 # subagents
 
-Pi extension for running isolated child Pi processes through one explicit execution policy. The model-facing tool is `spawn_agents`; other extensions use the sanitized [`runSubagent()` API](./API.md).
+Pi extension for running isolated child Pi processes through one explicit execution policy. The model-facing tool is `subagents`; other extensions use the sanitized [`runSubagent()` API](./API.md).
 
 ## Tool
 
-### `spawn_agents`
+### `subagents`
 
-Launch 1–16 independent subagents through a shared FIFO concurrency gate. Every item must be self-contained and explicit:
+Launch 1–16 independent subagents through a shared FIFO concurrency gate. `action: "run"` and `execution: "foreground"` are defaults, preserving calls with only `agents`. Every item must be self-contained and explicit:
 
 | Parameter                | Type     | Required | Description                                                              |
 | ------------------------ | -------- | -------- | ------------------------------------------------------------------------ |
@@ -21,11 +21,31 @@ There are no roles, named agents, raw tools, extension lists, exact model IDs, c
 
 Profile selection is task-oriented: use `fast` for narrow lookups, extraction, and straightforward summaries; `balanced` for substantial bounded exploration and synthesis; and `strong` for difficult analysis, ambiguous or consequential judgment, and demanding review. Legacy stored calls map `small` to `fast`, `medium` to `balanced`, and `large` to `strong`; their caller-selected thinking value is discarded because configured profile effort is authoritative. Legacy `modelTier*` settings and `SUBAGENTS_MODEL_TIER_*` overrides remain deprecated model fallbacks with warnings when the corresponding profile model is unset.
 
+## Background execution
+
+Set `execution: "background"` to return promptly with one execution ID after complete batch validation and durable admission. [Background](../background/README.md) must be loaded in a persistent session; missing service fails with `background_unavailable`, never silently falls back. `timeout_ms` optionally bounds the whole background batch, including queue time (default 600000, range 1000–3600000). The deadline never renews. Foreground calls retain caller cancellation and do not accept `timeout_ms`.
+
+```json
+{"execution":"background","agents":[{"intent":"Trace routing","prompt":"Trace routing and cite file:line evidence. Do not modify files.","profile":"balanced","capabilities":["read-filesystem"]}]}
+{"action":"list"}
+{"action":"inspect","id":"<execution-id>"}
+{"action":"cancel","id":"<execution-id>"}
+{"action":"dismiss","id":"<execution-id>"}
+```
+
+Controls accept no agents or execution options. List omits result bodies; inspect retains input-aligned outcomes, structured values, prose, diagnostics and reported usage. Large results expose a JSON `resultFile`; use `read` to inspect the complete retained result. One batch has one shared Background row showing real settled/total and failed counts and one aggregate terminal notification. No polling is required for notification. Per-child output belongs in inspection, not extra widgets or notifications.
+
+Both modes use the same FIFO capacity and mutable-child gate. All five capabilities remain available in background mode. Mutable batches still require exactly one child and explicit writable-delegation authority; the gate does **not** exclude parent edits or isolate checkouts. Queued cancellation launches no child; running cancellation aborts children and waits for process cleanup before terminal notification. Cancellation is not rollback. Session loss retains the last persisted partial outcomes/usage and conservative interruption evidence, aborts owned work, and never restarts children. Late callbacks cannot overwrite restored receipts; usage arriving after revocation cannot be recovered by this adapter.
+
+Foreground results supply aggregate top-level `usage` to Pi totals. Background admission has no completed usage; inspection and notification **never** charge usage again. Late background usage is retained per child and in the batch result, including failed/aborted children, but is **not added to Pi's native footer/session totals**: the supported extension API has no late tool-usage insertion operation. Consumers must reconcile this separate ledger by execution ID rather than summing repeated inspections or notification deliveries. Notification handoff, observed consumption and semantic acceptance remain distinct; dismissal retains results and accounting.
+
+Historical `spawn_agents` calls remain historical transcript entries; no alias or second active tool is registered, and unfinished old calls are not automatically replayed. Submit new work through `subagents` after reconciling prior effects. Existing profile-argument normalization is retained for calls to the current tool. Directory, configuration namespace and `runSubagent()` host API are unchanged.
+
 ## Delegation guidance
 
 Delegate a self-contained question when parallelism, isolation of substantial intermediate context, or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone are not triggers. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline.
 
-Once delegation is justified, prefer `spawn_agents` for a one-shot independent batch whose results the owning session will synthesize. Use [`workflow`](../workflows/README.md) when an applicable saved workflow or explicit orchestration—dependent phases, programmatic aggregation, or verification gates—adds value. Parallelism or structured output alone does not require a workflow. Preserve skill-required workflows.
+Once delegation is justified, prefer `subagents` for a one-shot independent batch whose results the owning session will synthesize. Use [`workflow`](../workflows/README.md) when an applicable saved workflow or explicit orchestration—dependent phases, programmatic aggregation, or verification gates—adds value. Parallelism or structured output alone does not require a workflow. Preserve skill-required workflows.
 
 Keep implementation and fixes in the owning session by default. Writable delegation remains an exception when explicitly requested by the user and supported by an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Do not overlap parent or child writes in the same checkout. Stricter workflow boundaries still apply: `work-ticket` keeps its subagents read-only.
 
@@ -45,7 +65,7 @@ Capabilities compose by deterministic catalog order. Tools and extensions are de
 
 `read-mcp` also includes `read` for gateway spill files. Neither web nor MCP authority implicitly grants `ls`, `find`, or `grep`. Calls receive only requested capabilities, subject to the global ceiling. Custom capability packs are intentionally unsupported.
 
-`write-filesystem` and `exec-shell` are mutable authority. Any `spawn_agents` request containing either capability must contain exactly one agent, and a shared exclusive gate serializes mutable children across concurrent tool calls. This is serialization, not sandboxing: file tools are not workspace-root restricted, and shell inherits the parent environment. The gate does not enforce user authorization, workflow prerequisites, or exclusion of parent-session edits; callers remain responsible for those boundaries.
+`write-filesystem` and `exec-shell` are mutable authority. Any `subagents` request containing either capability must contain exactly one agent, and a shared exclusive gate serializes mutable children across concurrent tool calls. This is serialization, not sandboxing: file tools are not workspace-root restricted, and shell inherits the parent environment. The gate does not enforce user authorization, workflow prerequisites, or exclusion of parent-session edits; callers remain responsible for those boundaries.
 
 ## Example
 
@@ -102,7 +122,7 @@ Results use `## <intent>` headings followed by capability/profile metadata. `det
 
 ## UI
 
-Default output shows the `spawn_agents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with the profile, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `write`, `shell`, `mcp`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
+Foreground output shows the `subagents` aggregate line followed by each agent on two width-bounded logical lines: the first shows status, intent, duration, and tool/token counts; the second starts with the profile, adds compact capabilities when present, and keeps volatile activity last. Capability labels are `fs`, `write`, `shell`, `mcp`, and `web`; empty capability sets are omitted. Rows never render prompts, tool arguments, or raw retained logs. Expanding tool output adds finalized diagnostic paths and secondary errors without changing the default progress rows. Dynamic text is control-normalized, bounded, and width-aware.
 
 ## Configuration
 
@@ -151,6 +171,8 @@ Changes are reloaded before direct execution and by every `runSubagent()` call. 
 Every launched child writes combined stdout/stderr to a secure gzip staging file. Successful logs are deleted. Failed or aborted runs may retain an owner-only `.log.gz` under `${tmpdir()}/pi-retained-diagnostics`; results expose only the finalized path. Retention is lazy for seven days and shares a 1 GiB compressed quota with abnormal workflow recovery artifacts.
 
 Logs may contain raw prompts, model/tool/process output, structured values, attached contents, environment-derived credentials printed by tools, and stderr. Compression is not sanitization or encryption. Inspect explicitly with `gzip -dc`; the extension never previews or sends retained contents automatically. Storage failure preserves the child outcome and adds a bounded diagnostic warning.
+
+Background sidecars follow the shared service's session retention and capacity limits. Completed child results too large for partial snapshots use owner-only `pi-subagent-outcome-*` temporary directories with `result.json`; these are not automatically deleted. Full oversized batches use the shared spillover directory and its lazy seven-day retention. Retain referenced files with evidence you need beyond temporary-file lifetime. Storage failures are disclosed and must not be treated as complete result retention. These JSON artifacts may include raw model/tool output and structured values; they are not secret-filtered.
 
 ## Limitations
 

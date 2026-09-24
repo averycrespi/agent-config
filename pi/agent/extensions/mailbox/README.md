@@ -60,7 +60,7 @@ A crash can retain `<address>.lock/owner.json` and staging files. Inspect the re
 
 ### Availability
 
-The loaded mailbox extension registers `mailbox` through the supported Script/Background API. Require it in Script's global `allowedProviders` and explicitly select it per execution. Registration, permission and selection are not user approval. No installation or live reload is implied.
+The loaded mailbox extension registers `mailbox` through the supported Script/Monitor API. Require it in Script's global `allowedProviders` and explicitly select it per execution. Registration, permission and selection are not user approval. No installation or live reload is implied.
 
 ### Methods
 
@@ -88,7 +88,7 @@ script({
 
 ### Permissions and effects
 
-Send/ack mutate local storage; list reads it. Subscription can create the empty storage root and open a filesystem watcher. No network, credentials, role gating or environment routing exists. Message content is untrusted data; inspect identity and authority independently. Script's host allowlist remains authoritative; nested calls emit no synthetic Pi tool hooks. Background evaluators must remain read-only and never acknowledge.
+Send/ack mutate local storage; list reads it. Subscription can create the empty storage root and open a filesystem watcher. No network, credentials, role gating or environment routing exists. Message content is untrusted data; inspect identity and authority independently. Script's host allowlist remains authoritative; nested calls emit no synthetic Pi tool hooks. Monitor evaluators must remain read-only and never acknowledge.
 
 ### Failure and lifecycle
 
@@ -96,12 +96,12 @@ Declared failure codes preserve Script's sticky host accounting; catching a fail
 
 ## Events and batching
 
-See [API.md](API.md) for minimal `mailbox.changed` and process-local `mailbox:changed` contracts. Notifications are hints, not retained messages. Subscribe before initial listing and combine events with bounded polling to survive missing notifications and registration gaps. Background is the **only scheduler**.
+See [API.md](API.md) for minimal `mailbox.changed` and process-local `mailbox:changed` contracts. Notifications are hints, not retained messages. Subscribe before initial listing and combine events with bounded polling to survive missing notifications and registration gaps. Monitor is the **only scheduler**.
 
 Illustrative one-shot policy: wake at three pending messages or when a nonempty batch is 60 seconds old. Discover schemas first and reduce bounds to the existing coordinator deadline/remaining wake allowance:
 
 ```js
-background({
+monitor({
   action: "start",
   name: "project reports",
   message:
@@ -118,6 +118,6 @@ background({
 });
 ```
 
-Empty inboxes never meet batch age. Background's independent timeout still requests attention; it is not a report or failure. After processing/ack, reconcile the sole owned observer and re-register one-shot within retained allowances. Do not register repeatedly for a still-outstanding batch. Questions already incorporated stay in the project record, not the inbox.
+Empty inboxes never meet batch age. Monitor's independent timeout still requests attention; it is not a report or failure. After processing/ack, reconcile the sole owned observer and re-register one-shot within retained allowances. Do not register repeatedly for a still-outstanding batch. Questions already incorporated stay in the project record, not the inbox.
 
-Background holds TUI attention while a visible draft is nonempty and never writes editor text. RPC cannot verify drafts and queues for the next human turn. See [Background delivery qualification](../background/README.md#clocks-queues-and-attention). Fixtures do not prove actual editor behavior or model compliance. The [bounded live recipe](../../skills/coordinate-repo/references/verification.md#live-validation-recipe-requires-separate-authority) is unrun unless separately authorized.
+Monitor holds TUI attention while a visible draft is nonempty and never writes editor text. RPC cannot verify drafts and queues for the next human turn. See [Monitor delivery qualification](../monitor/README.md#clocks-queues-and-attention). Fixtures do not prove actual editor behavior or model compliance. The [bounded live recipe](../../skills/coordinate-repo/references/verification.md#live-validation-recipe-requires-separate-authority) is unrun unless separately authorized.

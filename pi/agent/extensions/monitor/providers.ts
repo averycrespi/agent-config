@@ -27,7 +27,7 @@ export interface EventSource {
     },
   ): Promise<Subscription>;
 }
-export interface BackgroundProvider extends ScriptProvider {
+export interface MonitorProvider extends ScriptProvider {
   events: Record<string, EventSource>;
 }
 export interface Selection {
@@ -40,7 +40,7 @@ type Registered = {
   events: Map<string, EventSource>;
   signal: AbortSignal;
 };
-const QUERY = "background:providers-v1";
+const QUERY = "monitor:providers-v1";
 const name = (v: string) => /^[a-z][a-z0-9_]{0,47}$/.test(v);
 function collect(pi: Bus) {
   const all: Registered[] = [];
@@ -54,10 +54,7 @@ function collect(pi: Bus) {
 }
 
 /** Host-only typed subscriptions share Script's registration, policy and disposal. */
-export function registerBackgroundProvider(
-  pi: Bus,
-  provider: BackgroundProvider,
-) {
+export function registerMonitorProvider(pi: Bus, provider: MonitorProvider) {
   const errors: string[] = [];
   const events = new Map<string, EventSource>();
   const definitions = Object.entries(provider.events ?? {});

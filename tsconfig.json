@@ -8,6 +8,10 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["pi/agent/extensions/**/*.ts", "pi/agent/workflows/**/*.ts"],
+  "include": [
+    "pi/agent/extensions/**/*.ts",
+    "pi/agent/workflows/**/*.ts",
+    "pi/agent/scripts/**/*.ts"
+  ],
   "exclude": ["node_modules", "pi/agent/extensions/herdr-agent-state.ts"]
 }

@@ -1,6 +1,6 @@
 # workflows extension design
 
-`workflows` is a deterministic foreground control plane above the sanitized subagents API. A permissioned child evaluates orchestration JavaScript; the host owns authority, live model resolution, accounting, cancellation, validation, state, and retention.
+`workflows` is a deterministic control plane above the sanitized subagents API. A permissioned child evaluates orchestration JavaScript; the host owns authority, live model resolution, accounting, cancellation, validation, state, and retention.
 
 ## Architecture
 
@@ -13,13 +13,21 @@
 - `ledger.ts`, `display.ts`, `safe-stringify.ts`, `script-artifacts.ts`, and `types.ts` own accounting, terminal-safe rendering, previews, source retention, and contracts.
 - `pi/agent/workflows/deep-research.js` and `review.js` are ordinary saved definitions tested beside their sources.
 
-Cross-extension imports remain limited to `../subagents/api.ts`.
+Cross-extension imports use `../subagents/api.ts` for child execution and `../background/api.ts` for lifecycle ownership. `background.ts` prepares stable outcome references and classifies execution outcomes; it adds no executor, retry loop, acceptance gate, or child scheduler.
 
 ## Store lifecycle
 
 `userWorkflowsDir` is the only store. Entries are strict regular `<name>.js` files whose literal `meta.name` matches the filename and kebab-case pattern. Resolution rejects symlinked/unsafe/non-regular/unreadable/oversized/mismatched definitions. Inventory is deterministic, bounded, and fail-soft; direct resolution is fail-closed and independent of inventory truncation.
 
 `list` reads configuration and inventory. `validate` parses only. `run` parses, persists exact source in an owner-controlled temporary directory, constructs one ledger/spawner, and starts the sandbox. Named and inline sources converge before execution.
+
+## Background adapter
+
+Foreground and background share the same execution closure, ledger, spawner, runtime and recovery persistence. Before admission the tool snapshots arguments, configuration, cwd, registry handle and parsed source, persists the source and prepares a unique owner-only outcome reference. The service persists that reference atomically with admission, so even interruption before callback entry remains inspectable. The original absolute deadline is passed into the runtime; startup never renews it. Central policy is still resolved per child by the curated API.
+
+A Background-owned signal closes runtime admission and drains admitted calls through existing termination. Reporting/storage failure aborts this same signal path rather than escaping an IPC event callback or stranding work. Runtime logical-call settlement counts (not per-attempt activity) drive monotonic shared activity snapshots. Phase changes are actual sandbox messages. One final notification is owned solely by Background.
+
+Final tool results, accounting and recovery references are atomically replaced into the prepared outcome file. Background inspection keeps bounded references/accounting rather than unbounded results. Service revocation preserves its interrupted receipt and ignores late callbacks; the adapter can still finish its owned recovery file after cooperative drain. A process killed before finalization leaves pending evidence, never an implied successful result. No replay, new globals or saved-definition changes are introduced. Explicit incomplete result data and observed failures cannot be promoted into success; a successful execution is not a new semantic acceptance policy.
 
 ## Sandbox boundary
 
@@ -71,7 +79,7 @@ Gap classification is requirement-based, not a model-supplied blocking boolean. 
 
 ## State and ledger
 
-Progress state is one foreground run: metadata, phase/log history, intent-first subagent states, explicit policy, timings, previews, timeouts, typed errors, and separate agent/logged/settled failure counts. Prompts are not retained in display state.
+Progress state is one owned run: metadata, phase/log history, intent-first subagent states, explicit policy, timings, previews, timeouts, typed errors, and separate agent/logged/settled failure counts. Prompts are not retained in display state.
 
 One synchronous ledger reserves logical request IDs and tracks latest cumulative tokens by request/attempt. Retries add prior-attempt usage but reuse one run slot. Disabled limits appear as `null`. Token exhaustion is sticky and aborts active calls while leaving the sandbox alive for settled fan-in; run-cap denial affects only later calls. The sandbox budget facade is advisory and may lag.
 
@@ -98,8 +106,8 @@ Workflow configuration must not own profile mappings or model selectors. `WORKFL
 ## Non-goals
 
 - Named agents, role defaults, model aliases outside the three central profiles, or per-workflow authority maps.
-- Writable coordination, worktrees, parallel implementation, nested/background workflows, session inheritance, or arbitrary execution paths.
-- Resume/replay, run database, checkpoints, response cache, or successful result journal.
+- Writable coordination, worktrees, parallel implementation, nested workflows, session inheritance, or arbitrary execution paths.
+- Resume/replay, run database, workflow checkpoints, or response cache. Background outcome files are inspection evidence only.
 - A generalized judge/router/consensus framework beyond strict `verify()` and `report()`.
 
 ## Change guidance

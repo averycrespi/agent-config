@@ -1,270 +1,182 @@
 import type {
   ExtensionAPI,
   ExtensionContext,
+  Theme,
 } from "@earendil-works/pi-coding-agent";
-import { describeScriptProviders, snapshotScriptJson } from "../script/api.ts";
-import { createPersistentWidget } from "../_shared/widget.ts";
-import { registerConfigCommand } from "../_shared/config.ts";
-import { loadBackgroundConfig, CONFIG_WARNING } from "./config.ts";
-import { wrapUntrustedContent } from "../_shared/untrusted.ts";
-import { BackgroundEngine } from "./engine.ts";
-import { evaluateBackground } from "./execution.ts";
-import { registration, RequestError, isId, type Receipt } from "./contract.ts";
-import { subscribeProvider, describeEvents } from "./providers.ts";
-import { restore, RECEIPT_TYPE } from "./receipts.ts";
+import { createPersistentWidget, fitWidgetRow } from "../_shared/widget.ts";
 import {
-  parameters,
-  renderers,
-  widgetLines,
-  visible,
-  summary,
-  notificationContent,
-  pollingWarning,
-} from "./tool.ts";
+  notificationRenderer,
+  type NotificationDisplay,
+} from "../_shared/notification.ts";
+import {
+  SERVICE_EVENT,
+  type BackgroundService,
+  type Execution,
+} from "./api.ts";
+import { Service, label, visible } from "./service.ts";
+import { fileStore } from "./store.ts";
 
-export default async function background(pi: ExtensionAPI) {
-  const config = Object.freeze(await loadBackgroundConfig());
-  registerConfigCommand(pi, {
-    extensionName: "background",
-    sensitiveFields: [],
-    loadConfig: (_cwd, warnings = []) => {
-      if (!config.valid) warnings.push(CONFIG_WARNING);
-      return { ...config };
-    },
-  });
-  let generation = 0;
-  let context: ExtensionContext | undefined;
-  let engine: BackgroundEngine | undefined;
-  let ticker: ReturnType<typeof setInterval> | undefined;
-  const widget = createPersistentWidget("background");
-  const refresh = () => {
-    if (!context) return;
-    if (!engine?.list().some(visible)) {
-      clearInterval(ticker);
-      ticker = undefined;
-      widget.update(context);
-      return;
-    }
-    widget.update(context, (width, theme) =>
-      widgetLines(engine!.list(), Date.now(), width, theme),
+export const NOTIFICATION = "background:execution-outcome-v1";
+export function widgetLines(records: Execution[], width: number, theme: Theme) {
+  return records
+    .filter(visible)
+    .map((r) =>
+      fitWidgetRow(
+        `${theme.fg("muted", "background")} ${theme.fg(r.status === "running" ? "accent" : ["failed", "timeout", "interrupted"].includes(r.status) ? "error" : "warning", r.status)}`,
+        [
+          ...(r.outcomeUnknown ? [theme.fg("warning", "effects unknown")] : []),
+          ...(r.progress
+            ? [
+                theme.fg(
+                  r.progress.failed ? "warning" : "text",
+                  `${r.progress.completed}/${r.progress.total} settled${r.progress.failed ? ` · ${r.progress.failed} failed` : ""}`,
+                ),
+              ]
+            : []),
+          ...(r.activity
+            ? [
+                theme.fg(
+                  r.activity.failed ? "warning" : "text",
+                  `${r.activity.completed}/${r.activity.started} agents settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
+                ),
+                ...(r.activity.phase
+                  ? [theme.fg("muted", label(r.activity.phase))]
+                  : []),
+              ]
+            : []),
+          theme.fg("muted", r.id.slice(0, 8)),
+        ],
+        width,
+        theme.fg("dim", " · "),
+        theme.fg("text", label(r.label)),
+      ),
     );
-    if (context.hasUI && !ticker) {
-      ticker = setInterval(refresh, 1000);
-      ticker.unref();
-    }
+}
+export default function background(pi: ExtensionAPI) {
+  pi.registerMessageRenderer(NOTIFICATION, notificationRenderer("background"));
+  let service: Service | undefined;
+  let ctx: ExtensionContext | undefined;
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  let prompt = false;
+  let candidateIds = new Set<string>();
+  const widget = createPersistentWidget("background-executions");
+  const refresh = () => {
+    if (!ctx || !service) return;
+    const rows = service.all();
+    widget.update(
+      ctx,
+      rows.some(visible) ? (w, t) => widgetLines(rows, w, t) : undefined,
+    );
   };
-  const close = (persist: boolean) => {
-    engine?.close(persist);
-    generation++;
+  const close = () => {
     clearInterval(ticker);
     ticker = undefined;
-    if (context) widget.update(context);
+    const old = service;
+    service = undefined;
+    candidateIds.clear();
+    try {
+      old?.close();
+    } finally {
+      if (ctx) widget.update(ctx);
+      ctx = undefined;
+    }
   };
-  const initialize = (ctx: ExtensionContext) => {
-    close(false);
-    context = ctx;
-    if (!config.valid && ctx.hasUI) ctx.ui.notify(CONFIG_WARNING, "warning");
-    const token = generation;
-    const current = () => {
-      if (token !== generation) throw new Error("stale_context");
-    };
-    engine = new BackgroundEngine({
-      idle: () => {
-        if (token !== generation || !ctx.isIdle()) return false;
-        // Runtime idleness is not human idleness. Never disturb a visible draft.
-        if (ctx.mode === "tui") {
-          try {
-            return ctx.ui.getEditorText().length === 0;
-          } catch {
-            return false;
-          }
+  const initialize = (context: ExtensionContext) => {
+    close();
+    ctx = context;
+    const file = context.sessionManager.getSessionFile();
+    if (!file) return; // Persisted admission is impossible in ephemeral sessions.
+    try {
+      service = new Service(fileStore(file), {
+        anchor: () => context.sessionManager.getLeafId() ?? "",
+        inBranch: (anchor) =>
+          context.sessionManager.getBranch().some((e) => e.id === anchor),
+        idle: () =>
+          !prompt &&
+          context.isIdle() &&
+          !context.hasPendingMessages() &&
+          (context.mode !== "tui" || context.ui.getEditorText().length === 0),
+        changed: refresh,
+        event: (type, r) =>
+          pi.events.emit(`background:${type}`, {
+            id: r.id,
+            owner: r.owner,
+            status: r.status,
+            notificationId: r.notification.id,
+            handoff: r.notification.handoff,
+            consumed: r.notification.consumed,
+          }),
+        handoff: (r) =>
+          pi.sendMessage(
+            {
+              customType: NOTIFICATION,
+              content: `Background ${r.owner} execution ${r.id}: ${r.status}. Inspect with ${r.owner} action inspect and id ${r.id}. Effects may persist; reconcile unknown effects. This notification is not acceptance and never authorizes replay.`,
+              display: true,
+              details: {
+                executionId: r.id,
+                notificationId: r.notification.id,
+                display: {
+                  version: 1,
+                  name: r.label,
+                  owner: r.owner,
+                  status: r.status,
+                  outcomeUnknown: r.outcomeUnknown,
+                  effectsMayPersist: r.effectsMayPersist,
+                } satisfies NotificationDisplay,
+              },
+            },
+            { deliverAs: "followUp", triggerTurn: true },
+          ),
+      });
+      refresh();
+      // Delivery readiness only: no executor scheduling, retries or deadline renewal.
+      ticker = setInterval(() => {
+        try {
+          service?.flush();
+        } catch {
+          refresh();
         }
-        return true;
-      },
-      persist: (r) => {
-        current();
-        pi.appendEntry(RECEIPT_TYPE, r);
-      },
-      changed: refresh,
-      event: (event) => pi.events.emit(`background:${event.type}`, event),
-      handoff: (r, message) => {
-        current();
-        pi.sendMessage(
-          {
-            customType: "background-wake",
-            content: notificationContent(r, message),
-            display: true,
-            details: { jobId: r.id, wakeId: r.lastAttention!.id },
-          },
-          ctx.mode === "rpc"
-            ? { deliverAs: "nextTurn", triggerTurn: false }
-            : { deliverAs: "followUp", triggerTurn: true },
+      }, 1000);
+      ticker.unref();
+      service.flush();
+    } catch {
+      if (context.hasUI)
+        context.ui.notify(
+          "Background storage unavailable; no execution or notification replay. Inspect retained session sidecar.",
+          "error",
         );
-      },
-      evaluate: (reg, trigger, state, signal, deadlineMs) =>
-        evaluateBackground(
-          pi,
-          ctx.cwd,
-          reg,
-          trigger,
-          state,
-          signal,
-          deadlineMs,
-        ),
-      subscribe: (selection, reg, signal, deadlineMs, emit, lost) =>
-        subscribeProvider(pi, ctx.cwd, reg.providers, selection, {
-          signal,
-          deadlineMs,
-          emit,
-          lost,
-        }),
-    });
-    engine.restore(restore(ctx.sessionManager));
-    refresh();
+    }
   };
-  pi.on("session_start", (_e, ctx) => initialize(ctx));
-  pi.on("session_before_tree", () => close(false));
-  pi.on("session_tree", (_e, ctx) => initialize(ctx));
-  pi.on("session_shutdown", () => {
-    close(true);
-    context = undefined;
+  pi.events.on(SERVICE_EVENT, (request: unknown) => {
+    const accept = (request as { accept?: (s: BackgroundService) => void })
+      ?.accept;
+    if (service && typeof accept === "function") accept(service);
+  });
+  pi.on("session_start", (_e, context) => initialize(context));
+  pi.on("session_tree", (_e, context) => initialize(context));
+  pi.on("session_shutdown", close);
+  pi.on("ui_prompt_start", () => {
+    prompt = true;
+  });
+  pi.on("ui_prompt_end", () => {
+    prompt = false;
   });
   pi.on("agent_settled", () => {
-    engine?.settled();
+    service?.flush();
   });
-  pi.on("message_start", ({ message }) => {
-    if (message.role === "custom" && message.customType === "background-wake") {
-      const details = message.details as { wakeId?: unknown } | undefined;
-      if (isId(details?.wakeId)) engine?.admitted(details.wakeId);
-    }
+  pi.on("context", (event) => {
+    candidateIds = new Set(
+      event.messages.flatMap((m) => {
+        if (m.role !== "custom" || m.customType !== NOTIFICATION) return [];
+        const id = (m.details as { notificationId?: unknown } | undefined)
+          ?.notificationId;
+        return typeof id === "string" ? [id] : [];
+      }),
+    );
   });
-  pi.on("tool_result", (event) => {
-    if (
-      event.toolName === "background" &&
-      (event.details as { backgroundError?: boolean } | undefined)
-        ?.backgroundError
-    )
-      return { isError: true };
-    return undefined;
-  });
-  pi.registerTool({
-    name: "background",
-    label: "Background",
-    parameters: parameters(config),
-    ...renderers,
-    description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example (when configured ceilings permit): interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
-    promptSnippet:
-      "Observe typed events or poll in fresh Script evaluations; continue only within explicit finite bounds",
-    promptGuidelines: [
-      "Use background only with explicit monitoring/continuation authority. Provider permission is not user approval; obtain authority covering repeated mutations. Discover Script and Background event schemas before use. Keep one owner per job; reconcile historical observers before replacement. No automatic retries, grants, approval polling or replay. Timeout and settlement do not prove condition or task success; cancel recurring jobs when no further authorized work is useful. Cancel and reconcile continuation for input-blocked work before requesting input. Explicitly authorized read-only shared observation of independent workers may continue under a nonblocking correlated-message contract, never modal-wait bypass or approval polling; immutable replacements preserve caller-owned cumulative time and wake allowances, including uncertain handoffs.",
-    ],
-    async execute(_id, params, signal) {
-      const token = generation;
-      const owner = engine,
-        ctx = context;
-      try {
-        if (!owner || !ctx || token !== generation || signal?.aborted)
-          throw new RequestError("Background unavailable or cancelled.");
-        let value: unknown;
-        let selected: Receipt | undefined;
-        let cancelChanged = false;
-        if (params.action === "start") {
-          const reg = registration(params, config);
-          await describeScriptProviders(
-            pi,
-            ctx.cwd,
-            reg.providers,
-            reg.providers,
-            signal,
-          );
-          if (token !== generation || signal?.aborted)
-            throw new RequestError(
-              "Context changed or registration cancelled.",
-            );
-          selected = await owner.start(reg, signal);
-          value = selected;
-        } else {
-          const allowed =
-            params.action === "list"
-              ? ["action", "providers"]
-              : ["action", "id"];
-          if (Object.keys(params).some((k) => !allowed.includes(k)))
-            throw new RequestError("Unexpected fields for action.");
-          if (params.action === "list")
-            value = {
-              receipts: owner.list().map(summary),
-              eventProviders: await describeEvents(
-                pi,
-                ctx.cwd,
-                params.providers ?? [],
-                signal,
-              ),
-            };
-          else if (params.action === "get" || params.action === "cancel") {
-            if (!isId(params.id))
-              throw new RequestError("A job UUID is required.");
-            const before = owner.get(params.id);
-            selected =
-              params.action === "cancel" ? owner.cancel(params.id) : before;
-            if (!selected) throw new RequestError("Unknown Background job.");
-            cancelChanged =
-              params.action === "cancel" &&
-              !!before &&
-              (before.status === "active" ||
-                before.attention?.disposition === "pending");
-            value = selected;
-          } else throw new RequestError("Unknown action.");
-        }
-        if (token !== generation)
-          throw new RequestError(
-            "Session changed; inspect destination receipts.",
-          );
-        const warning =
-          params.action === "start" && selected
-            ? pollingWarning(summary(selected))
-            : undefined;
-        return {
-          content: [
-            {
-              type: "text",
-              text:
-                (warning ? `${warning}\n` : "") +
-                wrapUntrustedContent(
-                  "BACKGROUND RESULT",
-                  snapshotScriptJson(
-                    JSON.parse(JSON.stringify(value)),
-                    48000 - Buffer.byteLength(warning ?? ""),
-                  ),
-                ),
-            },
-          ],
-          details: {
-            backgroundError: false,
-            action: params.action,
-            receipt: selected && summary(selected),
-            cancelChanged,
-            receipts: params.action === "list" ? owner.list().map(summary) : [],
-          },
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text:
-                error instanceof RequestError
-                  ? error.message
-                  : "Background operation failed: invalid policy, unavailable provider, subscription or bounded output. No automatic retry; inspect receipts before a new registration.",
-            },
-          ],
-          details: {
-            backgroundError: true,
-            action: params.action,
-            status: "failed",
-            receipts: [],
-          },
-        };
-      }
-    },
+  pi.on("after_provider_response", (event) => {
+    if (event.status >= 200 && event.status < 300)
+      service?.consumed(candidateIds);
+    candidateIds.clear();
   });
 }

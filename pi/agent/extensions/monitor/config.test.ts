@@ -6,8 +6,10 @@ import { fixture } from "../script/fixture.ts";
 import {
   DEFAULT_CONFIG,
   MAX_DURATION_MS,
-  loadBackgroundConfig,
+  loadMonitorConfig,
   parseConfig,
+  parseGlobalConfig,
+  LEGACY_WARNING,
 } from "./config.ts";
 import { registration } from "./contract.ts";
 import { parameters } from "./tool.ts";
@@ -104,8 +106,8 @@ test("unknown policy fields fail closed even with valid environment overrides", 
     JSON.parse('{"__proto__": {"maxLifetimeMs": 1000}}'),
   ]) {
     const config = parseConfig(settings, {
-      BACKGROUND_MAX_CYCLE_TIMEOUT_MS: "3600000",
-      BACKGROUND_MAX_LIFETIME_MS: "172800000",
+      MONITOR_MAX_CYCLE_TIMEOUT_MS: "3600000",
+      MONITOR_MAX_LIFETIME_MS: "172800000",
     });
     assert.equal(config.valid, false);
     assert.throws(() => registration(input, config), /disabled/);
@@ -139,8 +141,8 @@ test("invalid numeric policy disables admission; environment has precedence", ()
       assert.throws(() => registration(input, config), /disabled/);
     }
     for (const key of [
-      "BACKGROUND_MAX_CYCLE_TIMEOUT_MS",
-      "BACKGROUND_MAX_LIFETIME_MS",
+      "MONITOR_MAX_CYCLE_TIMEOUT_MS",
+      "MONITOR_MAX_LIFETIME_MS",
     ])
       assert.equal(parseConfig({}, { [key]: String(value) }).valid, false);
   }
@@ -148,8 +150,8 @@ test("invalid numeric policy disables admission; environment has precedence", ()
     parseConfig(
       { maxCycleTimeoutMs: null, maxLifetimeMs: 1000 },
       {
-        BACKGROUND_MAX_CYCLE_TIMEOUT_MS: "3600000",
-        BACKGROUND_MAX_LIFETIME_MS: "172800000",
+        MONITOR_MAX_CYCLE_TIMEOUT_MS: "3600000",
+        MONITOR_MAX_LIFETIME_MS: "172800000",
       },
     ),
     { maxCycleTimeoutMs: 3_600_000, maxLifetimeMs: 172_800_000, valid: true },
@@ -173,40 +175,132 @@ test("invalid numeric policy disables admission; environment has precedence", ()
   );
   assert.ok(MAX_DURATION_MS + 2000 <= 2_147_483_647);
 });
+test("legacy settings and environment preserve limits with visible warnings", () => {
+  for (const [root, env] of [
+    [
+      {
+        "extension:background": {
+          maxCycleTimeoutMs: 1000,
+          maxLifetimeMs: 2000,
+        },
+      },
+      {},
+    ],
+    [
+      {},
+      {
+        BACKGROUND_MAX_CYCLE_TIMEOUT_MS: "1000",
+        BACKGROUND_MAX_LIFETIME_MS: "2000",
+      },
+    ],
+    [
+      {
+        "extension:background": { maxCycleTimeoutMs: 1000 },
+        "extension:monitor": { maxLifetimeMs: 2000 },
+      },
+      {},
+    ],
+    [
+      {
+        "extension:background": {
+          maxCycleTimeoutMs: "1000",
+          maxLifetimeMs: 2000,
+        },
+        "extension:monitor": { maxCycleTimeoutMs: 1000 },
+      },
+      { MONITOR_MAX_LIFETIME_MS: "2000", BACKGROUND_MAX_LIFETIME_MS: "2000" },
+    ],
+  ] as const) {
+    const warnings: string[] = [];
+    assert.deepEqual(parseGlobalConfig(root, env, warnings), {
+      maxCycleTimeoutMs: 1000,
+      maxLifetimeMs: 2000,
+      valid: true,
+    });
+    assert.deepEqual(warnings, [LEGACY_WARNING]);
+  }
+});
+
+test("conflicting aliases and malformed legacy policy fail closed without leaking values", () => {
+  for (const [root, env] of [
+    [
+      {
+        "extension:background": { maxLifetimeMs: 1000 },
+        "extension:monitor": { maxLifetimeMs: 2000 },
+      },
+      {},
+    ],
+    [
+      {
+        "extension:background": { maxLifetimeMs: 1000 },
+        "extension:monitor": { maxLifetimeMs: 2000 },
+      },
+      { MONITOR_MAX_LIFETIME_MS: "3000" },
+    ],
+    [
+      {},
+      { MONITOR_MAX_LIFETIME_MS: "2000", BACKGROUND_MAX_LIFETIME_MS: "1000" },
+    ],
+    [
+      {},
+      {
+        MONITOR_MAX_LIFETIME_MS: "2000",
+        BACKGROUND_MAX_LIFETIME_MS: "PRIVATE",
+      },
+    ],
+    [{ "extension:background": null, "extension:monitor": {} }, {}],
+    [
+      {
+        "extension:background": { unsupported: 1000 },
+        "extension:monitor": {},
+      },
+      {},
+    ],
+    [{ "extension:background": { maxLifetimeMs: "PRIVATE" } }, {}],
+  ] as const) {
+    const warnings: string[] = [];
+    const config = parseGlobalConfig(root, env, warnings);
+    assert.equal(config.valid, false);
+    assert.throws(() => registration(input, config), /disabled/);
+    assert.deepEqual(warnings, [LEGACY_WARNING]);
+    assert.doesNotMatch(JSON.stringify(warnings), /PRIVATE/);
+  }
+});
+
 test("global loader rejects malformed or unreadable settings, ignores project policy", async (t) => {
   const f = await fixture(t);
-  delete process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS;
-  delete process.env.BACKGROUND_MAX_LIFETIME_MS;
+  delete process.env.MONITOR_MAX_CYCLE_TIMEOUT_MS;
+  delete process.env.MONITOR_MAX_LIFETIME_MS;
   await mkdir(join(f.dir, ".pi"));
   await writeFile(
     join(f.dir, ".pi", "settings.json"),
-    JSON.stringify({ "extension:background": { maxCycleTimeoutMs: 1000 } }),
+    JSON.stringify({ "extension:monitor": { maxCycleTimeoutMs: 1000 } }),
   );
   const path = join(f.dir, "settings.json");
   for (const text of [
     "{",
     "null",
     "[]",
-    '{"extension:background":null}',
-    '{"extension:background":[]}',
-    '{"extension:background":{"maxLifetimMs":1000}}',
+    '{"extension:monitor":null}',
+    '{"extension:monitor":[]}',
+    '{"extension:monitor":{"maxLifetimMs":1000}}',
   ]) {
     await writeFile(path, text);
-    assert.equal((await loadBackgroundConfig()).valid, false);
+    assert.equal((await loadMonitorConfig()).valid, false);
   }
   await writeFile(
     path,
     JSON.stringify({
-      "extension:background": { maxCycleTimeoutMs: 3_600_000 },
+      "extension:monitor": { maxCycleTimeoutMs: 3_600_000 },
     }),
   );
-  assert.equal((await loadBackgroundConfig()).maxCycleTimeoutMs, 3_600_000);
-  process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS = "7200000";
-  assert.equal((await loadBackgroundConfig()).maxCycleTimeoutMs, 7_200_000);
-  delete process.env.BACKGROUND_MAX_CYCLE_TIMEOUT_MS;
+  assert.equal((await loadMonitorConfig()).maxCycleTimeoutMs, 3_600_000);
+  process.env.MONITOR_MAX_CYCLE_TIMEOUT_MS = "7200000";
+  assert.equal((await loadMonitorConfig()).maxCycleTimeoutMs, 7_200_000);
+  delete process.env.MONITOR_MAX_CYCLE_TIMEOUT_MS;
   process.env.PI_CODING_AGENT_DIR = join(f.dir, "missing");
-  assert.deepEqual(await loadBackgroundConfig(), DEFAULT_CONFIG);
+  assert.deepEqual(await loadMonitorConfig(), DEFAULT_CONFIG);
   await mkdir(join(f.dir, "unreadable", "settings.json"), { recursive: true });
   process.env.PI_CODING_AGENT_DIR = join(f.dir, "unreadable");
-  assert.equal((await loadBackgroundConfig()).valid, false);
+  assert.equal((await loadMonitorConfig()).valid, false);
 });

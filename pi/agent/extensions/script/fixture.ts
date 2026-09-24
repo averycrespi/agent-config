@@ -33,6 +33,7 @@ export async function fixture(
     "SCRIPT_MAX_CALLS",
     "SCRIPT_MAX_CONCURRENCY",
     "SCRIPT_TIMEOUT_MS",
+    "SCRIPT_USER_SCRIPTS_DIR",
   ])
     delete process.env[name];
   const pi = { events: createEventBus() } as Pick<ExtensionAPI, "events">;

@@ -17,7 +17,7 @@ import {
   updateMonitor,
   validateMonitor,
   remainingWaitMs,
-} from "./ci-background.js";
+} from "./ci-observation.js";
 import { WAIT_MS } from "./ci-monitor.js";
 import { validateCoordination } from "../../spin-out/scripts/coordination.js";
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BackgroundEngine } from "../../extensions/background/engine.ts";
-import { registration } from "../../extensions/background/contract.ts";
+import { MonitorEngine } from "../../extensions/monitor/engine.ts";
+import { registration } from "../../extensions/monitor/contract.ts";
 import {
   allowance,
   supervision,
@@ -14,7 +14,7 @@ test("unknown parent handoff retains attempted identity without resetting shared
   });
   const keepalive = setInterval(() => {}, 1000);
   let calls = 0;
-  const engine = new BackgroundEngine({
+  const engine = new MonitorEngine({
     idle: () => true,
     persist() {},
     changed() {},

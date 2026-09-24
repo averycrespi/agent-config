@@ -9,7 +9,8 @@
 - `capabilities.ts` is the fixed dependency-complete grant catalog and deterministic union resolver.
 - `run.ts` is the policy boundary. It validates sanitized requests against config and Pi's live model registry, then translates them to an internal process invocation.
 - `spawn.ts` is internal process machinery: CLI construction, extension resolution, recursion, environment inheritance, JSONL parsing, structured output, cancellation, spillover, and retained diagnostics.
-- `index.ts` registers `spawn_agents`, performs complete atomic batch preflight, schedules direct calls, and combines results.
+- `index.ts` registers `subagents`, performs complete atomic batch preflight, schedules both direct execution modes through shared gates, and combines results.
+- `background.ts` bounds retained batch/child outcomes without discarding structured/prose data when storage succeeds.
 - `pool.ts`, `schema.ts`, `activity.ts`, `render.ts`, and `utils.ts` own concurrency, schema validation, progress, terminal-safe rendering, and extension short-name resolution.
 - `api.ts` is the curated cross-extension surface documented in `API.md`.
 
@@ -48,11 +49,21 @@ Keep `spawn.ts` import-local to this directory; colocated engine tests may impor
 
 ## Direct batch lifecycle
 
-`spawn_agents` preflights every item before gate acquisition. Errors are collected across required fields, policy, live model resolution/compatibility, attachments, and schemas. Any error launches zero children.
+`subagents` preflights every item before gate acquisition. Errors are collected across required fields, policy, live model resolution/compatibility, attachments, and schemas. Any error launches zero children.
 
-Valid read-only items retain input order while independently acquiring the shared abort-aware FIFO gate. Mutable requests contain exactly one item. Each launch creates an activity tracker, calls the sanitized API, settles structured/prose output, records diagnostics, releases capacity exactly once, and participates in ordered fan-in. Assistant usage events are accumulated per child and combined across the batch, including reported usage from failed or aborted children. The final `spawn_agents` tool result exposes that aggregate through Pi's top-level `usage` contract so session accounting and other extensions observe delegated model work. Combined output is intent-first and may spill through the shared helper.
+Valid read-only items retain input order while independently acquiring the shared abort-aware FIFO gate. Mutable requests contain exactly one item. Each launch creates an activity tracker, calls the sanitized API, settles structured/prose output, records diagnostics, releases capacity exactly once, and participates in ordered fan-in. Assistant usage events are accumulated per child and combined across the batch, including reported usage from failed or aborted children. The final foreground `subagents` tool result exposes that aggregate through Pi's top-level `usage` contract so session accounting and other extensions observe delegated model work. Combined output is intent-first and may spill through the shared helper.
 
 Config reloads carry an invocation generation so an older asynchronous read cannot overwrite a newer direct concurrency limit. Project settings are excluded because overlapping calls from different cwd values share one host policy.
+
+## Background adapter
+
+Background admission follows complete preflight, captures cwd/registry/specs and the finite absolute batch deadline, then returns an ID. The same `runParallelSpawn()` and direct/mutable gates serve foreground and background calls; no competing scheduler or executor is added. The ordinary sanitized `runSubagent()` boundary revalidates current central policy before each process launch. Capacity or storage rejection starts no children. One abort controller joins cancellation and the original deadline, while ordered fan-in drains child cleanup before returning the terminal outcome. No retries or foreground fallback exist.
+
+The adapter reports only genuine completed/total/failed progress to the shared service, and only changed snapshots persist. Partial results contain input-aligned status, reported usage and completed child outcomes or JSON references. The service validates and persists these before repaint; there are no progress events or per-child notifications. Session revocation preserves the last snapshot and suppresses stale completion. Failed partial persistence aborts work but still drains fan-in. Process loss cannot recover usage not yet reported/persisted.
+
+Final results retain every child's outcome and usage; mixed outcomes set batch failure. Oversized JSON retains a full spill reference and a bounded accounting summary. A spill failure yields explicit retention failure rather than success. Foreground alone supplies top-level Pi tool usage; late background accounting remains in the retained execution ledger because the supported extension API has no late usage insertion method. Inspect/list/dismiss and automatic notification never return top-level usage, preventing repeated charging. See README for limits and sensitive artifact retention.
+
+Historical tool-name entries are not rewritten or automatically replayed. Only `subagents` is registered; configuration and the curated host API retain their identities.
 
 ## Child process invariants
 
@@ -75,7 +86,7 @@ Environment inheritance is deliberate; `exec-shell` is not a security sandbox an
 
 ## Activity and rendering
 
-Default tool output includes the aggregate `spawn_agents` line and the per-agent progress inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `profile (capabilities)`, maps fixed capabilities to `fs`, `write`, `shell`, `mcp`, and `web`, and omits empty capability sets. Expansion adds retained-log paths and secondary errors without replacing or duplicating the default progress rows. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths remain expanded diagnostics.
+Default tool output includes the aggregate `subagents` line and the per-agent progress inventory. Each agent uses two logical lines: stable identity and run statistics first, then compact execution policy with volatile activity last. The second line formats policy as `profile (capabilities)`, maps fixed capabilities to `fs`, `write`, `shell`, `mcp`, and `web`, and omits empty capability sets. Expansion adds retained-log paths and secondary errors without replacing or duplicating the default progress rows. Tool arguments are never retained for display. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter result rendering; log paths remain expanded diagnostics.
 
 ## Recursion, cancellation, and diagnostics
 

@@ -1,5 +1,5 @@
 import type { JsonValue, RunResult } from "../script/api.ts";
-import type { BackgroundEvent } from "./api.ts";
+import type { MonitorEvent } from "./api.ts";
 import type { Subscription, Selection } from "./providers.ts";
 import {
   LIMITS,
@@ -31,7 +31,7 @@ export interface Host {
   idle(): boolean;
   persist(receipt: Receipt): void;
   changed(): void;
-  event?(event: BackgroundEvent): void;
+  event?(event: MonitorEvent): void;
   handoff(receipt: Receipt, message: string): void;
   evaluate(
     reg: Registration,
@@ -59,7 +59,7 @@ interface Job {
   cycleOpen: boolean;
   waiting?: string;
 }
-export class BackgroundEngine {
+export class MonitorEngine {
   private jobs = new Map<string, Job>();
   private reservations = new Set<AbortController>();
   private running = 0;
@@ -76,7 +76,7 @@ export class BackgroundEngine {
     const r = this.jobs.get(id)?.r;
     return r && structuredClone(r);
   }
-  private publish(type: BackgroundEvent["type"], j: Job) {
+  private publish(type: MonitorEvent["type"], j: Job) {
     try {
       this.host.event?.(
         Object.freeze({
@@ -113,15 +113,13 @@ export class BackgroundEngine {
   async start(reg: Registration, signal?: AbortSignal) {
     reg = structuredClone(reg);
     if (this.closed || signal?.aborted)
-      throw new RequestError(
-        "Background unavailable or registration cancelled.",
-      );
+      throw new RequestError("Monitor unavailable or registration cancelled.");
     if (
       [...this.jobs.values()].filter((j) => this.occupied(j)).length +
         this.reservations.size >=
       LIMITS.active
     )
-      throw new RequestError("Background capacity exhausted.");
+      throw new RequestError("Monitor capacity exhausted.");
     const controller = new AbortController();
     this.reservations.add(controller);
     const abort = () => controller.abort();
@@ -221,7 +219,7 @@ export class BackgroundEngine {
       controller.abort();
       j.subs.forEach((s) => s.close());
       throw new RequestError(
-        "Background registration failed or cancelled; no job admitted and no coverage claimed.",
+        "Monitor registration failed or cancelled; no job admitted and no coverage claimed.",
       );
     } finally {
       signal?.removeEventListener("abort", abort);
@@ -297,7 +295,7 @@ export class BackgroundEngine {
   }
   cancel(id: string) {
     const j = this.jobs.get(id);
-    if (!j) throw new RequestError("Unknown Background job.");
+    if (!j) throw new RequestError("Unknown Monitor job.");
     if (j.r.status === "active" || j.r.attention?.disposition === "pending") {
       j.r.status = "cancelled";
       if (j.r.attention?.disposition === "pending")

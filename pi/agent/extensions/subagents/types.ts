@@ -54,7 +54,11 @@ export interface SpawnAgentItem {
 }
 
 export interface SpawnAgentsParams {
-  agents: SpawnAgentItem[];
+  agents?: SpawnAgentItem[];
+  action?: "run" | "list" | "inspect" | "cancel" | "dismiss";
+  execution?: "foreground" | "background";
+  id?: string;
+  timeout_ms?: number;
 }
 
 export interface SubagentEvent {
@@ -85,44 +89,65 @@ export interface SubagentRunState {
 export function buildSpawnAgentsParams(policyDescription: string) {
   return Type.Object(
     {
-      agents: Type.Array(
-        Type.Object(
-          {
-            intent: Type.String({
-              minLength: 1,
-              description: "Short label for this subagent run",
-            }),
-            prompt: Type.String({
-              minLength: 1,
-              description: "Self-contained task for this subagent",
-            }),
-            capabilities: Type.Array(StringEnum(CAPABILITIES), {
-              description:
-                "Explicit built-in capabilities. An empty array launches a no-tools child.",
-            }),
-            profile: StringEnum(PROFILES, {
-              description: policyDescription,
-            }),
-            files: Type.Optional(
-              Type.Array(Type.String(), {
-                description:
-                  "Readable regular files attached with native @file handling. Contents are sent to the selected model/provider and may appear in retained logs or spillover output.",
-              }),
-            ),
-            output_schema: Type.Optional(
-              Type.Record(Type.String(), Type.Unknown(), {
-                description:
-                  "Supported JSON Schema subset for a validated machine-readable result",
-              }),
-            ),
-          },
-          { additionalProperties: false },
-        ),
-        {
-          minItems: 1,
+      action: Type.Optional(
+        StringEnum(["run", "list", "inspect", "cancel", "dismiss"]),
+      ),
+      execution: Type.Optional(
+        StringEnum(["foreground", "background"], {
           description:
-            "Subagents to launch. Mutable capabilities require exactly one item.",
-        },
+            "Foreground by default; background returns an execution ID and automatically notifies after settlement.",
+        }),
+      ),
+      id: Type.Optional(Type.String({ minLength: 1 })),
+      timeout_ms: Type.Optional(
+        Type.Integer({
+          minimum: 1000,
+          maximum: 3600000,
+          description:
+            "Background batch deadline including queue time; default 600000 ms. Foreground uses caller cancellation.",
+        }),
+      ),
+      agents: Type.Optional(
+        Type.Array(
+          Type.Object(
+            {
+              intent: Type.String({
+                minLength: 1,
+                description: "Short label for this subagent run",
+              }),
+              prompt: Type.String({
+                minLength: 1,
+                description: "Self-contained task for this subagent",
+              }),
+              capabilities: Type.Array(StringEnum(CAPABILITIES), {
+                description:
+                  "Explicit built-in capabilities. An empty array launches a no-tools child.",
+              }),
+              profile: StringEnum(PROFILES, {
+                description: policyDescription,
+              }),
+              files: Type.Optional(
+                Type.Array(Type.String(), {
+                  description:
+                    "Readable regular files attached with native @file handling. Contents are sent to the selected model/provider and may appear in retained logs or spillover output.",
+                }),
+              ),
+              output_schema: Type.Optional(
+                Type.Record(Type.String(), Type.Unknown(), {
+                  description:
+                    "Supported JSON Schema subset for a validated machine-readable result",
+                }),
+              ),
+            },
+            { additionalProperties: false },
+          ),
+          {
+            minItems: 1,
+            maxItems: MAX_AGENTS_PER_CALL,
+            description:
+              "Subagents to launch. Mutable capabilities require exactly one item.",
+          },
+        ),
       ),
     },
     { additionalProperties: false },

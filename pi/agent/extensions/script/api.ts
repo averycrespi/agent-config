@@ -9,6 +9,7 @@ import {
 } from "./provider.ts";
 import { createBridge } from "./bridge.ts";
 import { runScript, type RunResult } from "./runtime.ts";
+import { jsonSnapshot, MAX_ARGS_BYTES } from "./value.ts";
 export { registerScriptProvider } from "./provider.ts";
 export { jsonSnapshot as snapshotScriptJson } from "./value.ts";
 export type {
@@ -29,6 +30,8 @@ export type ScriptLimits = {
 };
 export type ScriptOptions = {
   source: string;
+  /** Optional JSON data binding, transported over IPC, never compiled as source. */
+  args?: unknown;
   providers: string[];
   /** Optional caller-owned session metadata, snapshotted before async setup. */
   session?: ScriptSession;
@@ -116,6 +119,99 @@ export async function describeScriptProviders(
   );
 }
 
+/** Validate and pin background authority without starting a child. Single-use, no renewal. */
+export async function prepareScript(
+  pi: Bus,
+  cwd: string,
+  options: ScriptOptions,
+) {
+  const started = Date.now();
+  if (
+    !options ||
+    !Number.isSafeInteger(options.deadlineMs) ||
+    !options.signal ||
+    !options.limits ||
+    (Object.keys(MAX_LIMITS) as Array<keyof ScriptLimits>).some(
+      (k) =>
+        !Number.isSafeInteger(options.limits[k]) ||
+        options.limits[k] < 1 ||
+        options.limits[k] > MAX_LIMITS[k],
+    )
+  )
+    throw new Error("invalid_config");
+  if (
+    typeof options.source !== "string" ||
+    !options.source.trim() ||
+    Buffer.byteLength(options.source) > 262144
+  )
+    throw new Error("invalid_source");
+  const source = options.source;
+  const argsJson =
+    options.args === undefined
+      ? undefined
+      : jsonSnapshot(options.args, MAX_ARGS_BYTES);
+  const providers = [...options.providers];
+  const capabilityCeiling = options.capabilityCeiling
+    ? [...options.capabilityCeiling]
+    : undefined;
+  const requestedLimits = { ...options.limits };
+  const execution = Object.freeze({
+    cwd,
+    ...(options.session
+      ? { session: Object.freeze({ ...options.session }) }
+      : {}),
+  });
+  const deadline = Math.min(
+    options.deadlineMs,
+    started + options.limits.timeoutMs,
+  );
+  const setup = AbortSignal.any([
+    options.signal,
+    AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+  ]);
+  const config = await loadScriptConfig(cwd, [], setup);
+  setup.throwIfAborted();
+  if (!config.valid) throw new Error("invalid_config");
+  const selected = select(
+    pi,
+    providers,
+    config.allowedProviders,
+    capabilityCeiling,
+  );
+  const deadlineMs = Math.min(deadline, started + config.timeoutMs);
+  if (Date.now() >= deadlineMs) throw new Error("deadline_exceeded");
+  const limits = {
+    ...config,
+    maxCalls: Math.min(config.maxCalls, requestedLimits.maxCalls),
+    maxConcurrency: Math.min(
+      config.maxConcurrency,
+      requestedLimits.maxConcurrency,
+    ),
+    timeoutMs: Math.min(config.timeoutMs, requestedLimits.timeoutMs),
+  };
+  const bridge = createBridge(selected, execution);
+  let used = false;
+  return {
+    deadlineMs,
+    run(signal: AbortSignal) {
+      if (used) throw new Error("prepared_execution_consumed");
+      used = true;
+      return runScript(
+        source,
+        bridge,
+        limits,
+        AbortSignal.any([
+          signal,
+          options.signal,
+          ...selected.map((p) => p.signal),
+        ]),
+        deadlineMs,
+        argsJson,
+      );
+    },
+  };
+}
+
 /** Execute once. Caller owns scheduling, shutdown signal, and presentation; no replay. */
 export async function executeScript(
   pi: Bus,
@@ -158,6 +254,10 @@ export async function executeScript(
       return { ...failure("cancelled"), status: "cancelled" };
     if (Date.now() >= deadline)
       return { ...failure("deadline_exceeded"), status: "timeout" };
+    const argsJson =
+      options.args === undefined
+        ? undefined
+        : jsonSnapshot(options.args, MAX_ARGS_BYTES);
     const config = await loadScriptConfig(cwd, [], signal);
     if (signal.aborted)
       return options.signal.aborted
@@ -188,6 +288,7 @@ export async function executeScript(
       },
       combined,
       Math.min(deadline, started + config.timeoutMs),
+      argsJson,
     );
     return timeout.signal.aborted &&
       !options.signal.aborted &&

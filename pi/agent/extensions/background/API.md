@@ -1,87 +1,35 @@
-# Background provider API
+# Background host API
 
-Trusted sibling extensions import `registerBackgroundProvider` and types from `../background/api.ts`. This combines ordinary Script method registration with typed host event sources. Providers retain full host authority; this API is not a sandbox for extension authors. Tool controls remain immutable `start/list/get/cancel`; engine modules are internal. Cycle/lifetime policy ceilings come from Background's [global/environment configuration](README.md#configuration), snapshotted at extension load; per-job bounds remain explicit.
+Trusted extensions import `getBackgroundService` and types from `../background/api.ts`. This host-only API grants no guest capabilities, permissions or user authorization. The service is discovered on Pi's session event bus, not through a module-global singleton. Missing/duplicate service fails closed. No Background tool or Script provider is registered.
 
-## Typed event registration
+## Operations
 
-`BackgroundProvider` extends Script's `ScriptProvider` with `events: Record<string, EventSource>`. Register at most 16 named event sources per provider. Provider namespaces/methods obey [Script's registration contract](../script/API.md); event names match `[a-z][a-z0-9_]{0,47}`. There is one session-bus registration per namespace, not a process-global registry. Conflicts reject; disposal is explicit and idempotent. Validation finishes before any listener is installed. Dispose on shutdown or authority revocation.
+| Method                                   | Contract                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `admit({owner, label, deadlineMs, run})` | Synchronously validate and persist admission, then return a copied `Execution` with stable ID. Invoke the adapter's prepared `run(signal, report)` once after admission. |
+| `list(owner)`                            | Copied bounded records visible on the current admission branch; adapters should omit results from inventories.                                                           |
+| `inspect(owner, id)`                     | One copied result/accounting record; owner and branch must match.                                                                                                        |
+| `cancel(owner, id)`                      | Persist cancel request and abort the adapter signal. Terminal calls are idempotent, with no rollback claim.                                                              |
+| `dismiss(owner, id)`                     | Persist terminal-only dismissal; retain evidence and uncertain handoff.                                                                                                  |
 
-An `EventSource` supplies:
+`owner` is a stable lowercase ASCII adapter namespace (up to 48 characters), not a security boundary. `label` is a nonsecret display string up to 200 characters; terminal controls are removed. The adapter must validate all source, provider selection and authority **before** admission, pin execution-scoped context and the original finite absolute `deadlineMs`, and enforce that deadline in its existing executor. Background adds no execution engine or scheduler and must never be used to extend a budget. A stale service handle cannot admit or mutate work.
 
-- Nonblank public `description`, at most 500 control-free characters.
-- `inputSchema`: strict Ajv draft-07 schema for the positional subscription argument array.
-- `payloadSchema`: strict schema for safe projected payloads. Both schemas are snapshotted plain JSON, each at most 16 KiB; no async schemas or remote references.
-- `subscribe(args, context): Promise<Subscription>`, invoked by the host, never a persistent guest. `context` contains `signal`, absolute `deadlineMs`, `emit(payload)` and `lost()`.
+Admission may include an initial bounded JSON `result`, such as a prepared outcome-file reference. It is validated and persisted with the admission before `run` can execute, including when interruption prevents callback entry.
 
-The returned `Subscription` contains `coverage` (bounded plain JSON describing actual subscription identity/boundary) and idempotent `close()`. Install callbacks before acknowledging coverage. Call `lost()` for disconnect, invalid identity, dropped coverage or malformed input; never reconnect or replay. Honor signal/deadline and close underlying resources. The absolute lifetime deadline can exceed 24 hours under configured policy; do not impose the former fixed ceiling or silently shorten coverage. Host setup is bounded to two seconds and remaining lifetime; a late return is closed without replay. Do not expose transcript/event-bus objects, questions/answers/options, credentials, raw errors or session control in payloads.
+`run` resolves an `Outcome`: `status` (`success`, `failed`, `timeout`, `cancelled`, `interrupted`), boolean `effectsMayPersist`/`outcomeUnknown`, and optional JSON `result` (64,000 UTF-8 bytes). Preserve the executor's original accounting in result. Rejection or invalid/oversized result becomes a failed unknown-effect outcome without exception text. Adapters must cooperate with abort and stop further dispatch; Background cannot stop arbitrary trusted host code or undo remote effects.
 
-Each emitted payload and coverage record is copied and bounded to 4096 UTF-8 bytes. Payload validation failure reports coverage loss rather than invoking the evaluator with malformed data. Background buffers accepted events separately from attention coalescing. Provider disposal aborts active event selections as well as Script executions. Script's host allowlist and the registration's explicit provider selection both apply; registration alone grants no authority. Policy is sampled at registration/evaluation, not continuously watched. A provider availability callback change blocks new selection, while active revocation requires disposal.
+`report({progress?: {completed, total, failed}, activity?: {started, completed, failed, phase?}, result?})` optionally persists genuine aggregate progress and a bounded partial JSON result while running. Counters are nonnegative safe integers, total is positive and fixed, completed/failed never decrease, and failed ≤ completed ≤ total. Invalid updates reject before mutation; adapter code must abort and drain its work on reporting/storage failure. Reports repaint the existing row without emitting a progress event or notification. Partial results survive interruption; late reports on revoked services are ignored. For dynamically discovered workflow calls, `activity` counts started and settled logical calls without predicting a total. Counts are nonnegative safe integers, monotonic, and failed ≤ completed ≤ started; phase is at most 200 characters and sanitized before persistence/rendering. Fixed `progress.total` remains immutable. Either telemetry field may be omitted, and result-only updates are supported. Existing adapters may ignore the second callback argument and retain their prior semantics.
 
-Example (the application owns the typed producer, not a raw Pi bus selector):
+`Execution` contains optional aggregate `progress`/`activity` plus ID, owner, sanitized label, admission anchor, immutable creation/deadline timestamps, status/terminal time, cancellation/dismissal flags, result/effect evidence and notification identity/intent/handoff/consumption. Optional `persistenceFailed` is in-memory failure evidence, not proof the latest state reached disk. Inspection is not acceptance and does not hide attention.
 
-```ts
-import { registerBackgroundProvider } from "../background/api.ts";
+## Lifecycle integration
 
-const dispose = registerBackgroundProvider(pi, {
-  namespace: "builds",
-  available: () => active,
-  methods: {
-    status: {
-      description: "Read a bounded build status",
-      inputSchema: { type: "array", maxItems: 0 },
-      handler: async () => ({ value: { ready: producer.ready() } }),
-    },
-  },
-  events: {
-    changed: {
-      description: "Observe build readiness changes",
-      inputSchema: { type: "array", maxItems: 0 },
-      payloadSchema: { type: "boolean" },
-      async subscribe(_args, { signal, emit, lost }) {
-        const subscription = producer.subscribe({
-          changed: emit,
-          disconnected: lost,
-        });
-        const close = () => subscription.close();
-        signal.addEventListener("abort", close, { once: true });
-        if (signal.aborted) close();
-        return {
-          coverage: { startedAt: subscription.startedAt },
-          close() {
-            signal.removeEventListener("abort", close);
-            close();
-          },
-        };
-      },
-    },
-  },
-});
-pi.on("session_shutdown", dispose);
-```
+The loaded extension owns session hooks, storage and notification delivery. On shutdown or successful tree navigation it closes the old handle, aborts work and persists interruption before ignoring old callbacks. On return it reconstructs receipts, not executors. An adapter must not retain a handle across session lifecycle changes or resubmit a failed/uncertain admission automatically. Read [retention and bounds](README.md#persistence-and-limits), including single-owner and sidecar retention requirements.
 
-`producer` is illustrative trusted application code. Background never supplies a raw event-bus object or arbitrary session controller to evaluators. The mailbox extension supplies [durable report hints](../mailbox/API.md); there is no built-in session provider or cross-session lifecycle transport.
+Notifications use `background:execution-outcome-v1` custom messages containing only execution identity, outcome and an adapter inspection reference. Durable intent precedes a separately persisted uncertain handoff; successful `sendMessage` return records handoff, never consumption. Observed model-context inclusion followed by a 2xx provider response records consumption; adapters and callers must not interpret that as acceptance. Missing hook evidence remains unresolved rather than triggering resend.
 
-## Evaluator input
+## Events
 
-Each fresh Script child receives `trigger` and `state` function arguments. Trigger is `{kind: "initial" | "timer" | "event", at, subscription?, payload?}`. `subscription` is the zero-based immutable event selection index; `at` is host acceptance time. Provider payloads may additionally carry their own timestamp/sequence. Explicit state is the last committed JSON replacement, never a shared host object. See [execution and attention semantics](README.md#clocks-queues-and-attention).
+`background:admitted`, `background:terminal`, `background:notification`, and `background:dismissed` are observational in-process events emitted after the corresponding persisted transition. Payloads contain only `{id, owner, status, notificationId, handoff, consumed}`. They contain no labels, source, results, credentials or error text. Observer failures cannot change authority, persistence, cleanup or notification counts. There is no periodic progress event and no event-triggered replay. Restoration and shutdown reconcile records without promising a live terminal event to absent consumers.
 
-## Observational lifecycle events
-
-`BackgroundEvent` is the safe, shallow-frozen payload `{type, id, status, notification}` emitted on `background:<type>`:
-
-- `registered`: after admission, before persistence/scheduling.
-- `attention`: a newly coalesced attention or stronger reason, before persistence.
-- `terminated`: observation ends or pending attention is suppressed, before persistence. A later cancellation/invalidation can publish another terminal transition to record suppression.
-- `notification`: persisted `handoff_unknown` before the Pi API call, then `handed_to_pi` after its synchronous return.
-
-Only UUID and closed status/disposition enums are emitted. No source, names, message text, state, evidence, raw errors or tool payloads cross this surface. Observer failures are isolated. Polls/countdowns and restoration emit nothing; lifecycle observation adds no model calls, replay or permission. These events remain process-local and are not forwarded as cross-session selectors.
-
-```ts
-const off = pi.events.on("background:terminated", (data) => {
-  const event = data as import("../background/api.ts").BackgroundEvent;
-  // Observe event.id/status/notification; do not infer task completion.
-});
-pi.on("session_shutdown", off);
-```
-
-No watcher is required for this in-process observation. Pi's bus is a cooperative trusted-host boundary, not hostile multi-tenant authentication.
+`background:service-v1` is an internal synchronous host-only discovery query, not public telemetry. Use the exported helper rather than emitting its internal callback shape. Registration is session-local; the `Execution` and event types are the supported cross-extension data contract.

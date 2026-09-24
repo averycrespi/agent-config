@@ -62,6 +62,15 @@ Apply this section when an extension registers capabilities through the [Script 
 - Keep collapsed results compact; put inventories, logs, paths, per-item progress, and diagnostics in expanded results. Preserve a contextual action/run header on errors and honor both `context.isError` and semantic error results.
 - Test observable renderer behavior for applicable collapsed, expanded, partial, success, semantic-error, framework-error, hostile-control-character, and narrow-width cases.
 
+### Asynchronous custom messages
+
+- Use `pi.registerMessageRenderer` for producer-owned notifications that also participate in model context. Prefer the pure loader-inert [notification helper](../../../pi/agent/extensions/_shared/README.md#asynchronous-custom-messages); do not copy delivery or acknowledgment code into a renderer. This convention is distinct from tool rows and below-editor widgets.
+- Keep the collapsed projection normally two or three content rows, never more than three. Show source and bounded name/identity, then precise outcome/attention reason, then supplied uncertainty or actionable warnings. Omit absent fields; truncate secondary detail before essential status. Add no vertical padding, raw prompts, JSON, traces, long paths or wrapped collapsed prose.
+- Use `toolTitle`/bold for source, `text` for identity, and semantic theme tokens with explicit status words. Reserve success styling for execution success; observation condition/timeout attention is not watched-task success/failure. Keep interruption, unknown effects and coverage warnings visible.
+- Honor normal expand/collapse. Expand safe continuation text, trust framing, evidence, diagnostics and result references with identity/context intact; disclose display truncation. Never fetch references or execute work on expansion. Sanitize terminal controls/newlines before styling labels and bound Unicode text and rendered width in both views.
+- Prefer versioned display-only metadata and closed outcome vocabulary over instruction-prose parsing. Missing, malformed and historical metadata must render a compact status-unavailable fallback with useful expansion, without rewriting history or fabricating outcomes.
+- Preserve complete model message content and RPC/headless behavior. Rendering is not delivery, consumption, acceptance or permission: never trigger turns, acknowledge, replay, change notification intent or alter persistence/ownership. Test both producers, adverse/legacy/hostile/narrow cases, and unchanged message/lifecycle effects separately from isolated interactive qualification.
+
 ### Below-editor status widgets
 
 - Render one width-bounded line per entity using `<extension> <state> · <identity or reason> · <telemetry>`. Omit absent fields; do not add headers, overflow rows, blank lines, horizontal rules, or wrapped continuation text. Let statusline own the boundary: its footer always begins with one full-width `borderMuted` rule, without tracking widget visibility.
