@@ -9,7 +9,11 @@ export default [
     ],
   },
   {
-    files: ["pi/agent/extensions/**/*.ts", "pi/agent/workflows/**/*.ts"],
+    files: [
+      "pi/agent/extensions/**/*.ts",
+      "pi/agent/workflows/**/*.ts",
+      "pi/agent/scripts/**/*.ts",
+    ],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {

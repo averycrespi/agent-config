@@ -32,12 +32,16 @@
     "prepare": "husky",
     "format": "prettier --write \"**/*.{ts,js,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md,yml,yaml}\"",
-    "lint": "eslint \"pi/agent/extensions/**/*.ts\" \"pi/agent/workflows/**/*.ts\"",
+    "lint": "eslint \"pi/agent/extensions/**/*.ts\" \"pi/agent/workflows/**/*.ts\" \"pi/agent/scripts/**/*.ts\"",
     "typecheck": "tsc",
-    "test": "tsx --test \"pi/agent/extensions/**/*.test.ts\" \"pi/agent/workflows/**/*.test.ts\" \"pi/agent/skills/**/*.test.js\""
+    "test": "tsx --test \"pi/agent/extensions/**/*.test.ts\" \"pi/agent/workflows/**/*.test.ts\" \"pi/agent/scripts/**/*.test.ts\" \"pi/agent/skills/**/*.test.js\""
   },
   "lint-staged": {
     "pi/agent/extensions/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "pi/agent/scripts/**/*.ts": [
       "eslint --fix",
       "prettier --write"
     ],

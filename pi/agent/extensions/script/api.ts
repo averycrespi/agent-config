@@ -9,6 +9,7 @@ import {
 } from "./provider.ts";
 import { createBridge } from "./bridge.ts";
 import { runScript, type RunResult } from "./runtime.ts";
+import { jsonSnapshot, MAX_ARGS_BYTES } from "./value.ts";
 export { registerScriptProvider } from "./provider.ts";
 export { jsonSnapshot as snapshotScriptJson } from "./value.ts";
 export type {
@@ -29,6 +30,8 @@ export type ScriptLimits = {
 };
 export type ScriptOptions = {
   source: string;
+  /** Optional JSON data binding, transported over IPC, never compiled as source. */
+  args?: unknown;
   providers: string[];
   /** Optional caller-owned session metadata, snapshotted before async setup. */
   session?: ScriptSession;
@@ -143,6 +146,15 @@ export async function prepareScript(
   )
     throw new Error("invalid_source");
   const source = options.source;
+  const argsJson =
+    options.args === undefined
+      ? undefined
+      : jsonSnapshot(options.args, MAX_ARGS_BYTES);
+  const providers = [...options.providers];
+  const capabilityCeiling = options.capabilityCeiling
+    ? [...options.capabilityCeiling]
+    : undefined;
+  const requestedLimits = { ...options.limits };
   const execution = Object.freeze({
     cwd,
     ...(options.session
@@ -162,20 +174,20 @@ export async function prepareScript(
   if (!config.valid) throw new Error("invalid_config");
   const selected = select(
     pi,
-    options.providers,
+    providers,
     config.allowedProviders,
-    options.capabilityCeiling,
+    capabilityCeiling,
   );
   const deadlineMs = Math.min(deadline, started + config.timeoutMs);
   if (Date.now() >= deadlineMs) throw new Error("deadline_exceeded");
   const limits = {
     ...config,
-    maxCalls: Math.min(config.maxCalls, options.limits.maxCalls),
+    maxCalls: Math.min(config.maxCalls, requestedLimits.maxCalls),
     maxConcurrency: Math.min(
       config.maxConcurrency,
-      options.limits.maxConcurrency,
+      requestedLimits.maxConcurrency,
     ),
-    timeoutMs: Math.min(config.timeoutMs, options.limits.timeoutMs),
+    timeoutMs: Math.min(config.timeoutMs, requestedLimits.timeoutMs),
   };
   const bridge = createBridge(selected, execution);
   let used = false;
@@ -194,6 +206,7 @@ export async function prepareScript(
           ...selected.map((p) => p.signal),
         ]),
         deadlineMs,
+        argsJson,
       );
     },
   };
@@ -241,6 +254,10 @@ export async function executeScript(
       return { ...failure("cancelled"), status: "cancelled" };
     if (Date.now() >= deadline)
       return { ...failure("deadline_exceeded"), status: "timeout" };
+    const argsJson =
+      options.args === undefined
+        ? undefined
+        : jsonSnapshot(options.args, MAX_ARGS_BYTES);
     const config = await loadScriptConfig(cwd, [], signal);
     if (signal.aborted)
       return options.signal.aborted
@@ -271,6 +288,7 @@ export async function executeScript(
       },
       combined,
       Math.min(deadline, started + config.timeoutMs),
+      argsJson,
     );
     return timeout.signal.aborted &&
       !options.signal.aborted &&

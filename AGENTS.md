@@ -33,17 +33,17 @@ This public repository manages Pi configuration through GNU Stow: `pi/agent/` is
 make install-dev        # install Node dependencies and Husky hooks
 make install-playwright # install browser tooling and dependencies
 make stow-pi            # link configuration; explicit request required
-npm run lint            # lint extension and saved-workflow TypeScript
+npm run lint            # lint extension, saved-workflow and saved-Script TypeScript
 npm run format:check    # check TS/JS/JSON/Markdown/YAML formatting
 make typecheck          # type-check TypeScript
-make test               # run extension, saved-workflow, and skill tests
+make test               # run extension, saved-workflow, saved-Script and skill tests
 ```
 
 - Check dependency availability before running tools in a fresh checkout/worktree. Inspect package scripts and setup effects, then install the declared locked development dependencies when needed (`npm ci` for this repository). Preserve the lockfile and unrelated work; do not silently upgrade dependencies, run audit fixes, or expand setup into global/system installation, Pi configuration linking, or live-session changes. Account for lifecycle scripts such as Husky setup and ask only when their effects exceed the authorized scope. After setup, continue the already-authorized implementation and verification; missing dependencies alone are not a reason to hand work back.
-- For extension or saved-workflow code and runtime-affecting configuration changes, run both `make typecheck` and `make test`, plus lint and formatting checks, before reporting completion. Preserve applicable review and CI gates.
+- For extension, saved-workflow or saved-Script code and runtime-affecting configuration changes, run both `make typecheck` and `make test`, plus lint and formatting checks, before reporting completion. Preserve applicable review and CI gates.
 - For documentation-only changes, check formatting and affected paths, links, and examples. For skill/prompt changes, also check instruction compatibility and relevant discovery or structural validation; do not claim structural checks prove model behavior.
 - Tests use Node's `node:test` runner through `tsx`. Preserve `.ts` source imports and `allowImportingTsExtensions` in `tsconfig.json`.
-- Keep saved-workflow tests beside their `*.js` definitions in `pi/agent/workflows/`; load the actual definition through the generic runtime in `pi/agent/extensions/workflows/`. Keep lint, typecheck, test, and lint-staged globs covering this directory.
+- Keep saved-workflow tests beside their `*.js` definitions in `pi/agent/workflows/`; load the actual definition through the generic runtime in `pi/agent/extensions/workflows/`. Apply the same convention to saved Scripts in `pi/agent/scripts/` using the generic Script runtime. Keep lint, typecheck, test, and lint-staged globs covering both directories.
 - Run focused tests during development with `npx tsx --test pi/agent/extensions/<name>/*.test.ts` or `npx tsx --test pi/agent/workflows/<name>.test.ts`; these do not replace required full checks for code changes.
 
 ## Skills and Notes

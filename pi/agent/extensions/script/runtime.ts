@@ -32,6 +32,7 @@ export function runScript(
   config: ScriptConfig = DEFAULT_CONFIG,
   signal?: AbortSignal,
   deadlineMs?: number,
+  argsJson?: string,
 ): Promise<RunResult> {
   const empty = (code: string): RunResult => ({
     status: "failed",
@@ -81,6 +82,7 @@ export function runScript(
     }> = [];
     let active = 0;
     let lastId = 0;
+    let awaitingArgs = argsJson !== undefined;
     let child: ChildProcess | undefined;
     let terminal:
       | { status: RunResult["status"]; code?: string; json?: string }
@@ -230,6 +232,15 @@ export function runScript(
         return;
       }
       if (
+        awaitingArgs &&
+        message.type === "ready" &&
+        Object.keys(message).length === 1
+      ) {
+        awaitingArgs = false;
+        send({ type: "arguments", json: argsJson });
+        return;
+      }
+      if (
         message.type === "result" &&
         Object.keys(message).length === 2 &&
         typeof message.json === "string"
@@ -310,7 +321,12 @@ export function runScript(
       });
       child.stdin?.on("error", () => finish("failed", "sandbox_error"));
       child.stdin?.end(
-        buildSandboxSource(source, config.maxConcurrency, bridge.bindings),
+        buildSandboxSource(
+          source,
+          config.maxConcurrency,
+          bridge.bindings,
+          argsJson !== undefined,
+        ),
       );
       if (signal?.aborted) abort();
     } catch {

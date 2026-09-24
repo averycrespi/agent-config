@@ -17,6 +17,7 @@ pi/
 │   ├── settings.json   # Local, gitignored; not supplied by a fresh clone
 │   ├── extensions/     # TypeScript tools, commands, and UI
 │   ├── skills/         # On-demand activity guidance
+│   ├── scripts/        # Reusable validated tool compositions
 │   ├── workflows/      # Reusable JavaScript orchestration
 │   ├── prompts/        # Slash-invoked prompt templates
 │   └── themes/         # Terminal appearance
@@ -105,6 +106,14 @@ The [review skill](agent/skills/review/SKILL.md) prepares evidence and invokes t
 [Work-stack](agent/skills/work-stack/SKILL.md) composes spin-out, work-ticket, Herdr and Monitor for one repository and a local-only or review-ready PR boundary. Its thin entry point applies serial policy directly to shared coordination/index, mailbox, questions, supervision and recovery mechanics, with no intermediate manager. The parent verifies predecessor commits and release evidence before advancing. Required primitives must already be loaded; installing the skill does not launch children or reload extensions. Stacked PR CI qualifies the recorded stack base, not independent readiness for main.
 
 The scheduled-tasks extension also bundles [manage-scheduled-tasks](agent/extensions/scheduled-tasks/skills/manage-scheduled-tasks/SKILL.md) for authoring, validating, running, and debugging task definitions. The repo-local [create-extension skill](../.pi/skills/create-extension/SKILL.md) is an authoring aid, not part of the Stow-installed skill inventory.
+
+### Saved Scripts
+
+[Saved Scripts](agent/extensions/script/README.md#saved-scripts) compose selected tool providers or pure computation without subagent reasoning. Use `script list`, `validate`, and `run` with a saved `name`, structured `args`, and explicit `providers`; foreground is default and background reuses the shared service. Definitions live in one configurable user store, default `<agentDir>/scripts`, and edits are visible on the next call. Stow installs definitions, but does not load new extension code into running sessions. Metadata never grants capabilities or approval and limits only narrow host policy.
+
+| Definition                                               | Purpose                                                                           |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [summarize-values.js](agent/scripts/summarize-values.js) | Generic bounded numeric summary, with no providers; accepts `{values: number[]}`. |
 
 ### Saved workflows
 

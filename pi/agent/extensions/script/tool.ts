@@ -13,6 +13,8 @@ export const PARAMETERS = Type.Object(
       "run",
       "describe",
       "list",
+      "validate",
+      "executions",
       "inspect",
       "cancel",
       "dismiss",
@@ -34,12 +36,19 @@ export const PARAMETERS = Type.Object(
           "Explicit provider selection; [] runs pure computation. For describe only, [] lists permitted registered APIs.",
       }),
     ),
+    name: Type.Optional(Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" })),
+    args: Type.Optional(
+      Type.Unknown({
+        description:
+          "JSON object for named execution/validation; defaults to {}.",
+      }),
+    ),
     source: Type.Optional(
       Type.String({
         minLength: 1,
         maxLength: 262144,
         description:
-          "Async JavaScript body; explicitly return JSON and await all calls. Required for run.",
+          "Async JavaScript body; explicitly return JSON and await all calls. Run requires exactly one of source or saved name.",
       }),
     ),
   },
@@ -154,6 +163,29 @@ export const renderers: Pick<
   renderResult(result, { expanded, isPartial }, theme, ctx) {
     const d = result.details as Record<string, unknown> | undefined;
     const args = ctx.args ?? {};
+    if (
+      d?.saved === true ||
+      args.action === "list" ||
+      args.action === "validate"
+    ) {
+      const entries = Array.isArray(d?.entries) ? d.entries : [];
+      const failed = ctx.isError || d?.scriptError === true;
+      const lines = [
+        theme.fg(
+          isPartial ? "warning" : failed ? "error" : "success",
+          `${display(args.action)} · ${isPartial ? "checking..." : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : `${entries.length} saved script(s)`}${d?.truncated ? " · truncated" : ""}`,
+        ),
+      ];
+      if (expanded)
+        for (const entry of entries)
+          lines.push(
+            theme.fg(
+              entry.valid ? "muted" : "error",
+              `${display(entry.name ?? entry.filename)} · ${entry.valid ? "valid" : display(entry.diagnostic)}`,
+            ),
+          );
+      return getTruncatedText(ctx.lastComponent, lines);
+    }
     if (d?.background === true) {
       const records = Array.isArray(d.records) ? d.records : [];
       const lines = [

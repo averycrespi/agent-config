@@ -9,6 +9,9 @@ import {
 import { getBackgroundService, type Execution } from "../background/api.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { loadScriptConfig } from "./config.ts";
+import { inventoryScripts, loadDefinition } from "./store.ts";
+import { validateArguments, MAX_ARGS_BYTES } from "./definition.ts";
+import { jsonSnapshot } from "./value.ts";
 import {
   PARAMETERS,
   presentRun,
@@ -50,7 +53,7 @@ export default function (pi: ExtensionAPI) {
     parameters: PARAMETERS,
     ...renderers,
     description:
-      "Describe selected provider APIs or execute one fresh bounded JavaScript child using explicitly selected host-permitted providers. [] runs pure JSON computation without providers. Describe [] lists permitted registered APIs. Use namespaced methods with the documented positional argument schemas and parallel(thunks). Explicitly return JSON (null for empty) and await all calls. No ambient filesystem/network/process/imports or credentials. Defaults: 32 calls, concurrency 4, 120s; returned JSON limited to 24000 bytes. Host failures and unknown effects survive guest catches. Foreground default. execution:background returns a persisted ID and automatic outcome notification; requires Background service. list/inspect/cancel/dismiss control Script executions (id required except list). No automatic retries, grants or replay.",
+      "Describe selected provider APIs or execute one fresh bounded JavaScript child using explicitly selected host-permitted providers. [] runs pure JSON computation without providers. Describe [] lists permitted registered APIs. Use namespaced methods with the documented positional argument schemas and parallel(thunks). Explicitly return JSON (null for empty) and await all calls. No ambient filesystem/network/process/imports or credentials. Defaults: 32 calls, concurrency 4, 120s; returned JSON limited to 24000 bytes. Host failures and unknown effects survive guest catches. Foreground default. execution:background returns a persisted ID and automatic outcome notification; requires Background service. list discovers saved definitions; validate checks a named definition and args without executing. run requires exactly one source or name; args is only for names. Metadata never grants authority; definition limits only narrow policy. executions/inspect/cancel/dismiss control Script executions (id required except executions). No automatic retries, grants or replay.",
     promptSnippet:
       "Run isolated JavaScript with explicitly selected extension capabilities",
     promptGuidelines: [
@@ -80,15 +83,68 @@ export default function (pi: ExtensionAPI) {
           records: records.map(({ result: _result, ...r }) => r),
         },
       });
-      if (["list", "inspect", "cancel", "dismiss"].includes(params.action)) {
+      if (params.action === "list" || params.action === "validate") {
         if (
           params.source !== undefined ||
           params.execution !== undefined ||
-          params.providers !== undefined
+          params.providers !== undefined ||
+          params.id !== undefined ||
+          (params.action === "list" &&
+            (params.name !== undefined || params.args !== undefined)) ||
+          (params.action === "validate" && !params.name)
+        )
+          throw new Error("Invalid saved Script action fields");
+        const config = await loadScriptConfig(ctx.cwd, [], signal);
+        signal?.throwIfAborted();
+        if (!config.valid) throw new Error("invalid_config");
+        const inventory =
+          params.action === "list"
+            ? await inventoryScripts(config.userScriptsDir)
+            : undefined;
+        const definition =
+          params.action === "validate"
+            ? await loadDefinition(config.userScriptsDir, params.name!)
+            : undefined;
+        if (definition) validateArguments(definition, params.args);
+        signal?.throwIfAborted();
+        const value = inventory ?? {
+          valid: true,
+          ...definition!.meta,
+          digest: definition!.digest,
+        };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: wrapUntrustedContent(
+                "SAVED SCRIPTS",
+                JSON.stringify(value),
+              ),
+            },
+          ],
+          details: {
+            saved: true,
+            action: params.action,
+            entries: inventory?.entries ?? [
+              { name: definition!.meta.name, valid: true },
+            ],
+            truncated: inventory?.truncated ?? false,
+          },
+        };
+      }
+      if (
+        ["executions", "inspect", "cancel", "dismiss"].includes(params.action)
+      ) {
+        if (
+          params.source !== undefined ||
+          params.execution !== undefined ||
+          params.providers !== undefined ||
+          params.name !== undefined ||
+          params.args !== undefined
         )
           throw new Error("Unexpected fields for background control");
         const service = getBackgroundService(pi);
-        if (params.action === "list") {
+        if (params.action === "executions") {
           if (params.id !== undefined)
             throw new Error("Unexpected id for list");
           return backgroundResult(
@@ -108,7 +164,13 @@ export default function (pi: ExtensionAPI) {
         params.id !== undefined ||
         !params.providers ||
         (params.action === "describe" &&
-          (params.execution !== undefined || params.source !== undefined))
+          (params.execution !== undefined ||
+            params.source !== undefined ||
+            params.name !== undefined ||
+            params.args !== undefined)) ||
+        (params.action === "run" &&
+          ((params.source === undefined) === (params.name === undefined) ||
+            (params.name === undefined && params.args !== undefined)))
       )
         throw new Error("Invalid Script action fields");
       const session = {
@@ -123,37 +185,87 @@ export default function (pi: ExtensionAPI) {
         lifetime.signal,
         ...(signal ? [signal] : []),
       ]);
-      if (params.action === "run" && params.execution === "background") {
-        const service = getBackgroundService(pi);
+      // Capture caller data before any asynchronous store or policy reads.
+      const providers = [...params.providers];
+      const name = params.name;
+      let source = params.source;
+      let limits = { ...MAX_LIMITS };
+      let args: unknown;
+      let saved: { name: string; digest: string } | undefined;
+      if (name !== undefined) {
+        const input = JSON.parse(
+          jsonSnapshot(
+            params.args === undefined ? {} : params.args,
+            MAX_ARGS_BYTES,
+          ),
+        );
+        const config = await loadScriptConfig(cwd, [], combined);
+        if (!config.valid) throw new Error("invalid_config");
+        const definition = await loadDefinition(config.userScriptsDir, name);
+        combined.throwIfAborted();
+        args = JSON.parse(validateArguments(definition, input));
+        if (definition.meta.providers.some((p) => !providers.includes(p)))
+          throw new Error("required_provider_missing");
+        source = definition.executable;
+        limits = { ...definition.meta.limits };
+        saved = { name, digest: definition.digest };
+      }
+      if (
+        params.action === "run" &&
+        (params.execution === "background" || saved)
+      ) {
+        const service =
+          params.execution === "background"
+            ? getBackgroundService(pi)
+            : undefined;
         // Pin the original policy, provider records, context and deadline before admission.
         // Tool-turn cancellation gates admission; admitted work has its own session lifetime.
         const prepared = await prepareScript(pi, cwd, {
           session,
-          source: params.source!,
-          providers: params.providers,
-          limits: MAX_LIMITS,
-          signal: lifetime.signal,
-          deadlineMs: Date.now() + MAX_LIMITS.timeoutMs,
+          source: source!,
+          args,
+          providers,
+          limits,
+          signal: service ? lifetime.signal : combined,
+          deadlineMs: Date.now() + limits.timeoutMs,
         });
         combined.throwIfAborted();
+        if (!service) {
+          const task = prepared.run(combined);
+          running.add(task);
+          try {
+            const result = presentRun(await task);
+            return {
+              ...result,
+              details: { ...result.details, definition: saved },
+            };
+          } finally {
+            running.delete(task);
+          }
+        }
         return backgroundResult([
           service.admit({
             owner: "script",
             label: params.description,
             deadlineMs: prepared.deadlineMs,
+            ...(saved ? { result: { definition: saved } } : {}),
             run: async (signal) => {
               const run = await prepared.run(signal);
               return {
                 status: run.status,
                 effectsMayPersist: run.effectsMayPersist,
                 outcomeUnknown: run.outcomeUnknown,
-                result: JSON.parse(JSON.stringify(run)),
+                result: JSON.parse(
+                  JSON.stringify({
+                    ...run,
+                    ...(saved ? { definition: saved } : {}),
+                  }),
+                ),
               };
             },
           }),
         ]);
       }
-      const providers = params.providers;
       const task = (async () => {
         if (params.action === "describe") {
           try {

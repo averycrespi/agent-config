@@ -68,6 +68,7 @@ const EVENT = "script:providers-v1";
 // Lower-case namespace names cannot shadow JS intrinsics. Helper/privileged names are reserved.
 const reserved = new Set([
   "parallel",
+  "args",
   "globalThis",
   "process",
   "require",

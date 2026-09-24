@@ -1,6 +1,6 @@
 # Script
 
-Run one bounded JavaScript body in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway. [Monitor](../monitor/README.md) owns observation and continuation using this runtime. [MCP Gateway](../mcp-gateway/README.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-provider) optionally supplies `web.search` and `web.fetch`, independently of Gateway. [Builtins](../builtins/README.md#script-provider) optionally supplies active stock filesystem/shell methods with structured results; image reads require direct `read`.
+Run one bounded JavaScript body or reusable saved definition in a fresh child, with explicitly selected extension-provided capabilities. `script` is independent of MCP Gateway. [Monitor](../monitor/README.md) owns observation and continuation using this runtime. [MCP Gateway](../mcp-gateway/README.md#script-provider) optionally supplies `mcp.call`; the runtime does not require Gateway. [Web-access](../web-access/README.md#script-provider) optionally supplies `web.search` and `web.fetch`, independently of Gateway. [Builtins](../builtins/README.md#script-provider) optionally supplies active stock filesystem/shell methods with structured results; image reads require direct `read`.
 
 ## Usage
 
@@ -35,6 +35,63 @@ The fixture example requires a separately registered provider and host allowlist
 
 Supply an async JavaScript **body**, not a module. Explicitly return JSON (`null` for no output), and await every call. Missing, cyclic, non-finite, function, bigint, non-plain-object, accessor, symbol, non-enumerable, sparse-array and extra-array-property results reject. Captured intrinsics and descriptor snapshots avoid guest serialization hooks. Values have a 100-level nesting bound. `parallel(thunks)` bounds independent work and preserves order; arbitrary `Promise.all` calls also obey the host queue. There is no guest logging/progress API.
 
+## Saved Scripts
+
+`list` discovers saved contracts; `validate` checks a named definition and JSON arguments without executing code or calling providers. `run` requires exactly one inline `source` or saved `name`. Named calls accept `args` (an object, default `{}`); inline calls remain async bodies and do not accept tool `args`. Every action still requires a nonsecret `description`.
+
+```js
+script({ action: "list", description: "Discover saved Scripts" });
+script({
+  action: "validate",
+  description: "Validate summary input",
+  name: "summarize-values",
+  args: { values: [2, 3, 5] },
+});
+script({
+  action: "run",
+  description: "Summarize values",
+  name: "summarize-values",
+  args: { values: [2, 3, 5] },
+  providers: [],
+});
+script({
+  action: "run",
+  execution: "background",
+  description: "Summarize values asynchronously",
+  name: "summarize-values",
+  args: { values: [2, 3, 5] },
+  providers: [],
+});
+```
+
+The shipped [summarize-values.js](../../scripts/summarize-values.js) is an ordinary definition, loaded through the generic runtime. Definitions contain exactly a literal `export const meta` object followed by `export async function run()` with no parameters. Put helper functions inside `run`. Return strict JSON, or `null`. Imports, re-exports, top-level executable statements, computed metadata, spreads, duplicate metadata keys and nonliteral metadata are rejected. Metadata is parsed as data, never evaluated in the host. Compilation checks syntax but never executes the program. The guest entry point receives `args` as a data binding over JSON IPC, not interpolated JavaScript.
+
+```js
+export const meta = {
+  name: "echo-value",
+  description: "Return a validated string without provider calls.",
+  args: {
+    type: "object",
+    properties: { value: { type: "string", maxLength: 200 } },
+    required: ["value"],
+    additionalProperties: false,
+  },
+  providers: [],
+  limits: { maxCalls: 1, maxConcurrency: 1, timeoutMs: 5000 },
+};
+export async function run() {
+  return { value: args.value };
+}
+```
+
+All five metadata fields are required. Names are lowercase kebab-case (`^[a-z0-9][a-z0-9-]{0,63}$`); descriptions are nonblank, control-free and at most 240 characters. Argument schemas are plain JSON Schema draft-07 with root `type: "object"`, at most 16 KiB, strictly compiled by Ajv without coercion, defaults, schema downloads or format plugins. Unsupported keywords/formats/dialects, asynchronous schemas and unresolved external references reject. Metadata nesting is at most 32 levels and 20 KiB. Supplied arguments must be strict JSON, at most 64 KiB; invalid schema/args cause no provider calls. Validation proves neither runtime success nor authorization.
+
+`meta.providers` declares requirements, not grants: every required provider must be explicitly selected in the run's `providers` and allowed by host policy. Additional explicitly selected providers still require host permission. `args` is reserved as a provider/helper name. Required finite positive `maxCalls`, `maxConcurrency`, and `timeoutMs` cannot exceed hard ceilings (128, 16, 300000). Effective limits are the minimum of definition and current host policy, never an expansion. Missing providers and invalid limits fail before execution. Provider permissions remain distinct from human approval, including for saved definitions.
+
+There is one user-level store, `userScriptsDir`, default `<agentDir>/scripts`; no project stores or arbitrary file-path runs. Configure an absolute path globally or via `SCRIPT_USER_SCRIPTS_DIR`. The store directory may itself be a Stow symlink; individual `<name>.js` entries must be regular, nonsymlink files with a matching literal `meta.name`. Traversal, invalid names, nonregular/unreadable/oversized files and opened paths outside the resolved store reject. Inventory includes invalid entries and is bounded to 200 candidates, 256 KiB per definition, 2 MiB aggregate source and 24,000 bytes of JSON; `truncated` is explicit. Direct named lookup is independent of inventory truncation. Missing stores list empty. Edits are visible on the next invocation without reload.
+
+Admission snapshots the definition and SHA-256 digest, validated arguments, selected registrations, policy, context and deadline before execution. Later edits do not change admitted work; provider disposal still revokes permission. Foreground results and background inspection identify the admitted name/digest. Background retains that identity even if interrupted before execution. Source and arguments are not added to its sidecar; normal tool history retains submitted arguments. No source copies, new result store, scheduler, nested saved runs, tool-based editing, retries or replay are introduced.
+
 ## Background execution
 
 Foreground remains the default. To keep the conversation available, pass `execution: "background"` to `run`. The loaded [Background service](../background/README.md) validates and persists admission before returning a stable ID; missing service or nonpersistent sessions fail closed, never fall back. The same Script executor, provider records, scoped context, policy limits and original deadline apply. No retries or longer deadlines are added.
@@ -47,7 +104,7 @@ script({
   providers: [],
   source: "return { total: 10 };",
 });
-script({ action: "list", description: "List background executions" });
+script({ action: "executions", description: "List background executions" });
 // Replace EXECUTION_ID with the UUID returned by admission.
 script({
   action: "inspect",
@@ -66,7 +123,9 @@ script({
 });
 ```
 
-Control actions omit `providers`, `source` and `execution`. `list` omits results; `inspect` returns one bounded result plus original executor accounting. Cancellation requests abort, not rollback. Dismissal rejects active work and clears terminal attention without deleting evidence. Background automatically sends a bounded terminal notification with an inspection reference, including failures and interruptions; the model need not poll. Its below-editor row respects drafts, active turns and sibling widgets. See [notification integrity, retention and limits](../background/README.md) before interpreting handoff or consumption as completion.
+Control actions omit `providers`, `source`, `name`, `args` and `execution`. `executions` omits results; `inspect` returns one bounded result plus original executor accounting. Cancellation requests abort, not rollback. Dismissal rejects active work and clears terminal attention without deleting evidence. Background automatically sends a bounded terminal notification with an inspection reference, including failures and interruptions; the model need not poll. Its below-editor row respects drafts, active turns and sibling widgets. See [notification integrity, retention and limits](../background/README.md) before interpreting handoff or consumption as completion.
+
+The former background `list` action is now `executions`; `list` exclusively discovers saved definitions, matching Workflows. Existing inline run and provider describe calls are unchanged.
 
 ## Tool display
 
@@ -74,18 +133,21 @@ The call row shows the action, provider selection or discovery scope, and nonsec
 
 Collapsed results show `completed · no calls` for successful zero-call runs, whether or not providers were selected; otherwise they show successful call counts or discovery provider/method counts. Empty discovery says no permitted providers were discovered; it does not imply that no extensions are installed. Failures show a safe reason rather than an unhelpful zero-call count. Cancellation, timeout, partial execution, and unknown outcomes remain distinct, with effect warnings visible even when collapsed.
 
+Saved list/validate rows show bounded status and names/invalid-entry diagnostics when expanded, never argument schemas, argument values or source. Validation is labeled not executed.
+
 Expand for discovered method names, attempted/succeeded call counts, traces, fixed error codes, and recovery guidance. Raw source, arguments, returned JSON, schemas, intermediate values, and exception text never appear in custom tool rows; explicit JSON and schemas still appear in the framed model-facing result. Labels and detail lines are sanitized and truncated to terminal width.
 
 ## Policy and configuration
 
 Only global `extension:script` settings and environment overrides apply, never project settings. Invalid settings, malformed/unreadable global JSON (other than a missing file), invalid provider lists or limits disable execution rather than relaxing policy. Settings are sampled on every execution/discovery; environment values take precedence. `/script-config` displays effective policy and limits.
 
-| Field              | Default  | Environment override       | Description                                                                                               |
-| ------------------ | -------- | -------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `allowedProviders` | `[]`     | `SCRIPT_ALLOWED_PROVIDERS` | Explicit namespace allowlist, at most 32 unique names. Environment value is a JSON array, not CSV or `*`. |
-| `maxCalls`         | `32`     | `SCRIPT_MAX_CALLS`         | 1–128 attempted provider calls per execution.                                                             |
-| `maxConcurrency`   | `4`      | `SCRIPT_MAX_CONCURRENCY`   | 1–16 concurrent host handlers; excess calls queue FIFO.                                                   |
-| `timeoutMs`        | `120000` | `SCRIPT_TIMEOUT_MS`        | 1–300000 ms total execution deadline.                                                                     |
+| Field              | Default              | Environment override       | Description                                                                                               |
+| ------------------ | -------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `userScriptsDir`   | `<agentDir>/scripts` | `SCRIPT_USER_SCRIPTS_DIR`  | Absolute user-level saved-definition directory; no project override.                                      |
+| `allowedProviders` | `[]`                 | `SCRIPT_ALLOWED_PROVIDERS` | Explicit namespace allowlist, at most 32 unique names. Environment value is a JSON array, not CSV or `*`. |
+| `maxCalls`         | `32`                 | `SCRIPT_MAX_CALLS`         | 1–128 attempted provider calls per execution.                                                             |
+| `maxConcurrency`   | `4`                  | `SCRIPT_MAX_CONCURRENCY`   | 1–16 concurrent host handlers; excess calls queue FIFO.                                                   |
+| `timeoutMs`        | `120000`             | `SCRIPT_TIMEOUT_MS`        | 1–300000 ms total execution deadline.                                                                     |
 
 ```json
 {

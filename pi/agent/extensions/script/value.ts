@@ -1,5 +1,6 @@
 export const MAX_IPC_BYTES = 16 * 1024 * 1024;
 export const MAX_OUTPUT_BYTES = 24_000;
+export const MAX_ARGS_BYTES = 64 * 1024;
 
 /** Copy data descriptors only; do not call provider toJSON hooks or accept lossy JSON. */
 export function jsonSnapshot(value: unknown, maxBytes = MAX_IPC_BYTES): string {
