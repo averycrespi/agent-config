@@ -117,6 +117,8 @@ export interface WorkflowAgentState {
 }
 
 export interface WorkflowSnapshot {
+  /** Runtime-owned logical calls, not retry attempts or a predicted total. */
+  activity?: { started: number; completed: number; failed: number };
   meta?: WorkflowMeta;
   phase?: string;
   phases: string[];
@@ -168,6 +170,8 @@ export interface WorkflowRuntimeOptions {
   onUpdate?: (snapshot: WorkflowSnapshot) => void;
   spawnAgent: (request: WorkflowAgentRequest) => Promise<WorkflowAgentResponse>;
   timeoutMs?: number;
+  /** Original absolute admission deadline; never renewed by background startup. */
+  deadlineMs?: number;
   agentTimeoutMs?: number;
   maxConcurrency?: number;
   ledger?: WorkflowRunLedger;

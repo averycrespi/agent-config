@@ -68,7 +68,7 @@ Gateway supplies Script's optional `mcp.call` capability through the supported p
 
 For choosing between these mechanisms and their material authorization and ownership boundaries, see [Delegation and automation](../README.md#delegation-and-automation). Monitor observations are session-bound and do not resume after shutdown, reload or navigation. Its [global/environment configuration](agent/extensions/monitor/README.md#configuration) controls cycle and lifetime ceilings; `/monitor-config` inspects the loaded policy. Managed cross-process reporting requires loaded mailbox support and permitted, explicitly selected `mailbox` access for coordinator evaluators. Initial list plus polling catches registration gaps and lost hints. Worker identity is explicit in handoffs and verified through Herdr; no session provider or registry remains.
 
-[Background](agent/extensions/background/README.md) must be loaded alongside Script for its optional `execution: "background"` mode. It owns persisted admission, below-editor rows and automatic terminal attention, not execution engines or observation scheduling. Results remain in a bounded session sidecar; cancellation is not rollback and restoration never replays work. Historical observer receipts remain Monitor-owned.
+[Background](agent/extensions/background/README.md) must be loaded alongside Script, Subagents or Workflows for their optional `execution: "background"` mode. It owns persisted admission, below-editor rows and automatic terminal attention, not execution engines or observation scheduling. Bounded results/accounting and larger adapter-owned result references remain inspectable; cancellation is not rollback and restoration never replays work. Historical observer receipts remain Monitor-owned.
 
 [`_shared/`](agent/extensions/_shared/README.md) contains helpers imported by sibling extensions, not a separately loaded extension. Extension authoring conventions and required checks live in the [repository guidance](../AGENTS.md#authoring-guidance).
 
@@ -108,7 +108,7 @@ The scheduled-tasks extension also bundles [manage-scheduled-tasks](agent/extens
 
 ### Saved workflows
 
-Saved definitions run through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. This is read-mostly orchestration: workflow subagents cannot receive writable filesystem or shell capabilities. See the [workflow execution contract](agent/extensions/workflows/README.md#saved-workflows).
+Saved definitions run through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. Optional `execution: "background"` keeps the conversation available while the same workflow owns all its agents; use `executions`/`inspect`/`cancel`/`dismiss` for retained runs and wait for automatic notification. This is read-mostly orchestration: workflow subagents cannot receive writable filesystem or shell capabilities. See the [workflow execution contract](agent/extensions/workflows/README.md#saved-workflows).
 
 | Workflow                                                            | Purpose and input                                                                                   | Definition                                           |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |

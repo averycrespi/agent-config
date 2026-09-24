@@ -409,6 +409,22 @@ export function renderWorkflowResult(
     return getTruncatedText(context.lastComponent, lines);
   }
 
+  if (result.details?.execution || result.details?.background) {
+    const value = result.details.execution ?? result.details.background;
+    const records = Array.isArray(value) ? value : [value];
+    const action = result.details.action ?? "run";
+    const lines = records.map(
+      (record: any) =>
+        `${workflowIdentity(theme, safeDisplay(action), safeDisplay(record.label))}${separator(theme)}${theme.fg(["failed", "timeout", "interrupted"].includes(record.status) ? "error" : "muted", safeDisplay(record.status))} ${safeDisplay(record.id)}`,
+    );
+    if (lines.length === 0)
+      lines.push(
+        `${workflowIdentity(theme, safeDisplay(action))}${separator(theme)}none`,
+      );
+    if (expanded) lines.push(...text.split("\n").map(safeDisplay));
+    return getTruncatedText(context.lastComponent, lines);
+  }
+
   if (result.details?.action === "list") {
     const inventory = result.details.inventory as
       | {

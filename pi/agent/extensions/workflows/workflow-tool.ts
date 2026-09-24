@@ -28,12 +28,34 @@ import type {
   WorkflowSnapshot,
 } from "./types.ts";
 import { renderWorkflowCall, renderWorkflowResult } from "./display.ts";
+import {
+  getBackgroundService,
+  type ProgressUpdate,
+} from "../background/api.ts";
+import { prepareWorkflowOutcome, workflowOutcomeStatus } from "./background.ts";
 
 const workflowParamsSchema = Type.Object(
   {
-    action: stringEnum(["run", "list", "validate"] as const, {
-      description: "Action to perform.",
-    }),
+    action: stringEnum(
+      [
+        "run",
+        "list",
+        "validate",
+        "executions",
+        "inspect",
+        "cancel",
+        "dismiss",
+      ] as const,
+      {
+        description: "Action to perform.",
+      },
+    ),
+    execution: Type.Optional(stringEnum(["foreground", "background"] as const)),
+    id: Type.Optional(
+      Type.String({
+        description: "Background execution ID for inspect/cancel/dismiss.",
+      }),
+    ),
     script: Type.Optional(
       Type.String({
         description:
@@ -171,6 +193,26 @@ function recoveryEnvelope(
 
 function validateCombination(params: WorkflowParams): string[] {
   const errors: string[] = [];
+  const control = ["executions", "inspect", "cancel", "dismiss"].includes(
+    params.action,
+  );
+  if (params.execution !== undefined && params.action !== "run")
+    errors.push("execution is only accepted by run.");
+  if (control) {
+    if (
+      params.script !== undefined ||
+      params.name !== undefined ||
+      params.args !== undefined
+    )
+      errors.push("Execution controls do not accept script, name, or args.");
+    if (params.action !== "executions" && !params.id)
+      errors.push("Execution control requires id.");
+  }
+  if (
+    params.id !== undefined &&
+    !["inspect", "cancel", "dismiss"].includes(params.action)
+  )
+    errors.push("id is only accepted by inspect/cancel/dismiss.");
   const hasScript = params.script !== undefined;
   const hasName = params.name !== undefined;
   if (params.action === "run" || params.action === "validate") {
@@ -219,7 +261,7 @@ export function registerWorkflowTool(
   pi.registerTool({
     name: "workflow",
     label: "Workflow",
-    description: `List, validate, or run deterministic foreground JavaScript workflows that orchestrate isolated read-mostly subagents.
+    description: `List, validate, or run deterministic JavaScript workflows that orchestrate isolated read-mostly subagents.
 
 Use action \"list\" for current reusable definitions, action \"validate\" with exactly one of script/name without execution, or action \"run\" with exactly one of script/name and optional args.
 Scripts must start with literal metadata: export const meta = { name: \"...\", description: \"...\" }, followed by export async function run() { ... }.
@@ -227,11 +269,13 @@ run() must return its final value: return results, or return await report(result
 Use the globals agent(prompt, { intent, capabilities, profile, output?, retries?, timeoutMs? }), verify(claim, { intent, capabilities, profile, context?, retries?, timeoutMs? }), report(value, { gate: () => verdict }), budget, parallel(thunks), parallelSettled(thunks), pipeline(items, ...stages), phase(name), log(message), args, and cwd.
 Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy; write-filesystem and exec-shell are rejected. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Omit timeoutMs normally to use configured agentTimeoutMs (default 10 minutes). An explicit timeoutMs overrides the per-attempt agent/verify deadline, not the whole-run workflowTimeoutMs (default 1 hour), which still bounds all work.
-Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.`,
+Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.
+Execution defaults to foreground. Use execution: background for authorized independent work; one workflow owns and awaits all its children. Background must be loaded. Use executions to list retained runs, inspect/cancel/dismiss with id; list still lists saved definitions. Wait for automatic notification, not polling. Inspect typed failures, partial results and accounting; execution success is not acceptance. No replay, extra retries or renewed budgets.`,
     promptSnippet:
-      "List, validate, or run a deterministic foreground JavaScript workflow.",
+      "List, validate, or run a deterministic JavaScript workflow, foreground or background.",
     promptGuidelines: [
       "Call workflow with action list when a reusable saved workflow may apply.",
+      "Workflow background runs require authorized independent work. Wait for automatic completion; use workflow inspect/cancel/dismiss controls. One workflow owns all children and preserves gates, budgets and deadlines; no replay or nested background execution.",
       "Use workflow for read-mostly subagent work that benefits from deterministic orchestration—dependent phases, programmatic aggregation, or verification gates—or an applicable saved workflow. Prefer subagents for a simple independent batch; parallelism or structured output alone does not require workflow. Preserve skill-required workflows. Use script with the selected mcp provider for gateway composition that needs no subagent reasoning.",
       "Do not use workflow for workspace mutation; write-filesystem and exec-shell are rejected, so use only explicitly justified read-mostly capabilities.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
@@ -263,10 +307,45 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
         };
       }
 
+      if (
+        ["executions", "inspect", "cancel", "dismiss"].includes(params.action)
+      ) {
+        const service = getBackgroundService(pi);
+        const value =
+          params.action === "executions"
+            ? service
+                .list("workflow")
+                .map(({ result: _result, ...record }) => record)
+            : params.action === "inspect"
+              ? service.inspect("workflow", params.id!)
+              : params.action === "cancel"
+                ? service.cancel("workflow", params.id!)
+                : service.dismiss("workflow", params.id!);
+        return {
+          content: text(JSON.stringify(value)),
+          details: { action: params.action, background: value },
+        };
+      }
+      const cwd = ctx.cwd;
+      const modelRegistry = ctx.modelRegistry;
+      // Capture caller-owned mutable input before asynchronous configuration/source reads.
+      let args: unknown;
+      try {
+        args = structuredClone(params.args);
+      } catch {
+        return {
+          content: text("Error: workflow args must be cloneable"),
+          details: { action: params.action, inputError: true },
+        };
+      }
+      const background =
+        params.execution === "background"
+          ? getBackgroundService(pi)
+          : undefined;
       let config: WorkflowConfig | undefined;
       const warnings: string[] = [];
       const getConfig = async () => {
-        config ??= await loadConfig(ctx.cwd, warnings);
+        config ??= structuredClone(await loadConfig(cwd, warnings));
         if (warnings.length > 0) {
           ctx.ui?.notify(warnings.join("\n"), "warning");
           warnings.length = 0;
@@ -357,133 +436,235 @@ Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, 
         };
       }
 
-      const ledger = createWorkflowRunLedger({
-        maxTokens: currentConfig.maxTokensPerRun,
-        maxAgents: currentConfig.maxAgentsPerRun,
-      });
-      const agentStates = new Map<number, WorkflowAgentState>();
-      let latestSnapshot: WorkflowSnapshot | undefined;
-      const emit = (snapshot: WorkflowSnapshot) => {
-        latestSnapshot = {
-          ...snapshot,
-          agents: [...agentStates.values()],
+      const deadlineMs = Date.now() + currentConfig.workflowTimeoutMs;
+      const executeRun = async (
+        signal: AbortSignal | undefined,
+        update: typeof onUpdate,
+        progress?: (snapshot: WorkflowSnapshot) => void,
+      ) => {
+        const ledger = createWorkflowRunLedger({
+          maxTokens: currentConfig.maxTokensPerRun,
+          maxAgents: currentConfig.maxAgentsPerRun,
+        });
+        const agentStates = new Map<number, WorkflowAgentState>();
+        let latestSnapshot: WorkflowSnapshot | undefined;
+        const emit = (snapshot: WorkflowSnapshot) => {
+          latestSnapshot = {
+            ...snapshot,
+            agents: [...agentStates.values()],
+          };
+          progress?.(latestSnapshot);
+          update?.({
+            content: text(`Running workflow ${parsed.meta.name}...`),
+            details: {
+              action: "run",
+              scriptFile,
+              ...(sourceFile ? { sourceFile } : {}),
+              maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
+              snapshot: latestSnapshot,
+            },
+          });
         };
-        onUpdate?.({
-          content: text(`Running workflow ${parsed.meta.name}...`),
-          details: {
-            action: "run",
-            scriptFile,
-            ...(sourceFile ? { sourceFile } : {}),
-            maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
-            snapshot: latestSnapshot,
+
+        const spawnAgent = createWorkflowAgentSpawner({
+          cwd,
+          signal,
+          logId: toolCallId,
+          modelRegistry,
+          ledger,
+          onAgentUpdate: (state) => {
+            agentStates.set(state.id, { ...state });
+            if (latestSnapshot) emit(latestSnapshot);
           },
         });
-      };
 
-      const spawnAgent = createWorkflowAgentSpawner({
-        cwd: ctx.cwd,
-        signal,
-        logId: toolCallId,
-        modelRegistry: ctx.modelRegistry,
-        ledger,
-        onAgentUpdate: (state) => {
-          agentStates.set(state.id, { ...state });
-          if (latestSnapshot) emit(latestSnapshot);
+        try {
+          const result = await runWorkflow(parsed, {
+            cwd,
+            args,
+            signal,
+            spawnAgent,
+            onUpdate: emit,
+            timeoutMs: currentConfig.workflowTimeoutMs,
+            deadlineMs,
+            agentTimeoutMs: currentConfig.agentTimeoutMs,
+            maxConcurrency: currentConfig.maxConcurrency,
+            ledger,
+          });
+          const finalText = formatFinal(result, scriptFile, sourceFile);
+          const spilled = await spillIfNeeded(text(finalText), toolCallId);
+          return {
+            content: spilled.content as { type: "text"; text: string }[],
+            details: {
+              action: "run",
+              meta: result.meta,
+              result: result.result,
+              accounting: ledger.snapshot(),
+              scriptFile,
+              ...(sourceFile ? { sourceFile } : {}),
+              durationMs: result.durationMs,
+              agentFailureCount: result.agentFailureCount,
+              loggedBranchFailureCount: result.loggedBranchFailureCount,
+              settledBranchFailureCount: result.settledBranchFailureCount,
+              maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
+              agents: [...agentStates.values()],
+              phases: result.phases,
+              logs: result.logs,
+              ...(latestSnapshot ? { snapshot: latestSnapshot } : {}),
+              ...(spilled.spilled
+                ? {
+                    spilled: true,
+                    spillFile: spilled.filePath,
+                    originalSize: spilled.originalSize,
+                  }
+                : {}),
+            },
+          };
+        } catch (error) {
+          const runtimeError =
+            error instanceof WorkflowRuntimeError ? error : undefined;
+          const diagnostic = runtimeError?.diagnostic;
+          const finalStates = [...agentStates.values()];
+          let recoveryFile: string | undefined;
+          let persistenceWarning: string | undefined;
+          if (diagnostic && diagnostic.recoveryRecords.length > 0) {
+            try {
+              const persisted = await dependencies.persistRecovery(
+                toolCallId,
+                recoveryEnvelope(parsed.meta, diagnostic, finalStates),
+              );
+              if (persisted.retained) recoveryFile = persisted.path;
+              else persistenceWarning = persisted.warning;
+            } catch (persistenceError) {
+              persistenceWarning =
+                `Diagnostic recovery persistence failed: ${persistenceError instanceof Error ? persistenceError.message : String(persistenceError)}`.slice(
+                  0,
+                  500,
+                );
+            }
+          }
+          const lines = diagnostic
+            ? formatAbnormalWorkflow(
+                diagnostic,
+                recoveryFile,
+                persistenceWarning,
+              )
+            : [formatError(error)];
+          lines.push(
+            `Run script: ${scriptFile}`,
+            ...(sourceFile ? [`Saved source: ${sourceFile}`] : []),
+          );
+          return {
+            content: text(lines.join("\n")),
+            details: {
+              action: "run",
+              scriptFile,
+              ...(sourceFile ? { sourceFile } : {}),
+              errorCode:
+                runtimeError?.code ??
+                (error instanceof Error && error.name === "TimeoutError"
+                  ? "workflow_timeout"
+                  : error instanceof Error && error.name === "AbortError"
+                    ? "workflow_aborted"
+                    : "workflow_script_error"),
+              accounting: ledger.snapshot(),
+              aborted:
+                runtimeError?.code === "workflow_aborted" ||
+                (signal?.aborted ?? false),
+              ...(runtimeError
+                ? {
+                    errorCode: runtimeError.code,
+                    errorMessage: runtimeError.message,
+                    counts: runtimeError.diagnostic.counts,
+                  }
+                : {}),
+              ...(recoveryFile ? { recoveryFile } : {}),
+              ...(persistenceWarning ? { persistenceWarning } : {}),
+              maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
+              snapshot: latestSnapshot ?? diagnostic?.snapshot,
+            },
+          };
+        }
+      };
+      if (!background) return executeRun(signal, onUpdate);
+      signal?.throwIfAborted();
+      const retained = await prepareWorkflowOutcome();
+      signal?.throwIfAborted();
+      const execution = background.admit({
+        owner: "workflow",
+        label: parsed.meta.name.slice(0, 200),
+        deadlineMs,
+        result: { resultFile: retained.resultFile, scriptFile },
+        run: async (abort, report) => {
+          const controller = new AbortController();
+          const combined = AbortSignal.any([abort, controller.signal]);
+          let progressFailed = false;
+          let previous = "";
+          const publish = (value: ProgressUpdate) => {
+            if (progressFailed) return;
+            const key = JSON.stringify(value);
+            if (key === previous) return;
+            try {
+              report(value);
+              previous = key;
+            } catch {
+              progressFailed = true;
+              controller.abort();
+            }
+          };
+          const reference = { resultFile: retained.resultFile, scriptFile };
+          publish({ result: reference });
+          const result = await executeRun(combined, undefined, (snapshot) => {
+            publish({
+              activity: {
+                ...(snapshot.activity ?? {
+                  started: 0,
+                  completed: 0,
+                  failed: 0,
+                }),
+                ...(snapshot.phase
+                  ? { phase: snapshot.phase.slice(0, 200) }
+                  : {}),
+              },
+              result: reference,
+            });
+          });
+          const status = progressFailed
+            ? "failed"
+            : workflowOutcomeStatus(result.details);
+          const summary = {
+            ...reference,
+            status,
+            accounting: result.details.accounting,
+            ...("errorCode" in result.details
+              ? { errorCode: result.details.errorCode }
+              : {}),
+            ...(progressFailed ? { progressError: true } : {}),
+          };
+          try {
+            await retained.finish({ state: "settled", status, ...result });
+          } catch {
+            return {
+              status: "failed",
+              effectsMayPersist: true,
+              outcomeUnknown: true,
+              result: { ...summary, retentionError: true },
+            };
+          }
+          return {
+            status,
+            effectsMayPersist: true,
+            outcomeUnknown: combined.aborted || progressFailed,
+            result: summary,
+          };
         },
       });
-
-      try {
-        const result = await runWorkflow(parsed, {
-          cwd: ctx.cwd,
-          args: params.args,
-          signal,
-          spawnAgent,
-          onUpdate: emit,
-          timeoutMs: currentConfig.workflowTimeoutMs,
-          agentTimeoutMs: currentConfig.agentTimeoutMs,
-          maxConcurrency: currentConfig.maxConcurrency,
-          ledger,
-        });
-        const finalText = formatFinal(result, scriptFile, sourceFile);
-        const spilled = await spillIfNeeded(text(finalText), toolCallId);
-        return {
-          content: spilled.content as { type: "text"; text: string }[],
-          details: {
-            action: "run",
-            meta: result.meta,
-            scriptFile,
-            ...(sourceFile ? { sourceFile } : {}),
-            durationMs: result.durationMs,
-            agentFailureCount: result.agentFailureCount,
-            loggedBranchFailureCount: result.loggedBranchFailureCount,
-            settledBranchFailureCount: result.settledBranchFailureCount,
-            maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
-            agents: [...agentStates.values()],
-            phases: result.phases,
-            logs: result.logs,
-            ...(latestSnapshot ? { snapshot: latestSnapshot } : {}),
-            ...(spilled.spilled
-              ? {
-                  spilled: true,
-                  spillFile: spilled.filePath,
-                  originalSize: spilled.originalSize,
-                }
-              : {}),
-          },
-        };
-      } catch (error) {
-        const runtimeError =
-          error instanceof WorkflowRuntimeError ? error : undefined;
-        const diagnostic = runtimeError?.diagnostic;
-        const finalStates = [...agentStates.values()];
-        let recoveryFile: string | undefined;
-        let persistenceWarning: string | undefined;
-        if (diagnostic && diagnostic.recoveryRecords.length > 0) {
-          try {
-            const persisted = await dependencies.persistRecovery(
-              toolCallId,
-              recoveryEnvelope(parsed.meta, diagnostic, finalStates),
-            );
-            if (persisted.retained) recoveryFile = persisted.path;
-            else persistenceWarning = persisted.warning;
-          } catch (persistenceError) {
-            persistenceWarning =
-              `Diagnostic recovery persistence failed: ${persistenceError instanceof Error ? persistenceError.message : String(persistenceError)}`.slice(
-                0,
-                500,
-              );
-          }
-        }
-        const lines = diagnostic
-          ? formatAbnormalWorkflow(diagnostic, recoveryFile, persistenceWarning)
-          : [formatError(error)];
-        lines.push(
-          `Run script: ${scriptFile}`,
-          ...(sourceFile ? [`Saved source: ${sourceFile}`] : []),
-        );
-        return {
-          content: text(lines.join("\n")),
-          details: {
-            action: "run",
-            scriptFile,
-            ...(sourceFile ? { sourceFile } : {}),
-            aborted:
-              runtimeError?.code === "workflow_aborted" ||
-              (signal?.aborted ?? false),
-            ...(runtimeError
-              ? {
-                  errorCode: runtimeError.code,
-                  errorMessage: runtimeError.message,
-                  counts: runtimeError.diagnostic.counts,
-                }
-              : {}),
-            ...(recoveryFile ? { recoveryFile } : {}),
-            ...(persistenceWarning ? { persistenceWarning } : {}),
-            maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
-            snapshot: latestSnapshot ?? diagnostic?.snapshot,
-          },
-        };
-      }
+      return {
+        content: text(
+          `Workflow admitted as background execution ${execution.id}. One automatic notification follows settlement; inspect with workflow action inspect and this id. Execution completion is not acceptance.`,
+        ),
+        details: { action: "run", execution },
+      };
     },
   });
 }

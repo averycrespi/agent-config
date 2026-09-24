@@ -29,6 +29,17 @@ export function widgetLines(records: Execution[], width: number, theme: Theme) {
                 ),
               ]
             : []),
+          ...(r.activity
+            ? [
+                theme.fg(
+                  r.activity.failed ? "warning" : "text",
+                  `${r.activity.completed}/${r.activity.started} agents settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
+                ),
+                ...(r.activity.phase
+                  ? [theme.fg("muted", label(r.activity.phase))]
+                  : []),
+              ]
+            : []),
           theme.fg("muted", r.id.slice(0, 8)),
         ],
         width,

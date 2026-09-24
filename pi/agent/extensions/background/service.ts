@@ -7,7 +7,12 @@ import type {
   Execution,
   Outcome,
 } from "./api.ts";
-import { LIMITS, validateProgress, type Store } from "./store.ts";
+import {
+  LIMITS,
+  validateProgress,
+  validateActivity,
+  type Store,
+} from "./store.ts";
 
 export const label = (value: string) =>
   stripVTControlCharacters(value)
@@ -145,6 +150,13 @@ export class Service implements BackgroundService {
       createdAt: now,
       deadlineMs: request.deadlineMs,
       status: "running",
+      ...(request.result === undefined
+        ? {}
+        : {
+            result: JSON.parse(
+              snapshotScriptJson(request.result, LIMITS.resultBytes),
+            ),
+          }),
       cancelRequested: false,
       dismissed: false,
       effectsMayPersist: false,
@@ -173,16 +185,28 @@ export class Service implements BackgroundService {
         try {
           outcome = await request.run(controller.signal, (update) => {
             if (!this.open || this.broken) return;
-            validateProgress(update.progress);
+            if (update.progress !== undefined)
+              validateProgress(update.progress);
+            if (update.activity !== undefined)
+              validateActivity(update.activity);
             const current = this.records.find((r) => r.id === record.id)!;
             if (current.status !== "running") return;
             if (
               current.progress &&
+              update.progress &&
               (update.progress.total !== current.progress.total ||
                 update.progress.completed < current.progress.completed ||
                 update.progress.failed < current.progress.failed)
             )
               throw new Error("background_invalid_progress");
+            if (
+              current.activity &&
+              update.activity &&
+              (update.activity.started < current.activity.started ||
+                update.activity.completed < current.activity.completed ||
+                update.activity.failed < current.activity.failed)
+            )
+              throw new Error("background_invalid_activity");
             const result =
               update.result === undefined
                 ? current.result
@@ -191,7 +215,17 @@ export class Service implements BackgroundService {
                   );
             this.change({
               ...current,
-              progress: { ...update.progress },
+              ...(update.progress ? { progress: { ...update.progress } } : {}),
+              ...(update.activity
+                ? {
+                    activity: {
+                      ...update.activity,
+                      ...(update.activity.phase === undefined
+                        ? {}
+                        : { phase: label(update.activity.phase) }),
+                    },
+                  }
+                : {}),
               ...(result === undefined ? {} : { result }),
             });
           });

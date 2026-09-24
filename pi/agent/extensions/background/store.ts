@@ -54,6 +54,7 @@ export function validate(records: unknown): Execution[] {
             "notification",
             "persistenceFailed",
             "progress",
+            "activity",
           ].includes(k),
       ) ||
       typeof r.label !== "string" ||
@@ -94,6 +95,7 @@ export function validate(records: unknown): Execution[] {
     )
       throw new Error("background_storage_invalid");
     if (r.progress !== undefined) validateProgress(r.progress);
+    if (r.activity !== undefined) validateActivity(r.activity);
     if (r.result !== undefined)
       snapshotScriptJson(r.result, LIMITS.resultBytes);
     ids.add(r.id);
@@ -113,6 +115,29 @@ export function validateProgress(value: unknown): void {
     p.failed! > p.completed!
   )
     throw new Error("background_invalid_progress");
+}
+export function validateActivity(value: unknown): void {
+  const a = value as {
+    started?: number;
+    completed?: number;
+    failed?: number;
+    phase?: string;
+  };
+  if (
+    !a ||
+    Object.keys(a).some(
+      (k) => !["started", "completed", "failed", "phase"].includes(k),
+    ) ||
+    ![a.started, a.completed, a.failed].every(Number.isSafeInteger) ||
+    a.started! < 0 ||
+    a.completed! < 0 ||
+    a.failed! < 0 ||
+    a.completed! > a.started! ||
+    a.failed! > a.completed! ||
+    (a.phase !== undefined &&
+      (typeof a.phase !== "string" || a.phase.length > 200))
+  )
+    throw new Error("background_invalid_activity");
 }
 export interface Store {
   read(): Execution[];

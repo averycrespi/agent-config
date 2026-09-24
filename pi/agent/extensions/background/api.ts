@@ -8,7 +8,17 @@ export type Outcome = {
   result?: unknown;
 };
 export type Progress = { completed: number; total: number; failed: number };
-export type ProgressUpdate = { progress: Progress; result?: unknown };
+export type Activity = {
+  started: number;
+  completed: number;
+  failed: number;
+  phase?: string;
+};
+export type ProgressUpdate = {
+  progress?: Progress;
+  activity?: Activity;
+  result?: unknown;
+};
 export type Execution = {
   id: string;
   owner: string;
@@ -25,6 +35,7 @@ export type Execution = {
   result?: unknown;
   persistenceFailed?: boolean;
   progress?: Progress;
+  activity?: Activity;
   notification: {
     id: string;
     intent: boolean;
@@ -36,6 +47,8 @@ export type Admission = {
   owner: string;
   label: string;
   deadlineMs: number;
+  /** Optional initial bounded artifact references/accounting persisted at admission. */
+  result?: unknown;
   /** Prepared adapter: all authorization/selection validation must precede admission. */
   run(
     signal: AbortSignal,

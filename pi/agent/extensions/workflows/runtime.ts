@@ -591,6 +591,7 @@ export async function runWorkflow(
   const agents: WorkflowAgentState[] = [];
   const phases: string[] = [];
   let agentFailureCount = 0;
+  let startedCalls = 0;
   let loggedBranchFailureCount = 0;
   let settledBranchFailureCount = 0;
   let currentPhase: string | undefined;
@@ -602,13 +603,23 @@ export async function runWorkflow(
   const inFlight = new Set<Promise<void>>();
   const settledResponses = new Map<number, WorkflowAgentResponse>();
   const recoveryRecords = new Map<number, WorkflowRecoveryRecord>();
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = Math.min(
+    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    options.deadlineMs === undefined
+      ? Infinity
+      : options.deadlineMs - startedAt,
+  );
   const agentTimeoutMs = options.agentTimeoutMs;
   const workflowAbort = new AbortController();
   const budgetAbort = new AbortController();
   const agentSignal = composeSignals(workflowAbort.signal, budgetAbort.signal);
 
   const snapshot = (): WorkflowSnapshot => ({
+    activity: {
+      started: startedCalls,
+      completed: settledResponses.size,
+      failed: agentFailureCount,
+    },
     meta: parsed.meta,
     phase: currentPhase,
     phases,
@@ -624,6 +635,7 @@ export async function runWorkflow(
   });
 
   if (options.signal?.aborted) throw abortError();
+  if (timeoutMs <= 0) throw timeoutError(0);
 
   const worker = createSandboxProcess(
     buildSandboxSource(parsed.executableScript),
@@ -710,6 +722,7 @@ export async function runWorkflow(
           };
           const requestId = Number(request.requestId);
           if (!Number.isInteger(requestId)) return;
+          startedCalls += 1;
           const agentRequest: WorkflowAgentRequest = {
             id: requestId,
             prompt: String(request.prompt ?? ""),
