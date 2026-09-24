@@ -1,6 +1,6 @@
 # Background design
 
-Background separates execution lifetime from the foreground tool turn without replacing any executor. The adapter prepares its existing executor's authority and deadline; the service owns persisted admission, outcomes and attention.
+Background separates execution lifetime from the foreground tool turn without replacing any executor. The adapter prepares its existing executor's authority and deadline; the service owns persisted admission, outcomes and attention. Admission first retires the oldest eligible terminal outcome when the rolling 256-completion window is full; unresolved attention and running work remain protected. A single validated atomic sidecar replacement includes retirement and admission so failed storage never launches work.
 
 ## Modules
 

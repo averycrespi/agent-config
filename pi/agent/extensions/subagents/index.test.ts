@@ -60,8 +60,8 @@ function okOutcome(stdout = "done") {
 test("direct schema rejects raw and legacy request fields", () => {
   const schema = buildSpawnAgentsParams("tiers") as any;
   assert.equal(schema.additionalProperties, false);
-  assert.equal(schema.properties.agents.items.additionalProperties, false);
-  const properties = schema.properties.agents.items.properties;
+  assert.equal(schema.properties.agent.additionalProperties, false);
+  const properties = schema.properties.agent.properties;
   for (const field of [
     "agent",
     "role",
@@ -82,25 +82,21 @@ test("direct schema rejects raw and legacy request fields", () => {
 test("legacy direct calls migrate tier names to configured profiles", () => {
   assert.deepEqual(
     prepareSpawnAgentsArguments({
-      agents: [
-        {
-          intent: "old",
-          prompt: "old prompt",
-          capabilities: [],
-          model_tier: "small",
-          thinking: "xhigh",
-        },
-      ],
+      agent: {
+        intent: "old",
+        prompt: "old prompt",
+        capabilities: [],
+        model_tier: "small",
+        thinking: "xhigh",
+      },
     }),
     {
-      agents: [
-        {
-          intent: "old",
-          prompt: "old prompt",
-          capabilities: [],
-          profile: "fast",
-        },
-      ],
+      agent: {
+        intent: "old",
+        prompt: "old prompt",
+        capabilities: [],
+        profile: "fast",
+      },
     },
   );
 });
@@ -121,7 +117,7 @@ test("delegation guidance documents explicit policy without named agents", () =>
 
 test("delegation guidance requires benefit, ownership, and evidence-bearing briefs", () => {
   const guidance = buildDelegationGuidance(config);
-  assert.match(guidance, /self-contained question when parallelism/);
+  assert.match(guidance, /self-contained question when isolation/);
   assert.match(
     guidance,
     /File count, task category, and read-only status alone do not justify delegation/,
@@ -152,19 +148,18 @@ test("delegation guidance requires benefit, ownership, and evidence-bearing brie
 
 test("delegation guidance distinguishes simple batches from workflow orchestration", () => {
   const guidance = buildDelegationGuidance(config);
-  assert.match(guidance, /prefer subagents for a one-shot independent batch/);
-  assert.match(guidance, /owning session will synthesize/);
+  assert.match(guidance, /subagent for one justified self-contained question/);
   assert.match(
     guidance,
-    /Use workflow when an applicable saved workflow or explicit orchestration/,
+    /workflow for coordinated read-only multi-child fan-out/,
   );
   assert.match(
     guidance,
-    /dependent phases, programmatic aggregation, or verification gates/,
+    /parallel-only batches, dependent phases, aggregation and verification/,
   );
   assert.match(
     guidance,
-    /Parallelism or structured output alone does not require workflow/,
+    /Separate direct subagent calls are appropriate only when each has an independent outcome/,
   );
   assert.match(guidance, /Preserve skill-required workflows/);
 });

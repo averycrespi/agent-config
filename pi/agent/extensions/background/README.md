@@ -26,18 +26,18 @@ Use Pi's normal tool/message expansion (`Ctrl+O` by default) for full bounded id
 
 Each persistent Pi session has a separate owner-only `<session-file>.background-executions-v1.json` sidecar. It contains labels, IDs, lifecycle/notification metadata and adapter results/accounting, **not source or provider credentials**. Explicit results can nevertheless contain sensitive data; this is not a secret filter. Script arguments remain in normal Pi history. No diagnostic logs or result spills are added.
 
-Limits are fixed: **4 active executions, 32 retained records and 32 outstanding notifications per session**, a 64,000-byte adapter result, and a 2,200,000-byte sidecar. Updates validate before atomic replacement and filesystem synchronization. Capacity or storage failure rejects admission before work. Persistence failure during execution closes further admission, aborts owned work and exposes in-memory uncertainty; retained disk bytes must be reconciled, never replayed.
+Limits are fixed: **8 active executions, 64 unresolved attention slots (including active reservations), and a rolling window of up to 256 outcomes** per session (active executions reserve completion slots), a 64,000-byte adapter result, and a 20,000,000-byte sidecar. Updates validate before atomic replacement and filesystem synchronization. Capacity or storage failure rejects admission before work. Persistence failure during execution closes further admission, aborts owned work and exposes in-memory uncertainty; retained disk bytes must be reconciled, never replayed.
 
-There is no silent eviction, age expiry or automatic deletion, even after dismissal. At 32 retained executions use a new session; preserve old evidence according to your session-retention policy. Sidecars must be retained with their sessions. A failed filesystem operation may leave an owner-only staging file; it is not replayed or silently cleaned up. Same-user hostile filesystem mutation and concurrently opening the same session in multiple Pi processes are outside the cooperative single-owner contract.
+Before a new admission, the oldest terminal outcome may be retired only after its notification was observably consumed or explicitly dismissed. Each active admission reserves space for its future terminal notification and completed record, so settlement cannot exceed either bound. Running executions and unresolved attention cannot be retired. A retired ID returns `background_unknown_execution`; keep any needed evidence separately before it leaves the inspection window. Retirement does not mean task acceptance and does not delete adapter-owned outcome artifacts. When active work, unresolved attention or storage safety bounds prevent admission, reconcile or use a new session; never replay an uncertain effect. Sidecars must be retained with their sessions. A failed filesystem operation may leave an owner-only staging file; it is not replayed or silently cleaned up. Same-user hostile filesystem mutation and concurrently opening the same session in multiple Pi processes are outside the cooperative single-owner contract.
 
 New records never read or overwrite historical `background:receipt-v1` observer entries. [Monitor](../monitor/README.md) alone interprets those receipts.
 
 ## Troubleshooting
 
 - `background_unavailable`: load the service in a persistent session; inspect storage errors. Do not silently fall back.
-- `background_capacity`: active work must finish, or the retained session is full. Dismissal does not delete evidence.
+- `background_capacity`: active work, unresolved attention, or protected history prevents admission. Dismissal retains evidence until eligible rolling retirement.
 - `background_storage_failed_no_replay`: inspect retained sidecar and reconcile effects before further work. No retry is automatic, including when atomic publication may have succeeded.
 - `background_active_execution`: cancel or wait for the terminal outcome before dismissal.
-- `background_unknown_execution`: check the adapter owner and active session branch.
+- `background_unknown_execution`: check adapter owner and admission branch; an eligible old ID may have rolled out of the inspection window.
 
 See [API.md](API.md) for the host contract and [DESIGN.md](DESIGN.md) for invariants.

@@ -92,14 +92,12 @@ export default function fixture(pi: ExtensionAPI) {
       else if (text === "START")
         args = {
           execution: "background",
-          agents: [
-            {
-              intent: "Offline delegation",
-              prompt: "Return the fixture answer",
-              capabilities: [],
-              profile: "fast",
-            },
-          ],
+          agent: {
+            intent: "Offline delegation",
+            prompt: "Return the fixture answer",
+            capabilities: [],
+            profile: "fast",
+          },
         };
       else if (text === "SECOND")
         response = "SECOND_MESSAGE_HANDLED_DURING_DELEGATION";
@@ -114,7 +112,7 @@ export default function fixture(pi: ExtensionAPI) {
               {
                 type: "toolCall",
                 id: `fixture-${Date.now()}`,
-                name: "subagents",
+                name: "subagent",
                 arguments: args,
               },
             ]

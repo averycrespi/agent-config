@@ -224,7 +224,7 @@ test("progress validates atomically, persists partial accounting, and ignores st
   assert.equal(h.store.read()[0].status, "interrupted");
 });
 
-test("finite active and retained limits never silently evict unresolved outcomes", async () => {
+test("eight active and 64 unresolved notifications block without evicting evidence", async () => {
   const h = harness();
   for (let i = 0; i < LIMITS.active; i++)
     h.service.admit(request(() => new Promise(() => {})));
@@ -234,14 +234,55 @@ test("finite active and retained limits never silently evict unresolved outcomes
   );
   h.service.close();
   const j = harness();
-  for (let i = 0; i < LIMITS.retained; i++) {
+  for (let i = 0; i < LIMITS.notifications; i++) {
     j.service.admit(request(async () => success));
     await tick();
   }
-  assert.equal(j.service.list("script").length, LIMITS.retained);
+  assert.equal(j.service.list("script").length, LIMITS.notifications);
   assert.throws(
     () => j.service.admit(request(async () => success)),
     /capacity/,
   );
   j.service.close();
+});
+
+test("in-flight reservations prevent terminal attention overflow", async () => {
+  const h = harness();
+  for (let i = 0; i < LIMITS.notifications - 1; i++) {
+    h.service.admit(request(async () => success));
+    await tick();
+  }
+  const running = h.service.admit(request(async () => new Promise(() => {})));
+  assert.throws(
+    () => h.service.admit(request(async () => success)),
+    /capacity/,
+  );
+  assert.equal(h.service.inspect("script", running.id).status, "running");
+  h.service.close();
+});
+
+test("four waves roll 256 completed receipts but protect active and unresolved attention", async () => {
+  const h = harness();
+  h.idle();
+  const first: string[] = [];
+  for (let i = 0; i < 4 * 64; i++) {
+    const r = h.service.admit(request(async () => success));
+    first.push(r.id);
+    await tick();
+    h.service.consumed(
+      new Set([h.service.inspect("script", r.id).notification.id]),
+    );
+  }
+  assert.equal(h.service.list("script").length, 256);
+  const active = h.service.admit(request(async () => new Promise(() => {})));
+  const latest = h.service.admit(request(async () => success));
+  await tick();
+  assert.throws(
+    () => h.service.inspect("script", first[0]),
+    /unknown_execution/,
+  );
+  assert.equal(h.service.inspect("script", active.id).status, "running");
+  assert.equal(h.service.inspect("script", latest.id).status, "success");
+  assert.equal(h.service.list("script").length, 256);
+  h.service.close();
 });

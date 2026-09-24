@@ -19,7 +19,7 @@ export function isBackgroundControl(
       "inspect",
       "cancel",
       "dismiss",
-      tool === "subagents" ? "list" : "executions",
+      tool === "subagent" || tool === "subagents" ? "list" : "executions",
     ].includes(String(args.action))
   );
 }

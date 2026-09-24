@@ -1,6 +1,6 @@
 # Review Workflow Input
 
-Read before invoking the saved `review` workflow. Prepare evidence under [review](../SKILL.md); this contract grants no repair authority.
+Read before invoking the saved `review` workflow. Prepare evidence under [review](../SKILL.md); this contract grants no repair authority. Launch `workflow` with `{action:"run",name:"review",args:{...}}` in its background-only mode, wait for the correlated automatic notification and inspect the exact execution/result file. A successful execution is not a clean review; retain the complete report and incomplete/failed evidence before using repair or publication gates.
 
 ## Input
 

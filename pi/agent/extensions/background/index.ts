@@ -133,7 +133,7 @@ export default function background(pi: ExtensionAPI) {
           pi.sendMessage(
             {
               customType: NOTIFICATION,
-              content: `Background ${r.owner} execution ${r.id}: ${r.status}. Inspect with ${r.owner} action inspect and id ${r.id}. Effects may persist; reconcile unknown effects. This notification is not acceptance and never authorizes replay.`,
+              content: `Background ${r.owner} execution ${r.id}: ${r.status}. Inspect with ${r.owner === "subagents" ? "subagent" : r.owner} action inspect and id ${r.id}. Effects may persist; reconcile unknown effects. This notification is not acceptance and never authorizes replay.`,
               display: true,
               details: {
                 executionId: r.id,

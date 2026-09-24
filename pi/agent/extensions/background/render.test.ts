@@ -68,7 +68,10 @@ for (const [name, call, render, details] of adapters) {
       };
       const before = JSON.stringify(result);
       const header = call(args, theme, ctx).render(120).join("\n");
-      assert.match(header, new RegExp(name));
+      assert.match(
+        header,
+        new RegExp(name === "subagents" ? "subagent" : name),
+      );
       assert.doesNotMatch(header, /providers: pending|PRIVATE_BODY|11111111/);
       const collapsed = render(
         result,
@@ -77,7 +80,10 @@ for (const [name, call, render, details] of adapters) {
         ctx,
       );
       assert.equal(collapsed.render(120).length, 1);
-      assert.match(collapsed.render(120)[0], new RegExp(`^${name} ${action}`));
+      assert.match(
+        collapsed.render(120)[0],
+        new RegExp(`^${name === "subagents" ? "subagent" : name} ${action}`),
+      );
       assert.doesNotMatch(
         collapsed.render(120)[0],
         /background|11111111|PRIVATE_BODY|HIDDEN/,

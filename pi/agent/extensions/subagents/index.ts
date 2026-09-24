@@ -127,10 +127,22 @@ export function normalizeIntent(intent: string): string {
 
 export function prepareSpawnAgentsArguments(args: unknown): any {
   if (!args || typeof args !== "object") return args;
-  const input = args as { agents?: unknown[] };
-  if (!Array.isArray(input.agents)) return args;
+  const input = args as {
+    agents?: unknown[];
+    agent?: unknown;
+    execution?: unknown;
+  };
+  if (input.agents !== undefined)
+    throw new Error(
+      "subagent accepts one agent, not agents; use workflow for coordinated fan-out",
+    );
+  if (input.execution === "foreground")
+    throw new Error(
+      "subagent runs only in background; omit execution or use background",
+    );
+  if (!input.agent || typeof input.agent !== "object") return args;
   let changed = false;
-  const agents = input.agents.map((agent) => {
+  const agents = [input.agent].map((agent) => {
     if (!agent || typeof agent !== "object") return agent;
     const record = agent as Record<string, unknown>;
     const legacyTier = record.model_tier;
@@ -150,7 +162,9 @@ export function prepareSpawnAgentsArguments(args: unknown): any {
             : undefined;
     return profile ? { ...current, profile } : current;
   });
-  return changed ? { ...(args as Record<string, unknown>), agents } : args;
+  return changed
+    ? { ...(args as Record<string, unknown>), agent: agents[0] }
+    : args;
 }
 
 export function buildPolicyDescription(_config: SubagentsConfig): string {
@@ -159,17 +173,17 @@ export function buildPolicyDescription(_config: SubagentsConfig): string {
 
 export function buildDelegationGuidance(config: SubagentsConfig): string {
   return `\n\n## Subagent delegation
-Subagents runs in the foreground by default. Choose execution: background only for authorized independent work while the conversation continues; wait for its automatic aggregate notification rather than polling. Inspect/cancel/dismiss through subagents using the execution ID. Background preserves all capability and mutable-child restrictions; callers still own parent-write exclusion and checkout isolation. Late background usage is retained separately from Pi native totals.
+Use subagent for one justified self-contained question; it runs in background only. Wait for its correlated automatic notification, then inspect its execution ID and reconcile the outcome; notification or execution success is not acceptance. Inspect/cancel/dismiss historical subagents executions through subagent too. Background preserves all capability and mutable-child restrictions; callers still own parent-write exclusion and checkout isolation. Late background usage is retained separately from Pi native totals.
 
-Use subagents for a self-contained question when parallelism, isolation of substantial intermediate context, or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline; avoid duplicating the child's investigation.
+Use subagent for a self-contained question when isolation of substantial intermediate context or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline; avoid duplicating the child's investigation.
 
-Once delegation is justified, prefer subagents for a one-shot independent batch whose results the owning session will synthesize. Use workflow when an applicable saved workflow or explicit orchestration—dependent phases, programmatic aggregation, or verification gates—adds value. Parallelism or structured output alone does not require workflow. Preserve skill-required workflows.
+Use workflow for coordinated read-only multi-child fan-out, including parallel-only batches, dependent phases, aggregation and verification. Separate direct subagent calls are appropriate only when each has an independent outcome and owner and the parent reconciles each. For provider composition without subagent reasoning, use direct tools or Script. Preserve skill-required workflows.
 
 Keep implementation and fixes in the owning session by default. Writable delegation is an exception only when explicitly requested by the user and supported by an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never overlap parent or child writes in the same checkout. Preserve stricter active workflow boundaries.
 
 For each child, provide one self-contained question or task, scope boundaries, relevant context and decisions, authoritative source paths, explicit capabilities and profile, an evidence-bearing deliverable with uncertainties, and a stop condition. Supply necessary context rather than the entire conversation. The parent owns synthesis and checks consequential claims against evidence; a valid schema or confident summary is not proof of correctness.
 
-Profiles describe routing policy, not fixed model identities: fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Pass independent read-only agents in one subagents call; writable agents must run one at a time. At most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema when automation needs validated machine-readable results.`;
+Profiles describe routing policy, not fixed model identities: fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Pass exactly one agent per subagent call. Every agent requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema when automation needs validated machine-readable results.`;
 }
 
 function toRunRequest(
@@ -626,10 +640,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "subagents",
-    label: "Subagents",
+    name: "subagent",
+    label: "Subagent",
     description:
-      "Run an atomic batch of independent subagents with explicit capabilities and profiles. Foreground is default; background returns an execution ID and automatic aggregate notification. Inspect/cancel/dismiss retained background executions. Mutable batches contain exactly one child; caller owns parent-write exclusion and checkout isolation.",
+      "Launch one explicitly briefed subagent in background only, with explicit capabilities and profile. Wait for its automatic notification, inspect the correlated result, and reconcile it; execution success is not acceptance. Use workflow for coordinated read-only fan-out (including parallel-only batches), phases, aggregation or verification; use direct tools or Script for provider composition without subagent reasoning. Historical subagents executions remain inspectable/cancellable/dismissible through this tool on their admission branch. No automatic replay; caller owns authorization, time bounds, parent-write exclusion and checkout isolation.",
     parameters: buildSpawnAgentsParams(
       `Required profile: ${PROFILES.join(", ")}.`,
     ),
@@ -644,7 +658,7 @@ export default function (pi: ExtensionAPI) {
       const action = params.action ?? "run";
       if (action !== "run") {
         if (
-          params.agents !== undefined ||
+          params.agent !== undefined ||
           params.execution !== undefined ||
           params.timeout_ms !== undefined
         )
@@ -670,25 +684,25 @@ export default function (pi: ExtensionAPI) {
           details: { execution },
         };
       }
-      if (params.id !== undefined || !params.agents?.length)
-        throw new Error("run requires agents and does not accept id");
-      if (params.timeout_ms !== undefined && params.execution !== "background")
+      if (params.execution === "foreground")
         throw new Error(
-          "timeout_ms is only supported for background execution",
+          "subagent runs only in background; omit execution or use background",
         );
+      if (params.id !== undefined || !params.agent)
+        throw new Error("run requires one agent and does not accept id");
       const warnings: string[] = [];
       const config = await reloadConfig(ctx.cwd, warnings);
       if (ctx.hasUI) {
         for (const warning of warnings) ctx.ui.notify(warning, "warning");
       }
-      const specs = structuredClone(params.agents);
+      const specs = [structuredClone(params.agent)];
       const callCtx = {
         cwd: ctx.cwd,
         modelRegistry: ctx.modelRegistry,
         hasUI: false,
         ui: ctx.ui,
       };
-      if (params.execution === "background") {
+      {
         const service = getBackgroundService(pi);
         const errors = await validateSpawnAgentSpecs(specs, config, callCtx);
         if (errors.length)
@@ -765,29 +779,23 @@ export default function (pi: ExtensionAPI) {
         });
         return {
           content: text(
-            `Subagents admitted as background execution ${execution.id}. One automatic notification follows settlement; use subagents action inspect for results.`,
+            `Subagent admitted as background execution ${execution.id}. One automatic notification follows settlement; use subagent action inspect for results.`,
           ),
           details: { execution },
         };
       }
-      return runParallelSpawn(
-        specs,
-        config,
-        {
-          cwd: ctx.cwd,
-          signal,
-          modelRegistry: ctx.modelRegistry,
-          hasUI: ctx.hasUI,
-          ui: ctx.ui,
-        },
-        toolCallId,
-        onUpdate,
-        directGate,
-        mutableGate,
-      );
     },
     renderCall(args, theme, context) {
-      return renderAgentsCall(args as { agents?: unknown[] }, theme, context);
+      const input = args as {
+        agent?: unknown;
+        agents?: unknown[];
+        action?: string;
+      };
+      return renderAgentsCall(
+        { ...input, agents: input.agent ? [input.agent] : input.agents },
+        theme,
+        context,
+      );
     },
     renderResult(result, options, theme, context) {
       return renderAgentsResult(result, options, theme, context);

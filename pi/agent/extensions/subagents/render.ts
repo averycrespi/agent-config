@@ -210,9 +210,9 @@ export function renderAgentsCall(
   theme: any,
   context: any,
 ) {
-  if (isBackgroundControl("subagents", args))
+  if (isBackgroundControl("subagent", args))
     return getTruncatedText(context.lastComponent, [
-      toolSummary(theme, "subagents", args.action ?? "run", ""),
+      toolSummary(theme, "subagent", args.action ?? "run", ""),
     ]);
   return getTruncatedText(context.lastComponent, []);
 }
@@ -239,10 +239,10 @@ export function renderAgentsResult(
   if (
     details.execution ||
     details.executions ||
-    isBackgroundControl("subagents", context.args ?? {})
+    isBackgroundControl("subagent", context.args ?? {})
   )
     return renderExecutionResult(
-      "subagents",
+      "subagent",
       details.executions ?? (details.execution ? [details.execution] : []),
       result as any,
       options,
@@ -255,7 +255,7 @@ export function renderAgentsResult(
     const failed = context.isError || details.validationError;
     const summary = safe(result.content[0]?.text);
     const lines = [
-      theme.fg("toolTitle", theme.bold("subagents")) +
+      theme.fg("toolTitle", theme.bold("subagent")) +
         " · " +
         theme.fg(failed ? "error" : "muted", summary),
     ];
