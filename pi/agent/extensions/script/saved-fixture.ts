@@ -43,6 +43,7 @@ export async function savedFixture(
     on: (name: string, fn: any) =>
       hooks.set(name, [...(hooks.get(name) ?? []), fn]),
     registerCommand() {},
+    registerMessageRenderer() {},
     registerTool: (value: any) => {
       tool = value;
     },

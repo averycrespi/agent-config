@@ -16,6 +16,7 @@ async function harness(t: any, methods?: any) {
   const f = await fixture(t, methods);
   const handlers = new Map<string, any[]>(),
     tools = new Map<string, any>(),
+    renderers = new Map<string, any>(),
     messages: any[] = [],
     events: any[] = [];
   let idle = false,
@@ -57,6 +58,8 @@ async function harness(t: any, methods?: any) {
     on: (name: string, fn: any) =>
       handlers.set(name, [...(handlers.get(name) ?? []), fn]),
     registerCommand() {},
+    registerMessageRenderer: (type: string, renderer: any) =>
+      renderers.set(type, renderer),
     registerTool: (tool: any) => tools.set(tool.name, tool),
     sendMessage: (m: any, options: any) => messages.push({ ...m, options }),
   };
@@ -82,6 +85,7 @@ async function harness(t: any, methods?: any) {
     hook,
     messages,
     events,
+    renderers,
     terminal,
     service: () => getBackgroundService(pi),
     call: (args: any) =>
@@ -160,6 +164,33 @@ test("Script background returns stable persisted ID, remains responsive, automat
   assert.equal(h.mounts, 1);
   assert.ok(h.paints > 0);
   assert.equal(h.service().inspect("script", id).notification.consumed, false);
+  const message = h.messages[0];
+  assert.equal(
+    message.content,
+    `Background script execution ${id}: success. Inspect with script action inspect and id ${id}. Effects may persist; reconcile unknown effects. This notification is not acceptance and never authorizes replay.`,
+  );
+  const before = JSON.stringify(h.service().inspect("script", id));
+  const saved = readFileSync(
+    h.ctx.sessionManager.getSessionFile() + STORE_SUFFIX,
+    "utf8",
+  );
+  const original = JSON.stringify(message);
+  for (const expanded of [false, true, false]) {
+    const rendered = h.renderers
+      .get(NOTIFICATION)(message, { expanded }, h.ctx.ui.theme)
+      .render(80)
+      .join("\n");
+    assert.match(rendered, /background/);
+    assert.match(rendered, /execution succeeded/);
+    assert.equal(rendered.includes("never authorizes replay"), expanded);
+  }
+  assert.equal(JSON.stringify(message), original);
+  assert.equal(JSON.stringify(h.service().inspect("script", id)), before);
+  assert.equal(
+    readFileSync(h.ctx.sessionManager.getSessionFile() + STORE_SUFFIX, "utf8"),
+    saved,
+  );
+  assert.equal(h.messages.length, 1);
   await h.hook("context", { messages: [{ ...h.messages[0], role: "custom" }] });
   await h.hook("after_provider_response", { status: 200 });
   assert.equal(h.service().inspect("script", id).notification.consumed, true);

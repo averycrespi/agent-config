@@ -31,7 +31,8 @@ async function harness(
   );
   const handlers = new Map<string, any>(),
     tools = new Map<string, any>(),
-    commands = new Map<string, any>();
+    commands = new Map<string, any>(),
+    messageRenderers = new Map<string, any>();
   const entries: any[] = [],
     messages: any[] = [],
     mounts: any[] = [],
@@ -71,6 +72,8 @@ async function harness(
     ...f.pi,
     on: (n: string, fn: any) => handlers.set(n, fn),
     registerTool: (tool: any) => tools.set(tool.name, tool),
+    registerMessageRenderer: (type: string, renderer: any) =>
+      messageRenderers.set(type, renderer),
     registerCommand: (name: string, command: any) =>
       commands.set(name, command),
     appendEntry: (customType: string, data: any) =>
@@ -126,6 +129,7 @@ async function harness(
     hook,
     tools,
     commands,
+    messageRenderers,
     entries,
     messages,
     mounts,
@@ -236,6 +240,7 @@ test("configuration snapshot aligns tool schema and admission until extension re
   // A new factory (reload) takes the new policy; it does not mutate old jobs.
   const reloaded = new Map<string, any>();
   await monitor({
+    registerMessageRenderer() {},
     registerCommand() {},
     on() {},
     registerTool: (t: any) => reloaded.set(t.name, t),
@@ -336,6 +341,35 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   const sent = value(await h.call({ action: "get", id }));
   assert.equal(sent.lastAttention.disposition, "handed_to_pi");
   assert.equal(sent.lastAttention.admitted, false);
+  const message = h.messages[0].message;
+  const evidence = value({ content: [{ text: message.content }] });
+  assert.ok(
+    Number.isSafeInteger(evidence.evidenceAgeMs) && evidence.evidenceAgeMs >= 0,
+  );
+  assert.equal(
+    message.content,
+    notificationContent(
+      sent,
+      input.message,
+      sent.evidenceAt + evidence.evidenceAgeMs,
+    ),
+  );
+  const before = JSON.stringify(h.entries);
+  const original = JSON.stringify(message);
+  for (const expanded of [false, true, false]) {
+    const rendered = h.messageRenderers
+      .get("monitor-wake")(message, { expanded }, theme)
+      .render(80)
+      .join("\n");
+    assert.match(rendered, /monitor/);
+    assert.match(rendered, /condition attention/);
+    assert.equal(rendered.includes(input.message), expanded);
+  }
+  assert.equal(JSON.stringify(message), original);
+  assert.equal(JSON.stringify(h.entries), before);
+  assert.deepEqual(value(await h.call({ action: "get", id })), sent);
+  assert.equal(h.messages.length, 1);
+  assert.ok(h.messageRenderers.has("background-wake"));
   await h.hook("message_start", {
     message: { role: "custom", ...h.messages[0].message },
   });

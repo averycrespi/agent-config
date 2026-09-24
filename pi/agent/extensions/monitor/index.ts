@@ -4,6 +4,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { describeScriptProviders, snapshotScriptJson } from "../script/api.ts";
 import { createPersistentWidget } from "../_shared/widget.ts";
+import {
+  notificationRenderer,
+  type NotificationDisplay,
+} from "../_shared/notification.ts";
 import { registerConfigCommand } from "../_shared/config.ts";
 import { loadMonitorConfig, CONFIG_WARNING } from "./config.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
@@ -23,6 +27,12 @@ import {
 } from "./tool.ts";
 
 export default async function monitor(pi: ExtensionAPI) {
+  pi.registerMessageRenderer("monitor-wake", notificationRenderer("monitor"));
+  // Historical observer messages are display-only; no legacy engine or replay.
+  pi.registerMessageRenderer(
+    "background-wake",
+    notificationRenderer("monitor"),
+  );
   const configWarnings: string[] = [];
   const config = Object.freeze(await loadMonitorConfig(configWarnings));
   registerConfigCommand(pi, {
@@ -99,7 +109,19 @@ export default async function monitor(pi: ExtensionAPI) {
             customType: "monitor-wake",
             content: notificationContent(r, message),
             display: true,
-            details: { jobId: r.id, wakeId: r.lastAttention!.id },
+            details: {
+              jobId: r.id,
+              wakeId: r.lastAttention!.id,
+              display: {
+                version: 1,
+                name: r.name,
+                status: r.lastAttention?.reason,
+                outcomeUnknown: r.outcomeUnknown,
+                effectsMayPersist: r.effectsMayPersist,
+                interrupted: r.interrupted,
+                gap: r.gap,
+              } satisfies NotificationDisplay,
+            },
           },
           ctx.mode === "rpc"
             ? { deliverAs: "nextTurn", triggerTurn: false }

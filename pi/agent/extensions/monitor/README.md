@@ -150,6 +150,14 @@ Collapsed results summarize the requested action, not a generic inspection ackno
 
 Expand single-job results for identity, accounting summaries and handoff disposition. Custom rows never expose source, arguments, state, evidence, or raw exception text. Names are nonsecret display labels, sanitized and width-bounded. Failed requests retain the action/target context.
 
+## Notification display
+
+Interactive wake messages use the shared [compact notification renderer](../_shared/README.md#asynchronous-custom-messages): source/name/short ID, explicit observation attention reason, then supplied effects/interruption/coverage warnings. Two or three content rows remain unwrapped and width-bounded; secondary identity text truncates before status. `condition attention` and `observation timed out` never imply watched-task success or failure. Evaluation failure, coverage loss and budget exhaustion remain distinct, with words as well as semantic colors.
+
+Pi's normal tool/message expansion (`Ctrl+O` by default) reveals full bounded identity, continuation instructions and existing untrusted evidence framing; collapse restores the summary. Terminal controls are removed, expanded display is bounded with truncation disclosures, and no references are fetched. Complete model content and RPC/headless delivery are unchanged. Rendering cannot mark admission/consumption, rearm recurrence, trigger turns or replay a wake.
+
+Historical `background-wake` messages receive the same display-only fallback as current messages missing valid metadata: status unavailable, existing identity when present, and safe original text on expansion. No history rewrite, legacy engine or replay is introduced.
+
 ## Widget and qualification
 
 One stable, width-bounded row per visible job appears below the editor. Identity comes before descriptive activity and labeled timing:

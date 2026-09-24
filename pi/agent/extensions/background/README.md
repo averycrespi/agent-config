@@ -16,6 +16,12 @@ Intent, handoff (`none`, `unknown`, `handed_to_pi`) and observed consumption are
 
 Shutdown/reload and successful tree navigation revoke the old service and request abort. Pending work becomes interrupted with conservative unknown-effect evidence. Restoration exposes receipts on their original admission branch, never launches work or renews budgets. Late callbacks cannot update a replacement service. A canceled navigation does not revoke ownership. Forked sessions do not adopt the original session's sidecar or executions.
 
+## Notification display
+
+Interactive outcome messages use the shared [compact notification renderer](../_shared/README.md#asynchronous-custom-messages): source/name/short ID, explicit execution outcome, and an optional effects warning, in two or three unwrapped content rows. Success, failure, timeout, cancellation and interruption remain distinct; status is never color-only. Secondary identity text truncates before the status row.
+
+Use Pi's normal tool/message expansion (`Ctrl+O` by default) for full bounded identity, adapter inspection instructions and original notification text; collapse returns to the compact summary. Display text is terminal-sanitized and width-bounded, with explicit expanded-display truncation disclosures. Missing/historical display metadata shows status unavailable rather than guessing from prose. Rendering never fetches results, consumes/dismisses an outcome, triggers a turn or replays execution. Complete model-facing content, references, delivery and RPC/headless semantics are unchanged.
+
 ## Persistence and limits
 
 Each persistent Pi session has a separate owner-only `<session-file>.background-executions-v1.json` sidecar. It contains labels, IDs, lifecycle/notification metadata and adapter results/accounting, **not source or provider credentials**. Explicit results can nevertheless contain sensitive data; this is not a secret filter. Script arguments remain in normal Pi history. No diagnostic logs or result spills are added.

@@ -5,6 +5,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { createPersistentWidget, fitWidgetRow } from "../_shared/widget.ts";
 import {
+  notificationRenderer,
+  type NotificationDisplay,
+} from "../_shared/notification.ts";
+import {
   SERVICE_EVENT,
   type BackgroundService,
   type Execution,
@@ -49,6 +53,7 @@ export function widgetLines(records: Execution[], width: number, theme: Theme) {
     );
 }
 export default function background(pi: ExtensionAPI) {
+  pi.registerMessageRenderer(NOTIFICATION, notificationRenderer("background"));
   let service: Service | undefined;
   let ctx: ExtensionContext | undefined;
   let ticker: ReturnType<typeof setInterval> | undefined;
@@ -107,7 +112,18 @@ export default function background(pi: ExtensionAPI) {
               customType: NOTIFICATION,
               content: `Background ${r.owner} execution ${r.id}: ${r.status}. Inspect with ${r.owner} action inspect and id ${r.id}. Effects may persist; reconcile unknown effects. This notification is not acceptance and never authorizes replay.`,
               display: true,
-              details: { executionId: r.id, notificationId: r.notification.id },
+              details: {
+                executionId: r.id,
+                notificationId: r.notification.id,
+                display: {
+                  version: 1,
+                  name: r.label,
+                  owner: r.owner,
+                  status: r.status,
+                  outcomeUnknown: r.outcomeUnknown,
+                  effectsMayPersist: r.effectsMayPersist,
+                } satisfies NotificationDisplay,
+              },
             },
             { deliverAs: "followUp", triggerTurn: true },
           ),
