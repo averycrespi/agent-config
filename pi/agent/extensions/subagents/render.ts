@@ -156,7 +156,7 @@ function agentsHeader(
     ? [`${done} done`, `${failureCount} failed`]
     : [`${done} done`, `${running} running`, `${failureCount} failed`];
   if (elapsed) parts.push(elapsed);
-  const title = theme.fg("toolTitle", theme.bold("spawn_agents"));
+  const title = theme.fg("toolTitle", theme.bold("subagents"));
   const status = final
     ? `${theme.fg(failureCount > 0 ? "error" : "success", failureCount > 0 ? "✗" : "✓")} `
     : "";
@@ -218,12 +218,46 @@ export function renderAgentsResult(
     agents?: SubagentRunState[];
     total?: number;
     failed?: number;
+    validationError?: boolean;
+    execution?: { id: string; status: string; result?: unknown };
+    executions?: unknown[];
   };
   const agents = details.agents ?? [];
 
   if (options.isPartial) startPartialTimer(context);
   else clearPartialTimer(context);
 
+  if (
+    details.execution ||
+    details.executions ||
+    details.validationError ||
+    context.isError
+  ) {
+    const failed =
+      context.isError ||
+      details.validationError ||
+      (details.execution &&
+        ["failed", "timeout", "interrupted", "cancelled"].includes(
+          details.execution.status,
+        ));
+    const summary = details.execution
+      ? `${details.execution.status} · ${safe(details.execution.id)}`
+      : details.executions
+        ? `${details.executions.length} executions`
+        : safe(result.content[0]?.text);
+    const lines = [
+      theme.fg("toolTitle", theme.bold("subagents")) +
+        " · " +
+        theme.fg(failed ? "error" : "muted", summary),
+    ];
+    if (options.expanded)
+      lines.push(
+        ...result.content.flatMap((c) =>
+          c.text ? c.text.split("\n").map((line) => safe(line, 1000)) : [],
+        ),
+      );
+    return getTruncatedText(context.lastComponent, lines);
+  }
   const lines = [
     agentsHeader(
       agents,

@@ -108,7 +108,7 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
     guidance,
     /dependent phases, programmatic aggregation, or verification gates/,
   );
-  assert.match(guidance, /Prefer spawn_agents for a simple independent batch/);
+  assert.match(guidance, /Prefer subagents for a simple independent batch/);
   assert.match(
     guidance,
     /parallelism or structured output alone does not require workflow/,

@@ -4,19 +4,21 @@ Trusted extensions import `getBackgroundService` and types from `../background/a
 
 ## Operations
 
-| Method                                   | Contract                                                                                                                                                         |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admit({owner, label, deadlineMs, run})` | Synchronously validate and persist admission, then return a copied `Execution` with stable ID. Invoke the adapter's prepared `run(signal)` once after admission. |
-| `list(owner)`                            | Copied bounded records visible on the current admission branch; adapters should omit results from inventories.                                                   |
-| `inspect(owner, id)`                     | One copied result/accounting record; owner and branch must match.                                                                                                |
-| `cancel(owner, id)`                      | Persist cancel request and abort the adapter signal. Terminal calls are idempotent, with no rollback claim.                                                      |
-| `dismiss(owner, id)`                     | Persist terminal-only dismissal; retain evidence and uncertain handoff.                                                                                          |
+| Method                                   | Contract                                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `admit({owner, label, deadlineMs, run})` | Synchronously validate and persist admission, then return a copied `Execution` with stable ID. Invoke the adapter's prepared `run(signal, report)` once after admission. |
+| `list(owner)`                            | Copied bounded records visible on the current admission branch; adapters should omit results from inventories.                                                           |
+| `inspect(owner, id)`                     | One copied result/accounting record; owner and branch must match.                                                                                                        |
+| `cancel(owner, id)`                      | Persist cancel request and abort the adapter signal. Terminal calls are idempotent, with no rollback claim.                                                              |
+| `dismiss(owner, id)`                     | Persist terminal-only dismissal; retain evidence and uncertain handoff.                                                                                                  |
 
 `owner` is a stable lowercase ASCII adapter namespace (up to 48 characters), not a security boundary. `label` is a nonsecret display string up to 200 characters; terminal controls are removed. The adapter must validate all source, provider selection and authority **before** admission, pin execution-scoped context and the original finite absolute `deadlineMs`, and enforce that deadline in its existing executor. Background adds no execution engine or scheduler and must never be used to extend a budget. A stale service handle cannot admit or mutate work.
 
 `run` resolves an `Outcome`: `status` (`success`, `failed`, `timeout`, `cancelled`, `interrupted`), boolean `effectsMayPersist`/`outcomeUnknown`, and optional JSON `result` (64,000 UTF-8 bytes). Preserve the executor's original accounting in result. Rejection or invalid/oversized result becomes a failed unknown-effect outcome without exception text. Adapters must cooperate with abort and stop further dispatch; Background cannot stop arbitrary trusted host code or undo remote effects.
 
-`Execution` contains ID, owner, sanitized label, admission anchor, immutable creation/deadline timestamps, status/terminal time, cancellation/dismissal flags, result/effect evidence and notification identity/intent/handoff/consumption. Optional `persistenceFailed` is in-memory failure evidence, not proof the latest state reached disk. Inspection is not acceptance and does not hide attention.
+`report({progress: {completed, total, failed}, result?})` optionally persists genuine aggregate progress and a bounded partial JSON result while running. Counters are nonnegative safe integers, total is positive and fixed, completed/failed never decrease, and failed ≤ completed ≤ total. Invalid updates reject before mutation; adapter code must abort and drain its work on reporting/storage failure. Reports repaint the existing row without emitting a progress event or notification. Partial results survive interruption; late reports on revoked services are ignored. Existing adapters may ignore the second callback argument and retain their prior semantics.
+
+`Execution` contains optional aggregate `progress` plus ID, owner, sanitized label, admission anchor, immutable creation/deadline timestamps, status/terminal time, cancellation/dismissal flags, result/effect evidence and notification identity/intent/handoff/consumption. Optional `persistenceFailed` is in-memory failure evidence, not proof the latest state reached disk. Inspection is not acceptance and does not hide attention.
 
 ## Lifecycle integration
 

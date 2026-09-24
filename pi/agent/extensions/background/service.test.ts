@@ -189,6 +189,41 @@ test("navigation/shutdown revoke handles; restored interrupted runs never replay
   assert.deepEqual(restored.list("script"), []);
   restored.close();
 });
+test("progress validates atomically, persists partial accounting, and ignores stale callbacks", async () => {
+  const h = harness();
+  let report!: Parameters<import("./api.ts").Admission["run"]>[1];
+  const r = h.service.admit({
+    ...request(() => new Promise(() => {})),
+    run: async (_s, update) => {
+      report = update;
+      return await new Promise<Outcome>(() => {});
+    },
+  });
+  await tick();
+  report({
+    progress: { completed: 1, total: 2, failed: 1 },
+    result: { usage: 5 },
+  });
+  const before = h.service.inspect("script", r.id);
+  assert.throws(
+    () => report({ progress: { completed: 0, total: 2, failed: 0 } }),
+    /invalid_progress/,
+  );
+  assert.throws(
+    () => report({ progress: { completed: 3, total: 2, failed: 0 } }),
+    /invalid_progress/,
+  );
+  assert.deepEqual(h.service.inspect("script", r.id), before);
+  assert.deepEqual(h.events, ["admitted"]);
+  h.service.close();
+  report({
+    progress: { completed: 2, total: 2, failed: 1 },
+    result: { usage: 10 },
+  });
+  assert.deepEqual(h.store.read()[0].result, { usage: 5 });
+  assert.equal(h.store.read()[0].status, "interrupted");
+});
+
 test("finite active and retained limits never silently evict unresolved outcomes", async () => {
   const h = harness();
   for (let i = 0; i < LIMITS.active; i++)

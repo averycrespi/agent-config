@@ -27,6 +27,6 @@ Shutdown/reload and successful navigation revoke the service before aborting, pe
 
 ## Rendering and tests
 
-Rows show only genuine lifecycle state, a sanitized label, unknown-effect warning and short identity. Shared fitting truncates each row to terminal width without wrapping. The shared persistent-widget helper repaints instead of reinserting keys; no animation, fabricated percentages or sibling reordering is introduced.
+Rows show only genuine lifecycle state, a sanitized label, unknown-effect warning, optional adapter-reported settled/total and failed counts, and short identity. Optional progress snapshots validate monotonic counts and bounded partial outcomes before atomic persistence. They produce no telemetry event or notification; interruption preserves the last snapshot. Existing Script adapters need not report progress. Shared fitting truncates each row to terminal width without wrapping. The shared persistent-widget helper repaints instead of reinserting keys; no animation, fabricated percentages or sibling reordering is introduced.
 
 Tests cover durable-before-run ordering, cancellation, capacity, storage faults, no-replay uncertainty, restoration and stale callbacks, real Script subprocess outcomes/revocation, actual event-bus listener payloads, tool controls, draft deferral and narrow/hostile rendering. Interactive qualification remains a separate delivery requirement; unit fixtures alone do not prove a live conversation remains responsive.

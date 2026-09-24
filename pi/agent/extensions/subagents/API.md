@@ -97,6 +97,12 @@ Creates the shared event-driven tracker. Feed child events through `handleEvent(
 
 Tool arguments are not a display contract and should not be copied into renderable state. Consumers must preserve control-safe, bounded, width-aware rendering.
 
+## Direct background execution
+
+The model-facing `subagents` adapter supports foreground (default) and background execution plus list/inspect/cancel/dismiss controls; see [README](README.md#background-execution). This does not change `runSubagent()` or add background execution to its host API. Curated callers continue to own their own lifetime and coordination.
+
+Both direct modes share their concurrency and exclusive mutable-child gates. Background supplies its owned abort signal and original finite deadline to the existing executor; it persists one batch execution with input-aligned outcomes and accounting. Partial snapshots preserve observed child usage and completed outcomes across interruption. Final batches include per-child `content`, `details`, and optional `usage`; oversized outcomes expose JSON `resultFile` references. Inspect and automatic notification never supply top-level tool usage. Foreground contributes to native Pi totals; late background usage is a separate retained ledger, not automatically included in native totals. No supported late-insertion API is available. Integrators must deduplicate by execution ID and never count repeated inspections as new work.
+
 ## Intentionally internal
 
 The raw process spawner, raw invocation type, extension resolver, capability translation internals, config injection seams, recursion/session controls, and CLI builder are not exported. Colocated engine tests may import internal modules; other extensions must use `runSubagent()`.

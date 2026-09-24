@@ -21,6 +21,14 @@ export function widgetLines(records: Execution[], width: number, theme: Theme) {
         `${theme.fg("muted", "background")} ${theme.fg(r.status === "running" ? "accent" : ["failed", "timeout", "interrupted"].includes(r.status) ? "error" : "warning", r.status)}`,
         [
           ...(r.outcomeUnknown ? [theme.fg("warning", "effects unknown")] : []),
+          ...(r.progress
+            ? [
+                theme.fg(
+                  r.progress.failed ? "warning" : "text",
+                  `${r.progress.completed}/${r.progress.total} settled${r.progress.failed ? ` · ${r.progress.failed} failed` : ""}`,
+                ),
+              ]
+            : []),
           theme.fg("muted", r.id.slice(0, 8)),
         ],
         width,

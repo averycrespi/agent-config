@@ -2,13 +2,13 @@
 
 Keep the conversation available while an extension's existing executor runs. Background owns persisted admission, retained outcomes, below-editor rows and automatic notifications. It registers **no model-facing tool** and is not Monitor, an executor, or a polling scheduler.
 
-[Script](../script/README.md#background-execution) is the first adapter. Both extensions must be loaded. Installing files does not reload existing sessions. Missing Background or an ephemeral session fails admission; there is no foreground fallback. No user-facing configuration or additional permissions are introduced.
+[Script](../script/README.md#background-execution) and [Subagents](../subagents/README.md#background-execution) are supported adapters. The chosen adapter and Background must both be loaded. Installing files does not reload existing sessions. Missing Background or an ephemeral session fails admission; there is no foreground fallback. No user-facing configuration or additional permissions are introduced.
 
 ## Lifecycle and attention
 
 An admitted execution receives a stable UUID before work starts. Its adapter retains the original provider policy, execution context, cancellation and finite deadline. Background never renews a deadline or resumes work. Cancellation requests abort; it does not roll back external effects. Dismissal is terminal-only: it clears attention but preserves results/accounting, and cannot retract a message already handed to Pi.
 
-Every admitted execution has one sanitized, width-bounded row below the editor: `background <state> · <label> · <effects warning> · <short ID>`. Rows contain genuine lifecycle state, not simulated progress. Terminal rows remain until observed notification consumption or explicit dismissal. The widget repaints in place without reordering sibling widgets.
+Every admitted execution has one sanitized, width-bounded row below the editor: `background <state> · <label> · <effects warning> · <short ID>`. Rows contain genuine lifecycle state, not simulated progress. Adapters may report aggregate settled/total and failed counts; per-child details remain in adapter inspection. Terminal rows remain until observed notification consumption or explicit dismissal. The widget repaints in place without reordering sibling widgets.
 
 Success, failure, timeout, cancellation and interruption record notification intent. A bounded identity/outcome/result-reference message is handed to Pi automatically when idle, without a visible TUI draft, pending messages or extension dialog. A one-second readiness timer notices cleared drafts; it never runs executor work or polls a model. Headless/RPC delivery also uses the ordinary follow-up queue. A process that exits cannot deliver until the original session returns.
 

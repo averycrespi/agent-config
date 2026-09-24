@@ -261,6 +261,12 @@ test("hostile labels and every narrow width are safe; dismissal retains full res
   });
   await done;
   const records = h.service().list("script");
+  records[0].progress = { completed: 2, total: 3, failed: 1 };
+  assert.match(
+    widgetLines(records, 120, h.ctx.ui.theme)[0],
+    /2\/3 settled · 1 failed/,
+  );
+  assert.equal(widgetLines(records, 120, h.ctx.ui.theme).length, 1);
   for (let width = 0; width < 100; width++)
     for (const line of widgetLines(records, width, h.ctx.ui.theme)) {
       assert.ok(visibleWidth(line) <= width);

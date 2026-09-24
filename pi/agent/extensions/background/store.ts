@@ -53,6 +53,7 @@ export function validate(records: unknown): Execution[] {
             "result",
             "notification",
             "persistenceFailed",
+            "progress",
           ].includes(k),
       ) ||
       typeof r.label !== "string" ||
@@ -92,11 +93,26 @@ export function validate(records: unknown): Execution[] {
         (!Number.isSafeInteger(r.endedAt) || r.endedAt < r.createdAt))
     )
       throw new Error("background_storage_invalid");
+    if (r.progress !== undefined) validateProgress(r.progress);
     if (r.result !== undefined)
       snapshotScriptJson(r.result, LIMITS.resultBytes);
     ids.add(r.id);
   }
   return copied;
+}
+export function validateProgress(value: unknown): void {
+  const p = value as { completed?: number; total?: number; failed?: number };
+  if (
+    !p ||
+    Object.keys(p).sort().join() !== "completed,failed,total" ||
+    ![p.completed, p.total, p.failed].every(Number.isSafeInteger) ||
+    p.total! < 1 ||
+    p.completed! < 0 ||
+    p.completed! > p.total! ||
+    p.failed! < 0 ||
+    p.failed! > p.completed!
+  )
+    throw new Error("background_invalid_progress");
 }
 export interface Store {
   read(): Execution[];

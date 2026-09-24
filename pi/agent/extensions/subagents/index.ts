@@ -25,6 +25,11 @@ import {
 import { validateOutputSchema } from "./schema.ts";
 import { spillIfNeeded } from "../_shared/spillover.ts";
 import {
+  getBackgroundService,
+  type ProgressUpdate,
+} from "../background/api.ts";
+import { retainBatchResult, retainChildResult } from "./background.ts";
+import {
   buildSpawnAgentsParams,
   CAPABILITIES,
   DEFAULT_MAX_CONCURRENCY,
@@ -44,7 +49,7 @@ type OnUpdate = (event: {
   details: Record<string, unknown>;
 }) => void;
 
-type SpawnRunResult = {
+export type SpawnRunResult = {
   content: { type: "text"; text: string }[];
   details: Record<string, unknown>;
   usage?: Usage;
@@ -154,15 +159,17 @@ export function buildPolicyDescription(_config: SubagentsConfig): string {
 
 export function buildDelegationGuidance(config: SubagentsConfig): string {
   return `\n\n## Subagent delegation
-Use spawn_agents for a self-contained question when parallelism, isolation of substantial intermediate context, or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline; avoid duplicating the child's investigation.
+Subagents runs in the foreground by default. Choose execution: background only for authorized independent work while the conversation continues; wait for its automatic aggregate notification rather than polling. Inspect/cancel/dismiss through subagents using the execution ID. Background preserves all capability and mutable-child restrictions; callers still own parent-write exclusion and checkout isolation. Late background usage is retained separately from Pi native totals.
 
-Once delegation is justified, prefer spawn_agents for a one-shot independent batch whose results the owning session will synthesize. Use workflow when an applicable saved workflow or explicit orchestration—dependent phases, programmatic aggregation, or verification gates—adds value. Parallelism or structured output alone does not require workflow. Preserve skill-required workflows.
+Use subagents for a self-contained question when parallelism, isolation of substantial intermediate context, or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline; avoid duplicating the child's investigation.
+
+Once delegation is justified, prefer subagents for a one-shot independent batch whose results the owning session will synthesize. Use workflow when an applicable saved workflow or explicit orchestration—dependent phases, programmatic aggregation, or verification gates—adds value. Parallelism or structured output alone does not require workflow. Preserve skill-required workflows.
 
 Keep implementation and fixes in the owning session by default. Writable delegation is an exception only when explicitly requested by the user and supported by an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Never overlap parent or child writes in the same checkout. Preserve stricter active workflow boundaries.
 
 For each child, provide one self-contained question or task, scope boundaries, relevant context and decisions, authoritative source paths, explicit capabilities and profile, an evidence-bearing deliverable with uncertainties, and a stop condition. Supply necessary context rather than the entire conversation. The parent owns synthesis and checks consequential claims against evidence; a valid schema or confident summary is not proof of correctness.
 
-Profiles describe routing policy, not fixed model identities: fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Pass independent read-only agents in one spawn_agents call; writable agents must run one at a time. At most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema when automation needs validated machine-readable results.`;
+Profiles describe routing policy, not fixed model identities: fast for narrow lookups, extraction, and straightforward summaries; balanced for substantial bounded exploration and synthesis; strong for difficult analysis, ambiguous or consequential judgment, and demanding review. Pass independent read-only agents in one subagents call; writable agents must run one at a time. At most ${MAX_AGENTS_PER_CALL} items are accepted. Every item requires a self-contained intent and prompt plus explicit capabilities and profile. capabilities: [] is valid. Allowed capabilities: ${config.allowedCapabilities.join(", ") || "none"}. Profiles: ${PROFILES.join(", ")}. Built-ins: ${CAPABILITIES.join(", ")}. Use output_schema when automation needs validated machine-readable results.`;
 }
 
 function toRunRequest(
@@ -195,6 +202,9 @@ export async function validateSpawnAgentSpecs(
   ctx: Pick<SpawnCtx, "cwd" | "modelRegistry">,
 ): Promise<string[]> {
   const errors: string[] = [];
+  if (specs.length === 0) errors.push("agents must contain at least one agent");
+  if (Number(process.env.PI_SUBAGENT_DEPTH ?? 0) >= 1)
+    errors.push("subagent depth limit exceeded (max 1)");
   if (specs.length > MAX_AGENTS_PER_CALL) {
     errors.push(
       `agents must contain at most ${MAX_AGENTS_PER_CALL} agents (received ${specs.length})`,
@@ -210,7 +220,7 @@ export async function validateSpawnAgentSpecs(
     )
   ) {
     errors.push(
-      "mutable capabilities require exactly one agent per spawn_agents call",
+      "mutable capabilities require exactly one agent per subagents call",
     );
   }
 
@@ -281,6 +291,7 @@ async function runSpawn(
   ctx: SpawnCtx,
   toolCallId: string,
   onUpdate?: OnUpdate,
+  onUsage?: (usage: Usage) => void,
 ): Promise<SpawnRunResult> {
   const intent = normalizeIntent(spec.intent);
   const tracker: SubagentActivityTracker = createSubagentActivityTracker({
@@ -304,13 +315,30 @@ async function runSpawn(
   });
 
   let usage: Usage | undefined;
-  const result = await _runSubagent.fn(
-    toRunRequest(spec, ctx, toolCallId, (event) => {
-      const eventUsage = assistantUsageFromEvent(event);
-      if (eventUsage) usage = combineUsage(usage, eventUsage);
-      tracker.handleEvent(event);
-    }),
-  );
+  let result;
+  try {
+    result = await _runSubagent.fn(
+      toRunRequest(spec, ctx, toolCallId, (event) => {
+        const eventUsage = assistantUsageFromEvent(event);
+        if (eventUsage) {
+          usage = combineUsage(usage, eventUsage);
+          onUsage?.(usage);
+        }
+        tracker.handleEvent(event);
+      }),
+    );
+  } catch {
+    result = {
+      ok: false,
+      aborted: Boolean(ctx.signal?.aborted),
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      signal: null,
+      errorMessage:
+        "Subagent execution failed unexpectedly; effects may persist",
+    };
+  }
   tracker.finish(result);
   const diagnosticWarning = result.diagnosticWarnings?.length
     ? `\n\nWarning: ${result.diagnosticWarnings.join("; ")}`
@@ -375,12 +403,13 @@ export async function runParallelSpawn(
   onUpdate: OnUpdate | undefined,
   gate: ConcurrencyGate,
   mutableGate?: ConcurrencyGate,
+  report?: (update: ProgressUpdate) => void,
 ): Promise<SpawnRunResult> {
   const validationErrors = await validateSpawnAgentSpecs(specs, config, ctx);
   if (validationErrors.length > 0) {
     return {
       content: text(
-        `Error: invalid spawn_agents request\n${validationErrors.join("\n")}`,
+        `Error: invalid subagents request\n${validationErrors.join("\n")}`,
       ),
       details: { validationError: true, errors: validationErrors },
     };
@@ -404,7 +433,38 @@ export async function runParallelSpawn(
     lastUpdateAt: Date.now(),
   }));
 
+  const childUsage: (Usage | undefined)[] = specs.map(() => undefined);
+  const retainedChildren: unknown[] = specs.map(() => null);
+  let lastSnapshot = "";
   function emitCombined(): void {
+    if (report) {
+      const progress = {
+        completed: states.filter((s) => s.resolved).length,
+        total: specs.length,
+        failed: states.filter(
+          (s) => s.resolved && ["error", "aborted"].includes(s.phase),
+        ).length,
+      };
+      const result = {
+        partial: true,
+        children: states.map((s, i) => ({
+          index: i,
+          status: s.resolved ? s.phase : "pending",
+          result: retainedChildren[i],
+          ...(childUsage[i] ? { usage: childUsage[i] } : {}),
+        })),
+        usage:
+          childUsage.reduce<Usage | undefined>(
+            (sum, usage) => (usage ? combineUsage(sum, usage) : sum),
+            undefined,
+          ) ?? null,
+      };
+      const snapshot = JSON.stringify({ progress, result });
+      if (snapshot !== lastSnapshot) {
+        report({ progress, result });
+        lastSnapshot = snapshot;
+      }
+    }
     onUpdate?.({
       content: [{ type: "text", text: `Running ${specs.length} subagents...` }],
       details: { agents: [...states], total: specs.length },
@@ -458,7 +518,12 @@ export async function runParallelSpawn(
             if (activity) states[i] = activity;
             emitCombined();
           },
+          (usage) => {
+            childUsage[i] = usage;
+            emitCombined();
+          },
         );
+        if (report) retainedChildren[i] = await retainChildResult(result);
         const finalActivity = getActivity(result.details);
         if (finalActivity) states[i] = finalActivity;
         states[i].resolved = true;
@@ -518,6 +583,10 @@ export async function runParallelSpawn(
       total: specs.length,
       failed,
       allOk: failed === 0,
+      outcomes: results.map((result, index) => ({ index, ...result })),
+      ...(failed > 0
+        ? { error: "One or more subagents failed or were aborted" }
+        : {}),
       ...(structured ? { structured } : {}),
       ...spilled.details,
     },
@@ -557,10 +626,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
-    name: "spawn_agents",
-    label: "Spawn Agents",
+    name: "subagents",
+    label: "Subagents",
     description:
-      "Launch one or more independent subagents with explicit capabilities and a configured profile. Mutable calls are serialized; results are combined after all settle.",
+      "Run an atomic batch of independent subagents with explicit capabilities and profiles. Foreground is default; background returns an execution ID and automatic aggregate notification. Inspect/cancel/dismiss retained background executions. Mutable batches contain exactly one child; caller owns parent-write exclusion and checkout isolation.",
     parameters: buildSpawnAgentsParams(
       `Required profile: ${PROFILES.join(", ")}.`,
     ),
@@ -572,13 +641,136 @@ export default function (pi: ExtensionAPI) {
       onUpdate,
       ctx,
     ) {
+      const action = params.action ?? "run";
+      if (action !== "run") {
+        if (
+          params.agents !== undefined ||
+          params.execution !== undefined ||
+          params.timeout_ms !== undefined
+        )
+          throw new Error(
+            "subagents controls do not accept execution arguments",
+          );
+        const service = getBackgroundService(pi);
+        if (action === "list") {
+          if (params.id !== undefined)
+            throw new Error("list does not accept id");
+          const executions = service
+            .list("subagents")
+            .map(({ result: _result, ...r }) => r);
+          return {
+            content: text(JSON.stringify(executions)),
+            details: { executions },
+          };
+        }
+        if (!params.id) throw new Error("id is required");
+        const execution = service[action]("subagents", params.id);
+        return {
+          content: text(JSON.stringify(execution)),
+          details: { execution },
+        };
+      }
+      if (params.id !== undefined || !params.agents?.length)
+        throw new Error("run requires agents and does not accept id");
+      if (params.timeout_ms !== undefined && params.execution !== "background")
+        throw new Error(
+          "timeout_ms is only supported for background execution",
+        );
       const warnings: string[] = [];
       const config = await reloadConfig(ctx.cwd, warnings);
       if (ctx.hasUI) {
         for (const warning of warnings) ctx.ui.notify(warning, "warning");
       }
+      const specs = structuredClone(params.agents);
+      const callCtx = {
+        cwd: ctx.cwd,
+        modelRegistry: ctx.modelRegistry,
+        hasUI: false,
+        ui: ctx.ui,
+      };
+      if (params.execution === "background") {
+        const service = getBackgroundService(pi);
+        const errors = await validateSpawnAgentSpecs(specs, config, callCtx);
+        if (errors.length)
+          return {
+            content: text(
+              `Error: invalid subagents request\n${errors.join("\n")}`,
+            ),
+            details: { validationError: true, errors },
+          };
+        if (signal?.aborted) throw new Error("subagents admission cancelled");
+        const deadlineMs = Date.now() + (params.timeout_ms ?? 600000);
+        const execution = service.admit({
+          owner: "subagents",
+          label: `${specs.length} subagents`,
+          deadlineMs,
+          run: async (abort, report) => {
+            const controller = new AbortController();
+            const cancel = () => controller.abort();
+            abort.addEventListener("abort", cancel, { once: true });
+            if (abort.aborted) cancel();
+            let timedOut = false;
+            const timer = setTimeout(
+              () => {
+                timedOut = true;
+                cancel();
+              },
+              Math.max(0, deadlineMs - Date.now()),
+            );
+            try {
+              let progressFailed = false;
+              const batch = await runParallelSpawn(
+                specs,
+                config,
+                { ...callCtx, signal: controller.signal },
+                toolCallId,
+                undefined,
+                directGate,
+                mutableGate,
+                (update) => {
+                  try {
+                    report(update);
+                  } catch {
+                    progressFailed = true;
+                    cancel();
+                  }
+                },
+              );
+              const result = await retainBatchResult(batch, toolCallId);
+              return {
+                status:
+                  progressFailed || result.retentionError
+                    ? "failed"
+                    : timedOut
+                      ? "timeout"
+                      : abort.aborted
+                        ? "cancelled"
+                        : batch.details.allOk
+                          ? "success"
+                          : "failed",
+                effectsMayPersist: specs.some(
+                  (s) =>
+                    s.capabilities.includes("write-filesystem") ||
+                    s.capabilities.includes("exec-shell"),
+                ),
+                outcomeUnknown: controller.signal.aborted,
+                result,
+              };
+            } finally {
+              clearTimeout(timer);
+              abort.removeEventListener("abort", cancel);
+            }
+          },
+        });
+        return {
+          content: text(
+            `Subagents admitted as background execution ${execution.id}. One automatic notification follows settlement; use subagents action inspect for results.`,
+          ),
+          details: { execution },
+        };
+      }
       return runParallelSpawn(
-        params.agents,
+        specs,
         config,
         {
           cwd: ctx.cwd,

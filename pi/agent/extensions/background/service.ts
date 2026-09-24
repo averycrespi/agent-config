@@ -7,7 +7,7 @@ import type {
   Execution,
   Outcome,
 } from "./api.ts";
-import { LIMITS, type Store } from "./store.ts";
+import { LIMITS, validateProgress, type Store } from "./store.ts";
 
 export const label = (value: string) =>
   stripVTControlCharacters(value)
@@ -171,7 +171,30 @@ export class Service implements BackgroundService {
         if (!this.open || this.broken) return;
         let outcome: Outcome;
         try {
-          outcome = await request.run(controller.signal);
+          outcome = await request.run(controller.signal, (update) => {
+            if (!this.open || this.broken) return;
+            validateProgress(update.progress);
+            const current = this.records.find((r) => r.id === record.id)!;
+            if (current.status !== "running") return;
+            if (
+              current.progress &&
+              (update.progress.total !== current.progress.total ||
+                update.progress.completed < current.progress.completed ||
+                update.progress.failed < current.progress.failed)
+            )
+              throw new Error("background_invalid_progress");
+            const result =
+              update.result === undefined
+                ? current.result
+                : JSON.parse(
+                    snapshotScriptJson(update.result, LIMITS.resultBytes),
+                  );
+            this.change({
+              ...current,
+              progress: { ...update.progress },
+              ...(result === undefined ? {} : { result }),
+            });
+          });
         } catch {
           outcome = {
             status: "failed",

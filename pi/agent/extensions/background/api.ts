@@ -7,6 +7,8 @@ export type Outcome = {
   /** Bounded adapter-owned JSON result/accounting, never source. */
   result?: unknown;
 };
+export type Progress = { completed: number; total: number; failed: number };
+export type ProgressUpdate = { progress: Progress; result?: unknown };
 export type Execution = {
   id: string;
   owner: string;
@@ -22,6 +24,7 @@ export type Execution = {
   outcomeUnknown: boolean;
   result?: unknown;
   persistenceFailed?: boolean;
+  progress?: Progress;
   notification: {
     id: string;
     intent: boolean;
@@ -34,7 +37,10 @@ export type Admission = {
   label: string;
   deadlineMs: number;
   /** Prepared adapter: all authorization/selection validation must precede admission. */
-  run(signal: AbortSignal): Promise<Outcome>;
+  run(
+    signal: AbortSignal,
+    report: (update: ProgressUpdate) => void,
+  ): Promise<Outcome>;
 };
 export interface BackgroundService {
   admit(request: Admission): Execution;

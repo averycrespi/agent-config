@@ -152,10 +152,7 @@ test("delegation guidance requires benefit, ownership, and evidence-bearing brie
 
 test("delegation guidance distinguishes simple batches from workflow orchestration", () => {
   const guidance = buildDelegationGuidance(config);
-  assert.match(
-    guidance,
-    /prefer spawn_agents for a one-shot independent batch/,
-  );
+  assert.match(guidance, /prefer subagents for a one-shot independent batch/);
   assert.match(guidance, /owning session will synthesize/);
   assert.match(
     guidance,

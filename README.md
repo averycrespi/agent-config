@@ -85,7 +85,7 @@ The main session owns implementation and execution evidence by default. Writable
 
 ### Continue, watch, and schedule
 
-[Background execution](pi/agent/extensions/background/README.md) lets Script finish bounded work while the conversation stays available. It retains outcomes, shows below-editor status and sends automatic terminal notifications; it adds no model-facing tool or executor. Cancellation is not rollback, notification consumption is not acceptance, and session changes never replay work.
+[Background execution](pi/agent/extensions/background/README.md) lets Script and Subagents finish bounded work while the conversation stays available. It retains outcomes, shows below-editor status and sends automatic terminal notifications; it adds no model-facing tool or executor. Cancellation is not rollback, notification consumption is not acceptance, and session changes never replay work.
 
 | Mechanism                                                        | Use it for                                                                                                                                                |
 | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
