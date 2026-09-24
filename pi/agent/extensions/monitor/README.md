@@ -143,16 +143,16 @@ No standalone logs, source files or result spills are written. Ordinary Pi histo
 
 Collapsed results summarize the requested action, not a generic inspection acknowledgment:
 
-- `list`: `2 active · 5 retained`, `no active jobs · 7 retained`, or `no jobs`. Retained includes active and terminal receipts; pending follow-ups are counted separately. Expand for the named inventory.
-- `get`: `CI check · polling · 0 wakes · 4 evaluations`, or a terminal reason such as `evaluation failed · script_error`. Counts report attempts, not watched-task success.
-- `start`: warns in model-visible text and the collapsed/expanded row when the interval reaches/exceeds the cycle window; the registration remains valid and unchanged. Otherwise: `CI check · polling every 30s · timeout 20m`, `Reminder · scheduled · in 5s · timeout 20s`, or `Follow-through · every 5s after settlement · timeout 20m · max 2 wakes`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
-- `cancel`: `CI check · cancelled` versus `CI check · already finished`. Uncertain effects, uncertain handoffs, and already-handed follow-ups remain visible; cancellation does not retract Pi-owned messages or roll back effects.
+- `list`: `monitor list · 2 active · 5 retained`, `monitor list · no active jobs · 7 retained`, or `monitor list · no jobs`. Retained includes active and terminal receipts; pending follow-ups are counted separately. Expand for the named inventory.
+- `get`: `monitor get · polling · CI check · 0 wakes · 4 evaluations`, or a terminal reason such as `evaluation failed · script_error`. Counts report attempts, not watched-task success.
+- `start`: says `monitor start · registered; no repeat poll` when the interval reaches/exceeds the cycle window, with the full event-aware warning expanded and in model-visible text; registration remains valid and unchanged. Otherwise: `monitor start · polling every 30s · CI check · timeout 20m` or `monitor start · scheduled · in 5s · Reminder · timeout 20s`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
+- `cancel`: `monitor cancel · cancelled · CI check` versus `monitor cancel · already finished · CI check`. Uncertain effects, uncertain handoffs, and already-handed follow-ups remain visible; cancellation does not retract Pi-owned messages or roll back effects.
 
-Expand single-job results for identity, accounting summaries and handoff disposition. Custom rows never expose source, arguments, state, evidence, or raw exception text. Names are nonsecret display labels, sanitized and width-bounded. Failed requests retain the action/target context.
+Expand single-job results for identity, accounting summaries and handoff disposition. Collapsed rows never expose source, arguments, state, evidence, or raw exception text; expansion preserves bounded original framed evidence. Names are nonsecret display labels, sanitized and width-bounded. Failed requests retain the action context and both failure and no-replay wording when effects or handoff are uncertain; optional targets cannot displace those warnings.
 
 ## Notification display
 
-Interactive wake messages use the shared [compact notification renderer](../_shared/README.md#asynchronous-custom-messages): source/name/short ID, explicit observation attention reason, then supplied effects/interruption/coverage warnings. Two or three content rows remain unwrapped and width-bounded; secondary identity text truncates before status. `condition attention` and `observation timed out` never imply watched-task success or failure. Evaluation failure, coverage loss and budget exhaustion remain distinct, with words as well as semantic colors.
+Interactive wakes use the shared [one-line notification renderer](../_shared/README.md#asynchronous-custom-messages): `monitor attention · timer elapsed · timer demo`, for example. Type and observation reason precede supplied effects/interruption/coverage warnings and bounded identity. A subtle `customMessageBg` distinguishes notifications without icons or padding. Essential status/warnings are qualified at 48 content columns and above; smaller widths remain bounded with full text available on expansion. Timer wording requires typed producer metadata; condition and timeout never imply watched-task success or failure. Evaluation failure, coverage loss and budget exhaustion remain distinct.
 
 Pi's normal tool/message expansion (`Ctrl+O` by default) reveals full bounded identity, continuation instructions and existing untrusted evidence framing; collapse restores the summary. Terminal controls are removed, expanded display is bounded with truncation disclosures, and no references are fetched. Complete model content and RPC/headless delivery are unchanged. Rendering cannot mark admission/consumption, rearm recurrence, trigger turns or replay a wake.
 
@@ -160,19 +160,19 @@ Historical `background-wake` messages receive the same display-only fallback as 
 
 ## Widget and qualification
 
-One stable, width-bounded row per visible job appears below the editor. Identity comes before descriptive activity and labeled timing:
+One stable, width-bounded row per visible job appears below the editor. Source and observation state lead, then critical warnings, bounded identity and real timing:
 
 ```text
-monitor · CI check · polling · next check 3s · timeout 12s
-monitor · Worker · watching events · timeout 15m
-monitor · Follow-through · continue in 5s · timeout 20s · wakes 0/2
-monitor · CI check · timed out · follow-up queued
-monitor · Follow-through · awaiting settlement · wakes 1/2 · expires 50s
+monitor polling · CI check · next check 3s · timeout 12s
+monitor watching events · Worker · timeout 15m
+monitor scheduled · Follow-through · in 5s · timeout 20s · wakes 0/2
+monitor timed out · CI check · follow-up queued
+monitor awaiting settlement · Follow-through · wakes 1/2 · expires 50s
 ```
 
 `next check` is the next poll, not a model wake. `timeout` is the current attention deadline; `expires` is total lifetime, shown instead when it ends sooner or while awaiting settlement. An in-flight evaluation shows `checking` without a stale next-check countdown. Pending attention shows its cause and `follow-up queued` rather than a misleading ticking clock. Neither condition attention nor a finished receipt proves watched-task success.
 
-Activity uses accent, pending attention/settlement warning, failures error; there is no green activity state, source, payload or evidence. Narrow rows drop the redundant `monitor` prefix, shorten long names, and drop secondary telemetry while preserving identity and primary state when space permits. Pending attention remains visible until handoff/suppression even after observation ends. Finished/canceled rows disappear after handoff/suppression. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls. Older receipts without trigger metadata remain inspectable without guessing a polling/continuation mode.
+Activity uses accent, pending attention/settlement warning, failures error; there is no green activity state, source, payload or evidence. Narrow rows retain the `monitor` source and primary state, place critical uncertainty before optional names, and drop queued-status/clock/identity detail under pressure. At 64 columns, combined warnings can compact to `unknown/interrupted/gap/handoff?`; expansion/inspection retains full wording. Smaller widths remain bounded, with optional fields omitted first. Pending attention remains visible until handoff/suppression even after observation ends. Finished/canceled rows disappear after handoff/suppression. TUI mounts once and repaints in place at most once per second for countdowns; RPC uses string arrays and headless mode makes no UI calls. Older receipts without trigger metadata remain inspectable without guessing a polling/continuation mode.
 
 ### Agent-level follow-through regression (manual, unrun)
 

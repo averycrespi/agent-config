@@ -1,6 +1,72 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import {
+  truncateToWidth,
+  visibleWidth,
+  type Component,
+} from "@earendil-works/pi-tui";
 import { isAbsolute, relative, resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
+import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+
+/** Sanitize display data before styling; this is not a secret detector. */
+export function displayLabel(value: unknown, limit = 200): string {
+  if (typeof value !== "string") return "";
+  return stripVTControlCharacters(value.slice(0, 4096))
+    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, limit);
+}
+
+/** Status/warnings precede optional target text so narrow rows stay honest. */
+export function toolSummary(
+  theme: Theme,
+  tool: string,
+  action: unknown,
+  outcome: string,
+  target: unknown = "",
+  color: ThemeColor = "muted",
+): (width: number) => string {
+  const name = displayLabel(tool);
+  const verb = displayLabel(action);
+  const status = displayLabel(outcome, 300);
+  const identity = displayLabel(target);
+  return (width) => {
+    const separator = theme.fg("dim", " · ");
+    const core =
+      theme.fg("toolTitle", theme.bold(name)) +
+      (verb ? " " + theme.fg("muted", verb) : "") +
+      (status ? separator + theme.fg(color, status) : "");
+    const room = Math.max(0, width - visibleWidth(core) - 3);
+    return (
+      core +
+      (identity && room >= 5 && !/unknown|uncertain|no replay/.test(status)
+        ? separator +
+          theme.fg(
+            "text",
+            stripVTControlCharacters(truncateToWidth(identity, room, "…")),
+          )
+        : "")
+    );
+  };
+}
+
+/** Bounded plain-text expansion; callers retain the original model-facing result. */
+export function expandedResult(result: AgentToolResult<unknown>): string[] {
+  const text = result.content
+    .filter((c) => c.type === "text")
+    .map((c) => c.text)
+    .join("\n");
+  const rows = stripVTControlCharacters(text.slice(0, 64000)).split("\n");
+  return [
+    ...rows.slice(0, 2000).map((line) => displayLabel(line, 1000)),
+    ...(text.length > 64000 ||
+    rows.length > 2000 ||
+    rows.some((line) => line.length > 1000)
+      ? ["Display truncated; full result remains in model/session context."]
+      : []),
+  ];
+}
 
 // Pi tool boxes apply background after child rendering; full resets inside
 // child lines clear that background before the box's final background reset.
@@ -205,16 +271,18 @@ export function partialElapsed(context: PartialTimerContext): string {
  * on the same logical lines regardless of terminal width. Each stored
  * line is independently truncated at render time instead of wrapped.
  */
+export type RenderLine = string | ((width: number) => string);
+
 export class TruncatedText implements Component {
-  private lines: string[];
+  private lines: RenderLine[];
   private cachedWidth?: number;
   private cachedLines?: string[];
 
-  constructor(lines: string[] = []) {
+  constructor(lines: RenderLine[] = []) {
     this.lines = lines;
   }
 
-  setLines(lines: string[]): void {
+  setLines(lines: RenderLine[]): void {
     this.lines = lines;
     this.cachedWidth = undefined;
     this.cachedLines = undefined;
@@ -233,7 +301,10 @@ export class TruncatedText implements Component {
     const safeWidth = Math.max(0, width);
     const rendered = this.lines.map((line) =>
       truncateToWidth(
-        line.replaceAll("\t", TAB_REPLACEMENT),
+        (typeof line === "function" ? line(safeWidth) : line).replaceAll(
+          "\t",
+          TAB_REPLACEMENT,
+        ),
         safeWidth,
       ).replace(SGR_FULL_RESET, SGR_BG_SAFE_RESET),
     );
@@ -249,7 +320,7 @@ export class TruncatedText implements Component {
  */
 export function getTruncatedText(
   lastComponent: unknown,
-  lines: string[],
+  lines: RenderLine[],
 ): TruncatedText {
   const text =
     lastComponent instanceof TruncatedText

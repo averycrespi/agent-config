@@ -5,7 +5,7 @@ description: Use when reviewing code changes, a working tree, branch, commit ran
 
 # Review
 
-Use the saved `review` workflow as the review engine. Prepare evidence and present its consolidated findings. Default to one independent reviewer; add lenses only for identified risks. Do not recreate a separate panel or silently re-adjudicate findings. Repairs stay in the owning session, never writable workflow children.
+Use the saved `review` workflow as the review engine. Launch it asynchronously with `workflow action: run`, `name: review` (background is the default); wait for its correlated automatic notification, inspect the exact retained execution and complete report, then present consolidated findings. Notification and execution success are not approval. Do not poll or automatically replay an uncertain run. Prepare evidence and present its consolidated findings. Default to one independent reviewer; add lenses only for identified risks. Do not recreate a separate panel or silently re-adjudicate findings. Repairs stay in the owning session, never writable workflow children.
 
 ## Prepare evidence
 
@@ -21,7 +21,7 @@ Run repository-mandated or target-relevant deterministic checks before review wh
 
 ## Invoke the workflow
 
-Read [the workflow input contract](references/workflow-input.md) completely before invocation. Supply the target, patch/context paths, canonical criteria, delivery scope, honest check evidence, and gaps. Use focused `confirmation` after authorized repairs within unchanged scope, with original findings and dispositions. When scope or applicable requirements expand beyond prior coverage, use `initial` review against the uncovered requirements and affected change. A boundary label alone does not invalidate covered review. Assess the full supplied change and criteria; the caller determines when to request review and whether its coverage is sufficient for the next action.
+Read [the workflow input contract](references/workflow-input.md) completely before invocation. Supply the target, patch/context paths, canonical criteria, delivery scope, honest check evidence, and gaps. Inspect the execution ID from admission after notification; read its retained `resultFile` for the complete review before adjudicating repair or publication. Use focused `confirmation` after authorized repairs within unchanged scope, with original findings and dispositions. When scope or applicable requirements expand beyond prior coverage, use `initial` review against the uncovered requirements and affected change. A boundary label alone does not invalidate covered review. Assess the full supplied change and criteria; the caller determines when to request review and whether its coverage is sufficient for the next action.
 
 ## Present findings
 

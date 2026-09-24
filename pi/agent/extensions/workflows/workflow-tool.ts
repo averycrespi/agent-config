@@ -198,6 +198,10 @@ function validateCombination(params: WorkflowParams): string[] {
   );
   if (params.execution !== undefined && params.action !== "run")
     errors.push("execution is only accepted by run.");
+  if (params.action === "run" && params.execution === "foreground")
+    errors.push(
+      "workflow run is background-only; omit execution or use background.",
+    );
   if (control) {
     if (
       params.script !== undefined ||
@@ -270,13 +274,13 @@ Use the globals agent(prompt, { intent, capabilities, profile, output?, retries?
 Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy; write-filesystem and exec-shell are rejected. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Omit timeoutMs normally to use configured agentTimeoutMs (default 10 minutes). An explicit timeoutMs overrides the per-attempt agent/verify deadline, not the whole-run workflowTimeoutMs (default 1 hour), which still bounds all work.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.
-Execution defaults to foreground. Use execution: background for authorized independent work; one workflow owns and awaits all its children. Background must be loaded. Use executions to list retained runs, inspect/cancel/dismiss with id; list still lists saved definitions. Wait for automatic notification, not polling. Inspect typed failures, partial results and accounting; execution success is not acceptance. No replay, extra retries or renewed budgets.`,
+Workflow runs are background-only (the default); explicit foreground is rejected before work starts. One workflow owns and awaits all its children. Background must be loaded. Use executions to list retained runs, inspect/cancel/dismiss with id; list still lists saved definitions. Wait for automatic notification, not polling. Inspect typed failures, partial results and accounting; execution success is not acceptance. No replay, extra retries or renewed budgets.`,
     promptSnippet:
-      "List, validate, or run a deterministic JavaScript workflow, foreground or background.",
+      "List and validate workflows immediately, or launch a background-only workflow run.",
     promptGuidelines: [
       "Call workflow with action list when a reusable saved workflow may apply.",
-      "Workflow background runs require authorized independent work. Wait for automatic completion; use workflow inspect/cancel/dismiss controls. One workflow owns all children and preserves gates, budgets and deadlines; no replay or nested background execution.",
-      "Use workflow for read-mostly subagent work that benefits from deterministic orchestration—dependent phases, programmatic aggregation, or verification gates—or an applicable saved workflow. Prefer subagents for a simple independent batch; parallelism or structured output alone does not require workflow. Preserve skill-required workflows. Use script with the selected mcp provider for gateway composition that needs no subagent reasoning.",
+      "Use workflow for coordinated read-only fan-out even when only parallelism is needed; subagent is for one independent question, and direct tools or Script compose providers without subagent reasoning. Workflow runs require authorization. Wait for correlated automatic notification and inspect the exact retained result; notification and execution success are not acceptance. Use workflow inspect/cancel/dismiss controls. One workflow owns all children and preserves gates, budgets and deadlines; no replay or nested background execution.",
+      "Use workflow for coordinated read-mostly subagent fan-out (including parallel-only batches), dependent phases, aggregation, verification gates, or an applicable saved workflow. Use separate direct subagent calls only for independently owned outcomes that the parent will reconcile. Preserve skill-required workflows. Use script with the selected mcp provider for gateway composition without subagent reasoning.",
       "Do not use workflow for workspace mutation; write-filesystem and exec-shell are rejected, so use only explicitly justified read-mostly capabilities.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
       "parallel() represents failed branches as null; use parallelSettled() when completeness or per-branch failure accounting matters. Never silently discard failed required branches.",
@@ -339,9 +343,7 @@ Execution defaults to foreground. Use execution: background for authorized indep
         };
       }
       const background =
-        params.execution === "background"
-          ? getBackgroundService(pi)
-          : undefined;
+        params.action === "run" ? getBackgroundService(pi) : undefined;
       let config: WorkflowConfig | undefined;
       const warnings: string[] = [];
       const getConfig = async () => {

@@ -5,8 +5,13 @@ import {
   getResultText,
   getTruncatedText,
   startPartialTimer,
+  toolSummary,
 } from "../_shared/render.ts";
 import { agentProgressLines } from "../subagents/render.ts";
+import {
+  isBackgroundControl,
+  renderExecutionResult,
+} from "../background/render.ts";
 import {
   DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
   type WorkflowAgentState,
@@ -327,11 +332,11 @@ function actionSummaryLine(
   return `${statusPrefix(theme, status)}${workflowIdentity(theme, action, name)}${suffix}`;
 }
 
-export function renderWorkflowCall(
-  _params: unknown,
-  _theme: any,
-  context: any,
-) {
+export function renderWorkflowCall(params: any, theme: any, context: any) {
+  if (isBackgroundControl("workflow", params ?? {}))
+    return getTruncatedText(context.lastComponent, [
+      toolSummary(theme, "workflow", params?.action ?? "run", "", params?.name),
+    ]);
   return getTruncatedText(context.lastComponent, []);
 }
 
@@ -341,6 +346,23 @@ export function renderWorkflowResult(
   theme: any,
   context: any,
 ) {
+  if (
+    isBackgroundControl("workflow", context.args ?? {}) ||
+    result.details?.execution ||
+    result.details?.background
+  ) {
+    clearPartialTimer(context);
+    const value = result.details?.execution ?? result.details?.background;
+    return renderExecutionResult(
+      "workflow",
+      Array.isArray(value) ? value : value ? [value] : [],
+      result,
+      { expanded, isPartial },
+      theme,
+      context,
+      /^Error|^Invalid workflow input:/.test(getResultText(result)),
+    );
+  }
   if (isPartial) {
     startPartialTimer(context);
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
@@ -406,22 +428,6 @@ export function renderWorkflowResult(
         lines.push(theme.fg("warning", `Warning: ${persistenceWarning}`));
       }
     }
-    return getTruncatedText(context.lastComponent, lines);
-  }
-
-  if (result.details?.execution || result.details?.background) {
-    const value = result.details.execution ?? result.details.background;
-    const records = Array.isArray(value) ? value : [value];
-    const action = result.details.action ?? "run";
-    const lines = records.map(
-      (record: any) =>
-        `${workflowIdentity(theme, safeDisplay(action), safeDisplay(record.label))}${separator(theme)}${theme.fg(["failed", "timeout", "interrupted"].includes(record.status) ? "error" : "muted", safeDisplay(record.status))} ${safeDisplay(record.id)}`,
-    );
-    if (lines.length === 0)
-      lines.push(
-        `${workflowIdentity(theme, safeDisplay(action))}${separator(theme)}none`,
-      );
-    if (expanded) lines.push(...text.split("\n").map(safeDisplay));
     return getTruncatedText(context.lastComponent, lines);
   }
 

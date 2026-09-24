@@ -355,7 +355,7 @@ test("background controls and validation/framework failures render honest bounde
       ctx,
     );
     const lines = component.render(100);
-    assert.match(lines[0], /subagents/);
+    assert.match(lines[0], /subagent/);
     assert.doesNotMatch(lines.join("\n"), /\x1b|0 done|✓/);
     assert.ok(component.render(12).every((line) => visibleWidth(line) <= 12));
   }
@@ -365,7 +365,7 @@ test("background controls and validation/framework failures render honest bounde
     theme,
     { state: {}, isError: true },
   );
-  assert.match(failed.render(100)[0], /subagents · execution error/);
+  assert.match(failed.render(100)[0], /subagent · execution error/);
 });
 
 test("getActivity accepts nested or direct activity shapes", () => {

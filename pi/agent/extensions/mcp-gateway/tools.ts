@@ -9,6 +9,7 @@ import {
   headNonEmptyLines,
   getTruncatedText,
   partialElapsed,
+  toolSummary,
 } from "../_shared/render.ts";
 import { GatewayClient, GatewayError, record } from "./client.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
@@ -55,7 +56,7 @@ export function renderers(
         name === "mcp_search" ? input?.query : input?.name,
       );
       const label = target
-        ? theme.fg("accent", name === "mcp_search" ? `"${target}"` : target)
+        ? theme.fg("text", name === "mcp_search" ? `"${target}"` : target)
         : theme.fg("muted", name === "mcp_search" ? "(all)" : "(missing name)");
       const keys =
         name === "mcp_call" && record(input?.arguments)
@@ -90,6 +91,32 @@ export function renderers(
       clearPartialTimer(context);
       const details = result.details as Record<string, unknown> | undefined;
       const failed = context.isError || details?.gatewayError === true;
+      if (!expanded) {
+        const outcome =
+          details?.outcomeUnknown === true
+            ? failed
+              ? "failed; unknown effects; no replay"
+              : "unknown effects; no replay"
+            : failed
+              ? "request failed"
+              : name === "mcp_search"
+                ? `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown · ${typeof details?.matchCount === "number" ? details.matchCount : "?"} matches`
+                : name === "mcp_describe"
+                  ? "schema read"
+                  : "returned";
+        return getTruncatedText(context.lastComponent, [
+          toolSummary(
+            theme,
+            name,
+            "",
+            outcome,
+            name === "mcp_search"
+              ? display((context.args as Record<string, unknown>)?.query)
+              : target,
+            failed ? "error" : details?.outcomeUnknown ? "warning" : "success",
+          ),
+        ]);
+      }
       const lines: string[] = [];
       const preview = details?.summary ?? textContent(result.content);
       if (failed) {
@@ -172,7 +199,7 @@ export function renderers(
         lines.push(
           ...textContent(result.content)
             .split("\n")
-            .slice(0, 30)
+            .slice(0, 2000)
             .map((line) => theme.fg("muted", display(line, 500))),
         );
       }

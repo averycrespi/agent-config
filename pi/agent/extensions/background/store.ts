@@ -15,11 +15,11 @@ import { snapshotScriptJson } from "../script/api.ts";
 import type { Execution } from "./api.ts";
 
 export const LIMITS = Object.freeze({
-  active: 4,
-  retained: 32,
-  notifications: 32,
+  active: 8,
+  retained: 256, // reserve a completion slot for every active admission
+  notifications: 64,
   resultBytes: 64000,
-  storeBytes: 2200000,
+  storeBytes: 20000000,
 });
 export const STORE_SUFFIX = ".background-executions-v1.json";
 const uuid = (s: unknown) => typeof s === "string" && /^[a-f0-9-]{36}$/.test(s);

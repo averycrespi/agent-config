@@ -4,6 +4,8 @@ import {
   firstLine,
   getResultText,
   getTruncatedText,
+  toolSummary,
+  expandedResult,
 } from "../_shared/render.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import {
@@ -124,7 +126,7 @@ function summarizeAction(params: TodoParams): string {
       return `set ${count} item${count === 1 ? "" : "s"}`;
     }
     case "add":
-      return params.text ? `add ${JSON.stringify(params.text)}` : "add";
+      return "add";
     case "update":
       return params.id === undefined ? "update" : `update #${params.id}`;
     case "remove":
@@ -138,9 +140,9 @@ function summarizeAction(params: TodoParams): string {
 
 function summarizeResult(details: unknown): string {
   const items = (details as { items?: unknown } | undefined)?.items;
-  if (!Array.isArray(items)) return "✓ done";
-  if (items.length === 0) return "✓ no todos";
-  return `✓ ${items.length} todo${items.length === 1 ? "" : "s"}`;
+  if (!Array.isArray(items)) return "state unavailable";
+  if (items.length === 0) return "no todos";
+  return `${items.length} todo${items.length === 1 ? "" : "s"}`;
 }
 
 export function registerTodoTool(pi: ExtensionAPI, store: TodoStore): void {
@@ -174,26 +176,27 @@ export function registerTodoTool(pi: ExtensionAPI, store: TodoStore): void {
     renderCall(args, theme, context) {
       const summary = summarizeAction(args as TodoParams);
       return getTruncatedText(context.lastComponent, [
-        `${theme.fg("toolTitle", theme.bold("todo"))} ${theme.fg("muted", summary)}`,
+        toolSummary(theme, "todo", summary, ""),
       ]);
     },
-    renderResult(result, { isPartial }, theme, context) {
-      if (isPartial) {
-        return getTruncatedText(context.lastComponent, [
-          theme.fg("warning", "Updating TODOs..."),
-        ]);
-      }
-
-      const text = getResultText(result);
-      const message = firstLine(text);
-      if (context.isError || message.startsWith("Error:")) {
-        return getTruncatedText(context.lastComponent, [
-          theme.fg("error", message || "todo error"),
-        ]);
-      }
-
+    renderResult(result, { isPartial, expanded }, theme, context) {
+      const failed =
+        context.isError ||
+        firstLine(getResultText(result)).startsWith("Error:");
       return getTruncatedText(context.lastComponent, [
-        theme.fg("success", summarizeResult(result.details)),
+        toolSummary(
+          theme,
+          "todo",
+          context.args?.action,
+          isPartial
+            ? "updating"
+            : failed
+              ? "request failed"
+              : summarizeResult(result.details),
+          "",
+          isPartial ? "warning" : failed ? "error" : "success",
+        ),
+        ...(expanded ? expandedResult(result) : []),
       ]);
     },
     async execute(_toolCallId, rawParams, _signal, _onUpdate, _ctx) {

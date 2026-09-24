@@ -2,7 +2,11 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { stripVTControlCharacters } from "node:util";
-import { getTruncatedText, plural } from "../_shared/render.ts";
+import { getTruncatedText, plural, toolSummary } from "../_shared/render.ts";
+import {
+  isBackgroundControl,
+  renderExecutionResult,
+} from "../background/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import type { RunResult, describeScriptProviders } from "./api.ts";
 import { diagnostic, discoveryCode } from "./diagnostics.ts";
@@ -156,6 +160,16 @@ export const renderers: Pick<
   "renderCall" | "renderResult"
 > = {
   renderCall(args, theme, ctx) {
+    if (isBackgroundControl("script", args))
+      return getTruncatedText(ctx.lastComponent, [
+        toolSummary(
+          theme,
+          "script",
+          args.action ?? "run",
+          "",
+          args.description,
+        ),
+      ]);
     return getTruncatedText(ctx.lastComponent, [
       `${theme.fg("toolTitle", theme.bold("script"))} ${theme.fg("muted", `${display(args.action) || "run"} · ${providerLabel(args)} · ${display(args.description) || "bounded execution"}`)}`,
     ]);
@@ -186,22 +200,16 @@ export const renderers: Pick<
           );
       return getTruncatedText(ctx.lastComponent, lines);
     }
-    if (d?.background === true) {
-      const records = Array.isArray(d.records) ? d.records : [];
-      const lines = [
-        theme.fg(
-          ctx.isError ? "error" : "muted",
-          `background · ${display(d.action)} · ${records.length} execution(s)`,
-        ),
-      ];
-      for (const r of records.slice(0, expanded ? 32 : 1))
-        lines.push(
-          theme.fg(
-            r.status === "running" ? "accent" : "warning",
-            `${display(r.id)} · ${display(r.status)}`,
-          ),
-        );
-      return getTruncatedText(ctx.lastComponent, lines);
+    if (d?.background === true || isBackgroundControl("script", args)) {
+      return renderExecutionResult(
+        "script",
+        d?.records,
+        result,
+        { expanded, isPartial },
+        theme,
+        ctx,
+        d?.scriptError === true,
+      );
     }
     const action =
       d?.action === "describe" || args.action === "describe"

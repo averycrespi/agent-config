@@ -145,7 +145,7 @@ test("renderResult keeps todo errors to one concise line", () => {
     })
     .render(80);
 
-  assert.deepEqual(lines, ["Error: set items must include non-empty text."]);
+  assert.deepEqual(lines, ["todo set · request failed"]);
   assert.deepEqual(result.details, {
     items: [{ id: 1, text: "Existing", status: "todo" }],
     nextTodoId: 2,

@@ -135,11 +135,24 @@ export class Service implements BackgroundService {
       throw new Error("background_invalid_admission");
     if (
       this.active.size >= LIMITS.active ||
-      this.records.length >= LIMITS.retained ||
-      this.records.filter((r) => !r.dismissed && !r.notification.consumed)
-        .length >= LIMITS.notifications
+      this.records.filter(
+        (r) =>
+          r.status === "running" || (!r.dismissed && !r.notification.consumed),
+      ).length >= LIMITS.notifications
     )
       throw new Error("background_capacity");
+    // Reclaim only terminal attention that was observably consumed or dismissed.
+    // Reserve both a completed-history slot and an attention slot for each
+    // running admission. Settlement cannot exceed either bound or evict a run.
+    const next = [...this.records];
+    while (next.length >= LIMITS.retained) {
+      const oldest = next.findIndex(
+        (r) =>
+          r.status !== "running" && (r.dismissed || r.notification.consumed),
+      );
+      if (oldest < 0) throw new Error("background_capacity");
+      next.splice(oldest, 1);
+    }
     const anchor = this.hooks.anchor();
     if (!anchor) throw new Error("background_persistence_required");
     const record: Execution = {
@@ -168,7 +181,7 @@ export class Service implements BackgroundService {
         consumed: false,
       },
     };
-    this.save([...this.records, record]);
+    this.save([...next, record]);
     const controller = new AbortController();
     this.active.set(record.id, controller);
     this.refresh();

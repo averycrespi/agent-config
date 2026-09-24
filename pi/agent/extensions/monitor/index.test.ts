@@ -329,7 +329,10 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   assert.equal(h.component, mounted);
   const pending = value(await h.call({ action: "get", id }));
   assert.equal(pending.attention.disposition, "pending");
-  assert.match(h.component.render(200)[0], /condition met · follow-up queued/);
+  assert.match(
+    h.component.render(200)[0],
+    /monitor condition met · safe name · follow-up queued/,
+  );
   await h.idle();
   await pause();
   assert.equal(h.messages.length, 1);
@@ -362,7 +365,7 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
       .render(80)
       .join("\n");
     assert.match(rendered, /monitor/);
-    assert.match(rendered, /condition attention/);
+    assert.match(rendered, /monitor attention · condition/);
     assert.equal(rendered.includes(input.message), expanded);
   }
   assert.equal(JSON.stringify(message), original);

@@ -1,7 +1,12 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { stripVTControlCharacters } from "node:util";
-import { getResultText, getTruncatedText, plural } from "../_shared/render.ts";
+import {
+  getResultText,
+  getTruncatedText,
+  plural,
+  toolSummary,
+} from "../_shared/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import type { Message } from "./store.ts";
 
@@ -57,7 +62,7 @@ const failures: Record<string, string> = {
   invalid_input: "Failed: invalid input",
   storage_failed: "Failed: storage unavailable",
   mailbox_full: "Failed: mailbox full",
-  publication_unknown: "Publication uncertain | reconcile before resending",
+  publication_unknown: "publication uncertain; no replay",
 };
 
 export function renderMailboxCall(
@@ -90,7 +95,7 @@ export function renderMailboxResult(
   const add = (text: string) => lines.push(theme.fg("muted", text));
   const finish = (summary: string, color: "success" | "warning" | "error") =>
     getTruncatedText(context.lastComponent, [
-      theme.fg(color, summary),
+      toolSummary(theme, "mailbox", args.action, summary, args.mailbox, color),
       ...lines,
     ]);
   const error = details.error ?? value.error;
@@ -143,7 +148,7 @@ export function renderMailboxResult(
       add("Persisted, not consumed, accepted or completed.");
       showMessage(value, 1200);
     }
-    return finish(`Sent ${label(value.type)}`, "success");
+    return finish(`persisted · ${label(value.type)} · not consumed`, "success");
   }
   if (
     args.action === "list" &&
@@ -195,8 +200,8 @@ export function renderMailboxResult(
     }
     return finish(
       n
-        ? `Acknowledged ${plural(n, "message")}`
-        : `No messages acknowledged | ${requested} requested`,
+        ? `acknowledged ${plural(n, "message")} · not task resolution`
+        : `No messages acknowledged · ${requested} requested`,
       "success",
     );
   }

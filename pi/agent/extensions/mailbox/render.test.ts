@@ -58,7 +58,10 @@ test("stable call header hides body, cursor and IDs and reuses its component", (
   );
 });
 test("send summarizes persistence, expanded metadata and untrusted preview", () => {
-  assert.equal(render("send", sent), "Sent result");
+  assert.equal(
+    render("send", sent),
+    "mailbox send · persisted · result · not consumed · project-alpha",
+  );
   const expanded = render("send", sent, true);
   assert.match(expanded, /Persisted, not consumed, accepted or completed/);
   assert.match(expanded, /1970-01-01T00:00:00.000Z/);
@@ -73,18 +76,21 @@ test("list distinguishes page size, current pending count and scan completion", 
     pending: 7,
     nextCursor: "OPAQUE",
   };
-  assert.equal(render("list", page), "1 shown | 7 pending | more pages");
+  assert.equal(
+    render("list", page),
+    "mailbox list · 1 shown | 7 pending | more pages · project-alpha",
+  );
   assert.equal(
     render("list", { ...page, nextCursor: null }),
-    "1 shown | 7 pending | scan complete",
+    "mailbox list · 1 shown | 7 pending | scan complete · project-alpha",
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 2 }),
-    "0 shown | 2 pending | scan complete",
+    "mailbox list · 0 shown | 2 pending | scan complete · project-alpha",
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 0 }),
-    "No pending messages",
+    "mailbox list · No pending messages · project-alpha",
   );
   const expanded = render("list", page, true);
   assert.match(expanded, /later arrivals require a fresh scan/);
@@ -99,7 +105,10 @@ test("list distinguishes page size, current pending count and scan completion", 
 test("ack shows counts and requested IDs without inventing removed IDs", () => {
   const value = { mailbox: "project-alpha", acknowledged: 1 };
   const input = { ids: [id, other] };
-  assert.equal(render("ack", value, false, input), "Acknowledged 1 message");
+  assert.equal(
+    render("ack", value, false, input),
+    "mailbox ack · acknowledged 1 message · not task resolution · project-alpha",
+  );
   const expanded = render("ack", value, true, input);
   assert.match(expanded, /Acknowledged 1 of 2 requested/);
   assert.match(expanded, /1 requested ID was not pending/);
@@ -108,11 +117,11 @@ test("ack shows counts and requested IDs without inventing removed IDs", () => {
   assert.match(expanded, new RegExp(`Requested ID: ${other}`));
   assert.equal(
     render("ack", { ...value, acknowledged: 0 }, false, input),
-    "No messages acknowledged | 2 requested",
+    "mailbox ack · No messages acknowledged · 2 requested · project-alpha",
   );
   assert.equal(
     render("ack", { ...value, acknowledged: 2 }, false, input),
-    "Acknowledged 2 messages",
+    "mailbox ack · acknowledged 2 messages · not task resolution · project-alpha",
   );
 });
 test("partial and failures use warning/error, never success, with safe fixed summaries", () => {
@@ -136,17 +145,18 @@ test("partial and failures use warning/error, never success, with safe fixed sum
       th,
       context(args(action)),
     );
-    assert.equal(c.render(100)[0], summary);
-    assert.deepEqual(colors, ["warning"]);
+    assert.equal(
+      c.render(100)[0],
+      `mailbox ${action} · ${summary} · project-alpha`,
+    );
+    assert.ok(colors.includes("warning"));
+    assert.ok(!colors.includes("success"));
   }
   for (const [error, summary] of [
     ["invalid_input", "Failed: invalid input"],
     ["mailbox_full", "Failed: mailbox full"],
     ["storage_failed", "Failed: storage unavailable"],
-    [
-      "publication_unknown",
-      "Publication uncertain | reconcile before resending",
-    ],
+    ["publication_unknown", "publication uncertain; no replay"],
     ["SECRET\n\x1b[2J", "Failed: mailbox operation"],
   ]) {
     for (const semantic of [false, true]) {
@@ -160,8 +170,12 @@ test("partial and failures use warning/error, never success, with safe fixed sum
         th,
         context(args("send"), { isError: !semantic }),
       );
-      assert.equal(c.render(200)[0], summary);
-      assert.deepEqual(colors, ["error"]);
+      assert.equal(
+        c.render(200)[0],
+        `mailbox send · ${summary}${error === "publication_unknown" ? "" : " · project-alpha"}`,
+      );
+      assert.ok(colors.includes("error"));
+      assert.ok(!colors.includes("success"));
     }
   }
   const prefixed = renderMailboxResult(
@@ -175,7 +189,7 @@ test("partial and failures use warning/error, never success, with safe fixed sum
   );
   assert.equal(
     prefixed.render(200)[0],
-    "Publication uncertain | reconcile before resending",
+    "mailbox send · publication uncertain; no replay",
   );
   assert.match(
     render("send", { error: "storage_failed" }),
@@ -187,7 +201,7 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     th,
     context(args("send")),
   );
-  assert.match(uncertain.render(200)[0], /Publication uncertain/);
+  assert.match(uncertain.render(200)[0], /publication uncertain; no replay/);
 });
 test("malformed, missing and mismatched results cannot render success", () => {
   for (const [action, value] of [
@@ -198,7 +212,7 @@ test("malformed, missing and mismatched results cannot render success", () => {
   ]) {
     assert.match(
       render(action as string, value, false, { ids: [id] }),
-      /^Failed:/,
+      /^mailbox .* · Failed:/,
     );
   }
   for (const text of [
@@ -213,7 +227,7 @@ test("malformed, missing and mismatched results cannot render success", () => {
       theme,
       context(args("send")),
     );
-    assert.match(c.render(100)[0], /^Failed:/);
+    assert.match(c.render(100)[0], /^mailbox .* · Failed:/);
   }
 });
 test("hostile controls are sanitized, previews bounded and every width truncates without wrapping", () => {
@@ -246,7 +260,9 @@ test("hostile controls are sanitized, previews bounded and every width truncates
     ),
     r,
   );
-  assert.deepEqual(r.render(200), ["Sent result"]);
+  assert.deepEqual(r.render(200), [
+    "mailbox send · persisted · result · not consumed · project-alpha",
+  ]);
 });
 test("registered renders preserve real direct envelopes, paging, ack and uncertain persistence", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "mailbox-render-"));
@@ -288,7 +304,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs),
       )
       .render(100)[0],
-    "Sent result",
+    "mailbox send · persisted · result · not consumed · project-alpha",
   );
   assert.equal(JSON.stringify(response), before);
   const second = await tool.execute("call", { ...sendArgs, message: "second" });
@@ -312,7 +328,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(args("list")),
       )
       .render(200)[0],
-    "0 shown | 1 pending | scan complete",
+    "mailbox list · 0 shown | 1 pending | scan complete · project-alpha",
   );
   t.mock.method(_durability, "syncDirectory", () => {
     throw new Error("fsync");
@@ -376,7 +392,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs, { isError: failure.isError }),
       )
       .render(200)[0],
-    "Publication uncertain | reconcile before resending",
+    "mailbox send · publication uncertain; no replay",
   );
   assert.equal(new MailboxStore(root).list("project-alpha").pending, 2);
 });

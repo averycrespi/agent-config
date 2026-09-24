@@ -6,6 +6,9 @@ import {
   getResultText,
   getTruncatedText,
   firstLine,
+  toolSummary,
+  expandedResult,
+  displayLabel,
 } from "../_shared/render.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import type { ScheduledTasksConfig } from "./config.ts";
@@ -56,8 +59,83 @@ function errorResult(message: string, details?: unknown) {
   return textResult(`Error: ${message}`, details);
 }
 
-function summarize(args: Params): string {
-  return `${args.action}${args.task_id ? ` ${args.task_id}` : ""}`;
+function taskRendering(
+  tool: string,
+  result: any,
+  { isPartial, expanded }: any,
+  theme: any,
+  context: any,
+) {
+  const action = context.args?.action;
+  const d = result.details;
+  const validations = Array.isArray(d)
+    ? d
+    : Array.isArray(d?.tasks)
+      ? d.tasks
+      : [];
+  const invalid = validations.filter(
+    (v: any) => v?.ok === false || v?.errors?.length,
+  ).length;
+  const issues = Array.isArray(d?.issues) ? d.issues : [];
+  const failed =
+    context.isError ||
+    firstLine(getResultText(result)).startsWith("Error:") ||
+    invalid > 0 ||
+    issues.some((v: any) => v.severity === "error") ||
+    (action === "run" &&
+      d?.status &&
+      !["launched", "locked"].includes(d.status));
+  const warnings =
+    validations.reduce(
+      (n: number, v: any) => n + (v?.warnings?.length ?? 0),
+      0,
+    ) + issues.filter((v: any) => v.severity === "warning").length;
+  const markerMissing =
+    tool === "scheduled_task_handoff" &&
+    action === "update" &&
+    getResultText(result).startsWith(
+      "Updated scheduled task handoff. Handoff marker was not written",
+    );
+  const outcome = isPartial
+    ? "pending"
+    : failed
+      ? `request failed${invalid ? ` · ${invalid} invalid` : ""}`
+      : markerMissing
+        ? "marker missing"
+        : tool === "scheduled_task_handoff"
+          ? action === "update"
+            ? "updated"
+            : "read"
+          : action === "run"
+            ? d?.status === "launched"
+              ? "started, not completed"
+              : displayLabel(d?.status) || "status unavailable"
+            : action === "validate"
+              ? `${validations.length} validated, not executed`
+              : action === "list"
+                ? `${validations.length} tasks`
+                : action === "doctor"
+                  ? `inspected · cron ${displayLabel(d?.crontabStatus?.status) || "unavailable"}`
+                  : "read";
+  return getTruncatedText(context.lastComponent, [
+    toolSummary(
+      theme,
+      tool,
+      action,
+      outcome + (warnings ? ` · ${warnings} warnings` : ""),
+      context.args?.task_id,
+      failed
+        ? "error"
+        : isPartial ||
+            markerMissing ||
+            warnings ||
+            action === "run" ||
+            (action === "doctor" && d?.crontabStatus?.status !== "installed")
+          ? "warning"
+          : "success",
+    ),
+    ...(expanded ? expandedResult(result) : []),
+  ]);
 }
 
 export function registerScheduledTasksTool(
@@ -77,21 +155,11 @@ export function registerScheduledTasksTool(
     parameters: paramsSchema,
     renderCall(args, theme, context) {
       return getTruncatedText(context.lastComponent, [
-        `${theme.fg("toolTitle", theme.bold("scheduled_tasks"))} ${theme.fg("muted", summarize(args as Params))}`,
+        toolSummary(theme, "scheduled_tasks", args.action, "", args.task_id),
       ]);
     },
-    renderResult(result, { isPartial }, theme, context) {
-      if (isPartial)
-        return getTruncatedText(context.lastComponent, [
-          theme.fg("warning", "scheduled_tasks running..."),
-        ]);
-      const msg = firstLine(getResultText(result));
-      return getTruncatedText(context.lastComponent, [
-        theme.fg(
-          context.isError || msg.startsWith("Error:") ? "error" : "success",
-          msg || "done",
-        ),
-      ]);
+    renderResult(result, options, theme, context) {
+      return taskRendering("scheduled_tasks", result, options, theme, context);
     },
     async execute(_id, rawParams, _signal, _onUpdate, ctx) {
       if (process.env.PI_SCHEDULED_TASK_RUN === "1")
@@ -227,21 +295,17 @@ export function registerHandoffTool(
     renderCall(args, theme, context) {
       const params = args as HandoffParams;
       return getTruncatedText(context.lastComponent, [
-        `${theme.fg("toolTitle", theme.bold("scheduled_task_handoff"))} ${theme.fg("muted", params.action)}`,
+        toolSummary(theme, "scheduled_task_handoff", params.action, ""),
       ]);
     },
-    renderResult(result, { isPartial }, theme, context) {
-      if (isPartial)
-        return getTruncatedText(context.lastComponent, [
-          theme.fg("warning", "handoff running..."),
-        ]);
-      const msg = firstLine(getResultText(result));
-      return getTruncatedText(context.lastComponent, [
-        theme.fg(
-          context.isError || msg.startsWith("Error:") ? "error" : "success",
-          msg || "done",
-        ),
-      ]);
+    renderResult(result, options, theme, context) {
+      return taskRendering(
+        "scheduled_task_handoff",
+        result,
+        options,
+        theme,
+        context,
+      );
     },
     async execute(_id, rawParams, _signal, _onUpdate, ctx) {
       const params = rawParams as HandoffParams;

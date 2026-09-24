@@ -60,18 +60,24 @@ const text = (details: DisplayDetails, expanded = false) =>
 const display = (r: Receipt) => summary(r);
 
 test("list counts distinguish active jobs, retained receipts and pending attention", () => {
-  assert.equal(text({ action: "list", receipts: [] }), "no jobs");
+  assert.equal(
+    text({ action: "list", receipts: [] }),
+    "monitor list · no jobs",
+  );
   const receipts = [
     display(receipt()),
     display(receipt({ status: "finished" })),
     display(receipt({ status: "cancelled" })),
   ];
-  assert.equal(text({ action: "list", receipts }), "1 active · 3 retained");
+  assert.equal(
+    text({ action: "list", receipts }),
+    "monitor list · 1 active · 3 retained",
+  );
   assert.match(
     text({ action: "list", receipts: receipts.slice(1) }),
-    /^no active jobs · 2 retained$/,
+    /^monitor list · no active jobs · 2 retained$/,
   );
-  assert.match(text({ action: "list", receipts }, true), /CI check · polling/);
+  assert.match(text({ action: "list", receipts }, true), /polling · CI check/);
   assert.doesNotMatch(text({ action: "list", receipts }), /CI check/);
 });
 
@@ -142,8 +148,15 @@ test("polling warning is bounded, prominent, event-aware and display-safe", () =
       );
       for (const expanded of [false, true]) {
         const details = { action: "start", receipt: r };
-        assert.match(text(details, expanded), /Warning:/);
+        assert.match(
+          text(details, expanded),
+          expanded ? /Warning:/ : /registered; no repeat poll/,
+        );
         const component = render(details, expanded);
+        if (!expanded) {
+          assert.equal(component.render(48).length, 1);
+          assert.match(component.render(48)[0], /no repeat poll/);
+        }
         for (let width = 0; width < 100; width++)
           for (const line of component.render(width)) {
             assert.ok(visibleWidth(line) <= width);
@@ -160,7 +173,7 @@ test("polling warning is bounded, prominent, event-aware and display-safe", () =
 test("get shows selected job state, counters and honest terminal reasons", () => {
   assert.match(
     text({ action: "get", receipt: display(receipt()) }),
-    /CI check · polling · 0 wakes · 4 evaluations/,
+    /monitor get · polling · CI check · 0 wakes · 4 evaluations/,
   );
   const failed = receipt({
     status: "finished",
@@ -206,11 +219,11 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   const r = receipt({ status: "cancelled" });
   assert.equal(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }),
-    "CI check · cancelled",
+    "monitor cancel · cancelled · CI check",
   );
   assert.equal(
     text({ action: "cancel", receipt: display(r), cancelChanged: false }),
-    "CI check · already cancelled",
+    "monitor cancel · already cancelled · CI check",
   );
   assert.match(
     text({
@@ -230,11 +243,19 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   };
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }),
-    /effects uncertain · follow-up already handed off/,
+    /effects unknown; no replay/,
+  );
+  assert.match(
+    text({ action: "cancel", receipt: display(r), cancelChanged: true }, true),
+    /follow-up already handed off/,
   );
   r.lastAttention.disposition = "handoff_unknown";
   assert.match(
     text({ action: "cancel", receipt: display(r) }),
+    /unknown; no replay/,
+  );
+  assert.match(
+    text({ action: "cancel", receipt: display(r) }, true),
     /handoff uncertain/,
   );
 });
@@ -242,11 +263,11 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
 test("widgets label polling clocks, preserve name and distinguish deadline from expiry", () => {
   assert.equal(
     widgetLines([receipt()], now, 120, theme)[0],
-    "monitor · CI check · polling · next check 3s · timeout 12s",
+    "monitor polling · CI check · next check 3s · timeout 12s",
   );
   assert.match(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
-    /checking · timeout 12s/,
+    /checking · CI check · timeout 12s/,
   );
   assert.doesNotMatch(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
@@ -257,8 +278,8 @@ test("widgets label polling clocks, preserve name and distinguish deadline from 
     /expires 5s/,
   );
   const narrow = widgetLines([receipt()], now, 40, theme)[0];
-  assert.match(narrow, /CI check · polling/);
-  assert.doesNotMatch(narrow, /monitor|wake 3s/);
+  assert.match(narrow, /^monitor polling · CI check/);
+  assert.doesNotMatch(narrow, /wake 3s/);
   const long = widgetLines(
     [
       receipt({
@@ -288,7 +309,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
       150,
       theme,
     )[0],
-    /continue in 3s.*wakes 0\/2/,
+    /monitor scheduled · CI check · in 3s.*wakes 0\/2/,
   );
   assert.match(
     widgetLines(
@@ -297,7 +318,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
       150,
       theme,
     )[0],
-    /watching events · timeout 12s/,
+    /watching events · CI check · timeout 12s/,
   );
   const waiting = receipt({
     awaitingSettlement: true,
@@ -306,7 +327,10 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     wakes: 1,
   });
   const line = widgetLines([waiting], now, 150, theme)[0];
-  assert.match(line, /awaiting settlement · wakes 1\/2 · expires 50s/);
+  assert.match(
+    line,
+    /awaiting settlement · CI check · wakes 1\/2 · expires 50s/,
+  );
   assert.doesNotMatch(line, /next check|timeout|continue in/);
   for (const [reason, expected] of [
     ["condition", "condition met"],
@@ -325,7 +349,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     });
     assert.ok(
       widgetLines([r], now, 150, theme)[0].includes(
-        `${expected} · follow-up queued`,
+        `${expected} · CI check · follow-up queued`,
       ),
     );
     assert.deepEqual(
@@ -338,6 +362,78 @@ test("widgets distinguish continuation, events, queued attention and settlement"
       [],
     );
   }
+});
+
+test("uncertain control errors retain both failed request and no-replay status", () => {
+  const r = display(receipt({ outcomeUnknown: true }));
+  for (const semantic of [false, true]) {
+    const row = render(
+      { action: "cancel", receipt: r, monitorError: semantic },
+      false,
+      {},
+      { isError: !semantic },
+    ).render(48);
+    assert.equal(row.length, 1);
+    assert.match(row[0], /failed.*unknown.*no replay/);
+  }
+});
+
+test("widget uncertainty stays ahead of names, queued status and clocks at narrow widths", () => {
+  const r = receipt({
+    name: "OPTIONAL".repeat(20),
+    outcomeUnknown: true,
+    interrupted: true,
+    gap: true,
+    attention: {
+      id: "wake",
+      reason: "evaluation_failure",
+      at: now,
+      disposition: "pending",
+      admitted: false,
+    },
+    lastAttention: {
+      id: "old",
+      reason: "condition",
+      at: now,
+      disposition: "handoff_unknown",
+      admitted: false,
+    },
+  });
+  const line = widgetLines([r], now, 64, theme)[0];
+  assert.match(line, /^monitor evaluation failed/);
+  assert.match(line, /unknown\/interrupted\/gap\/handoff\?/);
+  assert.doesNotMatch(line, /OPTIONAL|queued|timeout/);
+  assert.ok(visibleWidth(line) <= 64);
+  r.interrupted = false;
+  r.gap = false;
+  r.lastAttention = undefined;
+  assert.match(widgetLines([r], now, 48, theme)[0], /effects uncertain/);
+});
+
+test("monitor expansion preserves original framed evidence without changing payloads", () => {
+  const result = {
+    content: [
+      {
+        type: "text" as const,
+        text: "BEGIN UNTRUSTED MONITOR EVIDENCE\nPRIVATE_EVIDENCE\nEND UNTRUSTED MONITOR EVIDENCE",
+      },
+    ],
+    details: { action: "get", receipt: display(receipt()) },
+  };
+  const before = JSON.stringify(result);
+  for (const expanded of [false, true]) {
+    const lines = renderers.renderResult!(
+      result,
+      { expanded, isPartial: false },
+      theme,
+      { args: { action: "get" } } as any,
+    )
+      .render(120)
+      .join("\n");
+    assert.equal(lines.includes("PRIVATE_EVIDENCE"), expanded);
+    if (expanded) assert.match(lines, /BEGIN UNTRUSTED MONITOR EVIDENCE/);
+  }
+  assert.equal(JSON.stringify(result), before);
 });
 
 test("failed jobs use error styling without marking an inspection request failed", () => {
@@ -365,8 +461,9 @@ test("failed jobs use error styling without marking an inspection request failed
     } as any,
     {} as any,
   );
-  assert.deepEqual(colors, ["error"]);
   assert.match(rendered.render(200)[0], /evaluation failed/);
+  assert.ok(colors.includes("error"));
+  assert.ok(!colors.includes("success"));
   assert.doesNotMatch(rendered.render(200)[0], /request failed/);
 });
 
@@ -403,10 +500,7 @@ test("all tool actions are safe, bounded, reusable and contextual on failures", 
       )
         .render(200)
         .join("\n");
-      assert.match(
-        rendered,
-        new RegExp(`monitor · ${action} · job-id · request failed`),
-      );
+      assert.match(rendered, new RegExp(`monitor ${action} · request failed`));
     }
     assert.doesNotMatch(
       render(details, false, {}, { isPartial: true }).render(200).join("\n"),

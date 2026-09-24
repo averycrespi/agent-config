@@ -63,7 +63,7 @@ type Capability =
   | "read-web";
 ```
 
-The effective grants and global ceilings are documented in [README.md](./README.md). `write-filesystem` and `exec-shell` are mutable authority. Direct model-facing batches serialize mutable calls to one child; curated API callers own their coordination policy. Keep implementation in the owning session by default. Mutable delegation requires an explicit user request and an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Prevent overlapping parent or child writes and retain stricter caller boundaries. These prerequisites are not validated by `runSubagent()`. Child processes inherit the parent environment.
+The effective grants and global ceilings are documented in [README.md](./README.md). `write-filesystem` and `exec-shell` are mutable authority. Direct model-facing `subagent` calls admit one background child and serialize mutable calls; curated API callers own their coordination policy. Keep implementation in the owning session by default. Mutable delegation requires an explicit user request and an explicit execution workflow with bounded scope, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. Prevent overlapping parent or child writes and retain stricter caller boundaries. These prerequisites are not validated by `runSubagent()`. Child processes inherit the parent environment.
 
 ### `SpawnOutcome`
 
@@ -99,9 +99,9 @@ Tool arguments are not a display contract and should not be copied into renderab
 
 ## Direct background execution
 
-The model-facing `subagents` adapter supports foreground (default) and background execution plus list/inspect/cancel/dismiss controls; see [README](README.md#background-execution). This does not change `runSubagent()` or add background execution to its host API. Curated callers continue to own their own lifetime and coordination.
+The model-facing `subagent` adapter supports background-only runs plus list/inspect/cancel/dismiss controls for the historical `subagents` owner; see [README](README.md#background-execution). This does not change `runSubagent()` or add background execution to its host API. Curated callers continue to own their own lifetime and coordination.
 
-Both direct modes share their concurrency and exclusive mutable-child gates. Background supplies its owned abort signal and original finite deadline to the existing executor; it persists one batch execution with input-aligned outcomes and accounting. Partial snapshots preserve observed child usage and completed outcomes across interruption. Final batches include per-child `content`, `details`, and optional `usage`; oversized outcomes expose JSON `resultFile` references. Inspect and automatic notification never supply top-level tool usage. Foreground contributes to native Pi totals; late background usage is a separate retained ledger, not automatically included in native totals. No supported late-insertion API is available. Integrators must deduplicate by execution ID and never count repeated inspections as new work.
+Direct runs share the existing concurrency and exclusive mutable-child gates. Background supplies its owned abort signal and original finite deadline to the existing executor; it persists one batch execution with input-aligned outcomes and accounting. Partial snapshots preserve observed child usage and completed outcomes across interruption. Final batches include per-child `content`, `details`, and optional `usage`; oversized outcomes expose JSON `resultFile` references. Inspect and automatic notification never supply top-level tool usage. Late background usage is a separate retained ledger, not automatically included in native totals. No supported late-insertion API is available. Integrators must deduplicate by execution ID and never count repeated inspections as new work.
 
 ## Intentionally internal
 

@@ -4,7 +4,7 @@
 
 ## Architecture
 
-- `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content, applies large-output spillover, and renders compact tool output.
+- `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content and applies large-output spillover. `render.ts` supplies display-only contextual count/read/clone summaries and bounded expanded evidence; raw previews are not shown collapsed.
 - `script-provider.ts` registers optional `web.search`/`web.fetch` through Script's supported API, adapting the same tool implementations to JSON and sticky failure accounting.
 - `config.ts` loads Tavily, Jina, and Exa API keys plus the Playwright toggle from Pi settings and environment variables.
 - `search.ts` implements provider fallback for search: Tavily, authenticated-or-keyless Exa MCP, then configured Jina Search.
@@ -57,7 +57,7 @@ Missing keys do not disable the extension because Exa MCP provides keyless searc
 
 Cancellation stops fallback immediately. Other provider errors are accumulated so a final tool-result error identifies each failed provider. The hosted Exa service has no contractual free quota, so failure must remain recoverable and must not disable later configured providers.
 
-Search output is normalized to `SearchResponse` with provider name and result list. `formatResults()` is the canonical Markdown formatter used for agent-facing content and preview rendering.
+Search output is normalized to `SearchResponse` with provider name and result list. `formatResults()` is the canonical Markdown formatter used for agent-facing content. Existing bounded preview metadata remains available but is not shown collapsed.
 
 ## Fetch routing
 
@@ -67,7 +67,7 @@ Search output is normalized to `SearchResponse` with provider name and result li
 2. URLs whose path ends in `.pdf` go to direct fetch plus `extractPdf()`.
 3. Everything else goes to `webFetch()` for static, browser, and hosted extraction.
 
-Generic and PDF routes pass through public-URL validation. Each route respects `max_chars`, clamped to the schema bounds. Route-specific metadata is returned in `details` so renderers can summarize clone paths, PDF page counts, page titles, or extraction methods.
+Generic and PDF routes pass through public-URL validation. Each route respects `max_chars`, clamped to the schema bounds. Route-specific metadata is returned in `details` so renderers can summarize clone/read state and PDF page counts without previewing arbitrary titles or page bodies.
 
 ## Generic web extraction
 

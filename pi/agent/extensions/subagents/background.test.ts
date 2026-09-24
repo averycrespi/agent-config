@@ -76,7 +76,7 @@ function harness(t: any, available = true) {
   });
   assert.deepEqual(
     tools.map((t) => t.name),
-    ["subagents"],
+    ["subagent"],
   );
   return {
     service,
@@ -106,37 +106,33 @@ test("background returns before completion; mixed results and usage stay aligned
   let finish!: () => void;
   mock.method(_runSubagent, "fn", async (r: any) => {
     r.onEvent({ type: "message_end", message: { role: "assistant", usage } });
-    if (r.intent === "fixture")
-      await new Promise<void>((resolve) => {
-        finish = resolve;
-      });
+    await new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     return r.intent === "bad"
       ? { ...ok, ok: false, errorMessage: "structured_output_missing" }
       : { ...ok, structured: { ok: true, value: { answer: 42 } } };
   });
   const admission = await h.call({
     execution: "background",
-    agents: [
-      { ...child(), output_schema: { type: "object" } },
-      { ...child(), intent: "bad", output_schema: { type: "object" } },
-    ],
+    agent: { ...child(), intent: "bad", output_schema: { type: "object" } },
   });
   assert.equal(admission.usage, undefined);
+  assert.equal(admission.details.execution.label, "bad");
   const id = admission.details.execution.id;
   for (let i = 0; !finish && i < 100; i++) await tick();
   assert.equal(h.service.inspect("subagents", id).status, "running");
   assert.equal(h.sent.length, 0);
-  finish();
+  finish?.();
   const r = await settled(h, id);
   assert.equal(r.status, "failed");
   const result = r.result as any;
-  assert.equal(result.usage.totalTokens, 10);
-  assert.equal(result.details.outcomes.length, 2);
-  assert.equal(result.details.outcomes[1].usage.totalTokens, 5);
-  assert.deepEqual(result.details.structured[0].value, { answer: 42 });
-  assert.equal(result.details.structured[1].ok, false);
+  assert.equal(result.usage.totalTokens, 5);
+  assert.equal(result.details.outcomes.length, 1);
+  assert.equal(result.details.outcomes[0].usage.totalTokens, 5);
+  assert.equal(result.details.structured[0].ok, false);
   assert.equal(result.details.allOk, false);
-  assert.deepEqual(r.progress, { total: 2, completed: 2, failed: 1 });
+  assert.deepEqual(r.progress, { total: 1, completed: 1, failed: 1 });
   assert.equal(h.sent.length, 1);
   for (let i = 0; i < 2; i++)
     assert.equal((await h.call({ action: "inspect", id })).usage, undefined);
@@ -146,27 +142,65 @@ test("background returns before completion; mixed results and usage stay aligned
   assert.equal(h.service.inspect("subagents", id).dismissed, true);
 });
 
+test("new tool controls historical multi-child owner receipts without changing branch identity", async (t) => {
+  const h = harness(t);
+  const old = h.service.admit({
+    owner: "subagents",
+    label: "2 subagents",
+    deadlineMs: Date.now() + 10000,
+    result: { children: [{ index: 0 }, { index: 1 }] },
+    run: async () => ({
+      status: "success",
+      effectsMayPersist: false,
+      outcomeUnknown: false,
+    }),
+  });
+  await settled(h, old.id);
+  const listed = await h.call({ action: "list" });
+  assert.equal(listed.details.executions[0].id, old.id);
+  assert.equal(
+    (await h.call({ action: "inspect", id: old.id })).details.execution.owner,
+    "subagents",
+  );
+  assert.equal(
+    (await h.call({ action: "dismiss", id: old.id })).details.execution
+      .dismissed,
+    true,
+  );
+});
+
+test("one-child background display identity uses the supplied intent without changing accounting", async (t) => {
+  const h = harness(t);
+  mock.method(_runSubagent, "fn", async () => ok);
+  const admission = await h.call({
+    execution: "background",
+    agent: { ...child(), intent: "Compare two powers" },
+  });
+  assert.equal(admission.details.execution.label, "Compare two powers");
+  const r = await settled(h, admission.details.execution.id);
+  assert.deepEqual(r.progress, { total: 1, completed: 1, failed: 0 });
+  assert.equal((r.result as any).details.outcomes.length, 1);
+  assert.equal(h.sent.length, 1);
+});
+
 test("missing service and invalid batches launch no child and create no record", async (t) => {
   const h = harness(t, false);
   const run = mock.method(_runSubagent, "fn", async () => ok);
   await assert.rejects(
-    h.call({ execution: "background", agents: [child()] }),
+    h.call({ execution: "background", agent: child() }),
     /background_unavailable/,
   );
   assert.equal(run.mock.callCount(), 0);
   const other = harness(t);
-  for (const execution of ["foreground", "background"]) {
-    const invalid = await other.call({
-      execution,
-      agents: [child(), { ...child(), files: ["/missing-subagent-fixture"] }],
-    });
-    assert.equal(invalid.details.validationError, true);
-    const mutable = await other.call({
-      execution,
-      agents: [child(["exec-shell"]), child()],
-    });
-    assert.equal(mutable.details.validationError, true);
-  }
+  await assert.rejects(
+    other.call({ execution: "foreground", agent: child() }),
+    /background/,
+  );
+  const invalid = await other.call({
+    agent: { ...child(), files: ["/missing-subagent-fixture"] },
+  });
+  assert.equal(invalid.details.validationError, true);
+  await assert.rejects(other.call({ agents: [child(), child()] }), /one agent/);
   assert.equal(run.mock.callCount(), 0);
   assert.deepEqual(other.records(), []);
 });
@@ -180,11 +214,11 @@ test("foreground/background share capacity; queued cancellation starts no child"
     });
     return ok;
   });
-  const foreground = h.call({ agents: [child()] });
+  const foreground = await h.call({ agent: child() });
   for (let i = 0; !finish && i < 100; i++) await tick();
   const {
     details: { execution },
-  } = await h.call({ execution: "background", agents: [child()] });
+  } = await h.call({ agent: child() });
   await tick();
   assert.equal(run.mock.callCount(), 1);
   await h.call({ action: "cancel", id: execution.id });
@@ -192,7 +226,10 @@ test("foreground/background share capacity; queued cancellation starts no child"
   assert.equal(cancelled.status, "cancelled");
   assert.equal(run.mock.callCount(), 1);
   finish();
-  assert.equal((await foreground).details.allOk, true);
+  assert.equal(
+    (await settled(h, foreground.details.execution.id)).status,
+    "success",
+  );
 });
 
 test("mutable cross-mode gate remains exclusive; running cancellation drains and retains abort usage", async (t) => {
@@ -212,10 +249,10 @@ test("mutable cross-mode gate remains exclusive; running cancellation drains and
   });
   const a = await h.call({
     execution: "background",
-    agents: [child(["exec-shell"])],
+    agent: child(["exec-shell"]),
   });
   for (let i = 0; !finishes.length && i < 100; i++) await tick();
-  const b = h.call({ agents: [child(["write-filesystem"])] });
+  const b = await h.call({ agent: child(["write-filesystem"]) });
   await tick();
   assert.equal(run.mock.callCount(), 1);
   await h.call({ action: "cancel", id: a.details.execution.id });
@@ -231,7 +268,7 @@ test("mutable cross-mode gate remains exclusive; running cancellation drains and
   for (let i = 0; finishes.length < 2 && i < 100; i++) await tick();
   assert.equal(run.mock.callCount(), 2);
   finishes[1]();
-  await b;
+  assert.equal((await settled(h, b.details.execution.id)).status, "success");
 });
 
 test("session loss keeps reported partial usage, aborts once and never replays late success", async (t) => {
@@ -246,7 +283,7 @@ test("session loss keeps reported partial usage, aborts once and never replays l
     });
     return ok;
   });
-  const a = await h.call({ execution: "background", agents: [child()] });
+  const a = await h.call({ execution: "background", agent: child() });
   for (let i = 0; !finish && i < 100; i++) await tick();
   h.service.close();
   assert.equal(signal.aborted, true);
@@ -276,7 +313,7 @@ test("background deadline aborts the existing executor and waits for cleanup", a
   const a = await h.call({
     execution: "background",
     timeout_ms: 1000,
-    agents: [child()],
+    agent: child(),
   });
   for (let i = 0; !finish && i < 100; i++) await tick();
   t.mock.timers.tick(1000);
@@ -293,7 +330,7 @@ test("recursion rejects the complete batch before admission", async (t) => {
   const h = harness(t);
   process.env.PI_SUBAGENT_DEPTH = "1";
   const run = mock.method(_runSubagent, "fn", async () => ok);
-  const result = await h.call({ execution: "background", agents: [child()] });
+  const result = await h.call({ execution: "background", agent: child() });
   assert.equal(result.details.validationError, true);
   assert.equal(run.mock.callCount(), 0);
   assert.deepEqual(h.records(), []);

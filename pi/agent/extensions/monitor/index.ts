@@ -116,6 +116,7 @@ export default async function monitor(pi: ExtensionAPI) {
                 version: 1,
                 name: r.name,
                 status: r.lastAttention?.reason,
+                mode: r.delayMs === undefined ? "observation" : "timer",
                 outcomeUnknown: r.outcomeUnknown,
                 effectsMayPersist: r.effectsMayPersist,
                 interrupted: r.interrupted,

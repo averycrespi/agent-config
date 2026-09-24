@@ -4,50 +4,17 @@ Preserve compact builtin tool rendering and compose active stock Pi tools throug
 
 ## Compacted tools
 
-### `read`
+All five tools use one contextual, unwrapped result line with a bold tool name, explicit outcome/count, muted metadata and optional plain-text target. Targets drop before status at narrow widths. Shell calls show `shell`, never the command body; file calls show cwd-relative paths and searches show bounded pattern/path labels.
 
-Replaces the default file-contents display with a one-line file label.
+| Tool   | Example settled result                                |
+| ------ | ----------------------------------------------------- |
+| `read` | `read · read · 24 output lines · file.ts`             |
+| `bash` | `bash · exited successfully · 3 output lines · shell` |
+| `ls`   | `ls · listed · 8 output lines · src`                  |
+| `find` | `find · listed · 4 output lines · *.ts in src`        |
+| `grep` | `grep · listed · 8 output lines · pattern in src`     |
 
-- **Call:** `read <cwd-relative path>`
-- **Running:** `Reading <path>...` in warning color
-- **Success:** empty result body
-- **Error:** first non-empty line of the error, in error color
-
-### `bash`
-
-Replaces the default stdout preview with a compact command label and short output tail.
-
-- **Call:** `bash <command>` — multi-line commands show just the first line followed by `...`
-- **Running:** `Running <command>...` in warning color
-- **Success:** last up to 3 non-empty output lines, in muted color. Nothing if the command produced no output.
-- **Error:** first non-empty line of the error, in error color
-
-### `ls`
-
-Replaces the default directory listing with a compact path label and short preview.
-
-- **Call:** `ls <cwd-relative path>`
-- **Running:** `Listing <path>...` in warning color
-- **Success:** first up to 3 non-empty listing lines, plus a `... +N more entries` line when truncated; `empty` if there are no entries
-- **Error:** first non-empty line of the error, in error color
-
-### `find`
-
-Replaces the default file search output with a compact pattern label and short preview.
-
-- **Call:** `find <pattern> in <path>`
-- **Running:** `Finding <pattern>...` in warning color
-- **Success:** first up to 3 non-empty result lines, plus a `... +N more results` line when truncated; `no matches` if there are no results
-- **Error:** first non-empty line of the error, in error color
-
-### `grep`
-
-Replaces the default search output with a compact pattern label and match count.
-
-- **Call:** `grep /<pattern>/ in <path>` with a glob suffix when provided
-- **Running:** `Searching /<pattern>/...` in warning color
-- **Success:** match count in muted color, e.g. `8 matches`; `no matches` if there are no matches
-- **Error:** first non-empty line of the error, in error color
+Counts describe nonempty output lines, not a guessed match/file count when stock output contains context or diagnostics. Partial results retain explicit running state and existing elapsed timers. Errors retain closed stock classifications such as `failed · exit 7`, `failed · timed out`, `failed · aborted`, `not found` or `permission denied`, without previewing arbitrary output. Unrecognized diagnostics remain a generic failure with full details expanded. Stock truncation/limit indicators remain visible. Expand for bounded sanitized original text and diagnostics; full model-facing content and stock spill paths are unchanged. A display bound is disclosed rather than silently pretending to show the complete result.
 
 ## Configuration
 

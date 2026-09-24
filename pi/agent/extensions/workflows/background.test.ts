@@ -90,6 +90,19 @@ async function retained(record: Execution) {
   );
 }
 
+test("workflow rejects foreground before source persistence or child launch", async () => {
+  const h = await harness();
+  const result = await h.execute({
+    action: "run",
+    execution: "foreground",
+    script: source('return "ok";'),
+  });
+  assert.equal(result.details.inputError, true);
+  assert.match(result.content[0].text, /background-only/);
+  assert.deepEqual(h.service.list("workflow"), []);
+  h.service.close();
+});
+
 test("background named source, args, config and context are pinned; one workflow owns all agents", async () => {
   const h = await harness();
   const gate = deferred<void>();

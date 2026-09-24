@@ -1,8 +1,14 @@
 import { Type } from "typebox";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { getTruncatedText, plural } from "../_shared/render.ts";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  expandedResult,
+  getTruncatedText,
+  plural,
+  toolSummary,
+  type RenderLine,
+} from "../_shared/render.ts";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { label, type Receipt } from "./contract.ts";
@@ -125,9 +131,16 @@ function activity(r: DisplayReceipt): string {
   if (r.eventCount) return "watching events";
   return "observing";
 }
-function warnings(r: DisplayReceipt): string[] {
+function warnings(
+  r: DisplayReceipt & Partial<Pick<Receipt, "interrupted" | "gap">>,
+): string[] {
   return [
     ...(r.outcomeUnknown ? ["effects uncertain"] : []),
+    ...(r.interrupted ? ["interrupted"] : []),
+    ...(r.gap ? ["coverage gap"] : []),
+    ...(r.effectsMayPersist && !r.outcomeUnknown
+      ? ["effects may persist"]
+      : []),
     ...(r.lastAttention?.disposition === "handoff_unknown"
       ? ["handoff uncertain"]
       : []),
@@ -135,10 +148,10 @@ function warnings(r: DisplayReceipt): string[] {
 }
 function jobLine(r: DisplayReceipt): string {
   return [
-    label(r.name),
-    activity(r),
     ...warnings(r),
+    activity(r),
     ...(r.failureCode ? [label(r.failureCode)] : []),
+    label(r.name),
     r.recurring ? `wakes ${r.wakes}/${r.maxWakes}` : plural(r.wakes, "wake"),
     ...(r.evaluations ? [plural(r.evaluations, "evaluation")] : []),
     ...(r.calls ? [plural(r.calls, "call")] : []),
@@ -157,8 +170,8 @@ function registrationLine(r: DisplayReceipt): string {
           ? "watching events"
           : "registered";
   return [
-    label(r.name),
     mode,
+    label(r.name),
     `timeout ${duration(r.cycleMs)}`,
     ...(r.recurring ? [`max ${plural(r.maxWakes, "wake")}`] : []),
   ].join(" · ");
@@ -182,14 +195,11 @@ function resultLine(d: DisplayDetails, action: string): string {
   if (action === "start") return registrationLine(r);
   if (action === "cancel")
     return [
-      label(r.name),
-      d.cancelChanged ? "cancelled" : `already ${label(r.status)}`,
       ...warnings(r),
+      d.cancelChanged ? "cancelled" : `already ${label(r.status)}`,
+      label(r.name),
       ...(r.lastAttention?.disposition === "handed_to_pi"
         ? ["follow-up already handed off"]
-        : []),
-      ...(r.effectsMayPersist && !r.outcomeUnknown
-        ? ["effects may persist"]
         : []),
     ].join(" · ");
   return jobLine(r);
@@ -214,12 +224,15 @@ export function widgetLines(
     const timing = (name: string, at: number) =>
       theme.fg("muted", `${name} `) +
       theme.fg("text", formatWidgetCountdown(at - now));
-    let state = activity(r);
-    const fields: string[] = warnings(r).map((s) => theme.fg("warning", s));
+    const state = pending
+      ? (reasons[r.attention!.reason] ?? "attention")
+      : activity(r);
+    const fields: string[] = pending
+      ? [theme.fg("warning", "follow-up queued")]
+      : [];
     if (!pending && !r.awaitingSettlement) {
       if (!r.inFlight && r.nextAt !== undefined) {
-        if (r.delayMs !== undefined)
-          state = `continue in ${formatWidgetCountdown(r.nextAt - now)}`;
+        if (r.delayMs !== undefined) fields.push(timing("in", r.nextAt));
         else fields.push(timing("next check", r.nextAt));
       }
       fields.push(
@@ -238,30 +251,27 @@ export function widgetLines(
       fields.push(timing("expires", r.deadline));
     const name = theme.fg("text", label(r.name));
     const separator = theme.fg("dim", " · ");
-    // Drop the redundant extension prefix before squeezing away job identity.
-    const prefix =
-      width >= 60 ? `${theme.fg("muted", "monitor")}${separator}` : "";
-    const primary = theme.fg(color, state);
-    // Reserve identity and the primary state before optional telemetry.
-    while (
-      fields.length &&
-      visibleWidth(
-        `${prefix}${label(r.name).slice(0, 16)}${separator}${primary}${separator}${fields.join(separator)}`,
-      ) > width
-    )
-      fields.pop();
-    const nameWidth = Math.max(
-      1,
-      width -
-        visibleWidth(
-          `${prefix}${separator}${[primary, ...fields].join(separator)}`,
-        ),
+    const primary = `${theme.fg("muted", "monitor")} ${theme.fg(color, state)}`;
+    const warningText = warnings(r);
+    const compact: Record<string, string> = {
+      "effects uncertain": "unknown",
+      "coverage gap": "gap",
+      "effects may persist": "effects?",
+      "handoff uncertain": "handoff?",
+    };
+    const narrow = visibleWidth([primary, ...warningText].join(" · ")) > width;
+    const critical = warningText.map((s) =>
+      theme.fg("warning", narrow ? (compact[s] ?? s) : s),
     );
     return fitWidgetRow(
-      `${prefix}${truncateToWidth(name, nameWidth, "…")}`,
-      [primary, ...fields],
+      primary +
+        (critical.length
+          ? separator + critical.join(narrow ? theme.fg("dim", "/") : separator)
+          : ""),
+      fields,
       width,
       separator,
+      name,
     );
   });
 }
@@ -278,14 +288,20 @@ export const renderers: Pick<
 > = {
   renderCall(args, theme, ctx) {
     return getTruncatedText(ctx.lastComponent, [
-      `${theme.fg("toolTitle", theme.bold("monitor"))} ${theme.fg("muted", label(args.action, 16))} ${theme.fg("text", label(args.name ?? args.id))}`,
+      toolSummary(
+        theme,
+        "monitor",
+        args.action,
+        "",
+        args.name ?? (args.id ? "job" : ""),
+      ),
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
     const d = (result.details ?? {}) as DisplayDetails;
     const action = label(d.action ?? ctx.args?.action, 16);
     const failed = ctx.isError || d.monitorError;
-    const target = label(d.receipt?.name ?? ctx.args?.name ?? ctx.args?.id);
+    const target = label(d.receipt?.name ?? ctx.args?.name);
     const reason =
       d.receipt?.attention?.reason ?? d.receipt?.lastAttention?.reason;
     const jobFailed =
@@ -298,7 +314,8 @@ export const renderers: Pick<
     const caution =
       polling ||
       (d.receipt &&
-        (d.receipt.failureCode ||
+        (warnings(d.receipt).length > 0 ||
+          d.receipt.failureCode ||
           reason === "timeout" ||
           d.receipt.attention?.disposition === "pending"));
     const partial =
@@ -309,8 +326,42 @@ export const renderers: Pick<
           : action === "list"
             ? "listing jobs…"
             : "reading job…";
-    const lines = [
-      theme.fg(
+    if (
+      !expanded &&
+      !isPartial &&
+      (d.receipt?.outcomeUnknown ||
+        d.receipt?.lastAttention?.disposition === "handoff_unknown")
+    )
+      return getTruncatedText(ctx.lastComponent, [
+        toolSummary(
+          theme,
+          "monitor",
+          action,
+          failed
+            ? "failed; unknown; no replay"
+            : d.receipt.outcomeUnknown &&
+                d.receipt.lastAttention?.disposition === "handoff_unknown"
+              ? "unknown; no replay"
+              : d.receipt.outcomeUnknown
+                ? "effects unknown; no replay"
+                : "handoff unknown; no replay",
+          "",
+          failed ? "error" : "warning",
+        ),
+      ]);
+    const lines: RenderLine[] = [
+      toolSummary(
+        theme,
+        "monitor",
+        action,
+        isPartial
+          ? partial
+          : failed
+            ? "request failed"
+            : !expanded && polling
+              ? "registered; no repeat poll"
+              : resultLine(d, action),
+        failed || (!expanded && polling) ? target : "",
         isPartial
           ? "warning"
           : failed || jobFailed
@@ -318,24 +369,10 @@ export const renderers: Pick<
             : caution
               ? "warning"
               : "success",
-        isPartial
-          ? partial
-          : failed
-            ? ["monitor", action, target, "request failed"]
-                .filter(Boolean)
-                .join(" · ")
-            : resultLine(d, action),
       ),
     ];
-    if (polling && !failed && !isPartial)
-      lines.push(
-        theme.fg(
-          "warning",
-          expanded
-            ? polling
-            : "Warning: interval >= cycle; no subsequent poll before timeout",
-        ),
-      );
+    if (expanded && polling && !failed && !isPartial)
+      lines.push(theme.fg("warning", polling));
     if (expanded && !failed && !isPartial) {
       if (action === "list")
         for (const r of d.receipts ?? []) lines.push(jobLine(r));
@@ -353,6 +390,7 @@ export const renderers: Pick<
           );
       }
     }
+    if (expanded && !isPartial) lines.push(...expandedResult(result));
     return getTruncatedText(ctx.lastComponent, lines);
   },
 };

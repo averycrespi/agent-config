@@ -27,6 +27,7 @@ async function harness(t: any, methods?: any) {
   const theme: any = {
     fg: (_: string, s: string) => s,
     bold: (s: string) => s,
+    bg: (_: string, s: string) => s,
   };
   const ctx: any = {
     cwd: f.dir,
@@ -180,8 +181,7 @@ test("Script background returns stable persisted ID, remains responsive, automat
       .get(NOTIFICATION)(message, { expanded }, h.ctx.ui.theme)
       .render(80)
       .join("\n");
-    assert.match(rendered, /background/);
-    assert.match(rendered, /execution succeeded/);
+    assert.match(rendered, /script succeeded/);
     assert.equal(rendered.includes("never authorizes replay"), expanded);
   }
   assert.equal(JSON.stringify(message), original);

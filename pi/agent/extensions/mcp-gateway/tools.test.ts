@@ -216,10 +216,15 @@ test("rejection reasons and framed guidance reach agents, renderers, and metadat
         context,
       );
       const lines = component.render(2000).join("\n");
-      assert.match(lines, /Call failed:.*call_rejected/);
-      assert.ok(lines.includes(reason));
-      assert.match(lines, /Gateway guidance \(untrusted\):/);
-      if (expanded) assert.ok(lines.includes(message));
+      if (expanded) {
+        assert.match(lines, /Call failed:.*call_rejected/);
+        assert.ok(lines.includes(reason));
+        assert.match(lines, /Gateway guidance \(untrusted\):/);
+        assert.ok(lines.includes(message));
+      } else {
+        assert.match(lines, /^mcp_call · request failed/);
+        assert.doesNotMatch(lines, /Gateway guidance/);
+      }
       for (const width of [1, 8, 30, 120])
         assert.ok(
           component
@@ -286,7 +291,9 @@ test("hostile rejection guidance cannot escape data framing, leak bearers, or hi
     );
     assert.match(
       component.render(120).join("\n"),
-      /Effects may have occurred. Do not automatically retry./,
+      expanded
+        ? /Effects may have occurred. Do not automatically retry./
+        : /unknown effects; no replay/,
     );
     assert.doesNotMatch(
       component.render(2000).join("\n"),
@@ -497,11 +504,10 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
           assert.doesNotMatch(lines, /\x1b|mgw_agent_|\u202e/);
           if (state === "semantic" || state === "framework")
             assert.match(lines, /failed/);
-          if (state === "success")
-            assert.doesNotMatch(
-              lines,
-              /: complete|mcp_search|mcp_describe|mcp_call/,
-            );
+          if (state === "success" && !expanded) {
+            assert.match(lines, new RegExp(`^${name} ·`));
+            assert.equal(component.render(200).length, 1);
+          }
           if (state === "partial")
             assert.match(lines, /Searching|Describing|Calling/);
           context.lastComponent = component;
@@ -511,7 +517,7 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
   }
 });
 
-test("compact rows show one header, counts, descriptions, and bounded unframed call previews", async (t) => {
+test("compact rows show contextual counts and outcomes, with payloads only expanded", async (t) => {
   const f = await fixture(t, (body, response) =>
     reply(
       response,
@@ -542,20 +548,25 @@ test("compact rows show one header, counts, descriptions, and bounded unframed c
       "mcp_search",
       { query: "" },
       "mcp_search (all)",
-      "50 shown · 55 matches of 55 tools",
+      "mcp_search · 50 shown · 55 matches",
     ],
-    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 matches of 55 tools"],
+    [
+      "mcp_search",
+      { query: "24" },
+      'mcp_search "24"',
+      "mcp_search · 1 shown · 1 matches · 24",
+    ],
     [
       "mcp_describe",
       { name: "example.lookup_0" },
       "mcp_describe example.lookup_0",
-      "Lookup example.lookup_0",
+      "mcp_describe · schema read · example.lookup_0",
     ],
     [
       "mcp_call",
       { name: "example.lookup_0", arguments: { query: "secret-value" } },
       "mcp_call example.lookup_0 (query)",
-      "one\ntwo\nthree\n... +2 more lines",
+      "mcp_call · returned · example.lookup_0",
     ],
   ] as const) {
     const tool = a.tools.get(name);
@@ -585,7 +596,7 @@ test("compact rows show one header, counts, descriptions, and bounded unframed c
     }
     if (name === "mcp_describe") assert.match(expanded, /inputSchema/);
   }
-  assert.ok(colors.includes("accent"));
+  assert.ok(colors.includes("text"));
   assert.ok(colors.includes("muted"));
 });
 
@@ -616,13 +627,9 @@ test("unknown-outcome warning remains collapsed even when the error preview is l
     theme,
     context,
   )
-    .render(100)
+    .render(48)
     .join("\n");
-  assert.match(collapsed, /Call failed:/);
-  assert.match(
-    collapsed,
-    /Effects may have occurred. Do not automatically retry./,
-  );
+  assert.equal(collapsed, "mcp_call · failed; unknown effects; no replay");
   assert.doesNotMatch(collapsed, /example-log/);
   const expanded = renderer.renderResult!(
     result,

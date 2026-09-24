@@ -1,20 +1,20 @@
 # workflows extension
 
-Foreground or background deterministic JavaScript orchestration for bounded research, review, verification, and audit workflows. Workflow code runs in a permissioned child process; privileged subagent policy, model resolution, accounting, cancellation, and retention stay host-side.
+Background-only deterministic JavaScript orchestration for bounded research, review, verification, and audit workflows. Workflow code runs in a permissioned child process; privileged subagent policy, model resolution, accounting, cancellation, and retention stay host-side.
 
-This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it when dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow add value. Prefer [`subagents`](../subagents/README.md) for a simple independent batch; parallelism or structured output alone does not require a workflow. Preserve skill-required workflows. Use [`script`](../script/README.md) with the selected `mcp` provider for gateway composition that needs no subagent reasoning.
+This is read-mostly orchestration, not parallel implementation or workspace mutation. Use it for coordinated read-only fan-out (including parallel-only batches), dependent phases, programmatic aggregation, verification gates, or an applicable saved workflow. Use [`subagent`](../subagents/README.md) for one independent question; separate direct calls need separate ownership and reconciliation. Preserve skill-required workflows. Use [`script`](../script/README.md) with the selected `mcp` provider for gateway composition that needs no subagent reasoning.
 
 ## Tool
 
 `workflow` accepts:
 
-| Action                         | Fields                                                                                                                            |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `list`                         | No other fields; returns the current saved-workflow inventory.                                                                    |
-| `validate`                     | Exactly one of `script` or `name`; parses without execution.                                                                      |
-| `run`                          | Exactly one of `script` or `name`, plus optional cloneable `args` and `execution: foreground \| background` (default foreground). |
-| `executions`                   | List retained background workflow executions, without results.                                                                    |
-| `inspect`, `cancel`, `dismiss` | Required background execution `id`; no source or args.                                                                            |
+| Action                         | Fields                                                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `list`                         | No other fields; returns the current saved-workflow inventory.                                                                |
+| `validate`                     | Exactly one of `script` or `name`; parses without execution.                                                                  |
+| `run`                          | Exactly one of `script` or `name`, plus optional cloneable `args` and `execution: background` (default; foreground rejected). |
+| `executions`                   | List retained background workflow executions, without results.                                                                |
+| `inspect`, `cancel`, `dismiss` | Required background execution `id`; no source or args.                                                                        |
 
 Every script starts with literal metadata and contains a direct `agent()` or `verify()` call:
 
@@ -52,7 +52,7 @@ Both `validate` and `run` reject obvious straight-line `run()` bodies with no va
 
 ## Background execution
 
-Use `execution: "background"` for authorized independent work while the conversation continues. Both Workflows and [Background](../background/README.md) must be loaded in a persistent session; missing service fails clearly, without foreground fallback. `list` and `validate` remain nonexecuting saved-definition operations.
+Runs default to background; explicit foreground fails before work starts. Both Workflows and [Background](../background/README.md) must be loaded in a persistent session; missing service fails clearly, without foreground fallback. `list` and `validate` remain nonexecuting saved-definition operations.
 
 ```json
 {
@@ -173,7 +173,9 @@ The host treats sandbox RPC as untrusted. It validates required execution fields
 
 ## Rendering
 
-The separate call row is suppressed, and every result starts with one width-truncated header identifying `workflow run <name>`, `workflow list`, or `workflow validate <name>`. Run output shows agent progress by default in chronological start order, with the newest at the bottom, using the shared two-line grammar: status, intent, duration, and tool/token counts first; then profile, compact capabilities, timeout metadata, and volatile activity last. Compact capability labels are `fs`, `mcp`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
+Background admission/executions/inspect/cancel/dismiss have contextual one-line summaries, with uncertainty/no-replay guidance before optional identity and retained details on expansion. These use the shared Background control renderer; no raw source or result previews appear collapsed. Admission, cancellation requests and attention dismissal remain distinct.
+
+Immediate list/validate results have one width-truncated header. Background run controls summarize admission and inspection; expanded inspection holds agent progress in chronological start order. Compact capability labels are `fs`, `mcp`, and `web`; empty sets are omitted. List output shows the saved inventory by default, while validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The tool title is emphasized while separators and supporting metadata stay muted. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
 
 ## Configuration
 
@@ -207,7 +209,7 @@ The removed workflow model-tier fields and environment variables remain ignored 
 
 ## Logging and retained output
 
-Every run persists an exact owner-only source copy under the system temporary workflow-script directory before sandbox execution. Source copies are lazily removed after seven days. Foreground successful workflow results are not journaled; background outcomes use the retained files described above.
+Every run persists an exact owner-only source copy under the system temporary workflow-script directory before sandbox execution. Source copies are lazily removed after seven days. Background outcomes use the retained files described above.
 
 After abnormal termination, settled structured successes and typed failures may be retained in one owner-only `.json.gz` recovery envelope under `${tmpdir()}/pi-retained-diagnostics`. It excludes prompts, workflow args, successful prose, raw activity/stdout/stderr, tool traces, environment, credentials, and source. It may include identity/policy metadata, timings, attempts, effective timeouts, usage, validated structured values, failures, and child-log paths.
 

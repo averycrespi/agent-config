@@ -4,6 +4,11 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
+import { readFile } from "node:fs/promises";
+import { Service } from "../background/service.ts";
+import { SERVICE_EVENT, type Execution } from "../background/api.ts";
+import { validate } from "../background/store.ts";
 import registerWorkflowsExtension from "./index.ts";
 import { DEFAULT_WORKFLOW_CONFIG } from "./config.ts";
 import { formatConfigForDisplay } from "../_shared/config.ts";
@@ -39,9 +44,38 @@ function registerWorkflowTool(
 
 function harness() {
   let tool: any;
+  let records: Execution[] = [];
+  const events = createEventBus();
+  const service = new Service(
+    {
+      read: () => structuredClone(records),
+      write: (r) => {
+        records = validate(r);
+      },
+    },
+    {
+      anchor: () => "anchor",
+      inBranch: () => true,
+      idle: () => true,
+      changed() {},
+      handoff() {},
+      event() {},
+    },
+  );
+  events.on(SERVICE_EVENT, (v: any) => v.accept(service));
   const notifications: Array<[string, string]> = [];
   return {
+    service,
+    async settled(id: string) {
+      for (let i = 0; i < 300; i++) {
+        const record = service.inspect("workflow", id);
+        if (record.status !== "running") return record;
+        await new Promise<void>((r) => setTimeout(r, 20));
+      }
+      throw Error("workflow did not settle");
+    },
     pi: {
+      events,
       registerTool(value: any) {
         tool = value;
       },
@@ -104,19 +138,13 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
   );
   assert.match(guidance, /timeout alone does not prove.*stalled/);
   assert.match(guidance, /partial results.*before.*retry/i);
-  assert.match(
-    guidance,
-    /dependent phases, programmatic aggregation, or verification gates/,
-  );
-  assert.match(guidance, /Prefer subagents for a simple independent batch/);
-  assert.match(
-    guidance,
-    /parallelism or structured output alone does not require workflow/,
-  );
+  assert.match(guidance, /dependent phases, aggregation, verification gates/);
+  assert.match(guidance, /subagent is for one independent question/);
+  assert.match(guidance, /parallel-only batches/);
   assert.match(guidance, /Preserve skill-required workflows/);
   assert.match(
     guidance,
-    /Use script with the selected mcp provider for gateway composition that needs no subagent reasoning/,
+    /Use script with the selected mcp provider for gateway composition without subagent reasoning/,
   );
   assert.match(guidance, /parallel\(\) represents failed branches as null/);
   assert.match(
@@ -259,7 +287,12 @@ export async function run() {
       h.context,
     );
     assert.equal(result.details.action, "run");
-    assert.match(result.content[0].text, /researched/);
+    const completed = await h.settled(result.details.execution.id);
+    assert.equal(completed.status, "success");
+    assert.match(
+      await readFile((completed.result as any).resultFile, "utf8"),
+      /researched/,
+    );
     assert.equal(calls.length, 1);
     assert.equal(calls[0].intent, "inspect files");
     assert.deepEqual(calls[0].capabilities, ["read-filesystem"]);
@@ -267,7 +300,7 @@ export async function run() {
     assert.equal("thinking" in calls[0], false);
     assert.equal(calls[0].modelRegistry, registry);
     assert.equal("agent" in calls[0], false);
-    assert.ok(updates.length > 0);
+    assert.equal(updates.length, 0); // Updates are retained in Background, not foreground tool progress.
   } finally {
     mock.restoreAll();
   }
@@ -331,9 +364,12 @@ export async function run() {
       undefined,
       h.context,
     );
-    assert.equal(result.details.errorCode, "provider_error");
-    assert.equal(typeof result.details.recoveryFile, "string");
-    assert.match(result.content[0].text, /provider failed/);
+    const completed = await h.settled(result.details.execution.id);
+    assert.equal(completed.status, "failed");
+    assert.match(
+      await readFile((completed.result as any).resultFile, "utf8"),
+      /provider failed/,
+    );
   } finally {
     mock.restoreAll();
   }
