@@ -14,7 +14,7 @@ The five direct builtin tools use their pre-CONFIG-33 compact layout: a one-line
 | `find` | `find *.ts in src`          | first three paths       |
 | `grep` | `grep /TODO/ in src (*.ts)` | `4 matches`             |
 
-Partial results retain the original tool-specific verbs and elapsed timer. Errors keep closed stock classifications such as `Failed: exit 7`, `Failed: timed out`, and `Failed: not found` instead of exposing raw exception prose. Preview text is bounded and sanitized before styling; recognizable credential shapes are redacted, but this is not general secret detection. Avoid embedding secrets in commands or tool output. Full model-facing results and stock truncation/spill paths remain unchanged.
+Partial results retain the original tool-specific verbs and elapsed timer. Errors keep explicit stock classifications such as `Failed: exit 7`, `Failed: timed out`, and `Failed: not found`. Bash is the deliberate legacy exception: failures show only the first nonempty output line in error color, with no added classification; success shows its three-line tail. Bash expansion uses that same compact view. Expand the other four tools for bounded original text, including earlier diagnostics, tool truncation notices and available full-output paths. Display truncation is disclosed; expansion never reads retained files. Preview text is bounded and sanitized before styling; recognizable credential shapes are redacted, but this is not general secret detection. Avoid embedding secrets in commands or tool output. Full model-facing results and stock truncation/spill paths remain unchanged.
 
 ## Configuration
 

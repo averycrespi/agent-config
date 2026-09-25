@@ -3,6 +3,7 @@ import {
   clearPartialTimer,
   countNonEmptyLines,
   displayLabel,
+  expandedResult,
   getRelativeLabel,
   getResultText,
   getTruncatedText,
@@ -24,6 +25,8 @@ function failureSummary(kind: Kind, text: string): string {
     if (/^Command timed out after \d+(?:\.\d+)? seconds$/.test(last))
       return "Failed: timed out";
     if (last === "Command aborted") return "Failed: aborted";
+    if (last === "Command terminated without an exit code")
+      return "Failed: terminated";
   }
   const code = /^(ENOENT|EACCES|EPERM|EISDIR|ENOTDIR):/.exec(message)?.[1];
   if (code) {
@@ -85,7 +88,7 @@ export function builtinRenderers(
             : `${theme.fg("toolTitle", theme.bold(kind))} ${theme.fg("accent", kind === "read" ? safeLabel(getRelativeLabel(context.cwd, input.path)) : path)}`;
       return getTruncatedText(context.lastComponent, [line]);
     },
-    renderResult(result, { isPartial }, theme, context) {
+    renderResult(result, { isPartial, expanded }, theme, context) {
       const input = (context.args ?? {}) as Record<string, unknown>;
       const path = safeLabel(getRelativeLabel(context.cwd, input.path ?? "."));
       const pattern = safeLabel(input.pattern, 80);
@@ -108,20 +111,55 @@ export function builtinRenderers(
       clearPartialTimer(context);
 
       const text = getResultText(result);
-      if (context.isError) {
-        return getTruncatedText(context.lastComponent, [
-          theme.fg("error", failureSummary(kind, text)),
-        ]);
-      }
-      if (kind === "read") return getTruncatedText(context.lastComponent, []);
       if (kind === "bash") {
+        const lines = context.isError
+          ? [headNonEmptyLines(text, 1)[0] || `bash failed: ${command}`]
+          : tailNonEmptyLines(text, 3);
         return getTruncatedText(
           context.lastComponent,
-          tailNonEmptyLines(text, 3).map((line) =>
-            theme.fg("muted", safeLabel(line)),
+          lines.map((line) =>
+            theme.fg(context.isError ? "error" : "muted", safeLabel(line)),
           ),
         );
       }
+      const details = result.details as any;
+      const limited =
+        details?.truncation?.truncated ||
+        details?.entryLimitReached ||
+        details?.resultLimitReached ||
+        details?.matchLimitReached;
+      const notices = limited
+        ? [theme.fg("warning", "Output truncated; expand for details.")]
+        : [];
+      if (expanded) {
+        return getTruncatedText(context.lastComponent, [
+          ...(context.isError
+            ? [theme.fg("error", failureSummary(kind, text))]
+            : []),
+          ...expandedResult(result).map((line) =>
+            theme.fg("text", safeLabel(line, 1000)),
+          ),
+          ...(limited
+            ? [theme.fg("warning", "Output truncated by the tool.")]
+            : []),
+          ...(typeof details?.fullOutputPath === "string"
+            ? [
+                theme.fg(
+                  "muted",
+                  `Full output: ${safeLabel(details.fullOutputPath, 1000)}`,
+                ),
+              ]
+            : []),
+        ]);
+      }
+      if (context.isError) {
+        return getTruncatedText(context.lastComponent, [
+          theme.fg("error", failureSummary(kind, text)),
+          ...notices,
+        ]);
+      }
+      if (kind === "read")
+        return getTruncatedText(context.lastComponent, notices);
       if (kind === "grep") {
         const count =
           text.trim() === "No matches found" ? 0 : countNonEmptyLines(text);
@@ -130,12 +168,14 @@ export function builtinRenderers(
             "muted",
             count ? plural(count, "match", "matches") : "no matches",
           ),
+          ...notices,
         ]);
       }
       const head = headNonEmptyLines(text, 3);
       if (head.length === 0)
         return getTruncatedText(context.lastComponent, [
           theme.fg("muted", kind === "ls" ? "empty" : "no matches"),
+          ...notices,
         ]);
       const extra = countNonEmptyLines(text) - head.length;
       const lines =
@@ -145,10 +185,10 @@ export function builtinRenderers(
               `... +${plural(extra, kind === "ls" ? "more entry" : "more result", kind === "ls" ? "more entries" : undefined)}`,
             ]
           : head;
-      return getTruncatedText(
-        context.lastComponent,
-        lines.map((line) => theme.fg("muted", safeLabel(line))),
-      );
+      return getTruncatedText(context.lastComponent, [
+        ...lines.map((line) => theme.fg("muted", safeLabel(line))),
+        ...notices,
+      ]);
     },
   };
 }

@@ -23,9 +23,15 @@ function capture(register: (pi: any) => void): any {
   register({ registerTool: (t: any) => (tool = t) });
   return tool;
 }
-function render(tool: any, result: any, args: any = {}, isError = false) {
+function render(
+  tool: any,
+  result: any,
+  args: any = {},
+  isError = false,
+  expanded = false,
+) {
   return tool
-    .renderResult(result, { isPartial: false, expanded: false }, theme, {
+    .renderResult(result, { isPartial: false, expanded }, theme, {
       cwd: "/repo",
       args,
       state: {},
@@ -99,12 +105,16 @@ test("read stays silent; bash tails and ls/find/grep summaries return", () => {
   );
 });
 
-test("stock errors remain classified rather than exposing arbitrary diagnostics", async () => {
+test("stock bash errors restore the first nonempty line", async () => {
   const bash = capture(registerBash);
   for (const [args, signal, expected] of [
-    [{ command: "printf PRIVATE_OUTPUT; exit 7" }, undefined, "Failed: exit 7"],
-    [{ command: "sleep 2", timeout: 0.05 }, undefined, "Failed: timed out"],
-    [{ command: "sleep 2" }, AbortSignal.abort(), "Failed: aborted"],
+    [{ command: "printf PRIVATE_OUTPUT; exit 7" }, undefined, "PRIVATE_OUTPUT"],
+    [
+      { command: "sleep 2", timeout: 0.05 },
+      undefined,
+      "Command timed out after 0.05 seconds",
+    ],
+    [{ command: "sleep 2" }, AbortSignal.abort(), "Command aborted"],
   ] as const) {
     let failure: Error | undefined;
     try {
@@ -141,6 +151,73 @@ test("stock errors remain classified rather than exposing arbitrary diagnostics"
       ),
       ["Failed: not found"],
     );
+  }
+});
+
+test("bash failure restores one first line in both compact and expanded views", () => {
+  const bash = capture(registerBash);
+  const result = {
+    content: [
+      {
+        type: "text",
+        text: "first diagnostic\nsecond\nthird\nfourth\ncompiler: missing module\nCommand exited with code 2",
+      },
+    ],
+  };
+  const original = JSON.stringify(result);
+  assert.deepEqual(render(bash, result, {}, true), ["first diagnostic"]);
+  assert.deepEqual(render(bash, result, {}, true, true), ["first diagnostic"]);
+  assert.deepEqual(render(bash, result, {}, false, true), [
+    "fourth",
+    "compiler: missing module",
+    "Command exited with code 2",
+  ]);
+  assert.equal(JSON.stringify(result), original);
+});
+
+test("non-Bash builtin expansions retain evidence with redaction and explicit display limits", () => {
+  for (const register of [
+    registerRead,
+    registerLs,
+    registerFind,
+    registerGrep,
+  ]) {
+    const tool = capture(register);
+    const result = {
+      content: [{ type: "text", text: "first\ntoken=abc123\nlast\x1b[2J" }],
+      details: {
+        truncation: { truncated: true },
+        fullOutputPath: "/tmp/full-output.txt",
+      },
+    };
+    for (const isError of [false, true]) {
+      const lines = render(tool, result, {}, isError, true);
+      assert.ok(lines.includes("first"));
+      assert.ok(lines.includes("token=[redacted]"));
+      assert.match(lines.join("\n"), /Output truncated/);
+      assert.match(lines.join("\n"), /Full output: \/tmp\/full-output.txt/);
+      assert.doesNotMatch(lines.join("\n"), /abc123|\x1b/);
+      for (const width of [0, 1, 12, 48]) {
+        const rows = tool
+          .renderResult(result, { expanded: true, isPartial: false }, theme, {
+            cwd: "/repo",
+            args: {},
+            state: {},
+            isError,
+          })
+          .render(width);
+        assert.ok(rows.every((row: string) => visibleWidth(row) <= width));
+      }
+    }
+    const bounded = render(
+      tool,
+      { content: [{ type: "text", text: "line\n".repeat(2200) }] },
+      {},
+      false,
+      true,
+    );
+    assert.ok(bounded.length <= 2002);
+    assert.match(bounded.join("\n"), /Display truncated/);
   }
 });
 
