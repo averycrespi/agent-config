@@ -4,11 +4,12 @@
 
 ## Component ownership and installation
 
-The Herdr integration has three distinct ownership boundaries:
+The Herdr integration has two distinct ownership boundaries:
 
 - The repository-owned [`herdr` skill](../agent/skills/herdr/SKILL.md#manage-git-worktrees) owns worktree-management procedures, including discovery, checkout paths, focus, removal, and verification. [`spin-out`](../agent/skills/spin-out/SKILL.md) adds the purpose-specific delegation workflow.
-- The repository-owned [`ask-user` extension](../agent/extensions/ask-user/README.md) emits balanced `herdr:blocked` events while an interactive question is open.
 - Herdr owns the generated `herdr-agent-state.ts` lifecycle bridge. It reports Pi session identity and `working`, `blocked`, and `idle` state to the current Herdr pane.
+
+Human questions use ordinary conversation. They do not emit extension-generated `herdr:blocked` signals; pane idleness is not evidence that a pending question has been answered.
 
 Install or update the bridge after `make stow-pi` so Herdr writes it through the managed `~/.pi/agent/extensions` symlink:
 

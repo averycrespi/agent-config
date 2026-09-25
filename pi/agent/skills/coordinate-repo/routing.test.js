@@ -5,6 +5,31 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 // These guard discoverability and required instruction placement, not model behavior.
+test("global async guidance and conversational skills retain dependency and authority boundaries", async () => {
+  const global = await read("../../AGENTS.md");
+  assert.match(global, /continue useful authorized work/);
+  assert.match(
+    global,
+    /end the turn and let the supported notification resume it/,
+  );
+  assert.match(global, /Yielding is not task completion/);
+  assert.match(global, /Silence or cancellation never grants permission/);
+  assert.match(
+    global,
+    /Cancel and reconcile continuation for input-blocked work/,
+  );
+  for (const path of [
+    "../clarify/references/protocol.md",
+    "../challenge/references/protocol.md",
+    "../spin-out/SKILL.md",
+    "../spin-out/references/decisions.md",
+    "./SKILL.md",
+  ]) {
+    const text = await read(path);
+    assert.doesNotMatch(text, /ask_user|ask-user/);
+    assert.match(text, /conversation/);
+  }
+});
 test("routing metadata exposes managed continuity and standalone launch mechanics", async () => {
   const coordinate = await read("./SKILL.md");
   const spinOut = await read("../spin-out/SKILL.md");

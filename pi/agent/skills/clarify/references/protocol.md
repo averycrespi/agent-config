@@ -16,7 +16,7 @@ Ask when unresolved alternatives materially affect scope, correctness, acceptanc
 
 ## Ask focused questions
 
-Ask one material question at a time, wait for the answer, and use it to choose the next question. Resolve upstream decisions first. Prefer `ask_user` with 2–5 options when trade-offs warrant a choice; put the recommendation first and explain it briefly.
+Ask one material question at a time in ordinary conversation, with 2–5 brief options when trade-offs warrant a choice; put the recommendation first and explain it briefly. Resolve upstream decisions first and wait for the answer before dependent decisions, not before unrelated authorized work. State what is blocked and what can continue; yield when no useful independent work remains. Silence or cancellation is not an answer or approval. Clarify ambiguous replies before applying them.
 
 Retain settled decisions and their rationale to avoid repeated questions. Do not require a taxonomy, formal ledger, or fixed response template for a simple clarification.
 

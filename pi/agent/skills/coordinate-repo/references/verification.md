@@ -5,7 +5,7 @@ Separate deterministic mechanics, independent reasoning review and live model be
 ## Deterministic checks
 
 ```sh
-npx tsx --test pi/agent/extensions/mailbox/*.test.ts pi/agent/extensions/monitor/*.test.ts pi/agent/extensions/ask-user/*.test.ts
+npx tsx --test pi/agent/extensions/mailbox/*.test.ts pi/agent/extensions/monitor/*.test.ts
 npx tsx --test pi/agent/skills/coordinate-repo/*.test.js pi/agent/skills/work-stack/*.test.js pi/agent/skills/work-ticket/scripts/*.test.js pi/agent/skills/work-ticket/skill.test.js
 npm run lint
 npm run format:check

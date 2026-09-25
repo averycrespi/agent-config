@@ -47,14 +47,12 @@ Each name links to its configuration, usage, and lifecycle documentation. The in
 | Extension                                                         | Purpose                                                                     | Main interface                                                                                                               |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | [background](agent/extensions/background/README.md)               | Shared asynchronous execution lifetime, retained outcomes and notifications | [Host API](agent/extensions/background/API.md); Script background actions; no separate tool                                  |
-| [ask-user](agent/extensions/ask-user/README.md)                   | Ask focused multiple-choice questions                                       | `ask_user`                                                                                                                   |
 | [monitor](agent/extensions/monitor/README.md)                     | Bound polling, typed provider events, and settlement-based continuation     | `monitor`, [provider API](agent/extensions/monitor/API.md)                                                                   |
 | [builtins](agent/extensions/builtins/README.md)                   | Compact builtin rendering and active stock tool composition                 | Automatic rendering; optional [Script provider](agent/extensions/builtins/README.md#script-provider)                         |
 | [context-usage](agent/extensions/context-usage/README.md)         | Explain current context-window usage                                        | `/context-usage`                                                                                                             |
 | [idle-compaction](agent/extensions/idle-compaction/README.md)     | Opt-in native compaction of unattended open terminal sessions               | `/idle-compaction-enable`, `/idle-compaction-disable`, `/idle-compaction-status`, `/idle-compaction-config`                  |
 | [mailbox](agent/extensions/mailbox/README.md)                     | Durable local bounded coordination reports                                  | `mailbox`, optional [Script provider](agent/extensions/mailbox/README.md#script-provider), typed `mailbox.changed`           |
 | [mcp-gateway](agent/extensions/mcp-gateway/README.md)             | Access authenticated external services through a gateway                    | `mcp_search`, `mcp_describe`, `mcp_call`, optional [Script provider](agent/extensions/mcp-gateway/README.md#script-provider) |
-| [scheduled-tasks](agent/extensions/scheduled-tasks/README.md)     | Run recurring Markdown-defined tasks with retained run artifacts            | `scheduled_tasks`                                                                                                            |
 | [script](agent/extensions/script/README.md)                       | Run bounded JavaScript with explicitly selected extension capabilities      | `script`, `/script-config`, [host/provider API](agent/extensions/script/API.md)                                              |
 | [statusline](agent/extensions/statusline/README.md)               | Show session, context, and model information                                | Automatic footer                                                                                                             |
 | [structured-output](agent/extensions/structured-output/README.md) | Validate final output against a configured schema                           | `structured_output` when configured                                                                                          |
@@ -105,7 +103,7 @@ The [review skill](agent/skills/review/SKILL.md) prepares evidence and invokes t
 
 [Work-stack](agent/skills/work-stack/SKILL.md) composes spin-out, work-ticket, Herdr and Monitor for one repository and a local-only or review-ready PR boundary. Its thin entry point applies serial policy directly to shared coordination/index, mailbox, questions, supervision and recovery mechanics, with no intermediate manager. The parent verifies predecessor commits and release evidence before advancing. Required primitives must already be loaded; installing the skill does not launch children or reload extensions. Stacked PR CI qualifies the recorded stack base, not independent readiness for main.
 
-The scheduled-tasks extension also bundles [manage-scheduled-tasks](agent/extensions/scheduled-tasks/skills/manage-scheduled-tasks/SKILL.md) for authoring, validating, running, and debugging task definitions. The repo-local [create-extension skill](../.pi/skills/create-extension/SKILL.md) is an authoring aid, not part of the Stow-installed skill inventory.
+The repo-local [create-extension skill](../.pi/skills/create-extension/SKILL.md) is an authoring aid, not part of the Stow-installed skill inventory.
 
 ### Saved Scripts
 
@@ -118,7 +116,7 @@ The scheduled-tasks extension also bundles [manage-scheduled-tasks](agent/extens
 
 ### Saved workflows
 
-Saved definitions run asynchronously through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. Background is mandatory for runs; the same workflow owns all its agents; use `executions`/`inspect`/`cancel`/`dismiss` for retained runs and wait for automatic notification. This is read-mostly orchestration: workflow subagents cannot receive writable filesystem or shell capabilities. See the [workflow execution contract](agent/extensions/workflows/README.md#saved-workflows).
+Saved definitions run asynchronously through the `workflow` tool with `action: "run"`, a saved `name`, and workflow-specific `args`. Background is mandatory for runs; the same workflow owns all its agents; use `executions`/`inspect`/`cancel`/`dismiss` for retained runs. Continue independent authorized work while awaiting automatic notification; yield when no useful independent work remains. This is read-mostly orchestration: workflow subagents cannot receive writable filesystem or shell capabilities. See the [workflow execution contract](agent/extensions/workflows/README.md#saved-workflows).
 
 | Workflow                                                            | Purpose and input                                                                                   | Definition                                           |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -145,7 +143,7 @@ Select a theme through Pi's `/settings`; the file's presence does not imply it i
 
 ### Herdr integration
 
-Herdr owns the generated Pi lifecycle bridge; the `herdr` and `spin-out` skills define local control procedures, and `ask-user` reports interactive questions through the bridge. See the [Herdr integration guide](docs/herdr.md) for installation, ownership, and remote-client setup.
+Herdr owns the generated Pi lifecycle bridge; the `herdr` and `spin-out` skills define local control procedures. Human questions use ordinary conversation, without extension-generated blocked signals. See the [Herdr integration guide](docs/herdr.md) for installation, ownership, and remote-client setup.
 
 #### macOS client with a Lima guest
 

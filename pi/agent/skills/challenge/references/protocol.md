@@ -45,7 +45,7 @@ Use one conclusion appropriate to the lens:
 - **Risk:** Ready to proceed; Proceed with mitigations; Revise before proceeding; or Investigate before deciding.
 - **Simplification:** Already minimal; Simplify before proceeding; or Requirements need clarification.
 
-No findings means say so directly, with only meaningful residual uncertainty. Include autonomous handoff readiness only for executable implementation plans. Ask one focused user-owned question at a time with a recommendation; use `ask_user` when choices have material trade-offs.
+No findings means say so directly, with only meaningful residual uncertainty. Include autonomous handoff readiness only for executable implementation plans. Ask one focused user-owned question at a time in ordinary conversation, with brief options and a recommendation when choices have material trade-offs. State the blocked scope; continue independent authorized work and wait only on dependent decisions.
 
 ## Revision boundary
 

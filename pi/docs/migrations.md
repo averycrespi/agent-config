@@ -2,6 +2,12 @@
 
 Guidance for older installations. For current components, see the [Pi configuration reference](../README.md). Installation, Stow linking, settings changes and running-session reloads remain explicit user actions; repository edits do not perform them.
 
+## Scheduled tasks and Ask User retirement
+
+The `scheduled-tasks` and `ask-user` extensions, their tools/commands, and the bundled `manage-scheduled-tasks` skill are removed. During an explicitly authorized transition, remove any explicit extension load paths and scheduler settings/environment overrides. If installed, remove only the managed `BEGIN PI SCHEDULED TASKS` / `END PI SCHEDULED TASKS` crontab block before deleting its CLI files, and reconcile active runners. Preserve task definitions, handoffs, run artifacts and session history; repository removal does not delete that data or change crontab.
+
+Questions now use ordinary conversation: give options/recommendations when useful, identify blocked scope, and continue independent authorized work. Managed workers retain the [mailbox question protocol](../agent/skills/spin-out/references/decisions.md); unresolved questions and uncertain relays remain pending. Ask User's process-local input events and Herdr blocked signals have no replacement producer. Do not infer approval from silence or replay historical tool calls. Reload is explicit and remains user-owned. Monitor is session-bound observation/continuation, not a replacement cron scheduler.
+
 ## Background to Monitor
 
 The former Background observation/continuation extension is now **[Monitor](../agent/extensions/monitor/README.md)**. This is a behavior-preserving rename, not an asynchronous execution service. Only `monitor` start/list/get/cancel is registered; no `background` tool alias, second scheduler, duplicated notification, or legacy provider API exists.
@@ -24,20 +30,20 @@ Goal's tool and `/goal*` commands are retired. During an explicitly authorized i
 
 ## Observer retirement
 
-Loop, the original Monitor (`wait/notify`), and Session Watch are retired. These names, controls, events and receipt formats in this section describe **historical interfaces**, not callable guidance. The current Monitor above is the renamed Background observer, not that original implementation. [Monitor](../agent/extensions/monitor/README.md) is the sole supported session-bound observation/continuation primitive. Script, Code, scheduled tasks and unrelated tools remain supported.
+Loop, the original Monitor (`wait/notify`), and Session Watch are retired. These names, controls, events and receipt formats in this section describe **historical interfaces**, not callable guidance. The current Monitor above is the renamed Background observer, not that original implementation. [Monitor](../agent/extensions/monitor/README.md) is the sole supported session-bound observation/continuation primitive. Script and unrelated current tools remain supported; scheduled tasks are retired as described above.
 
 ### Inventory and mapping
 
-| Audited surface                                                | Supported mapping / explicit incompatibility                                                                                                                                                                  |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Former Loop, original Monitor, and Session Watch registrations | Removed. Use current Monitor start/list/get/cancel; no imported Loop controller or legacy tool aliases.                                                                                                       |
-| Former Background `sessions` provider and transport            | Removed. Use durable mailbox reports with initial-list/polling catch-up; no session-event transport or legacy adapter remains.                                                                                |
-| Work-ticket, CI helper and delivery references                 | One-shot Monitor polling through selected Script `mcp`, cycle ≤25 minutes, remaining lifetime and one wake. `ci-observation.js` adapts observer receipts to the retained schema-v2 ledger.                    |
-| Work-stack and shared coordination                             | Explicit mailbox/assignment identity and batched Monitor observation. Herdr verifies worker identity; child owns CI. Parent absolute deadline, consumed wakes and uncertain reservations survive replacement. |
-| Ask User and managed questions                                 | Standalone ask-user keeps local content-free events. Managed questions use mailbox reports and conversational answers/provenance. Preserve unanswered questions and uncertain relays during manual cutover.   |
-| Continuation guidance                                          | Explicit bounded recurring Monitor with post-settlement delay. Cancel before input or when no useful authorized work remains. No evaluator stop, yield/resume/extend or implicit restart.                     |
-| Documentation and runtime callers                              | Current docs, examples, skills, tests and public imports use Monitor. Personal ignored settings are not supplied or edited. Reaudit external callers and explicit load paths before transition.               |
-| Historical records and tests                                   | Schema-v2 `monitor`, `ci-monitor.js`, and unmarked legacy watcher accounting remain recovery-only. Shared width-fitting sample labels and generic background-process prose are not extension calls.           |
+| Audited surface                                                | Supported mapping / explicit incompatibility                                                                                                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Former Loop, original Monitor, and Session Watch registrations | Removed. Use current Monitor start/list/get/cancel; no imported Loop controller or legacy tool aliases.                                                                                                            |
+| Former Background `sessions` provider and transport            | Removed. Use durable mailbox reports with initial-list/polling catch-up; no session-event transport or legacy adapter remains.                                                                                     |
+| Work-ticket, CI helper and delivery references                 | One-shot Monitor polling through selected Script `mcp`, cycle ≤25 minutes, remaining lifetime and one wake. `ci-observation.js` adapts observer receipts to the retained schema-v2 ledger.                         |
+| Work-stack and shared coordination                             | Explicit mailbox/assignment identity and batched Monitor observation. Herdr verifies worker identity; child owns CI. Parent absolute deadline, consumed wakes and uncertain reservations survive replacement.      |
+| Ask User and managed questions                                 | Ask User is retired. Standalone questions use conversation; managed questions use mailbox reports and conversational answers/provenance. Preserve unanswered questions and uncertain relays during manual cutover. |
+| Continuation guidance                                          | Explicit bounded recurring Monitor with post-settlement delay. Cancel before input or when no useful authorized work remains. No evaluator stop, yield/resume/extend or implicit restart.                          |
+| Documentation and runtime callers                              | Current docs, examples, skills, tests and public imports use Monitor. Personal ignored settings are not supplied or edited. Reaudit external callers and explicit load paths before transition.                    |
+| Historical records and tests                                   | Schema-v2 `monitor`, `ci-monitor.js`, and unmarked legacy watcher accounting remain recovery-only. Shared width-fitting sample labels and generic background-process prose are not extension calls.                |
 
 Repository-local structural tests guard registration/import/link retirement; fixtures qualify behavior, not model obedience or live installation.
 

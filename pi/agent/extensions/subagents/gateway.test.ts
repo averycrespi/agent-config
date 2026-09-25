@@ -18,21 +18,15 @@ import {
   runWorkflow,
 } from "../workflows/runtime.ts";
 import { parseWorkflowScript } from "../workflows/parser.ts";
-import {
-  buildSpawnPlan,
-  spawnPi,
-  _spawn as _scheduledSpawn,
-} from "../scheduled-tasks/spawn.ts";
-import { DEFAULT_CONFIG as scheduledDefaults } from "../scheduled-tasks/config.ts";
+import { once } from "node:events";
 
 for (const mode of [
   "direct",
   "workflow",
-  "scheduled",
   "normal",
-  "scheduled-missing",
-  "scheduled-denied",
-  "scheduled-unavailable",
+  "normal-missing",
+  "normal-denied",
+  "normal-unavailable",
 ] as const) {
   test(
     `${mode} real Pi child loads gateway without opt-in and refreshes read-only admission`,
@@ -43,8 +37,8 @@ for (const mode of [
         process.env = prior;
         mock.restoreAll();
       });
-      const isScheduled = mode.startsWith("scheduled");
-      const failureMode = isScheduled && mode !== "scheduled";
+      const isNormal = mode.startsWith("normal");
+      const failureMode = isNormal && mode !== "normal";
       let readOnly = true;
       let turn = 0;
       const modelRequests: any[] = [];
@@ -54,15 +48,15 @@ for (const mode of [
             ["mcp_search", { query: "" }],
             ["mcp_describe", { name: "example.read" }],
             ["mcp_call", { name: "example.read", arguments: {} }],
-            ...(mode === "scheduled" ? [["read", {}] as const] : []),
+            ...(mode === "normal" ? [["read", {}] as const] : []),
             ["mcp_call", { name: "example.write", arguments: {} }],
             ["mcp_call", { name: "example.read", arguments: {} }],
           ] as const);
       const f = await fixture(t, (body, response) => {
         if (body.method) {
-          if (mode === "scheduled-denied")
+          if (mode === "normal-denied")
             return rpcError(response, body, "call_rejected");
-          if (mode === "scheduled-unavailable") {
+          if (mode === "normal-unavailable") {
             response.writeHead(503);
             response.end();
             return;
@@ -80,7 +74,7 @@ for (const mode of [
               {
                 type: "text",
                 text:
-                  mode === "scheduled"
+                  mode === "normal"
                     ? "read sentinel\n" +
                       "payload ".repeat(4000) +
                       "\nspill inspection sentinel"
@@ -147,43 +141,40 @@ for (const mode of [
       );
       process.env.PI_CODING_AGENT_DIR = agentDir;
       process.env.MCP_GATEWAY_AGENT_TOKEN =
-        mode === "scheduled-missing" ? "" : TEST_BEARER;
+        mode === "normal-missing" ? "" : TEST_BEARER;
       delete process.env.MCP_GATEWAY_ENDPOINT;
       process.env.MCP_GATEWAY_READONLY = "0";
       process.env.PI_SUBAGENT_DEPTH = "0";
       let launched = 0;
-      mock.method(
-        isScheduled || mode === "normal" ? _scheduledSpawn : _spawn,
-        "fn",
-        (command: string, args: string[], options: any) => {
-          launched++;
-          assert.equal(
-            args.includes("--no-extensions"),
-            mode === "direct" || mode === "workflow",
-          );
-          assert.ok(!args.includes("--mcp-gateway"));
-          if (mode === "direct" || mode === "workflow")
-            assert.ok(args.some((arg) => arg.endsWith("mcp-gateway")));
-          assert.equal(options.env.MCP_GATEWAY_READONLY, "1");
-          assert.equal(
-            options.env.MCP_GATEWAY_AGENT_TOKEN,
-            mode === "scheduled-missing" ? "" : TEST_BEARER,
-          );
-          assert.equal(options.env.MCP_GATEWAY_ENDPOINT, undefined);
-          assert.equal(command, "pi");
-          const cli = fileURLToPath(
-            new URL(
-              "./cli.js",
-              import.meta.resolve("@earendil-works/pi-coding-agent"),
-            ),
-          );
-          return nodeSpawn(
-            process.execPath,
-            [cli, "-e", providerPath, ...args],
-            options,
-          );
-        },
-      );
+      const launch = (command: string, args: string[], options: any) => {
+        launched++;
+        assert.equal(
+          args.includes("--no-extensions"),
+          mode === "direct" || mode === "workflow",
+        );
+        assert.ok(!args.includes("--mcp-gateway"));
+        if (mode === "direct" || mode === "workflow")
+          assert.ok(args.some((arg) => arg.endsWith("mcp-gateway")));
+        assert.equal(options.env.MCP_GATEWAY_READONLY, "1");
+        assert.equal(
+          options.env.MCP_GATEWAY_AGENT_TOKEN,
+          mode === "normal-missing" ? "" : TEST_BEARER,
+        );
+        assert.equal(options.env.MCP_GATEWAY_ENDPOINT, undefined);
+        assert.equal(command, "pi");
+        const cli = fileURLToPath(
+          new URL(
+            "./cli.js",
+            import.meta.resolve("@earendil-works/pi-coding-agent"),
+          ),
+        );
+        return nodeSpawn(
+          process.execPath,
+          [cli, "-e", providerPath, ...args],
+          options,
+        );
+      };
+      mock.method(_spawn, "fn", launch);
       const modelRegistry = {
         find: () => ({
           provider: "cutover-fixture",
@@ -221,54 +212,46 @@ for (const mode of [
         );
         assert.match(String(result.result), /fixture finished/);
       } else {
-        const promptPath = join(f.dir, "prompt.txt");
-        await writeFile(promptPath, "Run fixture");
-        const plan = isScheduled
-          ? buildSpawnPlan({
-              config: { ...scheduledDefaults, rootDir: f.dir },
-              task: {
-                id: "gateway-fixture",
-                path: join(f.dir, "task.md"),
-                body: "Run fixture",
-                enabled: false,
-                catchup: false,
-                handoff: false,
-                rawFrontmatter: {},
-                cwd: f.dir,
-                model: "cutover-fixture/model",
-                tools: ["mcp_search", "mcp_describe", "mcp_call", "read"],
-                env: { MCP_GATEWAY_READONLY: "1" },
-                timeoutMinutes: 0.75,
-              },
-              runId: "fixture",
-              runDir: f.dir,
-              promptPath,
-            })
-          : {
-              command: "pi",
-              args: [
-                "--mode",
-                "json",
-                "--no-session",
-                "--model",
-                "cutover-fixture/model",
-                "--tools",
-                "mcp_search,mcp_describe,mcp_call,read",
-                "-p",
-                "Run fixture",
-              ],
-              cwd: f.dir,
-              env: { MCP_GATEWAY_READONLY: "1" },
-              timeoutMs: 45_000,
-            };
-        const result = await spawnPi(plan, join(f.dir, "run.log"));
-        assert.equal(result.exitCode, 0, result.stderr);
-        assert.equal(result.timedOut, false);
-        assert.match(result.stdout, /fixture finished/);
+        const child = launch(
+          "pi",
+          [
+            "--mode",
+            "json",
+            "--no-session",
+            "--model",
+            "cutover-fixture/model",
+            "--tools",
+            "mcp_search,mcp_describe,mcp_call,read",
+            "-p",
+            "Run fixture",
+          ],
+          {
+            cwd: f.dir,
+            env: { ...process.env, MCP_GATEWAY_READONLY: "1" },
+            stdio: ["ignore", "pipe", "pipe"],
+            signal,
+            timeout: 45_000,
+            killSignal: "SIGKILL",
+          },
+        );
+        t.after(() => {
+          if (child.exitCode === null) child.kill("SIGKILL");
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout!.on("data", (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr!.on("data", (chunk) => {
+          stderr += chunk;
+        });
+        const [exitCode] = await once(child, "close");
+        assert.equal(exitCode, 0, stderr);
+        assert.match(stdout, /fixture finished/);
       }
       assert.equal(launched, 1);
       assert.equal(modelRequests.length, steps.length + 1);
-      if (mode === "scheduled") {
+      if (mode === "normal") {
         const inspection = modelRequests
           .at(-1)
           .messages.find(
@@ -296,7 +279,7 @@ for (const mode of [
           .at(-1)
           .messages.find((message: any) => message.role === "tool");
         assert.match(error.content, /mcp_search:/);
-        if (mode === "scheduled-missing") {
+        if (mode === "normal-missing") {
           assert.match(error.content, /MCP_GATEWAY_AGENT_TOKEN/);
           assert.equal(
             f.requests.filter((request) => request.method).length,

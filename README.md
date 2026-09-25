@@ -84,16 +84,17 @@ For ongoing independent work, [repo coordination](pi/agent/skills/coordinate-rep
 
 The main session owns implementation and execution evidence by default. Writable delegation requires an explicit user request and the [bounded execution safeguards](pi/agent/extensions/subagents/README.md#delegation-guidance); parent and child writes must never overlap in one checkout.
 
-### Continue, watch, and schedule
+<a id="continue-watch-and-schedule"></a>
+
+### Continue and watch
 
 [Background execution](pi/agent/extensions/background/README.md) lets Script, Subagents and Workflows finish bounded work while the conversation stays available. Subagent and Workflow runs require background execution; Script remains foreground by default. It retains outcomes, shows below-editor status and sends automatic terminal notifications; it adds no model-facing tool or executor. Cancellation is not rollback, notification consumption is not acceptance, and session changes never replay work.
 
-| Mechanism                                                        | Use it for                                                                                                                                                |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Monitor](pi/agent/extensions/monitor/README.md)                 | Bounded polling, typed mailbox/provider event observation, or settlement-based continuation under explicit authority, with no model turns while waiting.  |
-| [Scheduled tasks](pi/agent/extensions/scheduled-tasks/README.md) | Recurring Markdown-defined tasks run through cron, or on demand, in fresh child Pi processes with retained run artifacts and optional cross-run handoffs. |
+| Mechanism                                        | Use it for                                                                                                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Monitor](pi/agent/extensions/monitor/README.md) | Bounded polling, typed mailbox/provider event observation, or settlement-based continuation under explicit authority, with no model turns while waiting. |
 
-Monitor is the supported route for session-bound observation and explicitly requested bounded continuation; ordinary multi-step work needs no scheduler. It uses fresh Script evaluations and typed events, while scheduled tasks start separate runs. Shutdown, reload and navigation invalidate observations without automatic resumption. Deadlines and notifications request attention—not task success, model-consumption acknowledgment, prompt-cache retention, or permission to answer for the user. The caller owns completion and cumulative allowances. See [migration guidance](pi/docs/migrations.md#observer-retirement) before replacing historical observers; never give two schedulers the same job.
+Monitor is the supported route for session-bound observation and explicitly requested bounded continuation; ordinary multi-step work needs no scheduler. It uses fresh Script evaluations and typed events; it is not an unattended cron scheduler. Shutdown, reload and navigation invalidate observations without automatic resumption. Deadlines and notifications request attention—not task success, model-consumption acknowledgment, prompt-cache retention, or permission to answer for the user. The caller owns completion and cumulative allowances. See [migration guidance](pi/docs/migrations.md#observer-retirement) before replacing historical observers; never give two schedulers the same job.
 
 ### Compose external tool calls
 
@@ -111,7 +112,7 @@ Run `make install-playwright` to install browser tooling and Chromium for the pi
 
 Install [Herdr](https://herdr.dev/), then run `herdr integration install pi` after Stow. Restart Pi or run `/reload` to load its lifecycle bridge.
 
-The [`herdr`](pi/agent/skills/herdr/SKILL.md) and `spin-out` skills use Herdr for terminal and worktree control. Herdr owns the local Pi lifecycle bridge; this repository's [`ask-user`](pi/agent/extensions/ask-user/README.md) extension reports interactive questions through it. See [Herdr integration](pi/README.md#herdr-integration) for component ownership and remote-client setup, including macOS-to-Lima use.
+The [`herdr`](pi/agent/skills/herdr/SKILL.md) and `spin-out` skills use Herdr for terminal and worktree control. Herdr owns the local Pi lifecycle bridge. Human questions use ordinary conversation rather than a blocking choice tool. See [Herdr integration](pi/README.md#herdr-integration) for component ownership and remote-client setup, including macOS-to-Lima use.
 
 ### MCP Gateway: authenticated external services
 
