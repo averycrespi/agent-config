@@ -64,6 +64,14 @@ test("dynamic activity and initial references validate atomically without changi
     {
       activity: { started: 2, completed: 1, failed: 1, phase: "x".repeat(201) },
     },
+    {
+      activity: {
+        started: 2,
+        completed: 1,
+        failed: 1,
+        profile: "x".repeat(41),
+      },
+    },
   ])
     assert.throws(() => update(value), /invalid_activity/);
   assert.deepEqual(service.inspect("workflow", r.id), before);
@@ -134,6 +142,40 @@ test("widget sources, singular batches and critical warnings precede optional id
     r.outcomeUnknown = false;
     assert.equal(JSON.stringify(r), before);
   }
+  const child = {
+    ...base,
+    owner: "subagents",
+    label: "Count vowels",
+    createdAt: 1000,
+    progress: { total: 1, completed: 0, failed: 0 },
+    activity: {
+      started: 1,
+      completed: 0,
+      failed: 0,
+      profile: "fast",
+      phase: "thinking",
+    },
+  };
+  assert.equal(
+    widgetLines([child], 120, theme, 9000)[0],
+    "subagent running · Count vowels · fast · 8s · thinking",
+  );
+  assert.doesNotMatch(
+    widgetLines([child], 120, theme, 9000)[0],
+    /0\/1 settled/,
+  );
+  assert.match(widgetLines([child], 42, theme, 9000)[0], /^subagent running/);
+  const workflow = {
+    ...base,
+    owner: "workflow",
+    label: "Review",
+    createdAt: 1000,
+    activity: { started: 3, completed: 2, failed: 0, phase: "verify" },
+  };
+  assert.equal(
+    widgetLines([workflow], 120, theme, 9000)[0],
+    "workflow running · Review · 2/3 settled · verify · 8s",
+  );
   const uncertain = {
     ...base,
     status: "interrupted" as const,

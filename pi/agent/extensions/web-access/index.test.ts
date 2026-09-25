@@ -148,7 +148,7 @@ test("web_search renderResult collapses result inventory to one bounded line", (
     .render(28);
 
   assert.equal(lines.length, 1);
-  assert.match(lines[0], /web_search · 4 results/);
+  assert.match(lines[0], /^4 results/);
   assertRenderedWidth(lines, 28);
 });
 
@@ -169,7 +169,7 @@ test("web_fetch renderCall truncates long URLs instead of wrapping", () => {
   assertRenderedWidth(lines, 32);
 });
 
-test("web_fetch renderResult truncates long clone paths instead of wrapping", () => {
+test("web_fetch routine repository read has no duplicate collapsed result", () => {
   const tool = loadRegisteredTool("web_fetch");
   const lines = tool
     .renderResult(
@@ -192,8 +192,7 @@ test("web_fetch renderResult truncates long clone paths instead of wrapping", ()
     )
     .render(28);
 
-  assert.equal(lines.length, 1);
-  assertRenderedWidth(lines, 28);
+  assert.deepEqual(lines, []);
 });
 
 test("/web-access-config displays effective config with masked keys", async () => {
@@ -359,7 +358,7 @@ test("web_search renderer hides result snippets and envelope boilerplate when co
 
   assert.deepEqual(
     rendered.map((line: string) => line.trimEnd()),
-    ["web_search · 1 result · example"],
+    ["1 result"],
   );
   assert.equal(
     rendered.some((line: string) => line.includes("UNTRUSTED")),

@@ -78,7 +78,7 @@ test("/context-usage preserves Pi totals and groups projected context", async ()
   await pi.commands.get("context-usage").handler("", ctx);
 
   const output = ctx.notifications.at(-1)?.msg ?? "";
-  assert.match(output, /Context usage: 20\.0k \/ 200\.0k tokens · 10%/);
+  assert.match(output, /Context usage: 20\.0k \/ 200\.0k tokens \(10%\)/);
   assert.match(output, /Tool result: bash/);
   assert.match(output, /Largest individual tool results/);
   assert.match(output, /bash \(call_bash_big\)/);

@@ -66,7 +66,7 @@ export function renderWidgetLines(
   const lines = [
     theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)),
     ...visibleItems.map((item) => {
-      const notes = item.notes ? theme.fg("dim", ` · ${item.notes}`) : "";
+      const notes = item.notes ? theme.fg("dim", ` (${item.notes})`) : "";
       return truncateToWidth(
         `${renderStatusMarker(item.status, theme)} ${renderTodoText(item, theme)}${notes}`,
         safeWidth,

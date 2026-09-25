@@ -222,7 +222,7 @@ test("rejection reasons and framed guidance reach agents, renderers, and metadat
         assert.match(lines, /Gateway guidance \(untrusted\):/);
         assert.ok(lines.includes(message));
       } else {
-        assert.match(lines, /^mcp_call · request failed/);
+        assert.match(lines, /^request failed/);
         assert.doesNotMatch(lines, /Gateway guidance/);
       }
       for (const width of [1, 8, 30, 120])
@@ -505,7 +505,7 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
           if (state === "semantic" || state === "framework")
             assert.match(lines, /failed/);
           if (state === "success" && !expanded) {
-            assert.match(lines, new RegExp(`^${name} ·`));
+            assert.match(lines, /^\S/);
             assert.equal(component.render(200).length, 1);
           }
           if (state === "partial")
@@ -544,29 +544,19 @@ test("compact rows show contextual counts and outcomes, with payloads only expan
     bold: (text: string) => text,
   };
   for (const [name, args, header, expected] of [
-    [
-      "mcp_search",
-      { query: "" },
-      "mcp_search (all)",
-      "mcp_search · 50 shown · 55 matches",
-    ],
-    [
-      "mcp_search",
-      { query: "24" },
-      'mcp_search "24"',
-      "mcp_search · 1 shown · 1 matches · 24",
-    ],
+    ["mcp_search", { query: "" }, "mcp_search", "50 shown, 55 matches"],
+    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 shown, 1 match"],
     [
       "mcp_describe",
       { name: "example.lookup_0" },
       "mcp_describe example.lookup_0",
-      "mcp_describe · schema read · example.lookup_0",
+      "",
     ],
     [
       "mcp_call",
       { name: "example.lookup_0", arguments: { query: "secret-value" } },
-      "mcp_call example.lookup_0 (query)",
-      "mcp_call · returned · example.lookup_0",
+      "mcp_call example.lookup_0",
+      "",
     ],
   ] as const) {
     const tool = a.tools.get(name);
@@ -629,7 +619,7 @@ test("unknown-outcome warning remains collapsed even when the error preview is l
   )
     .render(48)
     .join("\n");
-  assert.equal(collapsed, "mcp_call · failed; unknown effects; no replay");
+  assert.equal(collapsed, "failed; unknown effects; no replay");
   assert.doesNotMatch(collapsed, /example-log/);
   const expanded = renderer.renderResult!(
     result,

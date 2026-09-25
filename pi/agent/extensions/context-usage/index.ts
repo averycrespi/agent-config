@@ -243,7 +243,7 @@ export function renderContextReport(
 ): string {
   const currentTokens = report.reportedTokens ?? report.estimatedTokens;
   const percent = report.contextWindow
-    ? ` · ${formatPercent(currentTokens, report.contextWindow)}`
+    ? ` (${formatPercent(currentTokens, report.contextWindow)})`
     : "";
   const header = `Context usage: ${formatTokens(currentTokens)}${report.contextWindow ? ` / ${formatTokens(report.contextWindow)}` : ""} tokens${percent}`;
   const lines = [
@@ -260,7 +260,7 @@ export function renderContextReport(
     lines.push(
       `${index + 1}. ${preview(group.label).padEnd(42)} ${formatTokens(group.tokens).padStart(7)}  ${formatPercent(group.tokens, totalForShare).padStart(4)}  ${suffix}`,
     );
-    if (detailed) lines.push(`   e.g. ${group.examples.join(" · ")}`);
+    if (detailed) lines.push(`   e.g. ${group.examples.join(", ")}`);
   });
 
   const toolResultCalls = report.toolResultCalls.slice(

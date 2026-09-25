@@ -112,7 +112,7 @@ export class IdleController {
         ? ["Automatic action disabled by invalid configuration or metadata."]
         : []),
       attempt
-        ? `Last attempt: ${new Date(attempt.at).toISOString()} · ${outcome}`
+        ? `Last attempt: ${new Date(attempt.at).toISOString()} (${outcome})`
         : "Last attempt: none",
       "Incomplete built-in dialog visibility and non-operation-scoped cancellation remain; see idle-compaction README.",
     ].join("\n");

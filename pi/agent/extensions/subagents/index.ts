@@ -473,9 +473,19 @@ export async function runParallelSpawn(
             undefined,
           ) ?? null,
       };
-      const snapshot = JSON.stringify({ progress, result });
+      const activity =
+        specs.length === 1
+          ? {
+              started: 1,
+              completed: progress.completed,
+              failed: progress.failed,
+              profile: specs[0]!.profile,
+              phase: (states[0]!.activeTool || states[0]!.phase).slice(0, 120),
+            }
+          : undefined;
+      const snapshot = JSON.stringify({ progress, result, activity });
       if (snapshot !== lastSnapshot) {
-        report({ progress, result });
+        report({ progress, result, ...(activity ? { activity } : {}) });
         lastSnapshot = snapshot;
       }
     }

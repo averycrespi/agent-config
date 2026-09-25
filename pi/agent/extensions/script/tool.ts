@@ -2,7 +2,12 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { stripVTControlCharacters } from "node:util";
-import { getTruncatedText, plural, toolSummary } from "../_shared/render.ts";
+import {
+  getTruncatedText,
+  plural,
+  toolCall,
+  outcomeLine,
+} from "../_shared/render.ts";
 import {
   isBackgroundControl,
   renderExecutionResult,
@@ -149,7 +154,7 @@ const providerNames = (value: unknown) =>
 function providerLabel(args: { action?: unknown; providers?: unknown }) {
   const names = providerNames(args.providers);
   const label = args.action === "describe" ? "scope" : "providers";
-  if (!names) return `${label}: pending`;
+  if (!names) return "";
   if (!names.length)
     return `${label}: ${args.action === "describe" ? "all" : "none"}`;
   return `${label}: ${names.slice(0, 3).join(", ")}${names.length > 3 ? `, +${names.length - 3} more` : ""}`;
@@ -162,16 +167,20 @@ export const renderers: Pick<
   renderCall(args, theme, ctx) {
     if (isBackgroundControl("script", args))
       return getTruncatedText(ctx.lastComponent, [
-        toolSummary(
-          theme,
-          "script",
-          args.action ?? "run",
-          "",
-          args.description,
-        ),
+        toolCall(theme, "script", args.action ?? "run", args.description),
       ]);
     return getTruncatedText(ctx.lastComponent, [
-      `${theme.fg("toolTitle", theme.bold("script"))} ${theme.fg("muted", `${display(args.action) || "run"} · ${providerLabel(args)} · ${display(args.description) || "bounded execution"}`)}`,
+      toolCall(
+        theme,
+        "script",
+        display(args.action) || "run",
+        args.action === "list" || args.action === "validate"
+          ? args.name
+          : args.description,
+        args.action === "run" || args.action === "describe"
+          ? providerLabel(args)
+          : "",
+      ),
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
@@ -185,9 +194,10 @@ export const renderers: Pick<
       const entries = Array.isArray(d?.entries) ? d.entries : [];
       const failed = ctx.isError || d?.scriptError === true;
       const lines = [
-        theme.fg(
-          isPartial ? "warning" : failed ? "error" : "success",
-          `${display(args.action)} · ${isPartial ? "checking..." : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : `${entries.length} saved script(s)`}${d?.truncated ? " · truncated" : ""}`,
+        outcomeLine(
+          theme,
+          `${isPartial ? "checking..." : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : `${entries.length} saved script(s)`}${d?.truncated ? "; truncated" : ""}`,
+          isPartial ? "warning" : failed ? "error" : "muted",
         ),
       ];
       if (expanded)
@@ -195,7 +205,7 @@ export const renderers: Pick<
           lines.push(
             theme.fg(
               entry.valid ? "muted" : "error",
-              `${display(entry.name ?? entry.filename)} · ${entry.valid ? "valid" : display(entry.diagnostic)}`,
+              `${display(entry.name ?? entry.filename)} (${entry.valid ? "valid" : display(entry.diagnostic)})`,
             ),
           );
       return getTruncatedText(ctx.lastComponent, lines);
@@ -239,20 +249,24 @@ export const renderers: Pick<
             : d?.code === "capability_denied" && !d?.effectsMayPersist
               ? "blocked"
               : "failed";
-      summary = `${state} · ${info?.summary ?? (d?.code ? display(d.code) : "tool execution error")}`;
+      summary = `${state}: ${info?.summary ?? (d?.code ? display(d.code) : "tool execution error")}`;
     } else if (action === "describe") {
       summary =
         d?.providerCount === 0
-          ? "completed · no permitted providers discovered"
+          ? "completed (no permitted providers discovered)"
           : typeof d?.providerCount === "number" &&
               typeof d?.methodCount === "number"
-            ? `completed · ${plural(d.providerCount, "provider")} · ${plural(d.methodCount, "method")}`
-            : "completed · provider discovery";
+            ? `completed (${plural(d.providerCount, "provider")}, ${plural(d.methodCount, "method")})`
+            : "completed (provider discovery)";
     } else if (calls === 0) {
-      summary = "completed · no calls";
-    } else summary = `completed · ${plural(succeeded, "call")} succeeded`;
+      summary = "completed (no calls)";
+    } else summary = `completed (${plural(succeeded, "call")} succeeded)`;
     const lines = [
-      theme.fg(isPartial ? "warning" : failed ? "error" : "success", summary),
+      outcomeLine(
+        theme,
+        summary,
+        isPartial ? "warning" : failed ? "error" : "muted",
+      ),
     ];
     if (d?.outcomeUnknown)
       lines.push(
@@ -295,14 +309,14 @@ export const renderers: Pick<
         lines.push(
           theme.fg(
             "muted",
-            `${plural(calls, "call")} attempted · ${succeeded} succeeded`,
+            `${plural(calls, "call")} attempted, ${succeeded} succeeded`,
           ),
         );
       for (const t of traces) {
         lines.push(
           theme.fg(
             "muted",
-            `${display(t.id)} ${display(t.tool)} · ${display(t.state)} · ${display(t.durationMs)}ms${t.code ? ` · ${display(t.code)}` : ""}`,
+            `${display(t.id)} ${display(t.tool)} (${display(t.state)}, ${display(t.durationMs)}ms${t.code ? `, ${display(t.code)}` : ""})`,
           ),
         );
         const callInfo = diagnostic(t.code, "run");

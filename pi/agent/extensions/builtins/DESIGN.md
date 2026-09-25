@@ -49,13 +49,11 @@ Preserve these invariants:
 
 The renderers optimize the terminal transcript for scanability:
 
-- Calls show one compact label.
-- Partial results show a short running message plus elapsed time from shared partial-timer helpers.
-- Errors show contextual failure plus recognized stock-owned status suffixes/filesystem error classes. Bash exit, timeout, abort and termination remain distinct; arbitrary diagnostic text stays expanded. Classification is confined to the stock wrappers, not reused to interpret external payload prose.
-- Settled results show one contextual tool/outcome/count line, not raw head/tail previews. Stock truncation indicators remain visible; bounded expanded text preserves evidence without mutating results.
-- Width-aware output should go through `getTruncatedText(context.lastComponent, lines)` to avoid accidental wrapping.
-
-Tool-specific summaries are intentionally simple: `read` confirms a read, `bash` reports completed output-line count without echoing the command, `ls`/`find`/`grep` report nonempty output-line counts rather than guessing inventory or match counts from context/diagnostic lines. `toolSummary` computes optional target space at render width, sanitizes before styling, and preserves status first.
+- Call labels preserve pre-CONFIG-33 builtin identity: `read`/`ls` use cwd-relative paths; `find`/`grep` show pattern and search scope; `bash` shows a bounded single-line command preview. All dynamic fields are sanitized and credential-shaped strings redacted before styling. This is not general secret detection; sensitive commands/output should not be placed in display surfaces.
+- Partial results use the original tool-specific verbs and elapsed timers, cleared on every settled path.
+- Ordinary `read` success returns an empty result component. `bash` shows up to three trailing nonempty output lines; `ls`/`find` show up to three leading lines with a remainder count; `grep` reports its legacy nonempty output-line count, not a verified match count. The exact stock no-match phrase maps to `no matches` rather than a misleading one-match count.
+- Errors retain stock-owned closed status classes instead of arbitrary exception prose, which could contain secrets. Bash exit, timeout and abort remain distinct. Sanitized result previews preserve the visible legacy layout without changing model-facing results or stock execution.
+- Width-aware output uses `getTruncatedText(context.lastComponent, lines)`; terminal controls stay out of styled fields.
 
 ## Boundaries and non-goals
 

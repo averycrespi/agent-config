@@ -10,7 +10,7 @@ Results are `User selected: <1-based index>. <label>`, `User wrote: <text>`, or 
 
 ## UI behavior
 
-Transcript calls show option count rather than question text. Settled results use one contextual line for `answered · option N`, `answered · custom response`, cancellation or failure; an answer is never relabelled approval. Expand for question/options or the retained answer. The pending choice form remains multiline and legible; dynamic labels are sanitized before styling.
+Transcript calls show the action and parenthesized option count rather than question text. Flush-left settled results show `answered (option N)`, `answered (custom response)`, cancellation or failure; an answer is never relabelled approval. Expand for question/options or the retained answer. The pending choice form remains multiline and legible; dynamic labels are sanitized before styling.
 
 Up/Down selects an option; Enter submits; Escape cancels. The free-text editor accepts nonempty text; Escape returns to the choices without canceling. Recommended options are labelled. While the custom UI is open, balanced `herdr:blocked` events report the wait to an installed Herdr integration. Noninteractive execution returns an error; unsupported RPC custom UI does not fabricate an answer.
 

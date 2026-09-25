@@ -29,8 +29,8 @@ test("scheduled task summaries use typed outcomes and never preview task bodies 
   const tool = capture(registerScheduledTasksTool);
   const cases: any[] = [
     ["list", [{ id: "demo" }], "1 tasks", false],
-    ["read", { id: "demo", body: "PRIVATE" }, "read", false],
-    ["logs", undefined, "read", false],
+    ["read", { id: "demo", body: "PRIVATE" }, "", false],
+    ["logs", undefined, "", false],
     [
       "validate",
       [{ ok: true, warnings: [] }],
@@ -66,12 +66,16 @@ test("scheduled task summaries use typed outcomes and never preview task bodies 
       theme,
       context,
     );
-    assert.equal(compact.render(120).length, 1);
-    assert.match(compact.render(120)[0], new RegExp(expected));
-    assert.doesNotMatch(compact.render(120)[0], /PRIVATE|retained evidence/);
+    assert.equal(compact.render(120).length, expected ? 1 : 0);
+    if (expected) assert.match(compact.render(120)[0], new RegExp(expected));
+    assert.doesNotMatch(
+      compact.render(120).join("\n"),
+      /PRIVATE|retained evidence/,
+    );
     assert.equal(colors.includes("error"), failed);
     for (const width of [1, 20, 48, 80])
-      assert.ok(visibleWidth(compact.render(width)[0]) <= width);
+      for (const line of compact.render(width))
+        assert.ok(visibleWidth(line) <= width);
     if (action === "run" && !failed)
       assert.match(compact.render(48)[0], /started, not completed/);
     assert.match(
@@ -125,7 +129,7 @@ test("mixed task inventories expose invalid entries even when the first entry is
     })
     .render(100);
   assert.equal(row.length, 1);
-  assert.match(row[0], /request failed · 1 invalid/);
+  assert.match(row[0], /request failed \(1 invalid\)/);
   assert.doesNotMatch(row[0], /2 tasks|PRIVATE_PARSE_ERROR/);
   assert.ok(colors.includes("error"));
   assert.ok(!colors.includes("success"));
@@ -143,9 +147,9 @@ test("handoff renderers hide content, preserve marker warnings, and distinguish 
     const row = tool
       .renderResult(result, { expanded: false }, theme, ctx)
       .render(120);
-    assert.equal(row.length, 1);
-    assert.match(row[0], action === "read" ? /· read/ : /· updated/);
-    assert.doesNotMatch(row[0], /PRIVATE/);
+    assert.equal(row.length, action === "read" ? 0 : 1);
+    if (action !== "read") assert.match(row[0], /updated/);
+    assert.doesNotMatch(row.join("\n"), /PRIVATE/);
   }
   const warning = tool
     .renderResult(

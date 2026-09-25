@@ -17,7 +17,40 @@ import {
   singleLineCommand,
   startPartialTimer,
   tailNonEmptyLines,
+  toolCall,
+  outcomeLine,
 } from "./render.ts";
+
+const plainTheme: any = {
+  fg: (_: string, text: string) => {
+    assert.doesNotMatch(text, /[\p{Cc}\p{Cf}]/u);
+    return text;
+  },
+  bold: (text: string) => text,
+};
+
+test("tool call and outcome omit absent sections and sanitize before styling", () => {
+  assert.equal(
+    toolCall(plainTheme, "mailbox", "list", "project"),
+    "mailbox list project",
+  );
+  assert.equal(
+    toolCall(plainTheme, "web_fetch", "", "example.com"),
+    "web_fetch example.com",
+  );
+  assert.equal(
+    toolCall(
+      plainTheme,
+      "script",
+      "run",
+      "Demo\n\x1b[31mjob",
+      "providers: web",
+    ),
+    "script run Demo job (providers: web)",
+  );
+  assert.equal(outcomeLine(plainTheme, "done\n\x1b[31mnow"), "done now");
+  assert.equal(outcomeLine(plainTheme, ""), "");
+});
 
 test("firstLine returns the first non-empty trimmed line", () => {
   assert.equal(firstLine("  hello\nworld"), "hello");

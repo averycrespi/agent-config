@@ -5,15 +5,16 @@ import {
   getTruncatedText,
   partialElapsed,
   plural,
-  toolSummary,
+  toolCall,
+  outcomeLine,
 } from "../_shared/render.ts";
 
 function urlLabel(value: unknown): string {
   try {
     const url = new URL(String(value));
-    return url.origin === "null" ? "URL" : displayLabel(url.origin);
+    return url.origin === "null" ? "" : displayLabel(url.origin);
   } catch {
-    return "URL";
+    return "";
   }
 }
 export function webRenderers(name: "web_search" | "web_fetch") {
@@ -22,7 +23,14 @@ export function webRenderers(name: "web_search" | "web_fetch") {
   return {
     renderCall(args: any, theme: any, context: any) {
       return getTruncatedText(context.lastComponent, [
-        toolSummary(theme, name, "", "", target(args)),
+        toolCall(
+          theme,
+          name,
+          "",
+          name === "web_search" && target(args)
+            ? `"${target(args)}"`
+            : target(args),
+        ),
       ]);
     },
     renderResult(
@@ -53,21 +61,29 @@ export function webRenderers(name: "web_search" | "web_fetch") {
                 : typeof d?.pageCount === "number"
                   ? `${plural(d.pageCount, "page")} read`
                   : "page read";
+      const summary =
+        !isPartial &&
+        !failed &&
+        !unknown &&
+        ["results read", "repository read", "page read"].includes(outcome)
+          ? ""
+          : outcome;
       return getTruncatedText(context.lastComponent, [
-        toolSummary(
-          theme,
-          name,
-          "",
-          outcome + (d?.spilled ? " · retained output" : ""),
-          target(context.args),
-          isPartial
-            ? "warning"
-            : failed
-              ? "error"
-              : unknown
-                ? "warning"
-                : "success",
-        ),
+        ...(summary || d?.spilled
+          ? [
+              outcomeLine(
+                theme,
+                [summary, d?.spilled ? "retained output" : ""]
+                  .filter(Boolean)
+                  .join("; "),
+                isPartial || unknown || d?.spilled
+                  ? "warning"
+                  : failed
+                    ? "error"
+                    : "muted",
+              ),
+            ]
+          : []),
         ...(expanded ? expandedResult(result) : []),
       ]);
     },

@@ -380,6 +380,39 @@ test("parallel spawn forwards sanitized requests and returns intent-first metada
   }
 });
 
+test("single background child reports profile and safe live tool identity", async () => {
+  mock.method(_runSubagent, "fn", async (request: any) => {
+    request.onEvent?.({
+      type: "tool_execution_start",
+      toolName: "read",
+      args: { path: "/private/path" },
+    });
+    return okOutcome();
+  });
+  try {
+    const updates: any[] = [];
+    await runParallelSpawn(
+      [valid({ profile: "fast" })],
+      config,
+      ctx,
+      "call",
+      undefined,
+      createConcurrencyGate(1),
+      undefined,
+      (update) => updates.push(update),
+    );
+    assert.ok(updates.some((update) => update.activity?.profile === "fast"));
+    assert.ok(updates.some((update) => update.activity?.phase === "read"));
+    assert.ok(
+      updates.every(
+        (update) => !JSON.stringify(update.activity).includes("/private/path"),
+      ),
+    );
+  } finally {
+    mock.restoreAll();
+  }
+});
+
 test("parallel spawn returns combined nested model usage including failed children", async () => {
   mock.method(_runSubagent, "fn", async (request: any) => {
     request.onEvent?.({

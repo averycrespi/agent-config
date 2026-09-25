@@ -190,7 +190,7 @@ test("session_start subscribes widget updates and tool mutations render aboveEdi
   const last = pi._widgetCalls[pi._widgetCalls.length - 1];
   assert.deepEqual(last, {
     key: "todo",
-    lines: ["─".repeat(32), "[ ] Write code · index.ts"],
+    lines: ["─".repeat(32), "[ ] Write code (index.ts)"],
     options: { placement: "aboveEditor" },
     usedFactory: true,
   });

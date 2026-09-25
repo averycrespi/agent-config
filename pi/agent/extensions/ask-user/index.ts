@@ -27,7 +27,8 @@ import {
   displayLabel,
   expandedResult,
   getTruncatedText,
-  toolSummary,
+  toolCall,
+  outcomeLine,
 } from "../_shared/render.ts";
 import { OTHER_LABEL, validateAskParams } from "./validate.ts";
 
@@ -401,7 +402,7 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, context) {
       const options = Array.isArray(args.options) ? args.options : [];
       return getTruncatedText(context.lastComponent, [
-        toolSummary(theme, "ask_user", "choice", `${options.length} options`),
+        toolCall(theme, "ask_user", "choice", "", `${options.length} options`),
         ...(context.expanded
           ? [
               displayLabel(args.question, 2000),
@@ -427,20 +428,17 @@ export default function (pi: ExtensionAPI) {
             : details.cancelled
               ? "cancelled"
               : details.isCustom
-                ? "answered · custom response"
-                : `answered · option ${details.answerIndex ?? "selected"}`;
+                ? "answered (custom response)"
+                : `answered (option ${details.answerIndex ?? "selected"})`;
       return getTruncatedText(context.lastComponent, [
-        toolSummary(
+        outcomeLine(
           theme,
-          "ask_user",
-          "",
           state,
-          "",
           failed
             ? "error"
             : isPartial || details?.cancelled || !details
               ? "warning"
-              : "success",
+              : "muted",
         ),
         ...(expanded ? expandedResult(result) : []),
       ]);

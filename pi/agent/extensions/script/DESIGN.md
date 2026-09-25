@@ -49,7 +49,7 @@ The 24,000-byte result limit is deliberately smaller than IPC bounds and leaves 
 
 Discovery failures retain only known core categories (or `discovery_unavailable`), plus cancellation derived from the owned signal. They return semantic-error details through the same `tool_result` promotion as execution failures; raw exceptions never enter content or renderers. Oversized discovery is distinct from oversized explicit JSON, so guidance does not confuse narrowing discovery with replaying execution.
 
-Background controls use the shared display-only `background/render.ts` projection: one contextual outcome line, no provider placeholder, and full retained evidence only on expansion. The foreground renderer remains separate and unchanged.
+Background controls use the shared display-only `background/render.ts` projection: a flush-left outcome without repeated call identity, no provider placeholder, and full retained evidence only on expansion. Foreground calls use action/description with optional parenthesized provider selection; settled rows keep safe host accounting and warnings separate.
 
 Foreground rendering consumes host accounting and `context.args`, not source or result payloads. Selection labels describe the request, not effective authority. Discovery details retain only namespace/method names and counts, not duplicate schemas. Expanded rows show bounded inventories, traces, and static guidance; collapsed rows prioritize outcomes and partial/unknown warnings over zero-call accounting. No renderer performs discovery, grants access, or adds live-session state.
 

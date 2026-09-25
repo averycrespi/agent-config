@@ -10,6 +10,41 @@ const theme: any = {
   },
   bold: (s: string) => s,
 };
+test("routine web fetch has no collapsed result, but retained output remains visible", () => {
+  const renderer = webRenderers("web_fetch");
+  const context: any = {
+    args: { url: "https://example.com/page" },
+    state: {},
+    invalidate() {},
+  };
+  const result = {
+    content: [{ type: "text", text: "framed content" }],
+    details: {},
+  };
+  const call = renderer.renderCall(context.args, theme, context).render(120);
+  assert.deepEqual(call, ["web_fetch https://example.com"]);
+  assert.deepEqual(renderer.renderCall({}, theme, context).render(120), [
+    "web_fetch",
+  ]);
+  assert.deepEqual(
+    renderer
+      .renderResult(result, { isPartial: false }, theme, context)
+      .render(120),
+    [],
+  );
+  assert.deepEqual(
+    renderer
+      .renderResult(
+        { ...result, details: { spilled: true } },
+        { isPartial: false },
+        theme,
+        context,
+      )
+      .render(120),
+    ["retained output"],
+  );
+});
+
 for (const name of ["web_search", "web_fetch"] as const)
   test(`${name} hides previews, sanitizes before styling and preserves expanded trust framing`, () => {
     const renderer = webRenderers(name);

@@ -399,7 +399,7 @@ test("snapshot rendering is intent-first and metadata-rich", () => {
     finishedAt: 2000,
   };
   const lines = renderSnapshot(snapshot, theme, { final: true });
-  assert.ok(lines.includes("✓ Search docs · 1s"));
+  assert.ok(lines.includes("✓ Search docs 1s"));
   assert.ok(lines.includes("  fast (web)"));
   assert.ok(
     lines.every(
@@ -451,7 +451,7 @@ test("snapshot keeps agents in start order directly beneath the title", () => {
   };
 
   const lines = renderSnapshot(snapshot, theme);
-  assert.match(lines[0], /^workflow run ordered/);
+  assert.match(lines[0], /^work, 1 done, 1 running/);
   assert.deepEqual(
     lines
       .filter((line) => /(Oldest done|Middle failed|Newest running)/.test(line))
@@ -487,7 +487,7 @@ test("workflow widget title uses a concise failed count", () => {
   };
 
   const [title] = renderSnapshot(snapshot, theme);
-  assert.match(title, /0 done · 1 running · 0 failed/);
+  assert.match(title, /0 done, 1 running, 0 failed/);
   assert.doesNotMatch(title, /agents? failed/);
 });
 
@@ -539,7 +539,7 @@ test("workflow default rendering shows progress and inventory without diagnostic
       theme,
       context,
     ).render(200),
-    [],
+    ["workflow run research"],
   );
 
   const snapshot = workflowSnapshot({
@@ -560,7 +560,7 @@ test("workflow default rendering shows progress and inventory without diagnostic
       context,
     ).render(200);
     if (isPartial) stopRendererTimer(context);
-    assert.ok(lines.some((line) => line.startsWith("✓ Search docs · ")));
+    assert.ok(lines.some((line) => line.startsWith("✓ Search docs ")));
     assert.doesNotMatch(lines.join("\n"), /Logs|agent\.log|provider warning/);
   }
 
@@ -577,7 +577,7 @@ test("workflow default rendering shows progress and inventory without diagnostic
     theme,
     context,
   ).render(200);
-  assert.ok(errorLines.some((line) => line.startsWith("✓ Search docs · ")));
+  assert.ok(errorLines.some((line) => line.startsWith("✓ Search docs ")));
   assert.doesNotMatch(errorLines.join("\n"), /Recovery:|recovery\.gz/);
 
   const inputError = renderWorkflowResult(
@@ -609,8 +609,7 @@ test("workflow default rendering shows progress and inventory without diagnostic
     theme,
     context,
   ).render(200);
-  assert.ok(listLines.includes("✓ research — Research"));
-  assert.ok(listLines.includes("✗ broken"));
+  assert.deepEqual(listLines, ["2 saved"]);
   assert.doesNotMatch(listLines.join("\n"), /store \/workflows|bad metadata/);
 
   const validateLines = renderWorkflowResult(
@@ -626,7 +625,7 @@ test("workflow default rendering shows progress and inventory without diagnostic
     theme,
     context,
   ).render(200);
-  assert.deepEqual(validateLines, ["✓ workflow validate research"]);
+  assert.deepEqual(validateLines, ["validated (not executed)"]);
 });
 
 test("expanded workflows preserve default progress and add diagnostics", () => {
@@ -725,7 +724,7 @@ test("expanded workflows preserve default progress and add diagnostics", () => {
     if (item.partial) stopRendererTimer(context);
     assert.equal(expandedLines[0], defaultLines[0], item.label);
     const isProgressLine = (line: string) =>
-      /^(?:✓|✗|!|●|○|…) (?:Search docs|Audit sources) · /.test(line) ||
+      /^(?:✓|✗|!|●|○|…) (?:Search docs|Audit sources) /.test(line) ||
       /^  (?:fast|balanced)/.test(line);
     assert.deepEqual(
       expandedLines.filter(isProgressLine),
@@ -747,7 +746,7 @@ test("workflow summaries use explicit action grammar", () => {
   );
   assert.equal(
     running.render(200)[0],
-    "workflow run research · search · 1 done · 0 running · 0 failed · 12s",
+    "search, 1 done, 0 running, 0 failed, 12s",
   );
   stopRendererTimer(context);
 
@@ -757,10 +756,7 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     context,
   );
-  assert.equal(
-    success.render(200)[0],
-    "✓ workflow run research · 1 done · 0 failed · 12s",
-  );
+  assert.equal(success.render(200)[0], "✓ 1 done, 0 failed, 12s");
 
   const partialFailure = renderWorkflowResult(
     {
@@ -790,7 +786,7 @@ test("workflow summaries use explicit action grammar", () => {
   );
   assert.equal(
     partialFailure.render(200)[0],
-    "! workflow run research · 1 done · 1 agent failed · 1 branch failed · 12s",
+    "! 1 done, 1 agent failed, 1 branch failed, 12s",
   );
 
   const failure = renderWorkflowResult(
@@ -814,7 +810,7 @@ test("workflow summaries use explicit action grammar", () => {
   );
   assert.equal(
     failure.render(200)[0],
-    "✗ workflow run research · workflow_timeout · 1 done · 1 failed · 1 timed out · 12s — timed out",
+    "✗ workflow_timeout, 1 done, 1 failed, 1 timed out, 12s — timed out",
   );
 
   const list = renderWorkflowResult(
@@ -829,7 +825,47 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     rendererContext({ action: "list", name: undefined }),
   );
-  assert.equal(list.render(200)[0], "✓ workflow list · 1 saved");
+  assert.deepEqual(list.render(200), ["1 saved"]);
+  assert.deepEqual(
+    renderWorkflowResult(
+      {
+        content: [],
+        details: {
+          action: "list",
+          inventory: { entries: [], truncated: "more saved workflows" },
+        },
+      },
+      { expanded: false },
+      theme,
+      rendererContext({ action: "list" }),
+    ).render(200),
+    ["0 saved (truncated)"],
+  );
+  assert.equal(
+    renderWorkflowCall(
+      { action: "list" },
+      theme,
+      rendererContext({ action: "list" }),
+    ).render(200)[0],
+    "workflow list",
+  );
+  assert.match(
+    renderWorkflowResult(
+      {
+        content: [],
+        details: {
+          action: "list",
+          inventory: { entries: [{ name: "research", valid: true }] },
+        },
+      },
+      { expanded: true },
+      theme,
+      rendererContext({ action: "list" }),
+    )
+      .render(200)
+      .join("\n"),
+    /✓ research/,
+  );
 
   const validate = renderWorkflowResult(
     {
@@ -840,7 +876,7 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     rendererContext({ action: "validate" }),
   );
-  assert.deepEqual(validate.render(200), ["✓ workflow validate research"]);
+  assert.deepEqual(validate.render(200), ["validated (not executed)"]);
 });
 
 test("workflow agent rows keep timeout before the volatile tool", () => {
@@ -870,11 +906,11 @@ test("workflow agent rows keep timeout before the volatile tool", () => {
   const lines = renderSnapshot(snapshot, theme);
   assert.match(
     lines.find((line) => line.startsWith("● Search docs")) ?? "",
-    /^● Search docs · \d+s · 3 tool uses · 7\.2k tokens$/,
+    /^● Search docs \d+s, 3 tool uses, 7\.2k tokens$/,
   );
   assert.equal(
     lines.find((line) => line.startsWith("  fast")),
-    "  fast (web) · timeout 30s · web_fetch",
+    "  fast (web), timeout 30s, web_fetch",
   );
 });
 
@@ -892,9 +928,9 @@ test("workflow headers and fallback agent rows mute every separator", () => {
     final: true,
   });
   assert.deepEqual(lines, [
-    "✓ [*workflow*] run research{ · }{1 done · 0 failed · 12s}",
+    "✓ {1 done, 0 failed, 12s}",
     "",
-    "✓ Search docs{ · }{12s}",
+    "✓ Search docs{ }{12s}",
     "  {fast (web)}",
   ]);
 });
@@ -923,7 +959,7 @@ test("workflow renderers truncate controls and narrow widths", () => {
     theme,
     context,
   );
-  assert.deepEqual(result.render(200), ["✓ workflow validate valid"]);
+  assert.deepEqual(result.render(200), ["validated (not executed)"]);
 
   const hostilePolicy = renderSnapshot(
     workflowSnapshot({

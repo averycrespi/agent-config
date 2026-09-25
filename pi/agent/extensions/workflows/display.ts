@@ -5,7 +5,7 @@ import {
   getResultText,
   getTruncatedText,
   startPartialTimer,
-  toolSummary,
+  toolCall,
 } from "../_shared/render.ts";
 import { agentProgressLines } from "../subagents/render.ts";
 import {
@@ -27,16 +27,6 @@ function safeDisplay(value: unknown): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_DISPLAY_CHARS);
-}
-
-function separator(theme: any): string {
-  return theme.fg("muted", " · ");
-}
-
-function workflowIdentity(theme: any, action: string, name?: string): string {
-  const title = theme.fg("toolTitle", theme.bold("workflow"));
-  const safeName = name ? ` ${safeDisplay(name)}` : "";
-  return `${title} ${safeDisplay(action)}${safeName}`;
 }
 
 function statusPrefix(
@@ -104,8 +94,7 @@ function workflowSummaryLine(
         options.error ? "error" : hasFailures ? "warning" : "success",
       )
     : "";
-  const identity = workflowIdentity(theme, "run", snapshot.meta?.name);
-  return `${status}${identity}${separator(theme)}${theme.fg("muted", parts.join(" · "))}`;
+  return `${status}${theme.fg("muted", parts.join(", "))}`;
 }
 
 function errorSummaryLine(
@@ -113,13 +102,7 @@ function errorSummaryLine(
   details: any,
   text: string,
   theme: any,
-  context: any,
 ): string {
-  const input = context.args as { action?: string; name?: string } | undefined;
-  const action = safeDisplay(details?.action ?? input?.action ?? "run");
-  const name = safeDisplay(
-    snapshot?.meta?.name ?? details?.meta?.name ?? input?.name,
-  );
   const code = safeDisplay(
     details?.errorCode ??
       (details?.inputError
@@ -128,7 +111,7 @@ function errorSummaryLine(
           ? "invalid definition"
           : details?.artifactError
             ? "artifact error"
-            : `${action} failed`),
+            : "request failed"),
   );
   const parts = [code];
   const counts = details?.counts as
@@ -159,7 +142,7 @@ function errorSummaryLine(
   const suffix = message
     ? `${theme.fg("muted", " — ")}${theme.fg("error", message)}`
     : "";
-  return `${statusPrefix(theme, "error")}${workflowIdentity(theme, action, name || undefined)}${separator(theme)}${theme.fg("muted", parts.join(" · "))}${suffix}`;
+  return `${statusPrefix(theme, "error")}${theme.fg("muted", parts.join(", "))}${suffix}`;
 }
 
 function safeAgentActivity(
@@ -228,7 +211,7 @@ function agentLines(
     );
   }
   if (metadata.length > 0) {
-    lines.push(theme.fg("dim", `  ${metadata.join(" · ")}`));
+    lines.push(theme.fg("dim", `  ${metadata.join(", ")}`));
   }
   return lines;
 }
@@ -281,7 +264,7 @@ function renderSnapshotDetails(
         `↑ ${hiddenSettled.length} earlier agent${hiddenSettled.length === 1 ? "" : "s"} hidden`,
         ...(done > 0 ? [`${done} done`] : []),
         ...(failed > 0 ? [`${failed} failed`] : []),
-      ].join(" · ");
+      ].join(", ");
       lines.push(theme.fg("dim", hiddenSummary));
     }
     lines.push(
@@ -321,23 +304,15 @@ export function renderSnapshot(
 function actionSummaryLine(
   theme: any,
   status: "success" | "warning",
-  action: string,
-  name: string | undefined,
-  parts: string[] = [],
+  parts: string[],
 ): string {
-  const suffix =
-    parts.length > 0
-      ? `${separator(theme)}${theme.fg("muted", parts.join(" · "))}`
-      : "";
-  return `${statusPrefix(theme, status)}${workflowIdentity(theme, action, name)}${suffix}`;
+  return theme.fg(status === "warning" ? "warning" : "muted", parts.join(", "));
 }
 
 export function renderWorkflowCall(params: any, theme: any, context: any) {
-  if (isBackgroundControl("workflow", params ?? {}))
-    return getTruncatedText(context.lastComponent, [
-      toolSummary(theme, "workflow", params?.action ?? "run", "", params?.name),
-    ]);
-  return getTruncatedText(context.lastComponent, []);
+  return getTruncatedText(context.lastComponent, [
+    toolCall(theme, "workflow", params?.action ?? "run", params?.name),
+  ]);
 }
 
 export function renderWorkflowResult(
@@ -373,16 +348,8 @@ export function renderWorkflowResult(
       });
       return getTruncatedText(context.lastComponent, lines);
     }
-    const input = context.args as
-      | { action?: string; name?: string }
-      | undefined;
-    const identity = workflowIdentity(
-      theme,
-      safeDisplay(input?.action ?? "run"),
-      input?.name,
-    );
     return getTruncatedText(context.lastComponent, [
-      `${identity}${separator(theme)}${theme.fg("muted", "starting")}`,
+      theme.fg("muted", "starting"),
     ]);
   }
 
@@ -394,13 +361,7 @@ export function renderWorkflowResult(
     text.startsWith("Invalid workflow input:")
   ) {
     const snapshot = result.details?.snapshot as WorkflowSnapshot | undefined;
-    const summary = errorSummaryLine(
-      snapshot,
-      result.details,
-      text,
-      theme,
-      context,
-    );
+    const summary = errorSummaryLine(snapshot, result.details, text, theme);
     if (!snapshot) {
       return getTruncatedText(context.lastComponent, [summary]);
     }
@@ -446,15 +407,12 @@ export function renderWorkflowResult(
         }
       | undefined;
     const entries = inventory?.entries ?? [];
-    const summary = actionSummaryLine(theme, "success", "list", undefined, [
-      `${entries.length} saved`,
+    const summary = actionSummaryLine(theme, "success", [
+      `${entries.length} saved${inventory?.truncated ? " (truncated)" : ""}`,
     ]);
     const lines = [summary];
-    if (expanded || entries.length > 0 || inventory?.truncated) {
-      lines.push("");
-      if (expanded) {
-        lines.push(`store ${safeDisplay(inventory?.storeDir ?? "unknown")}`);
-      }
+    if (expanded) {
+      lines.push("", `store ${safeDisplay(inventory?.storeDir ?? "unknown")}`);
       lines.push(
         ...entries.map((entry) => {
           const name = safeDisplay(entry.name ?? entry.filename);
@@ -474,8 +432,9 @@ export function renderWorkflowResult(
   }
 
   if (result.details?.action === "validate") {
-    const name = safeDisplay(result.details.meta?.name ?? "workflow");
-    const summary = actionSummaryLine(theme, "success", "validate", name);
+    const summary = actionSummaryLine(theme, "success", [
+      "validated (not executed)",
+    ]);
     const lines = [summary];
     if (expanded) {
       lines.push(
@@ -523,9 +482,7 @@ export function renderWorkflowResult(
     actionSummaryLine(
       theme,
       agentFailures > 0 || branchFailures > 0 ? "warning" : "success",
-      "run",
-      info?.meta?.name,
-      parts,
+      parts.length ? parts : ["completed"],
     ),
   ]);
 }

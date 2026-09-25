@@ -4,17 +4,17 @@ Preserve compact builtin tool rendering and compose active stock Pi tools throug
 
 ## Compacted tools
 
-All five tools use one contextual, unwrapped result line with a bold tool name, explicit outcome/count, muted metadata and optional plain-text target. Targets drop before status at narrow widths. Shell calls show `shell`, never the command body; file calls show cwd-relative paths and searches show bounded pattern/path labels.
+The five direct builtin tools use their pre-CONFIG-33 compact layout: a one-line call label, and tool-specific result previews. `read` stays silent on ordinary success; `bash` shows a single-line command preview and up to three trailing nonempty output lines. `ls` and `find` show up to three leading lines plus a remaining-line count, while `grep` shows a count (or `no matches`). Search result counts include context and notices; they are not guaranteed match/file counts. Only genuinely empty grep results use the exact stock `No matches found` phrase.
 
-| Tool   | Example settled result                                |
-| ------ | ----------------------------------------------------- |
-| `read` | `read · read · 24 output lines · file.ts`             |
-| `bash` | `bash · exited successfully · 3 output lines · shell` |
-| `ls`   | `ls · listed · 8 output lines · src`                  |
-| `find` | `find · listed · 4 output lines · *.ts in src`        |
-| `grep` | `grep · listed · 8 output lines · pattern in src`     |
+| Tool   | Example call                | Example settled result  |
+| ------ | --------------------------- | ----------------------- |
+| `read` | `read src/file.ts`          | no result line          |
+| `bash` | `bash git status -sb`       | last three output lines |
+| `ls`   | `ls src`                    | first three entries     |
+| `find` | `find *.ts in src`          | first three paths       |
+| `grep` | `grep /TODO/ in src (*.ts)` | `4 matches`             |
 
-Counts describe nonempty output lines, not a guessed match/file count when stock output contains context or diagnostics. Partial results retain explicit running state and existing elapsed timers. Errors retain closed stock classifications such as `failed · exit 7`, `failed · timed out`, `failed · aborted`, `not found` or `permission denied`, without previewing arbitrary output. Unrecognized diagnostics remain a generic failure with full details expanded. Stock truncation/limit indicators remain visible. Expand for bounded sanitized original text and diagnostics; full model-facing content and stock spill paths are unchanged. A display bound is disclosed rather than silently pretending to show the complete result.
+Partial results retain the original tool-specific verbs and elapsed timer. Errors keep closed stock classifications such as `Failed: exit 7`, `Failed: timed out`, and `Failed: not found` instead of exposing raw exception prose. Preview text is bounded and sanitized before styling; recognizable credential shapes are redacted, but this is not general secret detection. Avoid embedding secrets in commands or tool output. Full model-facing results and stock truncation/spill paths remain unchanged.
 
 ## Configuration
 

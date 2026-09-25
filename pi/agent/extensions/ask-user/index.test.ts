@@ -362,11 +362,11 @@ test("tool rows hide question/answer bodies, preserve cancellation, and expand e
         answerLabel: "PRIVATE",
         isCustom: false,
       },
-      "answered · option 1",
+      "answered (option 1)",
     ],
     [
       { cancelled: false, answerLabel: "PRIVATE", isCustom: true },
-      "answered · custom response",
+      "answered (custom response)",
     ],
     [undefined, "status unavailable"],
   ] as const) {
@@ -379,7 +379,7 @@ test("tool rows hide question/answer bodies, preserve cancellation, and expand e
       .renderResult(result, { expanded: false, isPartial: false }, theme, ctx)
       .render(120);
     assert.equal(row.length, 1);
-    assert.match(row[0], new RegExp(expected));
+    assert.equal(row[0], expected);
     assert.doesNotMatch(row[0], /PRIVATE|approved|approval/);
     assert.match(
       tool

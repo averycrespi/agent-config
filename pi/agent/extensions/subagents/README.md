@@ -33,7 +33,7 @@ Run returns promptly with one execution ID after complete child validation and d
 {"action":"dismiss","id":"<execution-id>"}
 ```
 
-Controls accept no agent or execution options. List omits result bodies; inspect retains input-aligned outcomes, structured values, prose, diagnostics and reported usage. Large results expose a JSON `resultFile`; use `read` to inspect the complete retained result. Each child has one Background row showing real settled/total and failed counts and one terminal notification. No polling is required for notification. Per-child output belongs in inspection, not extra widgets or notifications.
+Controls accept no agent or execution options. List omits result bodies; inspect retains input-aligned outcomes, structured values, prose, diagnostics and reported usage. Large results expose a JSON `resultFile`; use `read` to inspect the complete retained result. A single child has one Background row showing its intent, profile, time since admission and live phase or safe tool name instead of 0/1 settled; historical batches retain real settled/total and failed counts. One terminal notification follows. No polling is required for notification. Per-child output belongs in inspection, not extra widgets or notifications.
 
 Direct runs use the same FIFO capacity and mutable-child gate. All five capabilities remain available. Mutable children require explicit writable-delegation authority; the gate does **not** exclude parent edits or isolate checkouts. Queued cancellation launches no child; running cancellation aborts children and waits for process cleanup before terminal notification. Cancellation is not rollback. Session loss retains the last persisted partial outcomes/usage and conservative interruption evidence, aborts owned work, and never restarts children. Late callbacks cannot overwrite restored receipts; usage arriving after revocation cannot be recovered by this adapter.
 
@@ -122,7 +122,7 @@ Results use `## <intent>` headings followed by capability/profile metadata. `det
 
 ## UI
 
-Subagent run/list/inspect/cancel/dismiss use contextual one-line summaries with status and uncertainty before optional names. Full IDs, per-child output and retained evidence stay expanded; admission, cancellation requests and attention dismissal are distinct. The shared widget/notification uses singular `subagent` when typed progress identifies one child, otherwise `subagents`. New admissions use the child's bounded intent as their display label; historical batch labels retain their original child count. Rendering never consumes or accepts results.
+Subagent run/list/inspect/cancel/dismiss use contextual one-line summaries with status and uncertainty before optional names. Inspect/cancel/dismiss calls show the full requested ID; wake expansion and inspection retain it. Per-child output and retained evidence stay expanded; admission, cancellation requests and attention dismissal are distinct. The shared widget/notification uses singular `subagent` when typed progress identifies one child, otherwise `subagents`. New admissions use the child's bounded intent as their widget and wake label without a short ID by default; historical batch labels retain their original child count. Rendering never consumes or accepts results.
 
 The direct run returns an admission receipt; use inspection for the retained result, including child status, usage, diagnostic paths and structured/prose output. Dynamic labels are control-normalized, bounded and width-aware; prompts and raw logs are not rendered in compact rows.
 

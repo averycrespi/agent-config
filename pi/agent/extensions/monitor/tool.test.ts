@@ -60,31 +60,25 @@ const text = (details: DisplayDetails, expanded = false) =>
 const display = (r: Receipt) => summary(r);
 
 test("list counts distinguish active jobs, retained receipts and pending attention", () => {
-  assert.equal(
-    text({ action: "list", receipts: [] }),
-    "monitor list · no jobs",
-  );
+  assert.equal(text({ action: "list", receipts: [] }), "no jobs");
   const receipts = [
     display(receipt()),
     display(receipt({ status: "finished" })),
     display(receipt({ status: "cancelled" })),
   ];
-  assert.equal(
-    text({ action: "list", receipts }),
-    "monitor list · 1 active · 3 retained",
-  );
+  assert.equal(text({ action: "list", receipts }), "1 active, 3 retained");
   assert.match(
     text({ action: "list", receipts: receipts.slice(1) }),
-    /^monitor list · no active jobs · 2 retained$/,
+    /^no active jobs, 2 retained$/,
   );
-  assert.match(text({ action: "list", receipts }, true), /polling · CI check/);
+  assert.match(text({ action: "list", receipts }, true), /polling, CI check/);
   assert.doesNotMatch(text({ action: "list", receipts }), /CI check/);
 });
 
 test("start describes timer, recurrence, event and compound registrations without claiming completion", () => {
   for (const [patch, expected] of [
     [{}, "polling every 3s"],
-    [{ intervalMs: undefined, delayMs: 5000 }, "scheduled · in 5s"],
+    [{ intervalMs: undefined, delayMs: 5000 }, "scheduled in 5s"],
     [
       { intervalMs: undefined, delayMs: 5000, recurring: true, maxWakes: 2 },
       "every 5s after settlement",
@@ -94,7 +88,7 @@ test("start describes timer, recurrence, event and compound registrations withou
   ] as const) {
     const line = text({ action: "start", receipt: display(receipt(patch)) });
     assert.ok(line.includes(expected), line);
-    assert.match(line, /CI check.*timeout 18s/);
+    assert.match(line, /timeout 18s/);
     assert.doesNotMatch(line, /finished|success/);
   }
 });
@@ -173,7 +167,7 @@ test("polling warning is bounded, prominent, event-aware and display-safe", () =
 test("get shows selected job state, counters and honest terminal reasons", () => {
   assert.match(
     text({ action: "get", receipt: display(receipt()) }),
-    /monitor get · polling · CI check · 0 wakes · 4 evaluations/,
+    /polling, CI check, 0 wakes, 4 evaluations/,
   );
   const failed = receipt({
     status: "finished",
@@ -188,7 +182,7 @@ test("get shows selected job state, counters and honest terminal reasons", () =>
   });
   assert.match(
     text({ action: "get", receipt: display(failed) }),
-    /evaluation failed · script_error/,
+    /evaluation failed, script_error/,
   );
   assert.match(
     text({
@@ -219,11 +213,11 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   const r = receipt({ status: "cancelled" });
   assert.equal(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }),
-    "monitor cancel · cancelled · CI check",
+    "cancelled, CI check",
   );
   assert.equal(
     text({ action: "cancel", receipt: display(r), cancelChanged: false }),
-    "monitor cancel · already cancelled · CI check",
+    "already cancelled, CI check",
   );
   assert.match(
     text({
@@ -263,11 +257,11 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
 test("widgets label polling clocks, preserve name and distinguish deadline from expiry", () => {
   assert.equal(
     widgetLines([receipt()], now, 120, theme)[0],
-    "monitor polling · CI check · next check 3s · timeout 12s",
+    "monitor polling, CI check, next check 3s, timeout 12s",
   );
   assert.match(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
-    /checking · CI check · timeout 12s/,
+    /checking, CI check, timeout 12s/,
   );
   assert.doesNotMatch(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
@@ -278,7 +272,7 @@ test("widgets label polling clocks, preserve name and distinguish deadline from 
     /expires 5s/,
   );
   const narrow = widgetLines([receipt()], now, 40, theme)[0];
-  assert.match(narrow, /^monitor polling · CI check/);
+  assert.match(narrow, /^monitor polling, CI check/);
   assert.doesNotMatch(narrow, /wake 3s/);
   const long = widgetLines(
     [
@@ -309,7 +303,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
       150,
       theme,
     )[0],
-    /monitor scheduled · CI check · in 3s.*wakes 0\/2/,
+    /monitor scheduled, CI check, in 3s.*wakes 0\/2/,
   );
   assert.match(
     widgetLines(
@@ -318,7 +312,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
       150,
       theme,
     )[0],
-    /watching events · CI check · timeout 12s/,
+    /watching events, CI check, timeout 12s/,
   );
   const waiting = receipt({
     awaitingSettlement: true,
@@ -327,10 +321,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     wakes: 1,
   });
   const line = widgetLines([waiting], now, 150, theme)[0];
-  assert.match(
-    line,
-    /awaiting settlement · CI check · wakes 1\/2 · expires 50s/,
-  );
+  assert.match(line, /awaiting settlement, CI check, wakes 1\/2, expires 50s/);
   assert.doesNotMatch(line, /next check|timeout|continue in/);
   for (const [reason, expected] of [
     ["condition", "condition met"],
@@ -349,7 +340,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     });
     assert.ok(
       widgetLines([r], now, 150, theme)[0].includes(
-        `${expected} · CI check · follow-up queued`,
+        `${expected}, CI check, follow-up queued`,
       ),
     );
     assert.deepEqual(
@@ -500,7 +491,7 @@ test("all tool actions are safe, bounded, reusable and contextual on failures", 
       )
         .render(200)
         .join("\n");
-      assert.match(rendered, new RegExp(`monitor ${action} · request failed`));
+      assert.match(rendered, /^request failed/);
     }
     assert.doesNotMatch(
       render(details, false, {}, { isPartial: true }).render(200).join("\n"),

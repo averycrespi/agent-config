@@ -4,7 +4,8 @@ import {
   firstLine,
   getResultText,
   getTruncatedText,
-  toolSummary,
+  toolCall,
+  outcomeLine,
   expandedResult,
 } from "../_shared/render.ts";
 import { stringEnum } from "../_shared/schema.ts";
@@ -175,8 +176,15 @@ export function registerTodoTool(pi: ExtensionAPI, store: TodoStore): void {
     parameters: todoParamsSchema,
     renderCall(args, theme, context) {
       const summary = summarizeAction(args as TodoParams);
+      const [action, ...rest] = summary.split(" ");
       return getTruncatedText(context.lastComponent, [
-        toolSummary(theme, "todo", summary, ""),
+        toolCall(
+          theme,
+          "todo",
+          action,
+          rest[0]?.startsWith("#") ? rest.join(" ") : "",
+          action === "set" ? rest.join(" ") : "",
+        ),
       ]);
     },
     renderResult(result, { isPartial, expanded }, theme, context) {
@@ -184,17 +192,14 @@ export function registerTodoTool(pi: ExtensionAPI, store: TodoStore): void {
         context.isError ||
         firstLine(getResultText(result)).startsWith("Error:");
       return getTruncatedText(context.lastComponent, [
-        toolSummary(
+        outcomeLine(
           theme,
-          "todo",
-          context.args?.action,
           isPartial
             ? "updating"
             : failed
               ? "request failed"
               : summarizeResult(result.details),
-          "",
-          isPartial ? "warning" : failed ? "error" : "success",
+          isPartial ? "warning" : failed ? "error" : "muted",
         ),
         ...(expanded ? expandedResult(result) : []),
       ]);

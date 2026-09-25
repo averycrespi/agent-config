@@ -4,7 +4,7 @@ import {
   formatDuration,
   getTruncatedText,
   startPartialTimer,
-  toolSummary,
+  toolCall,
 } from "../_shared/render.ts";
 import type { SubagentRunState } from "./types.ts";
 import {
@@ -57,7 +57,7 @@ export function statsLine(
     parts.push(`${toolUseCount} tool ${toolUseCount === 1 ? "use" : "uses"}`);
   }
   if (totalTokens > 0) parts.push(`${formatTokens(totalTokens)} tokens`);
-  return parts.join(" · ");
+  return parts.join(", ");
 }
 
 function statusGlyph(agent: SubagentRunState, theme: any): string {
@@ -123,7 +123,7 @@ function policyLabel(agent: SubagentRunState): string {
 }
 
 function separator(theme: any): string {
-  return theme.fg("muted", " · ");
+  return theme.fg("muted", " ");
 }
 
 function agentsHeader(
@@ -165,7 +165,7 @@ function agentsHeader(
   const status = final
     ? `${theme.fg(failureCount > 0 ? "error" : "success", failureCount > 0 ? "✗" : "✓")} `
     : "";
-  return `${status}${title}${separator(theme)}${theme.fg("muted", parts.join(" · "))}`;
+  return `${status}${title}${separator(theme)}${theme.fg("muted", parts.join(", "))}`;
 }
 
 export function agentProgressLines(
@@ -195,26 +195,38 @@ export function agentProgressLines(
     );
     return [
       first,
-      `  ${theme.fg("muted", secondary.join(" · "))}${separator(theme)}${theme.fg("error", message)}`,
+      `  ${theme.fg("muted", secondary.join(", "))}: ${theme.fg("error", message)}`,
     ];
   }
 
   if (!isDone(agent)) {
     secondary.push(compactRecentActivity(agent) ?? "initializing");
   }
-  return [first, `  ${theme.fg("muted", secondary.join(" · "))}`];
+  return [first, `  ${theme.fg("muted", secondary.join(", "))}`];
 }
 
 export function renderAgentsCall(
-  args: { agents?: unknown[]; action?: unknown; execution?: unknown },
+  args: {
+    agents?: unknown[];
+    action?: unknown;
+    execution?: unknown;
+    id?: unknown;
+  },
   theme: any,
   context: any,
 ) {
-  if (isBackgroundControl("subagent", args))
-    return getTruncatedText(context.lastComponent, [
-      toolSummary(theme, "subagent", args.action ?? "run", ""),
-    ]);
-  return getTruncatedText(context.lastComponent, []);
+  return getTruncatedText(context.lastComponent, [
+    toolCall(
+      theme,
+      "subagent",
+      args.action ?? "run",
+      args.action === "inspect" ||
+        args.action === "cancel" ||
+        args.action === "dismiss"
+        ? args.id
+        : (args.agents?.[0] as { intent?: unknown } | undefined)?.intent,
+    ),
+  ]);
 }
 
 export function renderAgentsResult(
@@ -254,11 +266,7 @@ export function renderAgentsResult(
   if (details.validationError || context.isError) {
     const failed = context.isError || details.validationError;
     const summary = safe(result.content[0]?.text);
-    const lines = [
-      theme.fg("toolTitle", theme.bold("subagent")) +
-        " · " +
-        theme.fg(failed ? "error" : "muted", summary),
-    ];
+    const lines = [theme.fg(failed ? "error" : "muted", summary)];
     if (options.expanded)
       lines.push(
         ...result.content.flatMap((c) =>

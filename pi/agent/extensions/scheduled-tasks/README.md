@@ -23,7 +23,7 @@ The extension creates these directories as needed with owner-only permissions wh
 
 ## Tool display
 
-`scheduled_tasks` and `scheduled_task_handoff` use one contextual collapsed result line with typed counts/outcomes, not task bodies or log previews. Validation is not execution; `run` says `started, not completed` only after launch, and launch/validation failures remain explicit. Doctor reports cron availability and issue counts rather than claiming generic health. Handoff marker warnings stay visible. Expand for bounded original task text, logs and diagnostics. Display does not affect scheduling or handoff persistence.
+`scheduled_tasks` and `scheduled_task_handoff` show action and optional task ID in the call row; flush-left results show typed counts/outcomes only when informative. Routine reads have no collapsed result line; task bodies and log previews remain expanded. Validation is not execution; `run` says `started, not completed` only after launch, and launch/validation failures remain explicit. Doctor reports cron availability and issue counts rather than claiming generic health. Handoff marker warnings stay visible. Expand for bounded original task text, logs and diagnostics. Display does not affect scheduling or handoff persistence.
 
 ## Configuration
 

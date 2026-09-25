@@ -9,7 +9,8 @@ import {
   headNonEmptyLines,
   getTruncatedText,
   partialElapsed,
-  toolSummary,
+  toolCall,
+  outcomeLine,
 } from "../_shared/render.ts";
 import { GatewayClient, GatewayError, record } from "./client.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
@@ -55,20 +56,13 @@ export function renderers(
       const target = display(
         name === "mcp_search" ? input?.query : input?.name,
       );
-      const label = target
-        ? theme.fg("text", name === "mcp_search" ? `"${target}"` : target)
-        : theme.fg("muted", name === "mcp_search" ? "(all)" : "(missing name)");
-      const keys =
-        name === "mcp_call" && record(input?.arguments)
-          ? display(
-              Object.keys(input.arguments)
-                .slice(0, 20)
-                .map((key) => display(key, 80))
-                .join(", "),
-            )
-          : "";
       return getTruncatedText(context.lastComponent, [
-        `${theme.fg("toolTitle", theme.bold(name))} ${label}${keys ? ` ${theme.fg("muted", `(${keys})`)}` : ""}`,
+        toolCall(
+          theme,
+          name,
+          "",
+          name === "mcp_search" && target ? `"${target}"` : target,
+        ),
       ]);
     },
     renderResult(result, { isPartial, expanded }, theme, context) {
@@ -100,22 +94,29 @@ export function renderers(
             : failed
               ? "request failed"
               : name === "mcp_search"
-                ? `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown · ${typeof details?.matchCount === "number" ? details.matchCount : "?"} matches`
+                ? `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown, ${typeof details?.matchCount === "number" ? (details.matchCount === 1 ? "1 match" : `${details.matchCount} matches`) : "? matches"}`
                 : name === "mcp_describe"
                   ? "schema read"
                   : "returned";
-        return getTruncatedText(context.lastComponent, [
-          toolSummary(
-            theme,
-            name,
-            "",
-            outcome,
-            name === "mcp_search"
-              ? display((context.args as Record<string, unknown>)?.query)
-              : target,
-            failed ? "error" : details?.outcomeUnknown ? "warning" : "success",
-          ),
-        ]);
+        const summary =
+          outcome === "schema read" || outcome === "returned" ? "" : outcome;
+        const retained = details?.spillFilePath ? "retained output" : "";
+        return getTruncatedText(
+          context.lastComponent,
+          summary || retained
+            ? [
+                outcomeLine(
+                  theme,
+                  [summary, retained].filter(Boolean).join("; "),
+                  failed
+                    ? "error"
+                    : details?.outcomeUnknown || retained
+                      ? "warning"
+                      : "muted",
+                ),
+              ]
+            : [],
+        );
       }
       const lines: string[] = [];
       const preview = details?.summary ?? textContent(result.content);
@@ -148,7 +149,7 @@ export function renderers(
         const shown =
           typeof details.shownCount === "number" &&
           details.shownCount < details.matchCount
-            ? `${details.shownCount} shown · `
+            ? `${details.shownCount} shown, `
             : "";
         lines.push(
           theme.fg(
@@ -156,27 +157,6 @@ export function renderers(
             `${shown}${details.matchCount} matches of ${details.totalCount} tools`,
           ),
         );
-      } else if (name === "mcp_call" && !expanded) {
-        const text =
-          typeof details?.previewText === "string" && details.previewText
-            ? details.previewText
-            : String(preview);
-        const head = headNonEmptyLines(text, 3);
-        lines.push(
-          ...head.map((line) => theme.fg("muted", display(line, 500))),
-        );
-        const total =
-          typeof details?.nonEmptyLineCount === "number"
-            ? details.nonEmptyLineCount
-            : countNonEmptyLines(text);
-        const extra = total - head.length;
-        if (extra > 0)
-          lines.push(
-            theme.fg(
-              "muted",
-              `... +${extra} more ${extra === 1 ? "line" : "lines"}`,
-            ),
-          );
       } else if (name !== "mcp_call" && preview) {
         lines.push(theme.fg("muted", display(preview)));
       }

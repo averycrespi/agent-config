@@ -5,7 +5,7 @@ import {
   expandedResult,
   getTruncatedText,
   plural,
-  toolSummary,
+  outcomeLine,
   type RenderLine,
 } from "../_shared/render.ts";
 
@@ -26,7 +26,7 @@ export function isBackgroundControl(
 
 /** Adapter-independent projection of retained execution receipts; never calls the service. */
 export function renderExecutionResult(
-  tool: string,
+  _tool: string,
   records: unknown,
   result: AgentToolResult<unknown>,
   options: { expanded?: boolean; isPartial?: boolean },
@@ -77,17 +77,14 @@ export function renderExecutionResult(
                 ? "cancellation requested"
                 : `retained ${state}`
               : action === "run"
-                ? `admitted · ${state}`
+                ? `admitted (${state})`
                 : state;
   const caution =
     unknown || possible || state === "interrupted" || state === "timeout";
   const lines: RenderLine[] = [
-    toolSummary(
+    outcomeLine(
       theme,
-      tool,
-      action,
-      outcome + (possible && !unknown ? " · effects may persist" : ""),
-      inventory ? "" : (selected?.label ?? context.args?.description),
+      outcome + (possible && !unknown ? "; effects may persist" : ""),
       options.isPartial
         ? "warning"
         : bad
@@ -102,7 +99,7 @@ export function renderExecutionResult(
   if (options.expanded) {
     for (const r of list)
       lines.push(
-        `${displayLabel(r.label)} · ${displayLabel(r.status)} · ${displayLabel(r.id)}`,
+        `${displayLabel(r.label)} (${displayLabel(r.status)}; ${displayLabel(r.id)})`,
       );
     lines.push(...expandedResult(result));
   }

@@ -32,16 +32,15 @@ export function toolSummary(
   const status = displayLabel(outcome, 300);
   const identity = displayLabel(target);
   return (width) => {
-    const separator = theme.fg("dim", " · ");
     const core =
       theme.fg("toolTitle", theme.bold(name)) +
       (verb ? " " + theme.fg("muted", verb) : "") +
-      (status ? separator + theme.fg(color, status) : "");
+      (status ? " " + theme.fg(color, status) : "");
     const room = Math.max(0, width - visibleWidth(core) - 3);
     return (
       core +
       (identity && room >= 5 && !/unknown|uncertain|no replay/.test(status)
-        ? separator +
+        ? " " +
           theme.fg(
             "text",
             stripVTControlCharacters(truncateToWidth(identity, room, "…")),
@@ -49,6 +48,35 @@ export function toolSummary(
         : "")
     );
   };
+}
+
+/** Compact tool-row call and outcome with distinct roles and no repeated identity. */
+export function toolCall(
+  theme: Theme,
+  tool: string,
+  action: unknown = "",
+  target: unknown = "",
+  modifiers: unknown = "",
+): string {
+  const name = displayLabel(tool);
+  const verb = displayLabel(action);
+  const identity = displayLabel(target);
+  const options = displayLabel(modifiers);
+  return (
+    theme.fg("toolTitle", theme.bold(name)) +
+    (verb ? ` ${theme.fg("muted", verb)}` : "") +
+    (identity ? ` ${theme.fg("text", identity)}` : "") +
+    (options ? ` ${theme.fg("dim", `(${options})`)}` : "")
+  );
+}
+
+export function outcomeLine(
+  theme: Theme,
+  outcome: unknown,
+  color: ThemeColor = "muted",
+): string {
+  const label = displayLabel(outcome, 300);
+  return label ? theme.fg(color, label) : "";
 }
 
 /** Bounded plain-text expansion; callers retain the original model-facing result. */

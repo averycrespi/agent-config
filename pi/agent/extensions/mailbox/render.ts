@@ -5,7 +5,8 @@ import {
   getResultText,
   getTruncatedText,
   plural,
-  toolSummary,
+  toolCall,
+  outcomeLine,
 } from "../_shared/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import type { Message } from "./store.ts";
@@ -74,11 +75,7 @@ export function renderMailboxCall(
     ? args.action
     : "";
   return getTruncatedText(context.lastComponent, [
-    theme.fg("toolTitle", theme.bold("mailbox")) +
-      theme.fg(
-        "muted",
-        ` ${label(action)} ${label(args.mailbox, 80)}`.trimEnd(),
-      ),
+    toolCall(theme, "mailbox", action, label(args.mailbox, 80)),
   ]);
 }
 
@@ -95,7 +92,7 @@ export function renderMailboxResult(
   const add = (text: string) => lines.push(theme.fg("muted", text));
   const finish = (summary: string, color: "success" | "warning" | "error") =>
     getTruncatedText(context.lastComponent, [
-      toolSummary(theme, "mailbox", args.action, summary, args.mailbox, color),
+      outcomeLine(theme, summary, color),
       ...lines,
     ]);
   const error = details.error ?? value.error;
@@ -148,7 +145,7 @@ export function renderMailboxResult(
       add("Persisted, not consumed, accepted or completed.");
       showMessage(value, 1200);
     }
-    return finish(`persisted · ${label(value.type)} · not consumed`, "success");
+    return finish(`persisted ${label(value.type)} (not consumed)`, "success");
   }
   if (
     args.action === "list" &&
@@ -200,8 +197,8 @@ export function renderMailboxResult(
     }
     return finish(
       n
-        ? `acknowledged ${plural(n, "message")} · not task resolution`
-        : `No messages acknowledged · ${requested} requested`,
+        ? `acknowledged ${plural(n, "message")} (not task resolution)`
+        : `No messages acknowledged (${requested} requested)`,
       "success",
     );
   }

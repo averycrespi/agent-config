@@ -119,7 +119,7 @@ test("discovery reports actionable categories and bounded inventories through th
   const success = await invoke();
   assert.match(
     renderResult(success, args),
-    /completed · 1 provider · 1 method/,
+    /completed \(1 provider, 1 method\)/,
   );
   assert.match(renderResult(success, args, true), /fixture\.echo/);
   assert.doesNotMatch(renderResult(success, args), /0 calls|fixture\.echo/);
@@ -159,7 +159,7 @@ test("discovery reports actionable categories and bounded inventories through th
   assert.match(JSON.stringify(denied.content), /allowedProviders/);
   assert.match(
     renderResult(denied, args),
-    /blocked · provider selection denied by Script policy/,
+    /blocked: provider selection denied by Script policy/,
   );
   assert.doesNotMatch(JSON.stringify(denied), /select fewer|exceeds output/);
   const hook = extension.handlers.get("tool_result")![0] as any;
@@ -240,7 +240,7 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
     renderers.renderCall!(input, plainTheme, {} as any)
       .render(200)
       .join("\n");
-  assert.match(header(args), /providers: none.*Compute totals/);
+  assert.match(header(args), /Compute totals \(providers: none\)/);
   assert.match(
     header({ ...args, providers: ["mcp", "web"] }),
     /providers: mcp, web/,
@@ -250,10 +250,10 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
     header({ ...args, action: "describe", providers: ["mcp", "web"] }),
     /scope: mcp, web/,
   );
-  assert.match(header({ description: "streaming" }), /providers: pending/);
+  assert.match(header({ description: "streaming" }), /script run streaming$/);
   assert.match(
     header({ action: "describe", description: "streaming" }),
-    /scope: pending/,
+    /script describe streaming$/,
   );
   assert.match(
     header({ ...args, providers: ["first", "second", "third", "fourth"] }),
@@ -270,7 +270,7 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
   for (const providers of [[], ["mcp"]])
     assert.equal(
       renderResult(presentRun(run), { ...args, providers }),
-      "completed · no calls",
+      "completed (no calls)",
     );
   assert.equal(
     renderResult(
@@ -279,7 +279,7 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
       true,
       true,
     ),
-    "failed · tool execution error",
+    "failed: tool execution error",
   );
   const trace = {
     id: 1,
@@ -307,12 +307,12 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
     outcomeUnknown: true,
   });
   const collapsed = renderResult(failed, args);
-  assert.match(collapsed, /failed · returned JSON exceeds 24,000 bytes/);
+  assert.match(collapsed, /failed: returned JSON exceeds 24,000 bytes/);
   assert.match(collapsed, /Outcome unknown; do not automatically retry/);
   assert.match(collapsed, /Partial execution; effects may persist/);
   assert.doesNotMatch(collapsed, /web.fetch|Reduce the returned JSON/);
   const expanded = renderResult(failed, args, true);
-  assert.match(expanded, /web.fetch · succeeded/);
+  assert.match(expanded, /web.fetch \(succeeded/);
   assert.match(expanded, /Reduce the returned JSON/);
   assert.match(JSON.stringify(failed.content), /Reconcile provider effects/);
   assert.match(
@@ -398,7 +398,7 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
     ctx,
   );
   assert.doesNotMatch(header.render(100).join(), /SECRET|\x1b|\x07|\n/);
-  assert.match(header.render(200).join(), /providers: web, \(invalid\)/);
+  assert.equal(header.render(200).join(), "script run read items");
   for (const width of [0, 1, 8, 40, 100])
     for (const line of header.render(width))
       assert.ok(visibleWidth(line) <= width);
@@ -412,7 +412,7 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
   assert.doesNotMatch(reused.render(200).join(), /providers: web/);
   for (const state of [
     { isPartial: true, error: false, semantic: false, color: "warning" },
-    { isPartial: false, error: false, semantic: false, color: "success" },
+    { isPartial: false, error: false, semantic: false, color: "muted" },
     { isPartial: false, error: true, semantic: false, color: "error" },
     { isPartial: false, error: false, semantic: true, color: "error" },
   ]) {

@@ -6,7 +6,8 @@ import {
   getResultText,
   getTruncatedText,
   firstLine,
-  toolSummary,
+  toolCall,
+  outcomeLine,
   expandedResult,
   displayLabel,
 } from "../_shared/render.ts";
@@ -99,7 +100,7 @@ function taskRendering(
   const outcome = isPartial
     ? "pending"
     : failed
-      ? `request failed${invalid ? ` · ${invalid} invalid` : ""}`
+      ? `request failed${invalid ? ` (${invalid} invalid)` : ""}`
       : markerMissing
         ? "marker missing"
         : tool === "scheduled_task_handoff"
@@ -115,25 +116,33 @@ function taskRendering(
               : action === "list"
                 ? `${validations.length} tasks`
                 : action === "doctor"
-                  ? `inspected · cron ${displayLabel(d?.crontabStatus?.status) || "unavailable"}`
+                  ? `inspected (cron ${displayLabel(d?.crontabStatus?.status) || "unavailable"})`
                   : "read";
+  const summary = [
+    outcome === "read" ? "" : outcome,
+    warnings ? `${warnings} warnings` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
   return getTruncatedText(context.lastComponent, [
-    toolSummary(
-      theme,
-      tool,
-      action,
-      outcome + (warnings ? ` · ${warnings} warnings` : ""),
-      context.args?.task_id,
-      failed
-        ? "error"
-        : isPartial ||
-            markerMissing ||
-            warnings ||
-            action === "run" ||
-            (action === "doctor" && d?.crontabStatus?.status !== "installed")
-          ? "warning"
-          : "success",
-    ),
+    ...(summary
+      ? [
+          outcomeLine(
+            theme,
+            summary,
+            failed
+              ? "error"
+              : isPartial ||
+                  markerMissing ||
+                  warnings ||
+                  action === "run" ||
+                  (action === "doctor" &&
+                    d?.crontabStatus?.status !== "installed")
+                ? "warning"
+                : "muted",
+          ),
+        ]
+      : []),
     ...(expanded ? expandedResult(result) : []),
   ]);
 }
@@ -155,7 +164,7 @@ export function registerScheduledTasksTool(
     parameters: paramsSchema,
     renderCall(args, theme, context) {
       return getTruncatedText(context.lastComponent, [
-        toolSummary(theme, "scheduled_tasks", args.action, "", args.task_id),
+        toolCall(theme, "scheduled_tasks", args.action, args.task_id),
       ]);
     },
     renderResult(result, options, theme, context) {
@@ -295,7 +304,7 @@ export function registerHandoffTool(
     renderCall(args, theme, context) {
       const params = args as HandoffParams;
       return getTruncatedText(context.lastComponent, [
-        toolSummary(theme, "scheduled_task_handoff", params.action, ""),
+        toolCall(theme, "scheduled_task_handoff", params.action),
       ]);
     },
     renderResult(result, options, theme, context) {

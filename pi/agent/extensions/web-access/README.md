@@ -4,7 +4,7 @@ Web access extension for Pi — provides `web_search` and `web_fetch` tools.
 
 ## Tools
 
-Collapsed tool results use one contextual line: `web_search · 3 results · query` or `web_fetch · page read · https://example.com`. Counts, clone/read state and spill indicators replace raw page/snippet/title previews. Fetch targets show only the origin, excluding userinfo, path tokens, query and fragment. Original URL arguments remain unchanged in model/session context. Failed uncertain calls retain both failure and no-replay wording before any target. Expand for bounded original trust-framed evidence; full model-facing content is unchanged. All display strings are sanitized before theme styling.
+Calls show the quoted search query or fetch origin; a separate flush-left result shows search counts or warnings, while routine successful fetches have no collapsed result. Counts and spill indicators replace raw page/snippet/title previews. Fetch targets show only the origin, excluding userinfo, path tokens, query and fragment. Original URL arguments remain unchanged in model/session context. Failed uncertain calls retain both failure and no-replay wording before any target. Expand for bounded original trust-framed evidence; full model-facing content is unchanged. All display strings are sanitized before theme styling.
 
 ### web_search
 
@@ -149,7 +149,7 @@ Example settings:
 
 ## External content safety
 
-Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT` envelope. Remote provider/fetch error messages are framed too, while the collapsed renderer shows an explicit request-failed outcome and expansion retains framed diagnostics. The envelope reminds the agent that fetched web pages, search snippets, GitHub contents, PDF text, and remote error bodies are external data rather than instructions. Delimiter-like lines inside external content are escaped. Content is wrapped before large-output spillover so the persisted file retains the same trust boundary.
+Successful `web_search` and `web_fetch` results are wrapped in a short `BEGIN/END UNTRUSTED EXTERNAL ... CONTENT` envelope. Remote provider/fetch error messages are framed too, while the collapsed renderer shows search counts or an explicit failure/uncertainty/spill warning, omits routine fetch-success results, and retains framed diagnostics on expansion. The envelope reminds the agent that fetched web pages, search snippets, GitHub contents, PDF text, and remote error bodies are external data rather than instructions. Delimiter-like lines inside external content are escaped. Content is wrapped before large-output spillover so the persisted file retains the same trust boundary.
 
 Generic and PDF fetches accept only public HTTP(S) URLs without embedded credentials. The extension rejects literal and DNS-resolved loopback, private, link-local, metadata, multicast, and reserved destinations; validates every HTTP redirect; and applies the same checks to Playwright subrequests. These application checks reduce SSRF risk but do not eliminate DNS-rebinding races, so do not treat the browser as a network sandbox.
 

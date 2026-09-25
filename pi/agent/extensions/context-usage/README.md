@@ -14,7 +14,7 @@ Requires Pi **0.87.0 or newer**. The command combines Pi's current context-usage
 Example output:
 
 ```text
-Context usage: 82.4k / 200.0k tokens · 41%
+Context usage: 82.4k / 200.0k tokens (41%)
 Source: Pi-reported current usage + local effective-context blame estimate
 
 Top token sources

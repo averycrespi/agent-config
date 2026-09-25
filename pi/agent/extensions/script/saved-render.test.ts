@@ -20,6 +20,12 @@ test("saved rendering is bounded, context-specific, and hides schemas/arguments/
     ],
     truncated: true,
   };
+  for (const action of ["list", "validate"] as const) {
+    assert.equal(
+      renderers.renderCall!({ action } as any, theme, {} as any).render(80)[0],
+      `script ${action}`,
+    );
+  }
   for (const action of ["list", "validate"] as const)
     for (const expanded of [false, true])
       for (const isPartial of [false, true])
@@ -37,7 +43,9 @@ test("saved rendering is bounded, context-specific, and hides schemas/arguments/
             const lines = component.render(width);
             assert.ok(lines.every((line) => visibleWidth(line) <= width));
             assert.doesNotMatch(lines.join(""), /PRIVATE_|\x1b\]|secret|\n/);
-            assert.match(lines[0], new RegExp(action));
+            if (width === 60)
+              assert.match(lines[0], /checking|failed|saved|validated/);
+            else assert.match(lines[0], /^\S/);
           }
         }
   const failed = renderers.renderResult!(
@@ -46,5 +54,5 @@ test("saved rendering is bounded, context-specific, and hides schemas/arguments/
     theme,
     { args: { action: "validate" }, isError: true } as any,
   );
-  assert.match(failed.render(80)[0], /validate · failed/);
+  assert.equal(failed.render(80)[0], "failed");
 });

@@ -139,14 +139,14 @@ export function notificationRenderer(
       invalidate() {},
       render(width) {
         const w = Math.max(0, Math.floor(width));
-        const separator = theme.fg("dim", " · ");
+        const separator = " ";
         const title = theme.fg("toolTitle", theme.bold(type));
         const state =
-          source === "monitor" && valid ? `attention · ${reason}` : reason;
+          source === "monitor" && valid ? `attention ${reason}` : reason;
         let essential =
           `${title} ${theme.fg(color, state)}` +
           (warnings.length
-            ? separator + theme.fg("warning", warnings.join(" · "))
+            ? separator + theme.fg("warning", `(${warnings.join("; ")})`)
             : "");
         if (visibleWidth(essential) > w) {
           const compactWarnings: Record<string, string> = {
@@ -202,7 +202,7 @@ export function notificationRenderer(
           ["ID", id],
           ["Adapter", owner],
           ["Status", state],
-          ["Warnings", warnings.join(" · ")],
+          ["Warnings", warnings.join("; ")],
         ]
           .filter(([, value]) => value)
           .map(([label, value]) => `${label}: ${value}`)

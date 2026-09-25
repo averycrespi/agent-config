@@ -13,6 +13,8 @@ export type Activity = {
   completed: number;
   failed: number;
   phase?: string;
+  /** Optional bounded policy label for a single child; display only. */
+  profile?: string;
 };
 export type ProgressUpdate = {
   progress?: Progress;

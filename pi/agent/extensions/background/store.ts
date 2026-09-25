@@ -122,11 +122,13 @@ export function validateActivity(value: unknown): void {
     completed?: number;
     failed?: number;
     phase?: string;
+    profile?: string;
   };
   if (
     !a ||
     Object.keys(a).some(
-      (k) => !["started", "completed", "failed", "phase"].includes(k),
+      (k) =>
+        !["started", "completed", "failed", "phase", "profile"].includes(k),
     ) ||
     ![a.started, a.completed, a.failed].every(Number.isSafeInteger) ||
     a.started! < 0 ||
@@ -135,7 +137,9 @@ export function validateActivity(value: unknown): void {
     a.completed! > a.started! ||
     a.failed! > a.completed! ||
     (a.phase !== undefined &&
-      (typeof a.phase !== "string" || a.phase.length > 200))
+      (typeof a.phase !== "string" || a.phase.length > 200)) ||
+    (a.profile !== undefined &&
+      (typeof a.profile !== "string" || a.profile.length > 40))
   )
     throw new Error("background_invalid_activity");
 }

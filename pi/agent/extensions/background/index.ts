@@ -5,6 +5,7 @@ import type {
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import { createPersistentWidget, fitWidgetRow } from "../_shared/widget.ts";
+import { formatDuration } from "../_shared/render.ts";
 import {
   notificationRenderer,
   executionType,
@@ -19,8 +20,17 @@ import { Service, label, visible } from "./service.ts";
 import { fileStore } from "./store.ts";
 
 export const NOTIFICATION = "background:execution-outcome-v1";
-export function widgetLines(records: Execution[], width: number, theme: Theme) {
+export function widgetLines(
+  records: Execution[],
+  width: number,
+  theme: Theme,
+  now = Date.now(),
+) {
   return records.filter(visible).map((r) => {
+    const singleChild = r.owner === "subagents" && r.progress?.total === 1;
+    const elapsed = formatDuration(
+      Math.max(0, (r.endedAt ?? now) - r.createdAt),
+    );
     const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(r.status === "running" ? "accent" : ["failed", "timeout", "interrupted"].includes(r.status) ? "error" : "warning", r.status)}`;
     const warnings = [
       ...(r.outcomeUnknown
@@ -49,7 +59,7 @@ export function widgetLines(records: Execution[], width: number, theme: Theme) {
               .join(theme.fg("dim", narrow ? "/" : " · "))
           : ""),
       [
-        ...(r.progress
+        ...(r.progress && !singleChild
           ? [
               theme.fg(
                 r.progress.failed ? "warning" : "text",
@@ -57,17 +67,30 @@ export function widgetLines(records: Execution[], width: number, theme: Theme) {
               ),
             ]
           : []),
-        ...(r.activity
+        ...(singleChild
           ? [
-              theme.fg(
-                r.activity.failed ? "warning" : "text",
-                `${r.activity.completed}/${r.activity.started} settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
-              ),
-              ...(r.activity.phase
+              ...(r.activity?.profile
+                ? [theme.fg("muted", label(r.activity.profile))]
+                : []),
+              theme.fg("text", elapsed),
+              ...(r.status === "running" && r.activity?.phase
                 ? [theme.fg("muted", label(r.activity.phase))]
                 : []),
             ]
-          : []),
+          : r.activity
+            ? [
+                theme.fg(
+                  r.activity.failed ? "warning" : "text",
+                  `${r.activity.completed}/${r.activity.started} settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
+                ),
+                ...(r.activity.phase
+                  ? [theme.fg("muted", label(r.activity.phase))]
+                  : []),
+                ...(r.owner === "workflow" ? [theme.fg("text", elapsed)] : []),
+              ]
+            : r.owner === "workflow"
+              ? [theme.fg("text", elapsed)]
+              : []),
       ],
       width,
       theme.fg("dim", " · "),
@@ -157,6 +180,16 @@ export default function background(pi: ExtensionAPI) {
       ticker = setInterval(() => {
         try {
           service?.flush();
+          if (
+            service
+              ?.all()
+              .some(
+                (r) =>
+                  r.status === "running" &&
+                  (r.owner === "subagents" || r.owner === "workflow"),
+              )
+          )
+            refresh();
         } catch {
           refresh();
         }

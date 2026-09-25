@@ -6,7 +6,8 @@ import {
   expandedResult,
   getTruncatedText,
   plural,
-  toolSummary,
+  toolCall,
+  outcomeLine,
   type RenderLine,
 } from "../_shared/render.ts";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
@@ -115,7 +116,7 @@ const reasons = {
 };
 function activity(r: DisplayReceipt): string {
   if (r.attention?.disposition === "pending")
-    return `${reasons[r.attention.reason] ?? "attention"} · follow-up queued`;
+    return `${reasons[r.attention.reason] ?? "attention"}; follow-up queued`;
   if (r.status !== "active") {
     if (r.status !== "finished") return label(r.status);
     if (r.failureCode === "wake_limit") return "wake limit reached";
@@ -155,7 +156,7 @@ function jobLine(r: DisplayReceipt): string {
     r.recurring ? `wakes ${r.wakes}/${r.maxWakes}` : plural(r.wakes, "wake"),
     ...(r.evaluations ? [plural(r.evaluations, "evaluation")] : []),
     ...(r.calls ? [plural(r.calls, "call")] : []),
-  ].join(" · ");
+  ].join(", ");
 }
 function registrationLine(r: DisplayReceipt): string {
   const duration = formatWidgetCountdown;
@@ -163,7 +164,7 @@ function registrationLine(r: DisplayReceipt): string {
     r.delayMs !== undefined
       ? r.recurring
         ? `every ${duration(r.delayMs)} after settlement`
-        : `scheduled · in ${duration(r.delayMs)}`
+        : `scheduled in ${duration(r.delayMs)}`
       : r.intervalMs !== undefined
         ? `polling every ${duration(r.intervalMs)}${r.eventCount ? " + events" : ""}`
         : r.eventCount
@@ -171,10 +172,9 @@ function registrationLine(r: DisplayReceipt): string {
           : "registered";
   return [
     mode,
-    label(r.name),
     `timeout ${duration(r.cycleMs)}`,
     ...(r.recurring ? [`max ${plural(r.maxWakes, "wake")}`] : []),
-  ].join(" · ");
+  ].join(", ");
 }
 function resultLine(d: DisplayDetails, action: string): string {
   if (action === "list") {
@@ -188,7 +188,7 @@ function resultLine(d: DisplayDetails, action: string): string {
       active ? `${active} active` : "no active jobs",
       `${receipts.length} retained`,
       ...(pending ? [`${pending} follow-up queued`] : []),
-    ].join(" · ");
+    ].join(", ");
   }
   const r = d.receipt;
   if (!r) return label(d.status) || "result unavailable";
@@ -201,7 +201,7 @@ function resultLine(d: DisplayDetails, action: string): string {
       ...(r.lastAttention?.disposition === "handed_to_pi"
         ? ["follow-up already handed off"]
         : []),
-    ].join(" · ");
+    ].join(", ");
   return jobLine(r);
 }
 export function visible(r: Receipt) {
@@ -250,7 +250,7 @@ export function widgetLines(
     if (r.awaitingSettlement && r.status === "active")
       fields.push(timing("expires", r.deadline));
     const name = theme.fg("text", label(r.name));
-    const separator = theme.fg("dim", " · ");
+    const separator = theme.fg("dim", ", ");
     const primary = `${theme.fg("muted", "monitor")} ${theme.fg(color, state)}`;
     const warningText = warnings(r);
     const compact: Record<string, string> = {
@@ -259,7 +259,7 @@ export function widgetLines(
       "effects may persist": "effects?",
       "handoff uncertain": "handoff?",
     };
-    const narrow = visibleWidth([primary, ...warningText].join(" · ")) > width;
+    const narrow = visibleWidth([primary, ...warningText].join(", ")) > width;
     const critical = warningText.map((s) =>
       theme.fg("warning", narrow ? (compact[s] ?? s) : s),
     );
@@ -288,20 +288,13 @@ export const renderers: Pick<
 > = {
   renderCall(args, theme, ctx) {
     return getTruncatedText(ctx.lastComponent, [
-      toolSummary(
-        theme,
-        "monitor",
-        args.action,
-        "",
-        args.name ?? (args.id ? "job" : ""),
-      ),
+      toolCall(theme, "monitor", args.action, args.name ?? args.id),
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
     const d = (result.details ?? {}) as DisplayDetails;
     const action = label(d.action ?? ctx.args?.action, 16);
     const failed = ctx.isError || d.monitorError;
-    const target = label(d.receipt?.name ?? ctx.args?.name);
     const reason =
       d.receipt?.attention?.reason ?? d.receipt?.lastAttention?.reason;
     const jobFailed =
@@ -333,10 +326,8 @@ export const renderers: Pick<
         d.receipt?.lastAttention?.disposition === "handoff_unknown")
     )
       return getTruncatedText(ctx.lastComponent, [
-        toolSummary(
+        outcomeLine(
           theme,
-          "monitor",
-          action,
           failed
             ? "failed; unknown; no replay"
             : d.receipt.outcomeUnknown &&
@@ -345,15 +336,12 @@ export const renderers: Pick<
               : d.receipt.outcomeUnknown
                 ? "effects unknown; no replay"
                 : "handoff unknown; no replay",
-          "",
           failed ? "error" : "warning",
         ),
       ]);
     const lines: RenderLine[] = [
-      toolSummary(
+      outcomeLine(
         theme,
-        "monitor",
-        action,
         isPartial
           ? partial
           : failed
@@ -361,14 +349,13 @@ export const renderers: Pick<
             : !expanded && polling
               ? "registered; no repeat poll"
               : resultLine(d, action),
-        failed || (!expanded && polling) ? target : "",
         isPartial
           ? "warning"
           : failed || jobFailed
             ? "error"
             : caution
               ? "warning"
-              : "success",
+              : "muted",
       ),
     ];
     if (expanded && polling && !failed && !isPartial)
@@ -386,7 +373,7 @@ export const renderers: Pick<
           );
         if (r.lastAttention)
           lines.push(
-            `follow-up ${label(r.lastAttention.disposition)} · admission ${r.lastAttention.admitted ? "observed" : "not observed"}`,
+            `follow-up ${label(r.lastAttention.disposition)}; admission ${r.lastAttention.admitted ? "observed" : "not observed"}`,
           );
       }
     }

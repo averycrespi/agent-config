@@ -57,10 +57,10 @@ test("renderWidgetLines styles each todo state and dims notes", () => {
 
   assert.deepEqual(renderWidgetLines(items, 80, fakeTheme as any), [
     fakeTheme.fg("borderMuted", "─".repeat(80)),
-    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "Backlog")}${fakeTheme.fg("dim", " · later")}`,
-    `${fakeTheme.fg("accent", fakeTheme.bold("[~]"))} ${fakeTheme.fg("accent", "Doing")}${fakeTheme.fg("dim", " · now")}`,
-    `${fakeTheme.fg("success", "[✓]")} ${fakeTheme.fg("dim", "Done")}${fakeTheme.fg("dim", " · shipped")}`,
-    `${fakeTheme.fg("warning", fakeTheme.bold("[!]"))} ${fakeTheme.fg("text", "Blocked")}${fakeTheme.fg("dim", " · waiting")}`,
+    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "Backlog")}${fakeTheme.fg("dim", " (later)")}`,
+    `${fakeTheme.fg("accent", fakeTheme.bold("[~]"))} ${fakeTheme.fg("accent", "Doing")}${fakeTheme.fg("dim", " (now)")}`,
+    `${fakeTheme.fg("success", "[✓]")} ${fakeTheme.fg("dim", "Done")}${fakeTheme.fg("dim", " (shipped)")}`,
+    `${fakeTheme.fg("warning", fakeTheme.bold("[!]"))} ${fakeTheme.fg("text", "Blocked")}${fakeTheme.fg("dim", " (waiting)")}`,
   ]);
 });
 

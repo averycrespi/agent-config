@@ -41,16 +41,13 @@ for (const [value, expected] of [
 
 test("statsLine includes only nonzero counters and duration", () => {
   assert.equal(statsLine(0, 0, 3000), "3s");
-  assert.equal(statsLine(1, 0, 5000), "5s · 1 tool use");
-  assert.equal(
-    statsLine(5, 20_300, 20_000),
-    "20s · 5 tool uses · 20.3k tokens",
-  );
+  assert.equal(statsLine(1, 0, 5000), "5s, 1 tool use");
+  assert.equal(statsLine(5, 20_300, 20_000), "20s, 5 tool uses, 20.3k tokens");
 });
 
 test("done progress rows split intent stats from compact execution policy", () => {
   assert.deepEqual(agentProgressLines(state() as any, theme), [
-    "✓ docs · 12s · 2 tool uses · 4.1k tokens",
+    "✓ docs 12s, 2 tool uses, 4.1k tokens",
     "  balanced (fs)",
   ]);
 
@@ -68,7 +65,7 @@ test("done progress rows split intent stats from compact execution policy", () =
       theme,
     ),
     [
-      "✓ docs · 12s · 2 tool uses · 4.1k tokens",
+      "✓ docs 12s, 2 tool uses, 4.1k tokens",
       "  balanced (fs, write, shell, mcp, web)",
     ],
   );
@@ -90,8 +87,8 @@ test("queued progress rows use a dim hollow inactive glyph", () => {
     }) as any,
     queuedTheme,
   );
-  assert.match(lines[0]!, /^\{○\} docs · \d+s$/);
-  assert.equal(lines[1], "  balanced (fs) · queued");
+  assert.match(lines[0]!, /^\{○\} docs \d+s$/);
+  assert.equal(lines[1], "  balanced (fs), queued");
 });
 
 test("running progress rows keep volatile tool identity at the end", () => {
@@ -110,8 +107,8 @@ test("running progress rows keep volatile tool identity at the end", () => {
     }) as any,
     theme,
   );
-  assert.match(lines[0]!, /^● tests · \d+s · 1 tool use$/);
-  assert.equal(lines[1], "  fast (web) · web_fetch");
+  assert.match(lines[0]!, /^● tests \d+s, 1 tool use$/);
+  assert.equal(lines[1], "  fast (web), web_fetch");
 });
 
 test("failure rows omit empty capabilities and keep retained logs hidden", () => {
@@ -130,8 +127,8 @@ test("failure rows omit empty capabilities and keep retained logs hidden", () =>
     theme,
   );
   assert.deepEqual(lines, [
-    "✗ security · 1s",
-    "  balanced · Error: subagent failed",
+    "✗ security 1s",
+    "  balanced: Error: subagent failed",
   ]);
   assert.doesNotMatch(lines.join("\n"), /Log:/);
 });
@@ -152,7 +149,7 @@ test("aggregate and per-agent separators are muted", () => {
   };
 
   assert.deepEqual(agentProgressLines(state() as any, markerTheme), [
-    "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
+    "✓ docs{ }{12s, 2 tool uses, 4.1k tokens}",
     "  {balanced (fs)}",
   ]);
 
@@ -166,9 +163,9 @@ test("aggregate and per-agent separators are muted", () => {
     context(),
   );
   assert.deepEqual(result.render(200), [
-    "✓ subagents{ · }{1 done · 0 failed · 12s}",
+    "✓ subagents{ }{1 done, 0 failed, 12s}",
     "",
-    "✓ docs{ · }{12s · 2 tool uses · 4.1k tokens}",
+    "✓ docs{ }{12s, 2 tool uses, 4.1k tokens}",
     "  {balanced (fs)}",
   ]);
 });
@@ -194,10 +191,10 @@ test("default result includes progress rows but excludes diagnostics", () => {
     const partialLines = partial.render(200);
     assert.match(
       partialLines[0]!,
-      /^subagents · 1 done · 1 running · 0 failed · \d+(?:m \d+s|s)$/,
+      /^subagents 1 done, 1 running, 0 failed, \d+(?:m \d+s|s)$/,
     );
-    assert.ok(partialLines.some((line) => line.startsWith("✓ docs · ")));
-    assert.ok(partialLines.some((line) => line.startsWith("● tests · ")));
+    assert.ok(partialLines.some((line) => line.startsWith("✓ docs ")));
+    assert.ok(partialLines.some((line) => line.startsWith("● tests ")));
     assert.doesNotMatch(partialLines.join("\n"), /Log:/);
 
     ctx.lastComponent = partial;
@@ -225,9 +222,9 @@ test("default result includes progress rows but excludes diagnostics", () => {
       ctx,
     );
     const finalLines = final.render(200);
-    assert.equal(finalLines[0], "✗ subagents · 1 done · 1 failed · 12s");
-    assert.ok(finalLines.some((line) => line.startsWith("✓ docs · ")));
-    assert.ok(finalLines.some((line) => line.startsWith("✗ tests · ")));
+    assert.equal(finalLines[0], "✗ subagents 1 done, 1 failed, 12s");
+    assert.ok(finalLines.some((line) => line.startsWith("✓ docs ")));
+    assert.ok(finalLines.some((line) => line.startsWith("✗ tests ")));
     assert.doesNotMatch(finalLines.join("\n"), /Log: \/tmp\/docs\.log/);
   } finally {
     clearInterval(ctx.state.renderTimer as ReturnType<typeof setInterval>);
@@ -289,10 +286,8 @@ test("result renderer is width-aware for partial, final, and expanded states", (
       ctx,
     );
     const partialLines = partial.render(200);
-    assert.match(partialLines.join("\n"), /^subagents · 1 done · 1 running/);
-    assert.ok(
-      partialLines.some((line: string) => line.startsWith("✓ docs · ")),
-    );
+    assert.match(partialLines.join("\n"), /^subagents 1 done, 1 running/);
+    assert.ok(partialLines.some((line: string) => line.startsWith("✓ docs ")));
     assert.ok(partialLines.some((line: string) => line === "  balanced (fs)"));
     ctx.lastComponent = partial;
     const final = renderAgentsResult(
@@ -355,7 +350,10 @@ test("background controls and validation/framework failures render honest bounde
       ctx,
     );
     const lines = component.render(100);
-    assert.match(lines[0], /subagent/);
+    assert.match(
+      lines[0],
+      details.validationError ? /^Error:/ : /^(?:admitted|0 executions)/,
+    );
     assert.doesNotMatch(lines.join("\n"), /\x1b|0 done|✓/);
     assert.ok(component.render(12).every((line) => visibleWidth(line) <= 12));
   }
@@ -365,7 +363,7 @@ test("background controls and validation/framework failures render honest bounde
     theme,
     { state: {}, isError: true },
   );
-  assert.match(failed.render(100)[0], /subagent · execution error/);
+  assert.match(failed.render(100)[0], /execution error/);
 });
 
 test("getActivity accepts nested or direct activity shapes", () => {

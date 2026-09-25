@@ -86,9 +86,9 @@ Environment inheritance is deliberate; `exec-shell` is not a security sandbox an
 
 ## Activity and rendering
 
-Background controls route through `background/render.ts`, a display-only projection of retained receipts. Collapse keeps one contextual status line and prioritizes uncertain effects; expansion preserves bounded evidence. This does not change execution, usage or notification ownership.
+Background controls route through `background/render.ts`, a display-only projection of retained receipts. Calls show action and available intent or requested ID, while flush-left outcomes prioritize uncertain effects without repeating call identity; expansion preserves bounded evidence. This does not change execution, usage or notification ownership.
 
-Background run/control rows summarize admission and retained status, with uncertainty taking priority over optional labels. Inspection retains the complete child outcome and diagnostic references. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter compact result rendering; log paths remain expanded diagnostics.
+Background run/control rows summarize admission and retained status, with uncertainty taking priority over optional labels. A single-child progress snapshot additionally reports validated profile and bounded phase or active tool name (no tool arguments) for the shared widget; the full execution ID remains in inspection and wake expansion, not the compact widget or notification. Inspection retains the complete child outcome and diagnostic references. Renderers strip controls, collapse dynamic line breaks, bound strings, and use the shared width-aware component. Prompts and bulky/raw tool values never enter compact result rendering; log paths remain expanded diagnostics.
 
 ## Recursion, cancellation, and diagnostics
 

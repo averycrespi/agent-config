@@ -236,6 +236,9 @@ export class Service implements BackgroundService {
                       ...(update.activity.phase === undefined
                         ? {}
                         : { phase: label(update.activity.phase) }),
+                      ...(update.activity.profile === undefined
+                        ? {}
+                        : { profile: label(update.activity.profile) }),
                     },
                   }
                 : {}),

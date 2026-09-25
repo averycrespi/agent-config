@@ -4,7 +4,7 @@
 
 ## Architecture
 
-- `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content and applies large-output spillover. `render.ts` supplies display-only contextual count/read/clone summaries and bounded expanded evidence; raw previews are not shown collapsed.
+- `index.ts` registers the tools, loads config lazily per cwd, routes fetches by URL type, wraps successful external content and applies large-output spillover. `render.ts` supplies a bounded query/origin call label, nonduplicative typed search counts and exceptional result warnings, and bounded expanded evidence; routine fetch/read success and raw previews are not shown collapsed.
 - `script-provider.ts` registers optional `web.search`/`web.fetch` through Script's supported API, adapting the same tool implementations to JSON and sticky failure accounting.
 - `config.ts` loads Tavily, Jina, and Exa API keys plus the Playwright toggle from Pi settings and environment variables.
 - `search.ts` implements provider fallback for search: Tavily, authenticated-or-keyless Exa MCP, then configured Jina Search.

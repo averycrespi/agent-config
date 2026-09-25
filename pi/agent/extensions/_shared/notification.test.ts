@@ -49,11 +49,11 @@ for (const source of ["background", "monitor"] as const) {
             interrupted: "interrupted",
           }
         : {
-            condition: "attention · condition",
-            timeout: "attention · timed out",
-            evaluation_failure: "attention · evaluation failed",
-            coverage_failure: "attention · coverage lost",
-            budget_exhausted: "attention · budget exhausted",
+            condition: "attention condition",
+            timeout: "attention timed out",
+            evaluation_failure: "attention evaluation failed",
+            coverage_failure: "attention coverage lost",
+            budget_exhausted: "attention budget exhausted",
           };
     for (const [status, expected] of Object.entries(statuses)) {
       const m = message(source, status);
@@ -71,6 +71,7 @@ for (const source of ["background", "monitor"] as const) {
         ),
       );
       assert.match(normal[0], /Build 世界/);
+      assert.doesNotMatch(normal[0], /·/);
       assert.doesNotMatch(normal[0], /11111111|Continue|result.json|UNTRUSTED/);
       assert.deepEqual(backgrounds, ["customMessageBg"]);
       if (source === "monitor") assert.ok(!colors.includes("success"));
@@ -227,7 +228,7 @@ test("producer metadata alone selects timer and singular/batch labels", () => {
     )!.render(100)[0];
     assert.match(
       line,
-      mode === "timer" ? /timer elapsed/ : /attention · condition/,
+      mode === "timer" ? /timer elapsed/ : /attention condition/,
     );
   }
 });
