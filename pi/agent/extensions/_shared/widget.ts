@@ -57,12 +57,15 @@ export function fitWidgetRow(
   width: number,
   separator: string,
   detail = "",
+  detailSeparator = separator,
 ): string {
   const safeWidth = Math.max(0, width);
   const kept = [...fields];
   const minimumDetail = Math.min(8, visibleWidth(detail));
   const render = (text: string) =>
-    [head, ...(text ? [text] : []), ...kept].join(separator);
+    head +
+    (text ? detailSeparator + text : "") +
+    kept.map((field) => separator + field).join("");
   while (
     kept.length &&
     visibleWidth(render(truncateToWidth(detail, minimumDetail, "…"))) >
@@ -74,7 +77,7 @@ export function fitWidgetRow(
     0,
     safeWidth -
       visibleWidth(render("")) -
-      (detail ? visibleWidth(separator) : 0),
+      (detail ? visibleWidth(detailSeparator) : 0),
   );
   return truncateToWidth(
     render(truncateToWidth(detail, detailWidth, "…")),

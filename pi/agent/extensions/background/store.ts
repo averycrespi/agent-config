@@ -123,12 +123,24 @@ export function validateActivity(value: unknown): void {
     failed?: number;
     phase?: string;
     profile?: string;
+    queued?: number;
+    canceled?: number;
+    totalTokens?: number;
   };
   if (
     !a ||
     Object.keys(a).some(
       (k) =>
-        !["started", "completed", "failed", "phase", "profile"].includes(k),
+        ![
+          "started",
+          "completed",
+          "failed",
+          "phase",
+          "profile",
+          "queued",
+          "canceled",
+          "totalTokens",
+        ].includes(k),
     ) ||
     ![a.started, a.completed, a.failed].every(Number.isSafeInteger) ||
     a.started! < 0 ||
@@ -136,6 +148,11 @@ export function validateActivity(value: unknown): void {
     a.failed! < 0 ||
     a.completed! > a.started! ||
     a.failed! > a.completed! ||
+    [a.queued, a.canceled, a.totalTokens].some(
+      (v) => v !== undefined && (!Number.isSafeInteger(v) || v < 0),
+    ) ||
+    (a.queued ?? 0) > a.started! - a.completed! ||
+    (a.canceled ?? 0) > a.failed! ||
     (a.phase !== undefined &&
       (typeof a.phase !== "string" || a.phase.length > 200)) ||
     (a.profile !== undefined &&

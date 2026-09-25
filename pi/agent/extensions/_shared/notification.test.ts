@@ -45,7 +45,7 @@ for (const source of ["background", "monitor"] as const) {
             success: "succeeded",
             failed: "failed",
             timeout: "timed out",
-            cancelled: "cancelled",
+            cancelled: "canceled",
             interrupted: "interrupted",
           }
         : {

@@ -8,6 +8,7 @@ import {
   plural,
   toolCall,
   outcomeLine,
+  outcomeSections,
   type RenderLine,
 } from "../_shared/render.ts";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
@@ -147,16 +148,16 @@ function warnings(
       : []),
   ];
 }
-function jobLine(r: DisplayReceipt): string {
+function jobLine(r: DisplayReceipt, includeName = false): string {
   return [
     ...warnings(r),
     activity(r),
     ...(r.failureCode ? [label(r.failureCode)] : []),
-    label(r.name),
+    ...(includeName ? [label(r.name)] : []),
     r.recurring ? `wakes ${r.wakes}/${r.maxWakes}` : plural(r.wakes, "wake"),
     ...(r.evaluations ? [plural(r.evaluations, "evaluation")] : []),
     ...(r.calls ? [plural(r.calls, "call")] : []),
-  ].join(", ");
+  ].join(" · ");
 }
 function registrationLine(r: DisplayReceipt): string {
   const duration = formatWidgetCountdown;
@@ -174,7 +175,7 @@ function registrationLine(r: DisplayReceipt): string {
     mode,
     `timeout ${duration(r.cycleMs)}`,
     ...(r.recurring ? [`max ${plural(r.maxWakes, "wake")}`] : []),
-  ].join(", ");
+  ].join(" · ");
 }
 function resultLine(d: DisplayDetails, action: string): string {
   if (action === "list") {
@@ -188,7 +189,7 @@ function resultLine(d: DisplayDetails, action: string): string {
       active ? `${active} active` : "no active jobs",
       `${receipts.length} retained`,
       ...(pending ? [`${pending} follow-up queued`] : []),
-    ].join(", ");
+    ].join(" · ");
   }
   const r = d.receipt;
   if (!r) return label(d.status) || "result unavailable";
@@ -197,11 +198,10 @@ function resultLine(d: DisplayDetails, action: string): string {
     return [
       ...warnings(r),
       d.cancelChanged ? "cancelled" : `already ${label(r.status)}`,
-      label(r.name),
       ...(r.lastAttention?.disposition === "handed_to_pi"
         ? ["follow-up already handed off"]
         : []),
-    ].join(", ");
+    ].join(" · ");
   return jobLine(r);
 }
 export function visible(r: Receipt) {
@@ -250,7 +250,7 @@ export function widgetLines(
     if (r.awaitingSettlement && r.status === "active")
       fields.push(timing("expires", r.deadline));
     const name = theme.fg("text", label(r.name));
-    const separator = theme.fg("dim", ", ");
+    const separator = theme.fg("dim", " · ");
     const primary = `${theme.fg("muted", "monitor")} ${theme.fg(color, state)}`;
     const warningText = warnings(r);
     const compact: Record<string, string> = {
@@ -259,7 +259,7 @@ export function widgetLines(
       "effects may persist": "effects?",
       "handoff uncertain": "handoff?",
     };
-    const narrow = visibleWidth([primary, ...warningText].join(", ")) > width;
+    const narrow = visibleWidth([primary, ...warningText].join(" · ")) > width;
     const critical = warningText.map((s) =>
       theme.fg("warning", narrow ? (compact[s] ?? s) : s),
     );
@@ -272,6 +272,7 @@ export function widgetLines(
       width,
       separator,
       name,
+      " ",
     );
   });
 }
@@ -288,7 +289,12 @@ export const renderers: Pick<
 > = {
   renderCall(args, theme, ctx) {
     return getTruncatedText(ctx.lastComponent, [
-      toolCall(theme, "monitor", args.action, args.name ?? args.id),
+      toolCall(
+        theme,
+        "monitor",
+        args.action,
+        args.name ?? args.id?.slice(0, 8),
+      ),
     ]);
   },
   renderResult(result, { expanded, isPartial }, theme, ctx) {
@@ -340,15 +346,16 @@ export const renderers: Pick<
         ),
       ]);
     const lines: RenderLine[] = [
-      outcomeLine(
+      outcomeSections(
         theme,
-        isPartial
+        (isPartial
           ? partial
           : failed
             ? "request failed"
             : !expanded && polling
               ? "registered; no repeat poll"
-              : resultLine(d, action),
+              : resultLine(d, action)
+        ).split(" · "),
         isPartial
           ? "warning"
           : failed || jobFailed
@@ -362,10 +369,10 @@ export const renderers: Pick<
       lines.push(theme.fg("warning", polling));
     if (expanded && !failed && !isPartial) {
       if (action === "list")
-        for (const r of d.receipts ?? []) lines.push(jobLine(r));
+        for (const r of d.receipts ?? []) lines.push(jobLine(r, true));
       else if (d.receipt) {
         const r = d.receipt;
-        lines.push(`job ${label(r.id)}`);
+        lines.push(`job ${label(r.name)} (${label(r.id)})`);
         if (action !== "get") lines.push(jobLine(r));
         if (r.effectsMayPersist)
           lines.push(

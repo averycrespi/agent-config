@@ -274,12 +274,12 @@ Use the globals agent(prompt, { intent, capabilities, profile, output?, retries?
 Concurrency is bounded by configuration. Every agent and verifier call explicitly declares execution policy; write-filesystem and exec-shell are rejected. The immutable budget mirror is advisory; host-side run and token caps are authoritative.
 Omit timeoutMs normally to use configured agentTimeoutMs (default 10 minutes). An explicit timeoutMs overrides the per-attempt agent/verify deadline, not the whole-run workflowTimeoutMs (default 1 hour), which still bounds all work.
 Do not use imports, require, filesystem/network/timer APIs, Date.now, new Date, or Math.random.
-Workflow runs are background-only (the default); explicit foreground is rejected before work starts. One workflow owns and awaits all its children. Background must be loaded. Use executions to list retained runs, inspect/cancel/dismiss with id; list still lists saved definitions. Wait for automatic notification, not polling. Inspect typed failures, partial results and accounting; execution success is not acceptance. No replay, extra retries or renewed budgets.`,
+Workflow runs are background-only (the default); explicit foreground is rejected before work starts. One workflow owns and awaits all its children. Background must be loaded. Use executions to list retained runs, inspect/cancel/dismiss with id; list still lists saved definitions. Continue independent authorized work while awaiting automatic notification, without duplicating child work or changing files under review. Yield when none remains; do not poll. Inspect typed failures, partial results and accounting; execution success is not acceptance. No replay, extra retries or renewed budgets.`,
     promptSnippet:
       "List and validate workflows immediately, or launch a background-only workflow run.",
     promptGuidelines: [
       "Call workflow with action list when a reusable saved workflow may apply.",
-      "Use workflow for coordinated read-only fan-out even when only parallelism is needed; subagent is for one independent question, and direct tools or Script compose providers without subagent reasoning. Workflow runs require authorization. Wait for correlated automatic notification and inspect the exact retained result; notification and execution success are not acceptance. Use workflow inspect/cancel/dismiss controls. One workflow owns all children and preserves gates, budgets and deadlines; no replay or nested background execution.",
+      "Use workflow for coordinated read-only fan-out even when only parallelism is needed; subagent is for one independent question, and direct tools or Script compose providers without subagent reasoning. Workflow runs require authorization. Continue independent authorized work while awaiting correlated automatic notification; yield when none remains, without polling. Inspect the exact retained result; notification and execution success are not acceptance. Use workflow inspect/cancel/dismiss controls. One workflow owns all children and preserves gates, budgets and deadlines; no replay or nested background execution.",
       "Use workflow for coordinated read-mostly subagent fan-out (including parallel-only batches), dependent phases, aggregation, verification gates, or an applicable saved workflow. Use separate direct subagent calls only for independently owned outcomes that the parent will reconcile. Preserve skill-required workflows. Use script with the selected mcp provider for gateway composition without subagent reasoning.",
       "Do not use workflow for workspace mutation; write-filesystem and exec-shell are rejected, so use only explicitly justified read-mostly capabilities.",
       "Pass thunks to parallel() or parallelSettled(), e.g. `parallel(items.map((item) => () => agent(...)))`, so concurrency remains bounded.",
@@ -454,6 +454,7 @@ Workflow runs are background-only (the default); explicit foreground is rejected
           latestSnapshot = {
             ...snapshot,
             agents: [...agentStates.values()],
+            totalTokens: ledger.snapshot().used,
           };
           progress?.(latestSnapshot);
           update?.({
@@ -624,6 +625,9 @@ Workflow runs are background-only (the default); explicit foreground is rejected
                   completed: 0,
                   failed: 0,
                 }),
+                ...(snapshot.totalTokens
+                  ? { totalTokens: snapshot.totalTokens }
+                  : {}),
                 ...(snapshot.phase
                   ? { phase: snapshot.phase.slice(0, 200) }
                   : {}),
@@ -640,6 +644,10 @@ Workflow runs are background-only (the default); explicit foreground is rejected
             accounting: result.details.accounting,
             ...("errorCode" in result.details
               ? { errorCode: result.details.errorCode }
+              : {}),
+            ...("errorMessage" in result.details &&
+            typeof result.details.errorMessage === "string"
+              ? { errorMessage: result.details.errorMessage.slice(0, 1000) }
               : {}),
             ...(progressFailed ? { progressError: true } : {}),
           };

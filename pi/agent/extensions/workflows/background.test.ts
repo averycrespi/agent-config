@@ -110,6 +110,10 @@ test("background named source, args, config and context are pinned; one workflow
   const requests: any[] = [];
   const stub = mock.method(_runSubagent, "fn", async (request: any) => {
     requests.push(request);
+    request.onEvent({
+      type: "message_end",
+      message: { role: "assistant", usage: { totalTokens: 1234 } },
+    });
     entered.resolve();
     await gate.promise;
     return success();
@@ -139,6 +143,7 @@ test("background named source, args, config and context are pinned; one workflow
     assert.equal(h.service.list("subagents").length, 0);
     assert.equal(requests[0].cwd, originalCwd);
     assert.equal(h.service.inspect("workflow", id).activity?.phase, "inspect");
+    assert.equal(h.service.inspect("workflow", id).activity?.totalTokens, 1234);
     assert.equal(
       (await h.execute({ action: "inspect", id })).details.background.status,
       "running",
@@ -155,6 +160,8 @@ test("background named source, args, config and context are pinned; one workflow
       started: 1,
       completed: 1,
       failed: 0,
+      canceled: 0,
+      totalTokens: 1234,
       phase: "inspect",
     });
     h.service.flush();
@@ -211,8 +218,12 @@ test("inline gates, branch failures, incomplete review data, retries and caps re
   ]) {
     const h = await harness(scenario.config);
     let attempts = 0;
-    const stub = mock.method(_runSubagent, "fn", async () => {
+    const stub = mock.method(_runSubagent, "fn", async (request: any) => {
       attempts++;
+      request.onEvent({
+        type: "message_end",
+        message: { role: "assistant", usage: { totalTokens: 7 } },
+      });
       return scenario.fail || (scenario.retry && attempts === 1)
         ? { ...success(), ok: false, errorCode: "provider_error" as const }
         : success();
@@ -228,6 +239,8 @@ test("inline gates, branch failures, incomplete review data, retries and caps re
       const saved = await retained(done);
       assert.equal(saved.details.errorCode, scenario.code);
       assert.equal(attempts, scenario.attempts);
+      assert.equal(done.activity?.totalTokens, scenario.attempts * 7);
+      assert.equal((done.result as any).accounting.used, scenario.attempts * 7);
       assert.equal((done.result as any).accounting.launched, 1);
       if (scenario.fail)
         assert.equal(saved.details.settledBranchFailureCount, 1);
@@ -277,6 +290,9 @@ test("cancel aborts and drains admitted work before settlement; recovery retains
     drain.resolve();
     const done = await h.terminal;
     assert.equal(done.status, "cancelled");
+    assert.equal(done.activity?.canceled, 1);
+    assert.equal(done.activity?.completed, 2);
+    assert.equal(done.activity?.failed, 1);
     const saved = await retained(done);
     assert.equal(saved.details.errorCode, "workflow_aborted");
     assert.equal(saved.details.counts.outstanding, 0);

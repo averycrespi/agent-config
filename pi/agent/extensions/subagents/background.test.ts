@@ -123,6 +123,7 @@ test("background returns before completion; mixed results and usage stay aligned
   for (let i = 0; !finish && i < 100; i++) await tick();
   assert.equal(h.service.inspect("subagents", id).status, "running");
   assert.equal(h.sent.length, 0);
+  assert.equal(h.service.inspect("subagents", id).activity?.totalTokens, 5);
   finish?.();
   const r = await settled(h, id);
   assert.equal(r.status, "failed");
@@ -221,9 +222,15 @@ test("foreground/background share capacity; queued cancellation starts no child"
   } = await h.call({ agent: child() });
   await tick();
   assert.equal(run.mock.callCount(), 1);
+  assert.equal(
+    h.service.inspect("subagents", execution.id).activity?.queued,
+    1,
+  );
   await h.call({ action: "cancel", id: execution.id });
   const cancelled = await settled(h, execution.id);
   assert.equal(cancelled.status, "cancelled");
+  assert.equal(cancelled.activity?.canceled, 1);
+  assert.equal(cancelled.activity?.queued, 0);
   assert.equal(run.mock.callCount(), 1);
   finish();
   assert.equal(
@@ -265,6 +272,8 @@ test("mutable cross-mode gate remains exclusive; running cancellation drains and
   finishes[0]();
   const cancelled = await settled(h, a.details.execution.id);
   assert.equal((cancelled.result as any).usage.totalTokens, 5);
+  assert.equal(cancelled.activity?.canceled, 1);
+  assert.equal(cancelled.activity?.totalTokens, 5);
   for (let i = 0; finishes.length < 2 && i < 100; i++) await tick();
   assert.equal(run.mock.callCount(), 2);
   finishes[1]();

@@ -331,7 +331,7 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   assert.equal(pending.attention.disposition, "pending");
   assert.match(
     h.component.render(200)[0],
-    /monitor condition met, safe name, follow-up queued/,
+    /monitor condition met safe name · follow-up queued/,
   );
   await h.idle();
   await pause();

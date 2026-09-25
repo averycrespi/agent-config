@@ -1,4 +1,5 @@
 import { stripVTControlCharacters } from "node:util";
+import { workflowDisplayName } from "./parser.ts";
 import {
   clearPartialTimer,
   formatDuration,
@@ -33,8 +34,13 @@ function statusPrefix(
   theme: any,
   status: "success" | "warning" | "error",
 ): string {
-  const glyph = status === "success" ? "✓" : status === "warning" ? "!" : "✗";
-  return `${theme.fg(status, glyph)} `;
+  const label =
+    status === "success"
+      ? "succeeded"
+      : status === "warning"
+        ? "completed with failures"
+        : "failed";
+  return `${theme.fg(status, label)} `;
 }
 
 function conciseErrorMessage(text: string): string {
@@ -310,8 +316,20 @@ function actionSummaryLine(
 }
 
 export function renderWorkflowCall(params: any, theme: any, context: any) {
+  const state = (context.state ??= {});
+  if (state.displayScript !== params?.script) {
+    state.displayScript = params?.script;
+    state.displayName = workflowDisplayName(params?.script);
+  }
   return getTruncatedText(context.lastComponent, [
-    toolCall(theme, "workflow", params?.action ?? "run", params?.name),
+    toolCall(
+      theme,
+      "workflow",
+      params?.action ?? "run",
+      params?.name ??
+        state.displayName ??
+        (typeof params?.id === "string" ? params.id.slice(0, 8) : undefined),
+    ),
   ]);
 }
 
@@ -417,11 +435,9 @@ export function renderWorkflowResult(
         ...entries.map((entry) => {
           const name = safeDisplay(entry.name ?? entry.filename);
           if (entry.valid) {
-            return `✓ ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`;
+            return `${theme.fg("muted", "valid")} ${name}${entry.description ? ` — ${safeDisplay(entry.description)}` : ""}`;
           }
-          return expanded
-            ? `✗ ${name} — ${safeDisplay(entry.diagnostic ?? "invalid")}`
-            : `✗ ${name}`;
+          return `${theme.fg("error", "invalid")} ${name} — ${safeDisplay(entry.diagnostic ?? "invalid definition")}`;
         }),
         ...(inventory?.truncated
           ? [`… ${safeDisplay(inventory.truncated)}`]

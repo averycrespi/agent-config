@@ -12,6 +12,12 @@ export type Activity = {
   started: number;
   completed: number;
   failed: number;
+  /** Waiting admitted children, excluding uninvoked workflow thunks. */
+  queued?: number;
+  /** Canceled subset of failed, preserving historical aggregate semantics. */
+  canceled?: number;
+  /** Reported cumulative usage only; absence is not zero usage. */
+  totalTokens?: number;
   phase?: string;
   /** Optional bounded policy label for a single child; display only. */
   profile?: string;

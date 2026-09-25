@@ -57,6 +57,14 @@ function okOutcome(stdout = "done") {
   } as const;
 }
 
+test("delegation guidance continues independent work without completion polling", () => {
+  const guidance = buildDelegationGuidance(config);
+  assert.match(guidance, /Continue independent authorized work/);
+  assert.match(guidance, /yield when none remains/);
+  assert.match(guidance, /Do not poll or duplicate its investigation/);
+  assert.match(guidance, /inspect its execution ID and reconcile/);
+});
+
 test("direct schema rejects raw and legacy request fields", () => {
   const schema = buildSpawnAgentsParams("tiers") as any;
   assert.equal(schema.additionalProperties, false);

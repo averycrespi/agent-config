@@ -217,7 +217,9 @@ export class Service implements BackgroundService {
               update.activity &&
               (update.activity.started < current.activity.started ||
                 update.activity.completed < current.activity.completed ||
-                update.activity.failed < current.activity.failed)
+                update.activity.failed < current.activity.failed ||
+                (update.activity.canceled ?? 0) <
+                  (current.activity.canceled ?? 0))
             )
               throw new Error("background_invalid_activity");
             const result =

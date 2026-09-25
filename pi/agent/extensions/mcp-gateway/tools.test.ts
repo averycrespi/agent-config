@@ -544,8 +544,8 @@ test("compact rows show contextual counts and outcomes, with payloads only expan
     bold: (text: string) => text,
   };
   for (const [name, args, header, expected] of [
-    ["mcp_search", { query: "" }, "mcp_search", "50 shown, 55 matches"],
-    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 shown, 1 match"],
+    ["mcp_search", { query: "" }, "mcp_search", "50 shown · 55 matches"],
+    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 shown · 1 match"],
     [
       "mcp_describe",
       { name: "example.lookup_0" },

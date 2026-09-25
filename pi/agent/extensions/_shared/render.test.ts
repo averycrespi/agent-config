@@ -19,7 +19,25 @@ import {
   tailNonEmptyLines,
   toolCall,
   outcomeLine,
+  outcomeSections,
 } from "./render.ts";
+
+test("summary fields have muted separators without rewriting prose or empty outcomes", () => {
+  const theme: any = { fg: (c: string, s: string) => `<${c}>${s}</${c}>` };
+  assert.equal(
+    outcomeSections(theme, ["2 done", "", "6.9k tokens"]),
+    "<muted>2 done</muted><dim> · </dim><muted>6.9k tokens</muted>",
+  );
+  assert.equal(
+    outcomeSections(theme, ["effects unknown; no replay"], "warning"),
+    "<warning>effects unknown; no replay</warning>",
+  );
+  assert.equal(
+    outcomeSections(theme, ["\x1b[2Jline\nnext"]),
+    "<muted>line next</muted>",
+  );
+  assert.equal(outcomeSections(theme, []), "");
+});
 
 const plainTheme: any = {
   fg: (_: string, text: string) => {

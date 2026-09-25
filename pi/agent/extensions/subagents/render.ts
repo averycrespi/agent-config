@@ -60,13 +60,16 @@ export function statsLine(
   return parts.join(", ");
 }
 
-function statusGlyph(agent: SubagentRunState, theme: any): string {
-  if (agent.phase === "error") return "✗";
-  if (agent.phase === "aborted") return "!";
-  if (agent.resolved === true || agent.phase === "done") return "✓";
-  if (agent.phase === "queued") return theme.fg("dim", "○");
-  if (agent.phase === "thinking") return "…";
-  return "●";
+function statusLabel(agent: SubagentRunState, theme: any): string {
+  if (agent.phase === "error") return theme.fg("error", "failed");
+  if (agent.phase === "aborted") return theme.fg("warning", "canceled");
+  if (agent.resolved === true || agent.phase === "done")
+    return theme.fg("success", "succeeded");
+  if (agent.phase === "queued") return theme.fg("muted", "queued");
+  return theme.fg(
+    "accent",
+    agent.phase === "thinking" ? "thinking" : "running",
+  );
 }
 
 function compactRecentActivity(agent: SubagentRunState): string | undefined {
@@ -163,7 +166,7 @@ function agentsHeader(
   if (elapsed) parts.push(elapsed);
   const title = theme.fg("toolTitle", theme.bold("subagents"));
   const status = final
-    ? `${theme.fg(failureCount > 0 ? "error" : "success", failureCount > 0 ? "✗" : "✓")} `
+    ? `${theme.fg(failureCount > 0 ? "error" : "success", failureCount > 0 ? "failed" : "succeeded")} `
     : "";
   return `${status}${title}${separator(theme)}${theme.fg("muted", parts.join(", "))}`;
 }
@@ -177,7 +180,7 @@ export function agentProgressLines(
     0,
     (isDone(agent) ? agent.lastUpdateAt : Date.now()) - agent.startedAt,
   );
-  const label = `${statusGlyph(agent, theme)} ${safe(agent.intent, 160)}`;
+  const label = `${statusLabel(agent, theme)} ${safe(agent.intent, 160)}`;
   const first = `${label}${separator(theme)}${theme.fg("muted", statsLine(agent.toolUseCount, agent.totalTokens, elapsedMs))}`;
   const secondary = [
     policyLabel(agent),
@@ -223,7 +226,9 @@ export function renderAgentsCall(
       args.action === "inspect" ||
         args.action === "cancel" ||
         args.action === "dismiss"
-        ? args.id
+        ? typeof args.id === "string"
+          ? args.id.slice(0, 8)
+          : undefined
         : (args.agents?.[0] as { intent?: unknown } | undefined)?.intent,
     ),
   ]);

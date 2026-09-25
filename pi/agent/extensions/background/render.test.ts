@@ -77,7 +77,7 @@ for (const [name, call, render, details] of adapters) {
         name === "subagents" &&
         (action === "inspect" || action === "cancel" || action === "dismiss")
       )
-        assert.match(header, new RegExp(id));
+        assert.match(header, new RegExp(id.slice(0, 8)));
       const collapsed = render(
         result,
         { expanded: false, isPartial: false },
@@ -93,7 +93,7 @@ for (const [name, call, render, details] of adapters) {
       );
       if (action === "run") assert.match(collapsed.render(120)[0], /admitted/);
       if (action === "dismiss")
-        assert.match(collapsed.render(120)[0], /evidence retained/);
+        assert.equal(collapsed.render(120)[0], "dismissed");
       const expanded = render(
         result,
         { expanded: true, isPartial: false },

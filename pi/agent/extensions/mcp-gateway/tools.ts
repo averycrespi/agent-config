@@ -10,7 +10,7 @@ import {
   getTruncatedText,
   partialElapsed,
   toolCall,
-  outcomeLine,
+  outcomeSections,
 } from "../_shared/render.ts";
 import { GatewayClient, GatewayError, record } from "./client.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
@@ -94,7 +94,7 @@ export function renderers(
             : failed
               ? "request failed"
               : name === "mcp_search"
-                ? `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown, ${typeof details?.matchCount === "number" ? (details.matchCount === 1 ? "1 match" : `${details.matchCount} matches`) : "? matches"}`
+                ? `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown · ${typeof details?.matchCount === "number" ? (details.matchCount === 1 ? "1 match" : `${details.matchCount} matches`) : "? matches"}`
                 : name === "mcp_describe"
                   ? "schema read"
                   : "returned";
@@ -105,9 +105,9 @@ export function renderers(
           context.lastComponent,
           summary || retained
             ? [
-                outcomeLine(
+                outcomeSections(
                   theme,
-                  [summary, retained].filter(Boolean).join("; "),
+                  [...summary.split(" · "), retained],
                   failed
                     ? "error"
                     : details?.outcomeUnknown || retained

@@ -27,7 +27,7 @@ const EXECUTION: Record<string, [string, ThemeColor]> = {
   success: ["succeeded", "success"],
   failed: ["failed", "error"],
   timeout: ["timed out", "warning"],
-  cancelled: ["cancelled", "muted"],
+  cancelled: ["canceled", "warning"],
   interrupted: ["interrupted", "warning"],
 };
 const OBSERVATION: Record<string, [string, ThemeColor]> = {
@@ -131,6 +131,7 @@ export function notificationRenderer(
         : []),
       ...(field(display, "gap") === true ? ["coverage gap"] : []),
       ...(field(display, "effectsMayPersist") === true &&
+      !(source === "background" && valid && status === "success") &&
       field(display, "outcomeUnknown") !== true
         ? ["effects may persist"]
         : []),
@@ -143,8 +144,9 @@ export function notificationRenderer(
         const title = theme.fg("toolTitle", theme.bold(type));
         const state =
           source === "monitor" && valid ? `attention ${reason}` : reason;
+        let prefix = `${title} ${theme.fg(color, state)}`;
         let essential =
-          `${title} ${theme.fg(color, state)}` +
+          prefix +
           (warnings.length
             ? separator + theme.fg("warning", `(${warnings.join("; ")})`)
             : "");
@@ -160,8 +162,9 @@ export function notificationRenderer(
             .replace("evaluation", "eval")
             .replace("budget exhausted", "budget")
             .replace("timed out", "timeout");
+          prefix = `${title} ${theme.fg(color, shortReason)}`;
           essential =
-            `${title} ${theme.fg(color, shortReason)}` +
+            prefix +
             (warnings.length
               ? separator +
                 theme.fg(
@@ -180,12 +183,19 @@ export function notificationRenderer(
             line + " ".repeat(Math.max(0, w - visibleWidth(line))),
           );
         };
+        const identity =
+          name && w - visibleWidth(essential) >= 8
+            ? separator +
+              theme.fg(
+                "text",
+                truncateToWidth(name, w - visibleWidth(essential) - 1),
+              )
+            : "";
         const lines = [
           fit(
-            essential +
-              (name && w - visibleWidth(essential) >= 8
-                ? separator + theme.fg("text", name)
-                : ""),
+            source === "background"
+              ? prefix + identity + essential.slice(prefix.length)
+              : essential + identity,
           ),
         ];
         if (!expanded) return lines;

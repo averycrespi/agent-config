@@ -141,6 +141,13 @@ test("tool guidance exposes only explicit workflow execution policy", () => {
   assert.match(guidance, /dependent phases, aggregation, verification gates/);
   assert.match(guidance, /subagent is for one independent question/);
   assert.match(guidance, /parallel-only batches/);
+  assert.match(guidance, /Continue independent authorized work/);
+  assert.match(guidance, /Yield when none remains; do not poll/);
+  assert.match(
+    guidance,
+    /without duplicating child work or changing files under review/,
+  );
+  assert.match(guidance, /Inspect the exact retained result/);
   assert.match(guidance, /Preserve skill-required workflows/);
   assert.match(
     guidance,
@@ -399,7 +406,7 @@ test("snapshot rendering is intent-first and metadata-rich", () => {
     finishedAt: 2000,
   };
   const lines = renderSnapshot(snapshot, theme, { final: true });
-  assert.ok(lines.includes("✓ Search docs 1s"));
+  assert.ok(lines.includes("succeeded Search docs 1s"));
   assert.ok(lines.includes("  fast (web)"));
   assert.ok(
     lines.every(
@@ -560,7 +567,7 @@ test("workflow default rendering shows progress and inventory without diagnostic
       context,
     ).render(200);
     if (isPartial) stopRendererTimer(context);
-    assert.ok(lines.some((line) => line.startsWith("✓ Search docs ")));
+    assert.ok(lines.some((line) => line.startsWith("succeeded Search docs ")));
     assert.doesNotMatch(lines.join("\n"), /Logs|agent\.log|provider warning/);
   }
 
@@ -577,7 +584,9 @@ test("workflow default rendering shows progress and inventory without diagnostic
     theme,
     context,
   ).render(200);
-  assert.ok(errorLines.some((line) => line.startsWith("✓ Search docs ")));
+  assert.ok(
+    errorLines.some((line) => line.startsWith("succeeded Search docs ")),
+  );
   assert.doesNotMatch(errorLines.join("\n"), /Recovery:|recovery\.gz/);
 
   const inputError = renderWorkflowResult(
@@ -724,8 +733,9 @@ test("expanded workflows preserve default progress and add diagnostics", () => {
     if (item.partial) stopRendererTimer(context);
     assert.equal(expandedLines[0], defaultLines[0], item.label);
     const isProgressLine = (line: string) =>
-      /^(?:✓|✗|!|●|○|…) (?:Search docs|Audit sources) /.test(line) ||
-      /^  (?:fast|balanced)/.test(line);
+      /^(?:succeeded|failed|canceled|running|queued|thinking) (?:Search docs|Audit sources) /.test(
+        line,
+      ) || /^  (?:fast|balanced)/.test(line);
     assert.deepEqual(
       expandedLines.filter(isProgressLine),
       defaultLines.filter(isProgressLine),
@@ -734,6 +744,33 @@ test("expanded workflows preserve default progress and add diagnostics", () => {
     assert.match(expandedLines.join("\n"), item.diagnostic, item.label);
     assert.doesNotMatch(defaultLines.join("\n"), item.diagnostic, item.label);
   }
+});
+
+test("workflow inventory validity is not execution success and uses no status icons", () => {
+  const marked = {
+    ...theme,
+    fg: (color: string, value: string) => `[${color}:${value}]`,
+  };
+  const rows = renderWorkflowResult(
+    {
+      content: [],
+      details: {
+        action: "list",
+        inventory: {
+          entries: [
+            { name: "research", valid: true },
+            { name: "broken", valid: false, diagnostic: "missing metadata" },
+          ],
+        },
+      },
+    },
+    { expanded: true },
+    marked,
+    rendererContext({ action: "list" }),
+  ).render(200);
+  assert.ok(rows.includes("[muted:valid] research"));
+  assert.ok(rows.includes("[error:invalid] broken — missing metadata"));
+  assert.doesNotMatch(rows.join("\n"), /[✓✗]|succeeded/);
 });
 
 test("workflow summaries use explicit action grammar", () => {
@@ -756,7 +793,7 @@ test("workflow summaries use explicit action grammar", () => {
     theme,
     context,
   );
-  assert.equal(success.render(200)[0], "✓ 1 done, 0 failed, 12s");
+  assert.equal(success.render(200)[0], "succeeded 1 done, 0 failed, 12s");
 
   const partialFailure = renderWorkflowResult(
     {
@@ -786,7 +823,7 @@ test("workflow summaries use explicit action grammar", () => {
   );
   assert.equal(
     partialFailure.render(200)[0],
-    "! 1 done, 1 agent failed, 1 branch failed, 12s",
+    "completed with failures 1 done, 1 agent failed, 1 branch failed, 12s",
   );
 
   const failure = renderWorkflowResult(
@@ -810,7 +847,7 @@ test("workflow summaries use explicit action grammar", () => {
   );
   assert.equal(
     failure.render(200)[0],
-    "✗ workflow_timeout, 1 done, 1 failed, 1 timed out, 12s — timed out",
+    "failed workflow_timeout, 1 done, 1 failed, 1 timed out, 12s — timed out",
   );
 
   const list = renderWorkflowResult(
@@ -864,7 +901,7 @@ test("workflow summaries use explicit action grammar", () => {
     )
       .render(200)
       .join("\n"),
-    /✓ research/,
+    /valid research/,
   );
 
   const validate = renderWorkflowResult(
@@ -905,8 +942,8 @@ test("workflow agent rows keep timeout before the volatile tool", () => {
 
   const lines = renderSnapshot(snapshot, theme);
   assert.match(
-    lines.find((line) => line.startsWith("● Search docs")) ?? "",
-    /^● Search docs \d+s, 3 tool uses, 7\.2k tokens$/,
+    lines.find((line) => line.startsWith("running Search docs")) ?? "",
+    /^running Search docs \d+s, 3 tool uses, 7\.2k tokens$/,
   );
   assert.equal(
     lines.find((line) => line.startsWith("  fast")),
@@ -928,9 +965,9 @@ test("workflow headers and fallback agent rows mute every separator", () => {
     final: true,
   });
   assert.deepEqual(lines, [
-    "✓ {1 done, 0 failed, 12s}",
+    "succeeded {1 done, 0 failed, 12s}",
     "",
-    "✓ Search docs{ }{12s}",
+    "succeeded Search docs{ }{12s}",
     "  {fast (web)}",
   ]);
 });

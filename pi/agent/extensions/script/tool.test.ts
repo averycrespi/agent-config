@@ -240,6 +240,14 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
     renderers.renderCall!(input, plainTheme, {} as any)
       .render(200)
       .join("\n");
+  assert.equal(
+    header({
+      action: "inspect",
+      id: "11111111-2222-4333-8444-555555555555",
+      description: "Inspect result",
+    }),
+    "script inspect 11111111",
+  );
   assert.match(header(args), /Compute totals \(providers: none\)/);
   assert.match(
     header({ ...args, providers: ["mcp", "web"] }),

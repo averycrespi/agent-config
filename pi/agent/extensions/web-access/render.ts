@@ -6,7 +6,7 @@ import {
   partialElapsed,
   plural,
   toolCall,
-  outcomeLine,
+  outcomeSections,
 } from "../_shared/render.ts";
 
 function urlLabel(value: unknown): string {
@@ -71,11 +71,9 @@ export function webRenderers(name: "web_search" | "web_fetch") {
       return getTruncatedText(context.lastComponent, [
         ...(summary || d?.spilled
           ? [
-              outcomeLine(
+              outcomeSections(
                 theme,
-                [summary, d?.spilled ? "retained output" : ""]
-                  .filter(Boolean)
-                  .join("; "),
+                [summary, d?.spilled ? "retained output" : ""],
                 isPartial || unknown || d?.spilled
                   ? "warning"
                   : failed

@@ -80,10 +80,28 @@ test("dynamic activity and initial references validate atomically without changi
     () => update({ progress: { total: 5, completed: 1, failed: 0 } }),
     /invalid_progress/,
   );
+  update({
+    activity: {
+      started: 2,
+      completed: 1,
+      failed: 1,
+      canceled: 1,
+      queued: 1,
+      totalTokens: 10,
+    },
+  });
+  const telemetry = service.inspect("workflow", r.id);
+  for (const patch of [{ canceled: 0 }, { totalTokens: -1 }, { queued: 2 }]) {
+    assert.throws(
+      () => update({ activity: { ...telemetry.activity!, ...patch } }),
+      /invalid_activity/,
+    );
+    assert.deepEqual(service.inspect("workflow", r.id), telemetry);
+  }
   const theme = { fg: (_: string, s: string) => s } as any;
   assert.match(
     widgetLines([before], 150, theme)[0],
-    /workflow running.*1\/2 settled.*1 failed.*verify/,
+    /workflow running.*1\/2 settled, 1 unsuccessful/,
   );
   for (const width of [12, 32, 80])
     assert.ok(
@@ -158,7 +176,7 @@ test("widget sources, singular batches and critical warnings precede optional id
   };
   assert.equal(
     widgetLines([child], 120, theme, 9000)[0],
-    "subagent running · Count vowels · fast · 8s · thinking",
+    "subagent running Count vowels · 8s",
   );
   assert.doesNotMatch(
     widgetLines([child], 120, theme, 9000)[0],
@@ -170,11 +188,18 @@ test("widget sources, singular batches and critical warnings precede optional id
     owner: "workflow",
     label: "Review",
     createdAt: 1000,
-    activity: { started: 3, completed: 2, failed: 0, phase: "verify" },
+    activity: {
+      started: 3,
+      completed: 2,
+      failed: 0,
+      canceled: 0,
+      totalTokens: 7319,
+      phase: "verify",
+    },
   };
   assert.equal(
     widgetLines([workflow], 120, theme, 9000)[0],
-    "workflow running · Review · 2/3 settled · verify · 8s",
+    "workflow running Review · 1 running, 2 done · 7.3k tokens · 8s",
   );
   const uncertain = {
     ...base,
@@ -186,7 +211,7 @@ test("widget sources, singular batches and critical warnings precede optional id
   const line = widgetLines([uncertain], 64, theme)[0];
   assert.match(
     line,
-    /^script interrupted · unknown\/persist failed\/handoff\?/,
+    /^script interrupted.* · unknown\/persist failed\/handoff\?/,
   );
   assert.doesNotMatch(line, /11111111/);
   assert.match(

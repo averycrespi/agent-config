@@ -6,7 +6,7 @@ import {
   getTruncatedText,
   plural,
   toolCall,
-  outcomeLine,
+  outcomeSections,
 } from "../_shared/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import type { Message } from "./store.ts";
@@ -90,9 +90,16 @@ export function renderMailboxResult(
   const details = record(result.details);
   const lines: string[] = [];
   const add = (text: string) => lines.push(theme.fg("muted", text));
-  const finish = (summary: string, color: "success" | "warning" | "error") =>
+  const finish = (
+    summary: string | string[],
+    color: "muted" | "success" | "warning" | "error",
+  ) =>
     getTruncatedText(context.lastComponent, [
-      outcomeLine(theme, summary, color),
+      outcomeSections(
+        theme,
+        Array.isArray(summary) ? summary : [summary],
+        color,
+      ),
       ...lines,
     ]);
   const error = details.error ?? value.error;
@@ -170,8 +177,12 @@ export function renderMailboxResult(
     return finish(
       shown === 0 && value.pending === 0
         ? "No pending messages"
-        : `${shown} shown | ${value.pending} pending | ${value.nextCursor ? "more pages" : "scan complete"}`,
-      "success",
+        : [
+            `${shown} shown`,
+            `${value.pending} pending`,
+            value.nextCursor ? "more pages" : "scan complete",
+          ],
+      "muted",
     );
   }
   if (

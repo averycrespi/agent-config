@@ -4,7 +4,7 @@ Web access extension for Pi — provides `web_search` and `web_fetch` tools.
 
 ## Tools
 
-Calls show the quoted search query or fetch origin; a separate flush-left result shows search counts or warnings, while routine successful fetches have no collapsed result. Counts and spill indicators replace raw page/snippet/title previews. Fetch targets show only the origin, excluding userinfo, path tokens, query and fragment. Original URL arguments remain unchanged in model/session context. Failed uncertain calls retain both failure and no-replay wording before any target. Expand for bounded original trust-framed evidence; full model-facing content is unchanged. All display strings are sanitized before theme styling.
+Calls show the quoted search query or fetch origin; a separate flush-left result shows search counts or warnings, while routine successful fetches have no collapsed result. Counts and spill indicators replace raw page/snippet/title previews. When both are present, a muted middle dot separates the summary and retained-output warning; single outcomes and diagnostic prose are unchanged. Fetch targets show only the origin, excluding userinfo, path tokens, query and fragment. Original URL arguments remain unchanged in model/session context. Failed uncertain calls retain both failure and no-replay wording before any target. Expand for bounded original trust-framed evidence; full model-facing content is unchanged. All display strings are sanitized before theme styling.
 
 ### web_search
 

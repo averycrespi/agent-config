@@ -173,7 +173,7 @@ export function buildPolicyDescription(_config: SubagentsConfig): string {
 
 export function buildDelegationGuidance(config: SubagentsConfig): string {
   return `\n\n## Subagent delegation
-Use subagent for one justified self-contained question; it runs in background only. Wait for its correlated automatic notification, then inspect its execution ID and reconcile the outcome; notification or execution success is not acceptance. Inspect/cancel/dismiss historical subagents executions through subagent too. Background preserves all capability and mutable-child restrictions; callers still own parent-write exclusion and checkout isolation. Late background usage is retained separately from Pi native totals.
+Use subagent for one justified self-contained question; it runs in background only. Continue independent authorized work while awaiting its correlated automatic notification; yield when none remains. Do not poll or duplicate its investigation. Then inspect its execution ID and reconcile the outcome; notification or execution success is not acceptance. Inspect/cancel/dismiss historical subagents executions through subagent too. Background preserves all capability and mutable-child restrictions; callers still own parent-write exclusion and checkout isolation. Late background usage is retained separately from Pi native totals.
 
 Use subagent for a self-contained question when isolation of substantial intermediate context or independent judgment offers a clear benefit over startup, handoff, and verification costs. File count, task category, and read-only status alone do not justify delegation. Keep short lookups, deterministic checks, tightly coupled reasoning, and work needing unstated conversation context inline; avoid duplicating the child's investigation.
 
@@ -479,6 +479,14 @@ export async function runParallelSpawn(
               started: 1,
               completed: progress.completed,
               failed: progress.failed,
+              canceled: states.filter(
+                (s) => s.resolved && s.phase === "aborted",
+              ).length,
+              queued: states.filter((s) => !s.resolved && s.phase === "queued")
+                .length,
+              ...(states[0]!.totalTokens > 0
+                ? { totalTokens: states[0]!.totalTokens }
+                : {}),
               profile: specs[0]!.profile,
               phase: (states[0]!.activeTool || states[0]!.phase).slice(0, 120),
             }
@@ -653,7 +661,7 @@ export default function (pi: ExtensionAPI) {
     name: "subagent",
     label: "Subagent",
     description:
-      "Launch one explicitly briefed subagent in background only, with explicit capabilities and profile. Wait for its automatic notification, inspect the correlated result, and reconcile it; execution success is not acceptance. Use workflow for coordinated read-only fan-out (including parallel-only batches), phases, aggregation or verification; use direct tools or Script for provider composition without subagent reasoning. Historical subagents executions remain inspectable/cancellable/dismissible through this tool on their admission branch. No automatic replay; caller owns authorization, time bounds, parent-write exclusion and checkout isolation.",
+      "Launch one explicitly briefed subagent in background only, with explicit capabilities and profile. Continue independent authorized work while awaiting its automatic notification; yield when none remains, without polling. Inspect the correlated result and reconcile it; execution success is not acceptance. Use workflow for coordinated read-only fan-out (including parallel-only batches), phases, aggregation or verification; use direct tools or Script for provider composition without subagent reasoning. Historical subagents executions remain inspectable/cancellable/dismissible through this tool on their admission branch. No automatic replay; caller owns authorization, time bounds, parent-write exclusion and checkout isolation.",
     parameters: buildSpawnAgentsParams(
       `Required profile: ${PROFILES.join(", ")}.`,
     ),

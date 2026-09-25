@@ -619,6 +619,11 @@ export async function runWorkflow(
       started: startedCalls,
       completed: settledResponses.size,
       failed: agentFailureCount,
+      canceled: [...settledResponses.values()].filter(
+        (r) =>
+          !r.ok &&
+          ["subagent_aborted", "workflow_aborted"].includes(r.errorCode ?? ""),
+      ).length,
     },
     meta: parsed.meta,
     phase: currentPhase,
@@ -658,6 +663,7 @@ export async function runWorkflow(
     } catch {
       // The worker may already have completed while an agent is finalizing.
     }
+    emit(snapshot(), options.onUpdate);
     if (options.ledger?.isTokenExceeded() && !budgetAbort.signal.aborted) {
       budgetAbort.abort(budgetError());
     }

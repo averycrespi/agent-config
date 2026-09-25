@@ -117,8 +117,15 @@ export interface WorkflowAgentState {
 }
 
 export interface WorkflowSnapshot {
+  /** Host ledger usage across attempts; display only. */
+  totalTokens?: number;
   /** Runtime-owned logical calls, not retry attempts or a predicted total. */
-  activity?: { started: number; completed: number; failed: number };
+  activity?: {
+    started: number;
+    completed: number;
+    failed: number;
+    canceled?: number;
+  };
   meta?: WorkflowMeta;
   phase?: string;
   phases: string[];

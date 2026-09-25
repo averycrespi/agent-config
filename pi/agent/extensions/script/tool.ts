@@ -167,7 +167,12 @@ export const renderers: Pick<
   renderCall(args, theme, ctx) {
     if (isBackgroundControl("script", args))
       return getTruncatedText(ctx.lastComponent, [
-        toolCall(theme, "script", args.action ?? "run", args.description),
+        toolCall(
+          theme,
+          "script",
+          args.action ?? "run",
+          args.id?.slice(0, 8) ?? args.name ?? args.description,
+        ),
       ]);
     return getTruncatedText(ctx.lastComponent, [
       toolCall(

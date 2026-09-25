@@ -79,6 +79,18 @@ export function outcomeLine(
   return label ? theme.fg(color, label) : "";
 }
 
+/** Join authored summary fields, not arbitrary result prose, with muted separators. */
+export function outcomeSections(
+  theme: Theme,
+  fields: unknown[],
+  color: ThemeColor = "muted",
+): string {
+  return fields
+    .map((field) => outcomeLine(theme, field, color))
+    .filter(Boolean)
+    .join(theme.fg("dim", " · "));
+}
+
 /** Bounded plain-text expansion; callers retain the original model-facing result. */
 export function expandedResult(result: AgentToolResult<unknown>): string[] {
   const text = result.content

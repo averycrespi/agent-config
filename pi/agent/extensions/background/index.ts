@@ -1,10 +1,16 @@
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import {
+  executionCounts,
+  executionState,
+  executionTokens,
+  executionWarnings,
+} from "./display.ts";
 import type {
   ExtensionAPI,
   ExtensionContext,
   Theme,
 } from "@earendil-works/pi-coding-agent";
-import { createPersistentWidget, fitWidgetRow } from "../_shared/widget.ts";
+import { createPersistentWidget } from "../_shared/widget.ts";
 import { formatDuration } from "../_shared/render.ts";
 import {
   notificationRenderer,
@@ -31,70 +37,41 @@ export function widgetLines(
     const elapsed = formatDuration(
       Math.max(0, (r.endedAt ?? now) - r.createdAt),
     );
-    const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(r.status === "running" ? "accent" : ["failed", "timeout", "interrupted"].includes(r.status) ? "error" : "warning", r.status)}`;
-    const warnings = [
-      ...(r.outcomeUnknown
-        ? [["effects unknown", "unknown"]]
-        : r.effectsMayPersist
-          ? [["effects may persist", "effects?"]]
-          : []),
-      ...(r.persistenceFailed
-        ? [["persistence failed", "persist failed"]]
-        : []),
-      ...(r.notification.handoff === "unknown"
-        ? [["handoff unknown", "handoff?"]]
-        : []),
-    ];
+    const [state, color] = executionState(r.status);
+    const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(color, r.status === "running" && r.cancelRequested ? "cancellation requested" : state)}`;
+    const warnings = executionWarnings(r);
+    const separator = theme.fg("dim", " · ");
     const narrow =
       visibleWidth([primary, ...warnings.map(([full]) => full)].join(" · ")) >
       width;
-    return fitWidgetRow(
+    const warning = warnings
+      .map(([full, compact]) => theme.fg("warning", narrow ? compact : full))
+      .join(theme.fg("dim", narrow ? "/" : " · "));
+    const counts = singleChild ? undefined : executionCounts(r, theme);
+    const tokens = executionTokens(r);
+    const fields = [
+      counts,
+      tokens ? theme.fg("text", tokens) : undefined,
+      theme.fg("text", elapsed),
+    ].filter((value): value is string => Boolean(value));
+    const name = theme.fg("text", label(r.label));
+    const compose = (identity: string) =>
       primary +
-        (warnings.length
-          ? theme.fg("dim", " · ") +
-            warnings
-              .map(([full, compact]) =>
-                theme.fg("warning", narrow ? compact : full),
-              )
-              .join(theme.fg("dim", narrow ? "/" : " · "))
-          : ""),
-      [
-        ...(r.progress && !singleChild
-          ? [
-              theme.fg(
-                r.progress.failed ? "warning" : "text",
-                `${r.progress.completed}/${r.progress.total} settled${r.progress.failed ? ` · ${r.progress.failed} failed` : ""}`,
-              ),
-            ]
-          : []),
-        ...(singleChild
-          ? [
-              ...(r.activity?.profile
-                ? [theme.fg("muted", label(r.activity.profile))]
-                : []),
-              theme.fg("text", elapsed),
-              ...(r.status === "running" && r.activity?.phase
-                ? [theme.fg("muted", label(r.activity.phase))]
-                : []),
-            ]
-          : r.activity
-            ? [
-                theme.fg(
-                  r.activity.failed ? "warning" : "text",
-                  `${r.activity.completed}/${r.activity.started} settled${r.activity.failed ? ` · ${r.activity.failed} failed` : ""}`,
-                ),
-                ...(r.activity.phase
-                  ? [theme.fg("muted", label(r.activity.phase))]
-                  : []),
-                ...(r.owner === "workflow" ? [theme.fg("text", elapsed)] : []),
-              ]
-            : r.owner === "workflow"
-              ? [theme.fg("text", elapsed)]
-              : []),
-      ],
-      width,
-      theme.fg("dim", " · "),
-      theme.fg("text", label(r.label)),
+      (identity ? ` ${identity}` : "") +
+      [...fields, ...(warning ? [warning] : [])]
+        .map((field) => separator + field)
+        .join("");
+    const w = Math.max(0, width);
+    while (
+      fields.length &&
+      visibleWidth(compose(truncateToWidth(name, 8, "…"))) > w
+    )
+      fields.pop();
+    const available = w - visibleWidth(compose("")) - 1;
+    return truncateToWidth(
+      compose(available >= 8 ? truncateToWidth(name, available, "…") : ""),
+      w,
+      "…",
     );
   });
 }

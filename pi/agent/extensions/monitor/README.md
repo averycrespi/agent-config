@@ -141,14 +141,14 @@ No standalone logs, source files or result spills are written. Ordinary Pi histo
 
 ## Tool display
 
-The call row shows `monitor [action] [name or id]`; a separate flush-left result shows only new status or warning facts:
+The call row shows `monitor [action] [name or short id]`; a separate flush-left result shows only new status or warning facts:
 
-- `list`: `2 active, 5 retained`, `no active jobs, 7 retained`, or `no jobs`. Retained includes active and terminal receipts; pending follow-ups are counted separately. Expand for the named inventory.
-- `get`: `polling, CI check, 0 wakes, 4 evaluations`, or a terminal reason such as `evaluation failed, script_error`. Counts report attempts, not watched-task success.
-- `start`: `registered; no repeat poll` when the interval reaches/exceeds the cycle window, with the full event-aware warning expanded and in model-visible text; registration remains valid and unchanged. Otherwise: `polling every 30s, timeout 20m` or `scheduled in 5s, timeout 20s`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
-- `cancel`: `cancelled, CI check` versus `already finished, CI check`. Uncertain effects, uncertain handoffs, and already-handed follow-ups remain visible; cancellation does not retract Pi-owned messages or roll back effects.
+- `list`: `2 active · 5 retained`, `no active jobs · 7 retained`, or `no jobs`. Retained includes active and terminal receipts; pending follow-ups are counted separately. Expand for the named inventory.
+- `get`: `polling · 0 wakes · 4 evaluations`, or a terminal reason such as `evaluation failed · script_error`. Counts report attempts, not watched-task success.
+- `start`: `registered; no repeat poll` when the interval reaches/exceeds the cycle window, with the full event-aware warning expanded and in model-visible text; registration remains valid and unchanged. Otherwise: `polling every 30s · timeout 20m` or `scheduled in 5s · timeout 20s`. Event-only and combined polling/event jobs are distinguished. These are static registration summaries, not countdowns or completion claims.
+- `cancel`: `cancelled` versus `already finished`. Uncertain effects, uncertain handoffs, and already-handed follow-ups remain visible; cancellation does not retract Pi-owned messages or roll back effects.
 
-Expand single-job results for identity, accounting summaries and handoff disposition. Collapsed rows never expose source, arguments, state, evidence, or raw exception text; expansion preserves bounded original framed evidence. Names are nonsecret display labels, sanitized and width-bounded. The call retains action context for failed requests; the result keeps both failure and no-replay wording when effects or handoff are uncertain. Optional targets cannot displace those warnings.
+Keep distinct summary fields separated by muted middle dots, without repeating identity from the call title. Expand single-job results for the full name/ID, accounting summaries and handoff disposition. Collapsed rows never expose source, arguments, state, evidence, or raw exception text; expansion preserves bounded original framed evidence. Names are nonsecret display labels, sanitized and width-bounded. The call retains action context for failed requests; the result keeps both failure and no-replay wording when effects or handoff are uncertain. Optional targets cannot displace those warnings.
 
 ## Notification display
 
@@ -163,11 +163,11 @@ Historical `background-wake` messages receive the same display-only fallback as 
 One stable, width-bounded row per visible job appears below the editor. Source and observation state lead, then critical warnings, bounded identity and real timing:
 
 ```text
-monitor polling, CI check, next check 3s, timeout 12s
-monitor watching events, Worker, timeout 15m
-monitor scheduled, Follow-through, in 5s, timeout 20s, wakes 0/2
-monitor timed out, CI check, follow-up queued
-monitor awaiting settlement, Follow-through, wakes 1/2, expires 50s
+monitor polling CI check · next check 3s · timeout 12s
+monitor watching events Worker · timeout 15m
+monitor scheduled Follow-through · in 5s · timeout 20s · wakes 0/2
+monitor timed out CI check · follow-up queued
+monitor awaiting settlement Follow-through · wakes 1/2 · expires 50s
 ```
 
 `next check` is the next poll, not a model wake. `timeout` is the current attention deadline; `expires` is total lifetime, shown instead when it ends sooner or while awaiting settlement. An in-flight evaluation shows `checking` without a stale next-check countdown. Pending attention shows its cause and `follow-up queued` rather than a misleading ticking clock. Neither condition attention nor a finished receipt proves watched-task success.

@@ -27,9 +27,9 @@ List returns `{mailbox, messages, nextCursor, pending, oldestAt}`. Supply `next_
 
 ## Tool display
 
-The TUI shows a `mailbox [action] [address]` call and a separate flush-left result, such as `persisted result (not consumed)`, `3 shown | 7 pending | more pages`, or `acknowledged 3 messages (not task resolution)`. Status and uncertainty remain visible at narrow widths; full IDs and message bodies remain expanded.
+The TUI shows a `mailbox [action] [address]` call and a separate flush-left result, such as `persisted result (not consumed)`, `3 shown · 7 pending · more pages`, or `acknowledged 3 messages (not task resolution)`. Status and uncertainty remain visible at narrow widths; full IDs and message bodies remain expanded.
 Sending, listing and acknowledging use warning styling while in flight; settled
-operations use success styling, and failures or uncertain publication use error styling.
+mutations use success styling, list counts remain muted with muted middle-dot separators, and failures or uncertain publication use error styling.
 Sent means persisted, not consumed, accepted or completed. Ack is not task resolution.
 
 Expand results for full message IDs, UTC timestamps, and explicitly untrusted message

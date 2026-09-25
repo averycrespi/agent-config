@@ -33,6 +33,25 @@ function literalString(node: ts.Node | undefined): string | undefined {
   return node && ts.isStringLiteralLike(node) ? node.text : undefined;
 }
 
+/** Display-only literal metadata extraction; never evaluates source. */
+export function workflowDisplayName(script: unknown): string | undefined {
+  if (typeof script !== "string" || script.length > 262144) return undefined;
+  try {
+    const source = ts.createSourceFile(
+      "display.js",
+      script,
+      ts.ScriptTarget.Latest,
+      false,
+      ts.ScriptKind.JS,
+    );
+    return source.statements[0]
+      ? readMeta(source.statements[0])?.meta.name
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function readMeta(
   node: ts.Statement,
 ): { meta: WorkflowMeta; literalMeta: WorkflowMeta } | undefined {

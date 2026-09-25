@@ -73,14 +73,14 @@ test("list distinguishes page size, current pending count and scan completion", 
     pending: 7,
     nextCursor: "OPAQUE",
   };
-  assert.equal(render("list", page), "1 shown | 7 pending | more pages");
+  assert.equal(render("list", page), "1 shown · 7 pending · more pages");
   assert.equal(
     render("list", { ...page, nextCursor: null }),
-    "1 shown | 7 pending | scan complete",
+    "1 shown · 7 pending · scan complete",
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 2 }),
-    "0 shown | 2 pending | scan complete",
+    "0 shown · 2 pending · scan complete",
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 0 }),
@@ -311,7 +311,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(args("list")),
       )
       .render(200)[0],
-    "0 shown | 1 pending | scan complete",
+    "0 shown · 1 pending · scan complete",
   );
   t.mock.method(_durability, "syncDirectory", () => {
     throw new Error("fsync");
