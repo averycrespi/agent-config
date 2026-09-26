@@ -7,6 +7,10 @@ export const host: {
   exists(path: string): Promise<boolean>;
   real(path: string): Promise<string>;
 };
+export function preflightWorker(
+  request: { brief: Record<string, unknown>; launchId: string },
+  io?: object,
+): Promise<unknown>;
 export function launchWorker(
   request: {
     phase: "prepare" | "submit";
@@ -21,6 +25,15 @@ export function launchWorker(
   index: string;
   worker?: import("../../../extensions/coordinate/state.ts").Worker;
   handoff?: string;
+  resources?: { workspace: string; pane: string; terminal: string };
+  execution?: {
+    submittedEntry: string | null;
+    activity: boolean;
+    seq: number;
+    status: string;
+    transcript: string;
+  };
+  wait?: { outcome: string; reference: string };
   next: string;
   effect?: string;
   reason?: string;

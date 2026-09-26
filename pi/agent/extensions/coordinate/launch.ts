@@ -8,6 +8,7 @@ import {
 import {
   host,
   launchWorker,
+  preflightWorker,
 } from "../../skills/coordinate-repo/scripts/launch-worker.js";
 import { inspectMonitor } from "../monitor/api.ts";
 import { inspectMailbox, mailboxSupervision } from "../mailbox/api.ts";
@@ -155,6 +156,8 @@ export async function spawn(
     references: [roleGuide],
     bounds: { startMs: 30000, confirmMs: 15000, deadline: Date.now() + 180000 },
   };
+  await preflightWorker({ brief, launchId });
+  signal?.throwIfAborted();
   rows.push({
     assignmentId: input.assignmentId,
     revision: input.revision,

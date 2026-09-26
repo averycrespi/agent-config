@@ -5,7 +5,10 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { savedFixture } from "../script/saved-fixture.ts";
 import { registerScriptProvider } from "../script/api.ts";
-import { launchWorker } from "../../skills/coordinate-repo/scripts/launch-worker.js";
+import {
+  launchWorker,
+  preflightWorker,
+} from "../../skills/coordinate-repo/scripts/launch-worker.js";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const clone = (x: any) => JSON.parse(JSON.stringify(x));
@@ -642,12 +645,35 @@ test("Coordinate adapter preserves exact base, caller names/path, unfocused work
   );
   assert.match(m.files.get(prepared.handoff!)!, /Assignment: example\/1/);
   m.cover();
-  assert.equal(
-    (await launchWorker({ ...m.request, phase: "submit" }, m.io)).status,
-    "execution-confirmed",
-  );
+  const submitted = await launchWorker({ ...m.request, phase: "submit" }, m.io);
+  assert.equal(submitted.status, "execution-confirmed");
+  assert.equal(submitted.execution?.submittedEntry, "submitted");
+  assert.equal(submitted.execution?.activity, true);
+  assert.equal(submitted.execution?.transcript, submitted.worker?.transcript);
+  assert.deepEqual(submitted.resources, {
+    workspace: "w2",
+    pane: "w2:p1",
+    terminal: "term-2",
+  });
+  assert.equal(submitted.wait?.reference, submitted.index);
   assert.equal(coverageChecks, 2);
   assert.equal(m.effects.filter((x) => x === "prompt").length, 1);
   await launchWorker({ ...m.request, phase: "submit" }, m.io);
   assert.equal(m.effects.filter((x) => x === "prompt").length, 1);
 });
+
+for (const options of [
+  { pathCollision: true },
+  { branchCollision: true },
+  { unignored: true },
+  { brief: { references: ["/missing-source"] } },
+]) {
+  test(`shared deterministic preflight writes nothing: ${JSON.stringify(options)}`, async () => {
+    const m = model(options);
+    await assert.rejects(
+      preflightWorker({ brief: m.brief, launchId: "launch-1" }, m.io),
+    );
+    assert.equal(m.writes(), 0);
+    assert.deepEqual(m.effects, []);
+  });
+}

@@ -336,11 +336,44 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
     async (file: string, args: string[], timeout?: number) => {
       if (file === "herdr") {
         herdr.push(args);
-        return JSON.stringify({ error: "fixture preflight stop" });
+        if (args[1] === "create")
+          return JSON.stringify({ error: "fixture uncertain create" });
+        const data =
+          args[0] === "worktree"
+            ? { source: { repo_root: f.cwd }, worktrees: [{ path: f.cwd }] }
+            : args[0] === "workspace"
+              ? { workspaces: [{ workspace_id: "original", focused: true }] }
+              : { agents: [] };
+        return JSON.stringify({ result: { type: "fixture_read", ...data } });
       }
       return original(file, args, timeout);
     },
   );
+  const attempt = async (changes: Record<string, unknown> = {}) => {
+    const { index, binding } = await load(f.cwd, session);
+    return spawn(f.pi, f.cwd, index, binding!, {
+      assignmentId: "invalid",
+      revision: 1,
+      branch: "feature/invalid",
+      path: "/unused/invalid",
+      workspaceLabel: "Chosen",
+      workerName: "invalid",
+      brief: "Self-contained scoped task",
+      checkpoint: "/unused/checkpoint.json",
+      supervisionId: "job",
+      ...changes,
+    });
+  };
+  const snapshot = (await load(f.cwd, session)).index.text;
+  await assert.rejects(attempt(), /check-ignore/);
+  assert.equal((await load(f.cwd, session)).index.text, snapshot);
+  await writeFile(join(f.cwd, ".git/info/exclude"), "/.handoffs/\n");
+  await assert.rejects(attempt({ path: f.cwd }), /collision/);
+  assert.equal((await load(f.cwd, session)).index.text, snapshot);
+  git("branch", "feature/invalid");
+  await assert.rejects(attempt(), /collision/);
+  assert.equal((await load(f.cwd, session)).index.text, snapshot);
+  assert.ok(!herdr.some((args) => args[1] === "create"));
   for (const [assignmentId, base, expected] of [
     ["default", undefined, second],
     ["explicit", first, first],
@@ -360,10 +393,8 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
     });
     assert.equal(result.base, expected);
     assert.equal(result.excludedUncommittedChanges, true);
-    assert.equal(result.status, "blocked");
+    assert.equal(result.status, "failed");
   }
-  assert.ok(
-    herdr.every((args) => args[0] === "worktree" && args[1] === "list"),
-  );
+  assert.equal(herdr.filter((args) => args[1] === "create").length, 2);
   assert.equal(git("rev-parse", "HEAD"), second);
 });

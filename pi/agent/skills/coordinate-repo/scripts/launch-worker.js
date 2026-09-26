@@ -214,6 +214,119 @@ function coverageCheck(observation, b, w, now) {
   return c;
 }
 
+// Read-only deterministic checks shared by admission and immediate pre-effect revalidation.
+export async function preflightWorker(
+  { brief: b, launchId },
+  io = host,
+  commands,
+) {
+  briefCheck(b, io.now());
+  id(launchId);
+  const repo = b.repo;
+  const deadline = Math.min(b.bounds.deadline, io.now() + 100000);
+  const exec = (file, args) => {
+    const left = deadline - io.now();
+    if (left < 1000) fail("preflight deadline exhausted");
+    return io.exec(file, args, Math.min(10000, left));
+  };
+  const git =
+    commands?.git ?? ((cwd, ...args) => exec("git", ["-C", cwd, ...args]));
+  const herdr =
+    commands?.herdr ??
+    (async (...args) => {
+      const envelope = JSON.parse(await exec("herdr", args));
+      if (
+        envelope.error ||
+        !envelope.result ||
+        typeof envelope.result.type !== "string"
+      )
+        fail("malformed Herdr response");
+      return envelope.result;
+    });
+  if (
+    (await io.real(repo)) !== repo ||
+    (await git(repo, "rev-parse", "--show-toplevel")) !== repo ||
+    (await git(repo, "rev-parse", "--verify", `${b.base}^{commit}`)) !== b.base
+  )
+    fail("repository/base mismatch");
+  for (const path of b.references) await io.read(path);
+  if (b.coordinate === true) {
+    if (!Array.isArray(b.extensionPaths) || b.extensionPaths.length !== 2)
+      fail("Coordinate and Mailbox source required");
+    for (const path of b.extensionPaths) {
+      absolute(path);
+      await io.read(path);
+    }
+  }
+  const listed = await herdr("worktree", "list", "--cwd", repo);
+  if (
+    !listed.source?.repo_root ||
+    !Array.isArray(listed.worktrees) ||
+    !listed.worktrees.some((w) => w.path === repo)
+  )
+    fail("malformed worktree inventory");
+  const spaces = (await herdr("workspace", "list")).workspaces;
+  const agents = (await herdr("agent", "list")).agents;
+  if (
+    !Array.isArray(spaces) ||
+    spaces.filter((w) => w.focused).length !== 1 ||
+    !Array.isArray(agents) ||
+    agents.some((a) => a.name === b.agent)
+  )
+    fail("workspace/agent collision or malformed inventory");
+  if (b.kind === "implementation") {
+    const slug = (s) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+    if (
+      b.coordinate !== true &&
+      b.checkout !==
+        join(
+          io.home,
+          "worktrees",
+          slug(basename(listed.source.repo_root)),
+          slug(b.branch),
+        )
+    )
+      fail("noncanonical checkout path");
+    await git(repo, "check-ref-format", "--branch", b.branch);
+    if (b.coordinate === true) text(b.workspaceLabel, "workspace label", 100);
+    const refs = await git(
+      repo,
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+    );
+    if (
+      refs
+        .split("\n")
+        .some(
+          (r) =>
+            r === `refs/heads/${b.branch}` ||
+            (r.startsWith("refs/remotes/") && r.endsWith(`/${b.branch}`)),
+        ) ||
+      (await io.exists(b.checkout)) ||
+      listed.worktrees.some(
+        (w) => w.path === b.checkout || w.branch === b.branch,
+      )
+    )
+      fail("branch/path collision");
+  } else if ((await git(repo, "rev-parse", "HEAD")) !== b.base)
+    fail("research checkout base mismatch");
+  await git(
+    repo,
+    "check-ignore",
+    "-q",
+    join(repo, ".handoffs", `launch-${launchId}.md`),
+  );
+  if (await io.exists(join(b.checkout, ".handoffs", `launch-${launchId}.md`)))
+    fail("handoff collision");
+  return { listed, spaces };
+}
+
 export async function launchWorker(
   { phase, repo, indexId, launchId },
   io = host,
@@ -256,6 +369,11 @@ export async function launchWorker(
     status: state?.status ?? "blocked",
     index: current.path,
     worker: state?.worker ?? null,
+    resources: state?.resources ?? null,
+    execution: state?.execution ?? null,
+    wait: state?.wait
+      ? { outcome: state.wait.outcome ?? "observed", reference: current.path }
+      : null,
     handoff: state?.handoff ?? null,
     next: state?.next ?? "Coordinator: reconcile preflight",
     effect: state?.intent?.effect ?? null,
@@ -418,92 +536,11 @@ export async function launchWorker(
     ].every((k) => a[k] === w[k]);
   try {
     if (phase === "prepare") {
-      if (
-        (await io.real(repo)) !== repo ||
-        (await git(repo, "rev-parse", "--show-toplevel")) !== repo ||
-        (await git(repo, "rev-parse", "--verify", `${b.base}^{commit}`)) !==
-          b.base
-      )
-        fail("repository/base mismatch");
-      for (const path of b.references) await io.read(path);
-      if (b.coordinate === true) {
-        if (!Array.isArray(b.extensionPaths) || b.extensionPaths.length !== 2)
-          fail("Coordinate and Mailbox source required");
-        for (const path of b.extensionPaths) {
-          absolute(path);
-          await io.read(path);
-        }
-      }
-      const listed = await herdr("worktree", "list", "--cwd", repo);
-      if (
-        !listed.source?.repo_root ||
-        !Array.isArray(listed.worktrees) ||
-        !listed.worktrees.some((w) => w.path === repo)
-      )
-        fail("malformed worktree inventory");
-      const spaces = (await herdr("workspace", "list")).workspaces;
-      const agents = (await herdr("agent", "list")).agents;
-      if (
-        !Array.isArray(spaces) ||
-        spaces.filter((w) => w.focused).length !== 1 ||
-        !Array.isArray(agents) ||
-        agents.some((a) => a.name === b.agent)
-      )
-        fail("workspace/agent collision or malformed inventory");
-      if (b.kind === "implementation") {
-        const slug = (s) =>
-          s
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, "");
-        if (
-          b.coordinate !== true &&
-          b.checkout !==
-            join(
-              io.home,
-              "worktrees",
-              slug(basename(listed.source.repo_root)),
-              slug(b.branch),
-            )
-        )
-          fail("noncanonical checkout path");
-        await git(repo, "check-ref-format", "--branch", b.branch);
-        if (b.coordinate === true)
-          text(b.workspaceLabel, "workspace label", 100);
-        const refs = await git(
-          repo,
-          "for-each-ref",
-          "--format=%(refname)",
-          "refs/heads",
-          "refs/remotes",
-        );
-        if (
-          refs
-            .split("\n")
-            .some(
-              (r) =>
-                r === `refs/heads/${b.branch}` ||
-                (r.startsWith("refs/remotes/") && r.endsWith(`/${b.branch}`)),
-            ) ||
-          (await io.exists(b.checkout)) ||
-          listed.worktrees.some(
-            (w) => w.path === b.checkout || w.branch === b.branch,
-          )
-        )
-          fail("branch/path collision");
-      } else if ((await git(repo, "rev-parse", "HEAD")) !== b.base)
-        fail("research checkout base mismatch");
-      // Ignore coverage must already exist at the base. No mutation of shared excludes.
-      await git(
-        repo,
-        "check-ignore",
-        "-q",
-        join(repo, ".handoffs", `launch-${launchId}.md`),
+      const { listed, spaces } = await preflightWorker(
+        { brief: b, launchId },
+        io,
+        { git, herdr },
       );
-      if (
-        await io.exists(join(b.checkout, ".handoffs", `launch-${launchId}.md`))
-      )
-        fail("handoff collision");
       state = {
         briefDigest: fingerprint,
         status: "blocked",
