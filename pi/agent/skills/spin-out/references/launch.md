@@ -104,7 +104,7 @@ Read the completed file once before starting Pi. Confirm that it describes the d
 
 Derive a useful unique agent name from the branch slug. It must match `[a-z][a-z0-9_-]{0,31}`. Inspect `herdr agent list`, truncate before adding a numeric suffix when needed, and never replace an existing agent.
 
-Standalone spin-outs leave ordinary interactive questions unchanged. Managed children use the same startup command and the [explicit mailbox reporting contract](decisions.md#child-only-launch). Include mailbox address, assignment ID/revision, exact parent identity/index, child checkpoint path and resolved readable workflow references in the handoff. Require checkpoint-before-report for meaningful questions, blockers and results; routine progress stays in the checkpoint. Require the child to read the shared protocol; do not copy parent counters or change environment-based routing.
+Standalone spin-outs leave ordinary interactive questions unchanged. Managed children use the same startup command and the [explicit mailbox reporting contract](decisions.md#handoff-and-reports). Include mailbox address, assignment ID/revision, exact parent identity/index, child checkpoint path and resolved readable workflow references in the handoff. Require checkpoint-before-report for meaningful questions, blockers and results; routine progress stays in the checkpoint. Require the child to read the shared protocol; do not copy parent counters or change environment-based routing.
 
 Start Pi in the returned root pane:
 
