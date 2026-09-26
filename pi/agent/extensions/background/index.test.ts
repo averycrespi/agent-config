@@ -17,6 +17,7 @@ async function harness(t: any, methods?: any) {
   const handlers = new Map<string, any[]>(),
     tools = new Map<string, any>(),
     renderers = new Map<string, any>(),
+    commands = new Map<string, any>(),
     messages: any[] = [],
     events: any[] = [];
   let idle = false,
@@ -50,6 +51,9 @@ async function harness(t: any, methods?: any) {
         if (typeof content === "function") {
           mounts++;
           component = content({ requestRender: () => paints++ }, theme);
+        } else if (content === undefined) {
+          component?.dispose();
+          component = undefined;
         }
       },
     },
@@ -58,7 +62,8 @@ async function harness(t: any, methods?: any) {
     ...f.pi,
     on: (name: string, fn: any) =>
       handlers.set(name, [...(handlers.get(name) ?? []), fn]),
-    registerCommand() {},
+    registerCommand: (name: string, command: any) =>
+      commands.set(name, command),
     registerMessageRenderer: (type: string, renderer: any) =>
       renderers.set(type, renderer),
     registerTool: (tool: any) => tools.set(tool.name, tool),
@@ -87,6 +92,7 @@ async function harness(t: any, methods?: any) {
     messages,
     events,
     renderers,
+    commands,
     terminal,
     service: () => getBackgroundService(pi),
     call: (args: any) =>
@@ -116,7 +122,7 @@ async function harness(t: any, methods?: any) {
     },
   };
 }
-test("Script background returns stable persisted ID, remains responsive, automatically notifies and retains terminal widget until observed consumption", async (t) => {
+test("Script background returns stable persisted ID, remains responsive, automatically notifies and hides terminal widget on observed consumption", async (t) => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -205,6 +211,142 @@ test("Script background returns stable persisted ID, remains responsive, automat
     consumed: false,
   });
 });
+test("terminal widget expiry retains disk state and delayed notifications across restoration", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
+  const h = await harness(t);
+  const finished = h.terminal();
+  const r = h.service().admit({
+    owner: "script",
+    label: "retained",
+    deadlineMs: Date.now() + 60000,
+    run: async () => ({
+      status: "failed",
+      effectsMayPersist: true,
+      outcomeUnknown: true,
+      result: { evidence: 42 },
+    }),
+  });
+  await finished;
+  await tick();
+  const before = h.service().inspect("script", r.id);
+  const path = h.ctx.sessionManager.getSessionFile() + STORE_SUFFIX;
+  const disk = readFileSync(path, "utf8");
+  assert.match(h.component.render(100).join(""), /script failed/);
+  t.mock.timers.tick(14000);
+  assert.ok(h.component);
+  t.mock.timers.tick(1000);
+  assert.equal(h.component, undefined);
+  assert.deepEqual(h.service().inspect("script", r.id), before);
+  assert.equal(readFileSync(path, "utf8"), disk);
+  assert.equal(h.messages.length, 0);
+  assert.equal(h.events.length, 1);
+  await h.hook("session_tree");
+  assert.equal(h.component, undefined);
+  assert.deepEqual(h.service().inspect("script", r.id), before);
+  h.idle();
+  await h.hook("agent_settled");
+  assert.equal(h.messages.length, 1);
+  assert.equal(h.component, undefined);
+  assert.deepEqual(h.service().inspect("script", r.id).result, {
+    evidence: 42,
+  });
+  await h.hook("session_shutdown");
+  const paints = h.paints;
+  t.mock.timers.tick(20000);
+  assert.equal(h.paints, paints);
+  assert.equal(h.messages.length, 1);
+});
+
+test("RPC rows keep running work visible and expire terminal rows without model turns", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
+  const h = await harness(t);
+  h.ctx.mode = "rpc";
+  let rows: string[] | undefined;
+  h.ctx.ui.setWidget = (_key: string, content: string[] | undefined) => {
+    rows = content;
+  };
+  await h.hook("session_tree");
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const finished = h.terminal();
+  h.service().admit({
+    owner: "subagents",
+    label: "RPC child",
+    deadlineMs: Date.now() + 60000,
+    run: async () => {
+      await gate;
+      return {
+        status: "success",
+        effectsMayPersist: false,
+        outcomeUnknown: false,
+      };
+    },
+  });
+  await tick();
+  t.mock.timers.tick(20000);
+  assert.match(rows!.join(""), /running RPC child.*20s/);
+  finish();
+  await finished;
+  await tick();
+  assert.match(rows!.join(""), /succeeded RPC child/);
+  t.mock.timers.tick(15000);
+  assert.equal(rows, undefined);
+  assert.equal(h.messages.length, 0);
+});
+
+test("widget settings load per session and config inspection does not mutate receipts", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
+  const h = await harness(t);
+  writeFileSync(
+    join(h.dir, "settings.json"),
+    JSON.stringify({
+      "extension:background": {
+        widgets: { autoHide: false, terminalHideAfterMs: 1000 },
+      },
+    }),
+  );
+  await h.hook("session_tree");
+  const finished = h.terminal();
+  const r = h.service().admit({
+    owner: "workflow",
+    label: "visible",
+    deadlineMs: Date.now() + 60000,
+    run: async () => ({
+      status: "success",
+      effectsMayPersist: false,
+      outcomeUnknown: false,
+    }),
+  });
+  await finished;
+  await tick();
+  t.mock.timers.tick(16000);
+  assert.match(h.component.render(100).join(""), /workflow succeeded/);
+  const before = h.service().inspect("workflow", r.id);
+  let output = "";
+  await h.commands.get("background-config").handler("", {
+    ...h.ctx,
+    ui: {
+      notify: (text: string) => {
+        output = text;
+      },
+    },
+  });
+  assert.match(output, /"autoHide": false/);
+  assert.deepEqual(h.service().inspect("workflow", r.id), before);
+  writeFileSync(
+    join(h.dir, "settings.json"),
+    JSON.stringify({
+      "extension:background": { widgets: { terminalHideAfterMs: 20000 } },
+    }),
+  );
+  await h.hook("session_tree");
+  assert.ok(h.component);
+  t.mock.timers.tick(4000);
+  assert.equal(h.component, undefined);
+});
+
 test("provider revocation, explicit cancellation, timeout and guest failure retain existing executor accounting", async (t) => {
   const h = await harness(t, {
     echo: {

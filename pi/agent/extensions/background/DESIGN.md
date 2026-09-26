@@ -8,6 +8,8 @@ Background separates execution lifetime from the foreground tool turn without re
 - `service.ts`: single-owner execution/attention lifecycle, copied receipts, finite admission, cancellation, dismissal and stale-completion suppression.
 - `store.ts`: bounded validated session sidecar, exclusive owner-only staging, atomic rename and filesystem synchronization. Historical observer entries are never inspected.
 - `index.ts`: Pi session/turn/context hooks, automatic readiness-based handoff and one persistently mounted below-editor widget.
+- `config.ts`: validated presentation-only widget settings with global/project/environment precedence and config inspection.
+- `visibility.ts`: pure terminal-age filtering, separate from service attention and retention predicates.
 
 ## Admission and storage
 
@@ -15,7 +17,7 @@ A stable UUID and immutable deadline are persisted before invoking adapter code.
 
 The session sidecar is separate from Pi's append-only custom entries: `appendEntry` can buffer writes before the first assistant message and does not provide a filesystem durability acknowledgment. A bounded atomic snapshot makes admission failure observable before execution and avoids unbounded receipt-update history. Store errors close admission and abort active work. Even a rename followed by failed directory synchronization is uncertain; no automatic resend or execution replay follows.
 
-Records are retained for the entire session. Fixed capacity rejects rather than evicting pending, consumed, dismissed or uncertain results. Branch visibility follows the admission anchor, while the sidecar retains all branches. Returning to an old branch surfaces interrupted outcomes. A fork does not inherit execution ownership or sidecar state. Persistence is cooperative single-owner storage, not a hostile same-user isolation mechanism.
+Records follow the rolling retention window: only terminal outcomes with observably consumed notifications or explicit dismissal are eligible for retirement at admission. Unresolved attention stays protected even after visual expiry. Branch visibility follows the admission anchor, while the sidecar retains all branches. Returning to an old branch surfaces interrupted outcomes. A fork does not inherit execution ownership or sidecar state. Persistence is cooperative single-owner storage, not a hostile same-user isolation mechanism.
 
 ## Attention and races
 
@@ -24,6 +26,12 @@ Terminal outcome and notification intent commit together. Before `sendMessage`, 
 The delivery pump checks idle state, pending messages, visible TUI draft and dialog state before each handoff. It does not mutate the editor. A one-second unref'ed timer catches draft clearance without model polling or blocking lifecycle handlers. Timers are cleared on close. Each terminal run has at most one notification attempt; dismissed intent is suppressed, and already handed messages cannot be recalled.
 
 Shutdown/reload and successful navigation revoke the service before aborting, persist conservative interrupted/unknown-effect state, and suppress late executor results. Restoration cannot recreate callbacks or renew deadlines. Canceled navigation leaves execution untouched. Storage failure retains in-memory uncertainty and forbids new work/notifications. Arbitrary synchronous trusted callbacks remain capable of blocking Pi; the service is not a sandbox.
+
+## Widget visibility
+
+A session-initialization snapshot controls automatic hiding: enabled by default, with one 15-second delay for all terminal states. The display-only predicate combines existing attention visibility with persisted `endedAt`; running records never expire and missing terminal timestamps do not acquire fabricated ages. Navigation/restoration does not restart the delay. A generation guard prevents asynchronous configuration loading from restoring a closed or superseded service.
+
+The existing one-second delivery-readiness timer also refreshes widget expiry, including with only terminal records. It remains unref'ed and is cleared on close. The last expired row removes the widget; repainting live rows retains their mounted component and sibling ordering. No separate timers, summaries, model turns, dismissal calls, consumption changes, persistence writes or lifecycle events are introduced by visual expiry. `service.ts` attention/capacity/retirement decisions must never use the presentation predicate. Warnings obey the same expiry and remain in inspection/notifications. The config command rereads configured values without changing the session snapshot.
 
 ## Rendering and tests
 

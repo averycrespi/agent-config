@@ -221,6 +221,55 @@ test("legacy settings and environment preserve limits with visible warnings", ()
   }
 });
 
+test("Background widget configuration is not legacy Monitor policy", () => {
+  for (const widgets of [
+    { autoHide: true, terminalHideAfterMs: 15000 },
+    null,
+    "invalid",
+  ]) {
+    const warnings: string[] = [];
+    assert.deepEqual(
+      parseGlobalConfig({ "extension:background": { widgets } }, {}, warnings),
+      DEFAULT_CONFIG,
+    );
+    assert.deepEqual(warnings, []);
+  }
+  const warnings: string[] = [];
+  assert.deepEqual(
+    parseGlobalConfig(
+      {
+        "extension:background": {
+          widgets: { autoHide: true },
+          maxLifetimeMs: 2000,
+        },
+      },
+      {},
+      warnings,
+    ),
+    { ...DEFAULT_CONFIG, maxLifetimeMs: 2000 },
+  );
+  assert.deepEqual(warnings, [LEGACY_WARNING]);
+  assert.equal(
+    parseGlobalConfig(
+      {
+        "extension:background": { widgets: {}, maxLifetimeMs: 2000 },
+        "extension:monitor": { maxLifetimeMs: 3000 },
+      },
+      {},
+    ).valid,
+    false,
+  );
+  assert.equal(
+    parseGlobalConfig({ "extension:background": { widgets: {}, typo: 1 } }, {})
+      .valid,
+    false,
+  );
+  assert.equal(
+    parseGlobalConfig({ "extension:monitor": { widgets: {} } }, {}).valid,
+    false,
+  );
+});
+
 test("conflicting aliases and malformed legacy policy fail closed without leaking values", () => {
   for (const [root, env] of [
     [

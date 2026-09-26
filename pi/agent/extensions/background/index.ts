@@ -24,6 +24,9 @@ import {
 } from "./api.ts";
 import { Service, label, visible } from "./service.ts";
 import { fileStore } from "./store.ts";
+import { registerConfigCommand } from "../_shared/config.ts";
+import { DEFAULT_WIDGET_CONFIG, loadBackgroundConfig } from "./config.ts";
+import { widgetVisible } from "./visibility.ts";
 
 export const NOTIFICATION = "background:execution-outcome-v1";
 export function widgetLines(
@@ -80,18 +83,31 @@ export default function background(pi: ExtensionAPI) {
   let service: Service | undefined;
   let ctx: ExtensionContext | undefined;
   let ticker: ReturnType<typeof setInterval> | undefined;
+  registerConfigCommand(pi, {
+    extensionName: "background",
+    loadConfig: loadBackgroundConfig,
+  });
+  let widgetConfig = { ...DEFAULT_WIDGET_CONFIG };
+  let generation = 0;
   let prompt = false;
   let candidateIds = new Set<string>();
   const widget = createPersistentWidget("background-executions");
+  let widgetShown = false;
   const refresh = () => {
     if (!ctx || !service) return;
-    const rows = service.all();
-    widget.update(
-      ctx,
-      rows.some(visible) ? (w, t) => widgetLines(rows, w, t) : undefined,
-    );
+    const now = Date.now();
+    const rows = service
+      .all()
+      .filter((r) => widgetVisible(r, widgetConfig, now));
+    if (rows.length || widgetShown)
+      widget.update(
+        ctx,
+        rows.length ? (w, t) => widgetLines(rows, w, t) : undefined,
+      );
+    widgetShown = rows.length > 0;
   };
   const close = () => {
+    generation++;
     clearInterval(ticker);
     ticker = undefined;
     const old = service;
@@ -101,11 +117,19 @@ export default function background(pi: ExtensionAPI) {
       old?.close();
     } finally {
       if (ctx) widget.update(ctx);
+      widgetShown = false;
       ctx = undefined;
     }
   };
-  const initialize = (context: ExtensionContext) => {
+  const initialize = async (context: ExtensionContext) => {
     close();
+    const currentGeneration = generation;
+    const warnings: string[] = [];
+    const config = await loadBackgroundConfig(context.cwd, warnings);
+    if (generation !== currentGeneration) return;
+    widgetConfig = config.widgets;
+    if (context.hasUI && warnings.length)
+      context.ui.notify(warnings.join("\n"), "warning");
     ctx = context;
     const file = context.sessionManager.getSessionFile();
     if (!file) return; // Persisted admission is impossible in ephemeral sessions.
@@ -157,16 +181,8 @@ export default function background(pi: ExtensionAPI) {
       ticker = setInterval(() => {
         try {
           service?.flush();
-          if (
-            service
-              ?.all()
-              .some(
-                (r) =>
-                  r.status === "running" &&
-                  (r.owner === "subagents" || r.owner === "workflow"),
-              )
-          )
-            refresh();
+          // Refresh expiry even with no running work or notification consumption.
+          refresh();
         } catch {
           refresh();
         }

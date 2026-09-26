@@ -70,8 +70,20 @@ export function parseGlobalConfig(
 ): MonitorConfig {
   if (!object(root)) return { ...DEFAULT_CONFIG, valid: false };
   const hasLegacy = Object.hasOwn(root, "extension:background");
-  if (hasLegacy) warnLegacy(warnings);
-  const legacy = hasLegacy ? root["extension:background"] : {};
+  const background = hasLegacy ? root["extension:background"] : {};
+  // Background now owns widgets; only the remaining fields are legacy policy.
+  const legacy = object(background)
+    ? Object.fromEntries(
+        Object.entries(background).filter(([key]) => key !== "widgets"),
+      )
+    : background;
+  if (
+    hasLegacy &&
+    (!object(background) ||
+      !Object.hasOwn(background, "widgets") ||
+      (object(legacy) && Object.keys(legacy).length > 0))
+  )
+    warnLegacy(warnings);
   const modern = Object.hasOwn(root, "extension:monitor")
     ? root["extension:monitor"]
     : {};
