@@ -15,7 +15,7 @@ const theme = {
   bold: (text: string) => text,
 } as Theme;
 
-test("role/count display is truthful, sanitized, narrow and warns only with assignments", () => {
+test("role/count display is truthful, sanitized and narrow without observer state", () => {
   assert.equal(statusSummary(0, 0), "No outstanding work");
   assert.equal(statusSummary(2, 1), "2 active assignments · 1 pending message");
   assert.equal(statusSummary(0, undefined), "Mailbox unavailable");
@@ -24,12 +24,12 @@ test("role/count display is truthful, sanitized, narrow and warns only with assi
     "Managed by Project",
   );
   assert.doesNotMatch(
-    roleLine(theme, 120, "coordinator", "", 0, 0, "inactive"),
+    roleLine(theme, 120, "coordinator", "", 0, 0),
     /supervision/,
   );
-  assert.match(
-    roleLine(theme, 120, "coordinator", "", 2, 1, "inactive"),
-    /supervision inactive/,
+  assert.doesNotMatch(
+    roleLine(theme, 120, "coordinator", "", 2, 1),
+    /supervision/,
   );
   for (const width of [0, 1, 12, 48, 100]) {
     const row = roleLine(
@@ -68,7 +68,7 @@ test("spawn summary distinguishes execution, submission, process and resource ev
   );
 });
 
-test("bare enable, original mailbox reuse, automatic observer references and neutral disabled rendering", async (t) => {
+test("bare enable, session mailbox reuse, observer independence and neutral disabled rendering", async (t) => {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), "coordinate-ux-")));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   execFileSync("git", ["init", "-q", cwd]);
@@ -108,7 +108,7 @@ test("bare enable, original mailbox reuse, automatic observer references and neu
   pi.events.on("mailbox:inspect-v1", (q: any) => q.reply({ pending: 0 }));
   await enable();
   let { index, binding } = await load(cwd, id);
-  assert.equal(binding?.mailbox, `coordinate-${id}`);
+  assert.equal(binding?.mailbox, id);
   assert.equal(index.values?.Mailbox, undefined);
   assert.equal(index.values?.Observation, undefined);
   assert.equal(notices[0], "Coordinator enabled");
@@ -144,10 +144,7 @@ test("bare enable, original mailbox reuse, automatic observer references and neu
     ctx,
   );
   const saved = (await load(cwd, id)).index;
-  assert.deepEqual(JSON.parse(saved.values!.Observation), {
-    monitorIds: ["observer"],
-  });
-  await assert.rejects(disable(), /stop the mailbox Monitor/);
+  assert.equal(saved.values!.Observation, undefined);
   status = "finished";
   await disable();
   assert.equal(widgets.at(-1), undefined);

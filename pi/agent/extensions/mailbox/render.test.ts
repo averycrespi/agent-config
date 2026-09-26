@@ -11,6 +11,7 @@ import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { renderMailboxCall, renderMailboxResult } from "./render.ts";
 import mailbox from "./index.ts";
 import { _durability, MailboxStore } from "./store.ts";
+import { context as sessionContext } from "./fixture.ts";
 
 const theme = {
   fg: (_color: string, text: string) => text,
@@ -247,10 +248,13 @@ test("hostile controls are sanitized, previews bounded and every width truncates
 test("registered renders preserve real direct envelopes, paging, ack and uncertain persistence", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "mailbox-render-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const hooks = new Map<string, () => void>();
+  const hooks = new Map<string, any>();
   let tool: any;
   mailbox(
     {
+      registerCommand() {},
+      registerMessageRenderer() {},
+      sendMessage() {},
       registerTool: (v: unknown) => {
         tool = v;
       },
@@ -264,7 +268,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
     } as any,
     root,
   );
-  hooks.get("session_start")!();
+  await hooks.get("session_start")!({}, sessionContext(root));
   t.after(() => hooks.get("session_shutdown")!());
   const sendArgs = {
     ...args("send"),

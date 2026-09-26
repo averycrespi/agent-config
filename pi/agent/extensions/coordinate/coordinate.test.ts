@@ -15,10 +15,9 @@ import { execFileSync } from "node:child_process";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import coordinate, { REMINDER } from "./index.ts";
 import { bind, load, patch, complete } from "./state.ts";
-import { coverage, spawn } from "./launch.ts";
+import { messaging, spawn } from "./launch.ts";
 import { host } from "./launcher.js";
 import { registerScriptProvider } from "../script/api.ts";
-import { mailboxSupervision } from "../mailbox/api.ts";
 
 const session = "00000000-0000-4000-8000-000000000001";
 async function fixture(t: TestContext) {
@@ -226,33 +225,17 @@ test("disable refuses pending reports/assignments/control and never kills or rem
   assert.ok((await load(f.cwd, session)).binding?.active);
 });
 
-test("coverage requires actual recurring default recipe and healthy retained mailbox coverage; no registration", async (t) => {
+test("messaging requires actual session listener without Monitor or Script", async (t) => {
   const f = await fixture(t);
-  const receipt: any = {
-    id: "job",
-    status: "active",
-    recurring: true,
-    intervalMs: 30000,
-    deadline: Date.now() + 100000,
-    wakes: 0,
-    maxWakes: 5,
-    coverage: [{ mailbox: "project" }],
-  };
-  assert.throws(() => coverage(f.pi, "project", "job"), /supervision required/);
-  let matches = true;
-  f.pi.events.on("monitor:inspect-v1", (q: any) => {
-    assert.equal(q.source, mailboxSupervision({ mailbox: "project" }).source);
-    q.reply({ receipt, sourceMatches: matches });
-  });
-  assert.equal(coverage(f.pi, "project", "job").id, "job");
-  matches = false;
-  assert.throws(() => coverage(f.pi, "project", "job"));
-  matches = true;
-  receipt.gap = true;
-  assert.throws(() => coverage(f.pi, "project", "job"));
-  receipt.gap = false;
-  receipt.status = "invalidated";
-  assert.throws(() => coverage(f.pi, "project", "job"));
+  assert.throws(() => messaging(f.pi, session), /listening required/);
+  let listening = true;
+  f.pi.events.on("mailbox:inspect-v1", (q: any) =>
+    q.reply({ pending: 0, sessionId: session, listening }),
+  );
+  assert.equal(messaging(f.pi, session).sessionId, session);
+  listening = false;
+  assert.throws(() => messaging(f.pi, session));
+  assert.throws(() => messaging(f.pi, "different"));
   assert.deepEqual(f.entries, []);
 });
 
@@ -282,7 +265,9 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
     },
   });
   t.after(off);
-  f.pi.events.on("mailbox:inspect-v1", (q: any) => q.reply({ pending: 0 }));
+  f.pi.events.on("mailbox:inspect-v1", (q: any) =>
+    q.reply({ pending: 0, sessionId: session, listening: true }),
+  );
   f.pi.events.on("monitor:inspect-v1", (q: any) =>
     q.reply({
       sourceMatches: true,
@@ -368,7 +353,6 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
       workerName: "invalid",
       brief: "Self-contained scoped task",
       checkpoint: "/unused/checkpoint.json",
-      supervisionId: "job",
       ...changes,
     });
   };
@@ -401,7 +385,6 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
       workerName: assignmentId,
       brief: "Self-contained scoped task",
       checkpoint: `/unused/${assignmentId}.json`,
-      supervisionId: "job",
       base,
     });
     assert.equal(result.base, expected);

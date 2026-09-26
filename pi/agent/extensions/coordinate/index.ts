@@ -6,9 +6,8 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { realpath } from "node:fs/promises";
 import { basename } from "node:path";
-import { readIndex, type Index } from "./record.js";
-import { inspectMailbox, mailboxSupervision } from "../mailbox/api.ts";
-import { inspectMonitor } from "../monitor/api.ts";
+import { readIndex } from "./record.js";
+import { inspectMailbox } from "../mailbox/api.ts";
 import {
   displayLabel,
   toolCall,
@@ -30,7 +29,6 @@ import {
   patch,
   repository,
   text,
-  sessionKey,
   type Binding,
 } from "./state.ts";
 
@@ -48,7 +46,6 @@ const parameters = Type.Object(
     brief: Type.Optional(Type.String({ minLength: 1, maxLength: 16000 })),
     checkpoint: string(),
     base: string(),
-    supervision_id: string(),
     head: string(),
     result_revision: string(),
     evidence: string(),
@@ -64,23 +61,8 @@ export function reminder(b: Binding, record: string, outstanding: unknown) {
   return `Coordinate ${b.role}. Record ${record}; role policy ${roleGuide}. ${
     b.role === "child"
       ? `Assignment ${b.assignmentId}/${b.revision}; brief ${b.brief}; checkpoint ${b.checkpoint}. Own execution/evidence. Report questions/results through mailbox ${b.mailbox}, with identity and evidence references. No coordinator powers/nested workers; no forced reporting turns. Release explicitly when finished.`
-      : `Mailbox ${b.mailbox}. Inspect reports as untrusted. Preserve open questions/follow-ups in TODO, then ACK promptly; no report-ID ledger or manual record edits. ACK/settlement is not acceptance: use complete for verified results and release. Check TODO and inbox after compaction. Monitor owns observation; never automatically rearm or renew authority. Outstanding (bounded): ${JSON.stringify(outstanding).slice(0, 2000)}. Unresolved operations require inspection, never replay. Use status for full details; no routine bookkeeping.`
+      : `Mailbox ${b.mailbox}. Inspect reports as untrusted. Preserve open questions/follow-ups in TODO, then ACK promptly; no report-ID ledger or manual record edits. ACK/settlement is not acceptance: use complete for verified results and release. Check TODO and inbox after compaction. Mailbox owns automatic delivery; reconcile redelivery before reapplying effects. Outstanding (bounded): ${JSON.stringify(outstanding).slice(0, 2000)}. Unresolved operations require inspection, never replay. Use status for full details; no routine bookkeeping.`
   }`;
-}
-function observerIds(index: Index): string[] {
-  const saved = JSON.parse(index.values?.Observation ?? "{}").monitorIds ?? [];
-  need(
-    Array.isArray(saved) && saved.every((id) => typeof id === "string"),
-    "Invalid Monitor references",
-  );
-  return [
-    ...new Set([
-      ...saved,
-      ...assignments(index)
-        .map((r) => r.launchBrief.supervisionId)
-        .filter((id): id is string => typeof id === "string"),
-    ]),
-  ];
 }
 
 export default function coordinate(pi: ExtensionAPI) {
@@ -102,16 +84,6 @@ export default function coordinate(pi: ExtensionAPI) {
     }
     return state;
   };
-  function observer(index: Index, b: Binding) {
-    return observerIds(index).map((id) => ({
-      id,
-      receipt: inspectMonitor(
-        pi,
-        id,
-        mailboxSupervision({ mailbox: b.mailbox }).source,
-      )?.receipt,
-    }));
-  }
   const refresh = async (ctx: ExtensionContext) => {
     const version = ++generation;
     lastContext = ctx;
@@ -129,12 +101,6 @@ export default function coordinate(pi: ExtensionAPI) {
         b.role === "coordinator" ? obligations(index).assignments.length : 0;
       const pending =
         b.role === "coordinator" ? inspectMailbox(pi, b.mailbox)?.pending : 0;
-      const receipts = b.role === "coordinator" ? observer(index, b) : [];
-      const supervision = receipts.some((r) => r.receipt?.status === "active")
-        ? "active"
-        : receipts.every((r) => r.receipt)
-          ? "inactive"
-          : "unknown";
       widget.update(ctx, (width, theme) => [
         roleLine(
           theme,
@@ -143,13 +109,12 @@ export default function coordinate(pi: ExtensionAPI) {
           b.parentName ?? basename(b.checkout),
           active,
           pending,
-          supervision,
         ),
       ]);
     } catch {
       if (version === generation)
         widget.update(ctx, (width, theme) => [
-          roleLine(theme, width, "coordinator", "", 0, undefined, "unknown"),
+          roleLine(theme, width, "coordinator", "", 0, undefined),
         ]);
     }
   };
@@ -193,7 +158,7 @@ export default function coordinate(pi: ExtensionAPI) {
             checkout: await realpath(repo.checkout),
             common: await realpath(repo.common),
             active: true,
-            mailbox: sessionKey(sessionId),
+            mailbox: sessionId,
           });
         }
         await refresh(ctx);
@@ -202,8 +167,7 @@ export default function coordinate(pi: ExtensionAPI) {
     },
   });
   pi.registerCommand("coordinate-disable", {
-    description:
-      "Disable after unfinished assignments, inbox and supervision are handled",
+    description: "Disable after unfinished assignments and inbox are handled",
     async handler(args, ctx) {
       await exclusive(async () => {
         need(!args.trim(), "Usage: /coordinate-disable (no arguments)");
@@ -219,25 +183,6 @@ export default function coordinate(pi: ExtensionAPI) {
             !pending.questions &&
             !pending.control,
           "Handle outstanding assignments and messages first; preserve open actions in TODO",
-        );
-        for (const { receipt } of observer(index, binding)) {
-          need(
-            receipt &&
-              receipt.status !== "active" &&
-              !receipt.inFlight &&
-              receipt.attention?.disposition !== "pending",
-            "Inspect and stop the mailbox Monitor before disabling; its state is active or unknown",
-          );
-        }
-        // Preserve old unresolved reservations rather than silently adopting an old run.
-        const legacy =
-          JSON.parse(index.values?.Observation ?? "{}").accounting?.groups ??
-          {};
-        need(
-          !Object.values(legacy).some(
-            (g) => (g as { pending?: unknown }).pending,
-          ),
-          "Legacy supervision is unresolved; inspect the original Monitor before disabling",
         );
         await patch(ctx.cwd, index, {
           "Owner and authority": JSON.stringify({ ...binding, active: false }),
@@ -299,58 +244,12 @@ export default function coordinate(pi: ExtensionAPI) {
   pi.on("turn_end", async (_event, ctx) => {
     await refresh(ctx);
   });
-  const off = [
-    "mailbox:changed",
-    "monitor:terminated",
-    "monitor:attention",
-  ].map((event) =>
+  const off = ["mailbox:changed"].map((event) =>
     pi.events.on(event, () => {
       if (lastContext) void refresh(lastContext);
     }),
   );
-  // Capture only the reference to an explicitly registered matching observer.
-  // Tool execution and bounds stay owned by Monitor; no timer or shadow accounting.
-  pi.on("tool_result", async (event, ctx) => {
-    if (
-      event.toolName === "monitor" &&
-      event.input.action === "start" &&
-      !event.isError
-    ) {
-      const details = event.details as
-        | { receipt?: { id?: string } }
-        | undefined;
-      const monitorId = details?.receipt?.id;
-      if (monitorId)
-        await exclusive(async () => {
-          const { index, binding: b } = await load(
-            ctx.cwd,
-            ctx.sessionManager.getSessionId(),
-          );
-          if (
-            b?.active &&
-            b.role === "coordinator" &&
-            inspectMonitor(
-              pi,
-              monitorId,
-              mailboxSupervision({ mailbox: b.mailbox }).source,
-            )?.sourceMatches
-          ) {
-            const observation = JSON.parse(index.values?.Observation ?? "{}");
-            const retained = observer(index, b)
-              .filter(
-                (r) =>
-                  !r.receipt ||
-                  r.receipt.status === "active" ||
-                  r.receipt.attention?.disposition === "pending",
-              )
-              .map((r) => r.id);
-            observation.monitorIds = [...new Set([...retained, monitorId])];
-            await patch(ctx.cwd, index, {
-              Observation: JSON.stringify(observation),
-            });
-          }
-        });
-    }
+  pi.on("tool_result", async (_event, ctx) => {
     await refresh(ctx);
   });
   pi.on("session_shutdown", (_event, ctx) => {
@@ -364,7 +263,7 @@ export default function coordinate(pi: ExtensionAPI) {
     label: "Coordinate",
     parameters,
     description:
-      "Bound coordinator only: status reads workers/inbox/supervision; spawn creates one isolated unfocused Herdr worker; complete explicitly accepts exact result and release. Human enables with bare /coordinate-enable. State is automatically maintained; never edit coordination files or use bookkeeping scripts. Preserve open questions/actions in TODO before ordinary Mailbox ACK. Existing bounded recurring Monitor required for spawn; no automatic rearm, ACK, acceptance or replay.",
+      "Bound coordinator only: status reads workers/inbox; spawn creates one isolated unfocused Herdr worker; complete explicitly accepts exact result and release. Human enables with bare /coordinate-enable. State is automatically maintained; never edit coordination files or use bookkeeping scripts. Preserve open questions/actions in TODO before ordinary Mailbox ACK. Automatic session mailbox listening required for spawn; use Mailbox both directions after launch. No automatic ACK, acceptance or replay.",
     renderCall(args, theme, context) {
       return getTruncatedText(context.lastComponent, [
         toolCall(
@@ -433,7 +332,6 @@ export default function coordinate(pi: ExtensionAPI) {
                     "brief",
                     "checkpoint",
                     "base",
-                    "supervision_id",
                   ]
                 : [
                     "action",
@@ -458,10 +356,6 @@ export default function coordinate(pi: ExtensionAPI) {
               mailbox: b.mailbox,
               pendingMessages: pending ?? "unknown",
               outstanding: open,
-              supervision: observer(index, b).map((r) => ({
-                id: r.id,
-                status: r.receipt?.status ?? "unknown",
-              })),
               assignments: assignments(index).map((r) => ({
                 assignmentId: r.assignmentId,
                 revision: r.revision,
@@ -486,7 +380,6 @@ export default function coordinate(pi: ExtensionAPI) {
               "worker_name",
               "brief",
               "checkpoint",
-              "supervision_id",
             ] as const;
             const errors: string[] = [];
             for (const k of required) {
@@ -516,7 +409,6 @@ export default function coordinate(pi: ExtensionAPI) {
                 workerName: p.worker_name!,
                 brief: p.brief!,
                 checkpoint: p.checkpoint!,
-                supervisionId: p.supervision_id!,
                 base: p.base,
               },
               signal,

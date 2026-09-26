@@ -38,7 +38,6 @@ export function roleLine(
   parent: string,
   active: number,
   pending?: number,
-  supervision?: string,
 ) {
   const separator = theme.fg("dim", " · ");
   if (role === "child")
@@ -60,10 +59,6 @@ export function roleLine(
     fields.push(theme.fg("muted", plural(pending, "pending message")));
   if (pending === undefined)
     fields.unshift(theme.fg("warning", "mailbox unavailable"));
-  if (active && supervision !== "active")
-    fields.unshift(
-      theme.fg("warning", `supervision ${supervision ?? "unknown"}`),
-    );
   return fitWidgetRow(
     theme.fg("muted", "Coordinator"),
     fields,

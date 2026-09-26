@@ -3,9 +3,7 @@ import { fileURLToPath } from "node:url";
 import { basename } from "node:path";
 import { digest, readIndex, type Index } from "./record.js";
 import { host, launchWorker, preflightWorker } from "./launcher.js";
-import { inspectMonitor } from "../monitor/api.ts";
-import { inspectMailbox, mailboxSupervision } from "../mailbox/api.ts";
-import { describeScriptProviders } from "../script/api.ts";
+import { inspectMailbox } from "../mailbox/api.ts";
 import {
   assignments,
   absolute,
@@ -29,32 +27,14 @@ export interface SpawnInput {
   brief: string;
   checkpoint: string;
   base?: string;
-  supervisionId: string;
 }
-export function coverage(pi: ExtensionAPI, mailbox: string, id: string) {
-  const result = inspectMonitor(pi, id, mailboxSupervision({ mailbox }).source);
-  const r = result?.receipt;
+export function messaging(pi: ExtensionAPI, mailbox: string) {
+  const result = inspectMailbox(pi, mailbox);
   need(
-    r &&
-      result.sourceMatches &&
-      r.status === "active" &&
-      r.recurring &&
-      r.intervalMs &&
-      r.deadline > Date.now() &&
-      !r.gap &&
-      !r.interrupted &&
-      !r.outcomeUnknown &&
-      r.wakes < r.maxWakes &&
-      r.coverage.some(
-        (c) =>
-          c &&
-          typeof c === "object" &&
-          !Array.isArray(c) &&
-          c.mailbox === mailbox,
-      ),
-    "Active matching recurring mailbox supervision required; inspect Monitor, do not auto-rearm",
+    result?.listening && result.sessionId === mailbox,
+    "Session mailbox listening required",
   );
-  return r;
+  return result;
 }
 export async function spawn(
   pi: ExtensionAPI,
@@ -86,9 +66,7 @@ export async function spawn(
     !rows.some((r) => r.assignmentId === input.assignmentId),
     "Assignment exists; inspect retained launch, never replay",
   );
-  need(inspectMailbox(pi, b.mailbox), "Mailbox unavailable");
-  await describeScriptProviders(pi, cwd, ["mailbox"]);
-  const observer = coverage(pi, b.mailbox, input.supervisionId);
+  messaging(pi, b.mailbox);
   signal?.throwIfAborted();
   // Resolve once in the CALLER checkout, never the primary checkout or moving tip.
   const base = await host.exec("git", [
@@ -120,7 +98,6 @@ export async function spawn(
     repo: b.checkout,
     checkout: input.path,
     base,
-    supervisionId: input.supervisionId,
     extensionPaths: [
       fileURLToPath(new URL("./index.ts", import.meta.url)),
       fileURLToPath(new URL("../mailbox/index.ts", import.meta.url)),
@@ -141,7 +118,7 @@ export async function spawn(
     bounds: {
       startMs: 30000,
       confirmMs: 15000,
-      deadline: Math.min(observer.deadline, Date.now() + 180000),
+      deadline: Date.now() + 180000,
     },
   };
   await preflightWorker({ brief, launchId });
@@ -175,11 +152,7 @@ export async function spawn(
           child.checkpoint === input.checkpoint,
         "Child binding missing or changed",
       );
-      need(
-        inspectMailbox(pi, b.mailbox),
-        "Mailbox unavailable before submission",
-      );
-      return coverage(pi, b.mailbox, input.supervisionId);
+      return messaging(pi, b.mailbox);
     },
   };
   const prepared = await launchWorker({ ...request, phase: "prepare" }, io);
