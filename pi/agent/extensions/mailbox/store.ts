@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
 import {
-  observeBatch,
-  type BatchCheckpoint,
-  type BatchPolicy,
-} from "./supervision.ts";
-import {
   closeSync,
   constants,
   fsyncSync,
@@ -27,12 +22,17 @@ export interface Message {
   at: number;
   type: string;
   message: string;
+  sender: string;
+  attempts: number;
+  visibleUntil: number | null;
+  uncertain: boolean;
+  warned: boolean;
 }
 interface Row extends Message {
   seq: number;
 }
 interface State {
-  version: 1;
+  version: 2;
   epoch: string;
   sequence: number;
   rows: Row[];
@@ -47,6 +47,11 @@ export class MailboxError extends Error {
     public outcomeUnknown = false,
   ) {
     super(code);
+  }
+}
+export class MailboxBusy extends MailboxError {
+  constructor() {
+    super("storage_failed");
   }
 }
 export function address(value: unknown): asserts value is string {
@@ -88,11 +93,19 @@ function syncDirectory(path: string) {
   }
 }
 export const _durability = { syncDirectory };
-function publicMessage({ id, at, type, message }: Row): Message {
-  return { id, at, type, message };
+function publicMessage({ seq: _seq, ...message }: Row): Message {
+  return message;
 }
 
-/** Cooperative same-user storage, not an authorization boundary. No timers or replay. */
+export function eligible(row: Message, maxAttempts: number, now: number) {
+  return (
+    row.attempts < maxAttempts &&
+    !row.uncertain &&
+    (row.visibleUntil === null || row.visibleUntil <= now)
+  );
+}
+
+/** Cooperative same-user storage, not an authorization boundary. */
 export class MailboxStore {
   constructor(readonly root: string) {}
   ensureRoot() {
@@ -118,7 +131,7 @@ export class MailboxStore {
         closeSync(fd);
       }
       if (
-        state.version !== 1 ||
+        state.version !== 2 ||
         !UUID.test(state.epoch) ||
         !Number.isSafeInteger(state.sequence) ||
         state.sequence < 0 ||
@@ -137,7 +150,15 @@ export class MailboxStore {
           row.at < 0 ||
           !Number.isSafeInteger(row.seq) ||
           row.seq <= prior ||
-          row.seq > state.sequence
+          row.seq > state.sequence ||
+          !UUID.test(row.sender) ||
+          !Number.isSafeInteger(row.attempts) ||
+          row.attempts < 0 ||
+          (row.visibleUntil !== null &&
+            (!Number.isSafeInteger(row.visibleUntil) ||
+              row.visibleUntil < 0)) ||
+          typeof row.uncertain !== "boolean" ||
+          typeof row.warned !== "boolean"
         )
           throw new Error();
         ids.add(row.id);
@@ -151,13 +172,18 @@ export class MailboxStore {
   }
   private mutate<T>(
     mailbox: string,
-    change: (state: State) => { value: T; changed: boolean },
+    change: (
+      state: State,
+      commit: () => void,
+    ) => { value: T; changed: boolean },
   ): T {
     this.ensureRoot();
     const lock = join(this.root, `${mailbox}.lock`);
     try {
       mkdirSync(lock, { mode: 0o700 });
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST")
+        throw new MailboxBusy();
       throw new MailboxError("storage_failed");
     }
     const temp = join(this.root, `${mailbox}.${randomUUID()}.tmp`);
@@ -169,26 +195,28 @@ export class MailboxStore {
         { mode: 0o600, flag: "wx" },
       );
       const state = this.read(mailbox) ?? {
-        version: 1,
+        version: 2,
         epoch: randomUUID(),
         sequence: 0,
         rows: [],
       };
-      const result = change(state);
-      if (!result.changed) return result.value;
-      const bytes = JSON.stringify(state);
-      if (Buffer.byteLength(bytes) > MAX_BYTES || state.rows.length > 1000)
-        throw new MailboxError("mailbox_full");
-      const fd = openSync(temp, "wx", 0o600);
-      try {
-        writeFileSync(fd, bytes);
-        fsyncSync(fd);
-      } finally {
-        closeSync(fd);
-      }
-      renameSync(temp, join(this.root, `${mailbox}.json`));
-      renamed = true;
-      _durability.syncDirectory(this.root);
+      const commit = () => {
+        const bytes = JSON.stringify(state);
+        if (Buffer.byteLength(bytes) > MAX_BYTES || state.rows.length > 1000)
+          throw new MailboxError("mailbox_full");
+        const fd = openSync(temp, "wx", 0o600);
+        try {
+          writeFileSync(fd, bytes);
+          fsyncSync(fd);
+        } finally {
+          closeSync(fd);
+        }
+        renameSync(temp, join(this.root, `${mailbox}.json`));
+        renamed = true;
+        _durability.syncDirectory(this.root);
+      };
+      const result = change(state, commit);
+      if (result.changed) commit();
       return result.value;
     } catch (e) {
       if (renamed) throw new MailboxError("publication_unknown", true);
@@ -212,9 +240,15 @@ export class MailboxStore {
       }
     }
   }
-  send(mailbox: string, type: string, message: string): Message {
+  send(
+    mailbox: string,
+    type: string,
+    message: string,
+    sender: string,
+  ): Message {
     address(mailbox);
     payload(type, message);
+    if (!UUID.test(sender)) throw new MailboxError("invalid_input");
     return this.mutate(mailbox, (s) => {
       if (s.sequence >= Number.MAX_SAFE_INTEGER)
         throw new MailboxError("mailbox_full");
@@ -223,6 +257,11 @@ export class MailboxStore {
         at: Date.now(),
         type,
         message,
+        sender,
+        attempts: 0,
+        visibleUntil: null,
+        uncertain: false,
+        warned: false,
         seq: ++s.sequence,
       };
       s.rows.push(row);
@@ -292,14 +331,67 @@ export class MailboxStore {
       oldestAt: state?.rows[0]?.at ?? null,
     };
   }
-  observe(
+  snapshot(mailbox: string): Message[] {
+    address(mailbox);
+    return (this.read(mailbox)?.rows ?? []).map(publicMessage);
+  }
+  clear(mailbox: string) {
+    address(mailbox);
+    return this.mutate(mailbox, (s) => {
+      const removed = s.rows.length;
+      s.rows = [];
+      s.epoch = randomUUID();
+      s.sequence = 0;
+      return { value: removed, changed: true };
+    });
+  }
+  /** Recheck ACK/clear and hold the writer lock through synchronous Pi handoff.
+   * A durable intent prevents a crash between submission and confirmation from
+   * causing blind replay. An orphan intent stays inspectable, never auto-retries. */
+  deliver(
     mailbox: string,
-    previous: BatchCheckpoint | null = null,
-    policy: Partial<BatchPolicy> = {},
-    now = Date.now(),
+    maxAttempts: number,
+    timeout: number,
+    handoff: (messages: Message[], now: number) => void,
+    now = Date.now,
   ) {
     address(mailbox);
-    return observeBatch(mailbox, this.read(mailbox), previous, policy, now);
+    return this.mutate(mailbox, (s, commit) => {
+      const rows: Row[] = [];
+      let bytes = 0;
+      for (const row of s.rows) {
+        if (!eligible(row, maxAttempts, now())) continue;
+        const size = Buffer.byteLength(JSON.stringify(row)) + 200;
+        if (rows.length >= 20 || bytes + size > 16000) break;
+        rows.push(row);
+        bytes += size;
+      }
+      if (!rows.length)
+        return { value: { delivered: 0, limited: 0 }, changed: false };
+      for (const row of rows) {
+        row.attempts++;
+        row.uncertain = true;
+        row.visibleUntil = null;
+      }
+      commit();
+      const at = now();
+      for (const row of rows) row.visibleUntil = at + timeout;
+      try {
+        handoff(rows.map(publicMessage), at);
+        for (const row of rows) row.uncertain = false;
+      } catch {
+        // Submission may have happened. Retain uncertainty; eligibility stays
+        // suspended even after visibility expires, until explicit incorporation.
+      }
+      const limited = rows.filter(
+        (r) => r.attempts >= maxAttempts && !r.warned,
+      );
+      for (const row of limited) row.warned = true;
+      return {
+        value: { delivered: rows.length, limited: limited.length },
+        changed: true,
+      };
+    });
   }
   ack(mailbox: string, ids: string[]) {
     address(mailbox);

@@ -80,7 +80,7 @@ test("one-line widgets distinguish queued/running/done/failed/canceled and repor
   });
   assert.equal(
     widgetLines([canceled], 200, theme)[0],
-    "workflow canceled smoke-progress · 1 canceled · 4s · effects unknown",
+    "workflow canceled smoke-progress · 1 canceled · 4s · outcome unknown",
   );
   assert.doesNotMatch(widgetLines([canceled], 200, theme)[0], /failed|tokens/);
   for (const width of [0, 1, 12, 32, 48, 64, 80, 120]) {
@@ -92,7 +92,7 @@ test("one-line widgets distinguish queued/running/done/failed/canceled and repor
     assert.equal(rows.length, 1);
     assert.ok(visibleWidth(rows[0]) <= width);
     assert.doesNotMatch(stripVTControlCharacters(rows[0]), /[\n\x1b]/);
-    if (width >= 48) assert.match(rows[0], /effects unknown/);
+    if (width >= 48) assert.match(rows[0], /outcome unknown/);
   }
   assert.equal(JSON.stringify(r), before);
   const child = record({
@@ -142,7 +142,9 @@ test("control summaries retain state and split semantic color from uncertainty",
     assert.doesNotMatch(line, /PRIVATE|\x1b/);
     if (status === "success") assert.doesNotMatch(line, /effects|Intentional/);
     else {
-      assert.match(line, /<dim> · <\/dim><warning>effects/);
+      if (r.outcomeUnknown)
+        assert.match(line, /<dim> · <\/dim><warning>outcome/);
+      else assert.doesNotMatch(line, /effects|outcome unknown/);
       assert.match(line, /Intentional failure/);
     }
     const dismissed = renderExecutionResult(
@@ -185,7 +187,7 @@ test("wake puts identity before warnings; ordinary success is green without effe
       row,
       status === "success"
         ? "workflow succeeded smoke"
-        : `workflow ${status === "cancelled" ? "canceled" : "failed"} smoke (effects may persist)`,
+        : `workflow ${status === "cancelled" ? "canceled" : "failed"} smoke`,
     );
     assert.equal(JSON.stringify(message), before);
   }

@@ -135,15 +135,11 @@ function activity(r: DisplayReceipt): string {
 }
 function warnings(
   r: DisplayReceipt & Partial<Pick<Receipt, "interrupted" | "gap">>,
-  compact = false,
 ): string[] {
   return [
-    ...(r.outcomeUnknown ? ["effects uncertain"] : []),
+    ...(r.outcomeUnknown ? ["outcome uncertain"] : []),
     ...(r.interrupted ? ["interrupted"] : []),
     ...(r.gap ? ["coverage gap"] : []),
-    ...(!compact && r.effectsMayPersist && !r.outcomeUnknown
-      ? ["effects may persist"]
-      : []),
     ...(r.lastAttention?.disposition === "handoff_unknown"
       ? ["handoff uncertain"]
       : []),
@@ -262,9 +258,9 @@ export function widgetLines(
     const name = theme.fg("text", label(r.name));
     const separator = theme.fg("dim", " · ");
     const primary = `${theme.fg("muted", "monitor")} ${theme.fg(color, state)}`;
-    const warningText = warnings(r, true);
+    const warningText = warnings(r);
     const compact: Record<string, string> = {
-      "effects uncertain": "unknown",
+      "outcome uncertain": "unknown",
       "coverage gap": "gap",
       "handoff uncertain": "handoff?",
     };
@@ -385,7 +381,7 @@ export const renderers: Pick<
                 d.receipt.lastAttention?.disposition === "handoff_unknown"
               ? "unknown; no replay"
               : d.receipt.outcomeUnknown
-                ? "effects unknown; no replay"
+                ? "outcome unknown; no replay"
                 : "handoff unknown; no replay",
           failed ? "error" : "warning",
         ),
@@ -419,10 +415,6 @@ export const renderers: Pick<
         const r = d.receipt;
         lines.push(`job ${label(r.name)} (${label(r.id)})`);
         if (action !== "get") lines.push(jobLine(r));
-        if (r.effectsMayPersist)
-          lines.push(
-            "Dispatched effects may persist; cancellation is not rollback.",
-          );
         if (r.lastAttention)
           lines.push(
             `follow-up ${label(r.lastAttention.disposition)}; admission ${r.lastAttention.admitted ? "observed" : "not observed"}`,

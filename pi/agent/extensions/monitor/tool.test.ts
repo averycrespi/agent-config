@@ -267,7 +267,7 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   };
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }),
-    /effects unknown; no replay/,
+    /outcome unknown; no replay/,
   );
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }, true),
@@ -510,7 +510,7 @@ test("widget state styling, adjacent identity and routine effect suppression", (
   )[0];
   assert.match(
     line,
-    /^monitor watching CI check · polling · next check 3s · timeout 12s · effects uncertain$/,
+    /^monitor watching CI check · polling · next check 3s · timeout 12s · outcome uncertain$/,
   );
 });
 
@@ -543,7 +543,7 @@ test("widget mechanism is muted, secondary to timing and warnings, and absent du
     76,
     theme,
   )[0];
-  assert.match(warning, /next check 3s · timeout 12s · effects uncertain/);
+  assert.match(warning, /next check 3s · timeout 12s · outcome uncertain/);
   assert.doesNotMatch(warning, /polling|events/);
   for (const patch of [
     { intervalMs: undefined, eventCount: undefined },

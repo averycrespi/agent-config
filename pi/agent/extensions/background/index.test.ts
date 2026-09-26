@@ -174,7 +174,7 @@ test("Script background returns stable persisted ID, remains responsive, automat
   const message = h.messages[0];
   assert.equal(
     message.content,
-    `Background script execution ${id}: success. Inspect with script action inspect and id ${id}. Effects may persist; reconcile unknown effects. This notification is not acceptance and never authorizes replay.`,
+    `Background script execution ${id}: success. Inspect with script action inspect and id ${id}. This notification is not acceptance and never authorizes replay.`,
   );
   const before = JSON.stringify(h.service().inspect("script", id));
   const saved = readFileSync(

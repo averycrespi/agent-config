@@ -74,7 +74,7 @@ export function presentRun(run: RunResult, action: "run" | "describe" = "run") {
     content: [
       {
         type: "text" as const,
-        text: `script: ${JSON.stringify({ ...accounting, calls: traces.length, succeeded, failures: traces.filter((t) => t.state === "failed" || t.state === "cancelled").map((t) => ({ id: t.id, code: t.code, outcomeUnknown: t.outcomeUnknown })) })}${run.effectsMayPersist ? "\nEffects may persist; no rollback or automatic retry." : ""}${run.status !== "success" && run.effectsMayPersist ? "\nReconcile provider effects before further action." : ""}${guidance ? `\n${guidance}` : ""}`,
+        text: `script: ${JSON.stringify({ ...accounting, calls: traces.length, succeeded, failures: traces.filter((t) => t.state === "failed" || t.state === "cancelled").map((t) => ({ id: t.id, code: t.code, outcomeUnknown: t.outcomeUnknown })) })}${run.status !== "success" && run.effectsMayPersist ? "\nProvider calls were dispatched; inspect their outcomes before further action. No automatic retry or rollback." : ""}${guidance ? `\n${guidance}` : ""}`,
       },
       ...(json === undefined
         ? []
@@ -277,16 +277,16 @@ export const renderers: Pick<
       lines.push(
         theme.fg("error", "Outcome unknown; do not automatically retry."),
       );
-    if (d?.partialExecution)
+    if (failed && d?.partialExecution)
       lines.push(
-        theme.fg("warning", "Partial execution; effects may persist."),
+        theme.fg("warning", "Partial execution; inspect provider outcomes."),
       );
     if (expanded && !isPartial) {
       if (failed && d?.effectsMayPersist)
         lines.push(
           theme.fg(
             "warning",
-            "Reconcile provider effects before further action.",
+            "Inspect dispatched provider outcomes before further action; no automatic retry.",
           ),
         );
       if (failed && info) lines.push(theme.fg("muted", info.guidance));

@@ -1,19 +1,34 @@
 # Coordinate design
 
-Keep policy in agent guidance and effects in existing primitives. `index.ts` owns commands, role checks, request-local context and the three-action tool. `state.ts` uses the retained canonical index helper for atomic validate/readback persistence; it never reconstructs external acceptance from transcript history. `launch.ts` adapts one Markdown brief to the existing finite Herdr launch helper. The helper's explicit Coordinate mode accepts caller naming/path choices while retaining legacy behavior for existing runs.
+Coordinate owns durable delegation facts, not agent orchestration. Mailbox owns bidirectional session delivery, Monitor owns unrelated bounded observations, TODO remembers unresolved obligations, and child checkpoints own execution/evidence.
 
-## Ownership and effects
+## Modules and state
 
-Exact session UUID plus canonical checkout/common directory bind a role. Coordinator records own assignments/control/acceptance; child records contain pointers only. Appended session entries do not authorize restoration or takeover. External active/disabled state survives navigation; active forks reject. One in-process mutation guard excludes concurrent commands/tool operations, while the canonical helper detects stale manual index edits. This is cooperative ownership, not hostile-process fencing.
+- `index.ts`: human role commands, tool boundary, bounded request-local context and lifecycle refresh.
+- `state.ts`: binding validation, assignment inventory and explicit exact-result acceptance.
+- `record.js`: private common-directory storage with digest checks, atomic replacement and independent readback. No CLI entry point or agent bookkeeping API.
+- `launch.ts`: capability/base preflight, assignment persistence, automatic listener readiness and child binding between prepare and submit.
+- `launcher.js`: finite private Herdr launch with intent-before-effect and identity/focus/transcript checks. No legacy saved-Script or research launch wrapper.
+- `render.ts`: pure concise summaries and role widget projection.
 
-All launch effects retain intent before dispatch and confirmed receipts after readback. Shared repository-read-only preflight validates identity/source/ignore/collisions before assignment admission and again before effects; predictable invalid input cannot strand an assignment. For Coordinate, Git evaluates the selected immutable base's root ignore rules with the common-directory/global excludes in a private temporary scratch directory, removed afterward; no worktree is created. Tracked `.handoffs` at the base rejects rather than inheriting artifacts or symlinks. Caller-only tracked or uncommitted ignore rules cannot qualify another base. Prepare then creates a worktree/workspace, ignored handoff and unprompted worker. Coordinate binds the exact returned child session and records reporting before submit. Two fresh process-local coverage inspections gate submission. A bounded transcript/state handshake distinguishes confirmed execution from uncertain submission. Partial outcomes retain resources; no continuation/retry/rollback is implemented. Legacy prepare/submit remains a recovery mechanic, not a competing saved definition.
+New state contains only role binding, assignment identity, one launch brief including committed base and task constraints, worker location, launch status/unresolved operation and acceptance references. No mailbox observer references are generated. Completed intermediate intents are cleared; raw Herdr envelopes, redundant prompt copies, ACK/report histories, wellness, questions/answers/relay ledgers and secondary supervision accounting are not generated. Historic sections remain readable and are not deleted or adopted automatically.
 
-## Narrow read-only integration
+The brief must remain available before external effects. Record readback/digest confirmation gates every effect; missing confirmation is uncertainty, not permission to retry. Persistence and external effects cannot be one transaction. Preserve partial resources and the last unresolved intent when a later stage fails. A successful prompt submission is not task-correlated execution.
 
-Mailbox and Monitor expose process-local inspection functions documented in their API files. Mailbox projects availability/pending count without contents. Monitor projects a receipt and a boolean match against the caller's expected canonical recipe source; no source is returned. Neither inspection mutates storage, registers jobs, handles reports or creates turns. Unknown receipts stay unknown after reload; restoration is Monitor-owned and never restarts observation. Coordinate uses the CONFIG-35 canonical default recurring recipe rather than building a second scheduler.
+## Ownership and lifecycle
 
-## Boundaries
+One owning coordinator session serializes tool/command mutations. Child bindings reject all coordinator actions; no role conversion or nested workers. Activation comes only from the human command. The mailbox is the complete session UUID. Existing external records are not migrated; a non-session address cannot satisfy new listener readiness. Session-tree history cannot roll back external worker facts. Active forks are refused; unrelated sessions do not inherit activation.
 
-The tool records explicit acceptance claims with exact head/result/evidence/release references; it cannot prove semantic evidence truth. Agents inspect evidence first. Manual report incorporation and control use the same external index and preserved helpers; no automatic ACK/answer/semantic acceptance engine is added. Status projects reported and verified fields separately, and truncation points to the complete record without discarding retained facts.
+Read-only status does not accept, ACK or repair. Request-local context replaces only Coordinate's previous reminder, bounds outstanding identities, and points to source. Restoration emits no launch, observation or control effects. No new compaction memory framework is introduced.
 
-Context hooks run before each model request and remove only Coordinate's own prior custom reminder. Session pointers are retained once, not full reminders or delivery ledgers. Child guidance persists without enabling coordinator operations. No settlement hooks force reporting or turns. Rendering sanitizes identifiers and uses existing compact helpers; there is no widget, dashboard or configuration subsystem.
+Spawn reads Mailbox's current-process listener readiness before launch and before submission. It needs neither Script permission nor Monitor registration. Mailbox owns timers and delivery; no observer status, disable dependency, scheduler, copied budgets or inferred authority belongs here. Follow-up instructions use worker session inboxes while Herdr retains bootstrap/process inspection.
+
+## Rendering
+
+A persistent supported below-editor widget is mounted once while visible, updated in place on lifecycle/tool/mailbox events, and removed when disabled or shutting down. It owns no timer, border or footer behavior. Stale async refreshes cannot repaint a newer state. Labels are sanitized before styling and fitted to one row. Counts derive from retained assignments and inbox inspection; pending messages are not inferred questions or worker activity. Mailbox owns delivery warnings in its own widget.
+
+Collapsed tools report useful counts/dispositions; evidence and record paths remain expanded. Disabled status is neutral while the model still receives a no-effects rejection. Spawn success requires matching submitted user text and subsequent assistant activity in the verified worker transcript. Verified execution remains confirmed when the worker is blocked on a question; its observed disposition is retained separately in execution evidence, not used as an irreversible launch failure. This is not completion or release, which still require explicit acceptance. Worker identity alone renders as prepared, never started. Uncertainty is stage-specific, never safe-replay guidance.
+
+## Verification boundaries
+
+Regression tests cover bindings, original mailbox reuse, request context replacement, read-only status, ownership/acceptance, listener readiness independent of Monitor/Script, launch partial failures and no replay. Pure display tests cover hostile labels and bounded widths. Fake Herdr tests cannot qualify live Pi/Herdr delivery, focus, draft handling or model obedience; keep these separate from deterministic evidence and require explicit live-test authority.

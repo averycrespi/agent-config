@@ -23,11 +23,11 @@ export function executionState(status: string): [string, ThemeColor] {
 
 export function executionWarnings(r: Partial<Execution>): [string, string][] {
   return [
+    // Dispatch/restoration flags do not establish mutation. Keep actual outcome
+    // uncertainty visible without describing read-only execution as a write.
     ...(r.outcomeUnknown
-      ? [["effects unknown", "unknown"] as [string, string]]
-      : r.effectsMayPersist && r.status !== "success"
-        ? [["effects may persist", "effects?"] as [string, string]]
-        : []),
+      ? [["outcome unknown", "unknown"] as [string, string]]
+      : []),
     ...(r.persistenceFailed
       ? [["persistence failed", "persist failed"] as [string, string]]
       : []),
