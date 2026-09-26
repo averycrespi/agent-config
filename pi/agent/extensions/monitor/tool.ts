@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
@@ -135,12 +135,13 @@ function activity(r: DisplayReceipt): string {
 }
 function warnings(
   r: DisplayReceipt & Partial<Pick<Receipt, "interrupted" | "gap">>,
+  compact = false,
 ): string[] {
   return [
     ...(r.outcomeUnknown ? ["effects uncertain"] : []),
     ...(r.interrupted ? ["interrupted"] : []),
     ...(r.gap ? ["coverage gap"] : []),
-    ...(r.effectsMayPersist && !r.outcomeUnknown
+    ...(!compact && r.effectsMayPersist && !r.outcomeUnknown
       ? ["effects may persist"]
       : []),
     ...(r.lastAttention?.disposition === "handoff_unknown"
@@ -216,17 +217,26 @@ export function widgetLines(
   return receipts.filter(visible).map((r) => {
     const pending = r.attention?.disposition === "pending";
     const color =
-      r.outcomeUnknown || (pending && r.attention!.reason.includes("failure"))
+      pending && r.attention!.reason.includes("failure")
         ? "error"
-        : pending || r.awaitingSettlement
-          ? "warning"
-          : "accent";
+        : pending && r.attention!.reason === "condition"
+          ? "success"
+          : pending || r.awaitingSettlement
+            ? "warning"
+            : "accent";
     const timing = (name: string, at: number) =>
       theme.fg("muted", `${name} `) +
       theme.fg("text", formatWidgetCountdown(at - now));
     const state = pending
-      ? (reasons[r.attention!.reason] ?? "attention")
-      : activity(r);
+      ? r.attention!.reason === "condition" && r.delayMs !== undefined
+        ? "timer elapsed"
+        : (reasons[r.attention!.reason] ?? "attention")
+      : r.status === "active" &&
+          !r.awaitingSettlement &&
+          !r.inFlight &&
+          r.delayMs === undefined
+        ? "watching"
+        : activity(r);
     const fields: string[] = pending
       ? [theme.fg("warning", "follow-up queued")]
       : [];
@@ -252,27 +262,62 @@ export function widgetLines(
     const name = theme.fg("text", label(r.name));
     const separator = theme.fg("dim", " · ");
     const primary = `${theme.fg("muted", "monitor")} ${theme.fg(color, state)}`;
-    const warningText = warnings(r);
+    const warningText = warnings(r, true);
     const compact: Record<string, string> = {
       "effects uncertain": "unknown",
       "coverage gap": "gap",
-      "effects may persist": "effects?",
       "handoff uncertain": "handoff?",
     };
-    const narrow = visibleWidth([primary, ...warningText].join(" · ")) > width;
+    const narrow =
+      visibleWidth([primary, ...warningText].join(" · ")) + 9 > width;
     const critical = warningText.map((s) =>
       theme.fg("warning", narrow ? (compact[s] ?? s) : s),
     );
-    return fitWidgetRow(
-      primary +
-        (critical.length
-          ? separator + critical.join(narrow ? theme.fg("dim", "/") : separator)
-          : ""),
-      fields,
-      width,
-      separator,
+    const suffix = critical.length
+      ? separator + critical.join(narrow ? theme.fg("dim", "/") : separator)
+      : "";
+    const mechanism =
+      !pending && !r.awaitingSettlement && r.delayMs === undefined
+        ? r.intervalMs !== undefined
+          ? r.eventCount
+            ? "polling + events"
+            : "polling"
+          : r.eventCount
+            ? "events"
+            : undefined
+        : undefined;
+    // Mechanism is displayed first but discarded before any clock or warning.
+    const minimumName = truncateToWidth(
       name,
-      " ",
+      Math.min(8, visibleWidth(name)),
+      "…",
+    );
+    if (
+      mechanism &&
+      visibleWidth(
+        primary +
+          " " +
+          minimumName +
+          separator +
+          mechanism +
+          fields.map((field) => separator + field).join("") +
+          suffix,
+      ) <= width
+    )
+      fields.unshift(theme.fg("muted", mechanism));
+    // Reserve warnings before fitting optional identity and telemetry, but keep
+    // the name adjacent to the state whenever it fits.
+    return truncateToWidth(
+      fitWidgetRow(
+        primary,
+        fields,
+        Math.max(visibleWidth(primary), width - visibleWidth(suffix)),
+        separator,
+        name,
+        " ",
+      ) + suffix,
+      width,
+      "…",
     );
   });
 }

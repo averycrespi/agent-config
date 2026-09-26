@@ -287,11 +287,11 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
 test("widgets label polling clocks, preserve name and distinguish deadline from expiry", () => {
   assert.equal(
     widgetLines([receipt()], now, 120, theme)[0],
-    "monitor polling CI check · next check 3s · timeout 12s",
+    "monitor watching CI check · polling · next check 3s · timeout 12s",
   );
   assert.match(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
-    /checking CI check · timeout 12s/,
+    /checking CI check · polling · timeout 12s/,
   );
   assert.doesNotMatch(
     widgetLines([receipt({ inFlight: true })], now, 120, theme)[0],
@@ -302,7 +302,7 @@ test("widgets label polling clocks, preserve name and distinguish deadline from 
     /expires 5s/,
   );
   const narrow = widgetLines([receipt()], now, 40, theme)[0];
-  assert.match(narrow, /^monitor polling CI check/);
+  assert.match(narrow, /^monitor watching CI check/);
   assert.doesNotMatch(narrow, /wake 3s/);
   const long = widgetLines(
     [
@@ -314,7 +314,7 @@ test("widgets label polling clocks, preserve name and distinguish deadline from 
     45,
     theme,
   )[0];
-  assert.match(long, /polling/);
+  assert.match(long, /watching/);
   assert.ok(visibleWidth(long) <= 45);
 });
 
@@ -342,7 +342,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
       150,
       theme,
     )[0],
-    /watching events CI check · timeout 12s/,
+    /watching CI check · events · timeout 12s/,
   );
   const waiting = receipt({
     awaitingSettlement: true,
@@ -399,7 +399,7 @@ test("uncertain control errors retain both failed request and no-replay status",
   }
 });
 
-test("widget uncertainty stays ahead of names, queued status and clocks at narrow widths", () => {
+test("widget reserves uncertainty before optional names, queued status and clocks", () => {
   const r = receipt({
     name: "OPTIONAL".repeat(20),
     outcomeUnknown: true,
@@ -423,12 +423,146 @@ test("widget uncertainty stays ahead of names, queued status and clocks at narro
   const line = widgetLines([r], now, 64, theme)[0];
   assert.match(line, /^monitor evaluation failed/);
   assert.match(line, /unknown\/interrupted\/gap\/handoff\?/);
-  assert.doesNotMatch(line, /OPTIONAL|queued|timeout/);
+  assert.doesNotMatch(line, /queued|timeout/);
   assert.ok(visibleWidth(line) <= 64);
   r.interrupted = false;
   r.gap = false;
   r.lastAttention = undefined;
-  assert.match(widgetLines([r], now, 48, theme)[0], /effects uncertain/);
+  assert.match(widgetLines([r], now, 48, theme)[0], /unknown/);
+});
+
+test("widget state styling, adjacent identity and routine effect suppression", () => {
+  const cases: [Partial<Receipt>, string, string][] = [
+    [{ eventCount: 1, effectsMayPersist: true }, "watching", "accent"],
+    [{ inFlight: true }, "checking", "accent"],
+    [{ delayMs: 5000 }, "scheduled", "accent"],
+    [{ awaitingSettlement: true }, "awaiting settlement", "warning"],
+  ];
+  for (const reason of [
+    "condition",
+    "timeout",
+    "evaluation_failure",
+    "coverage_failure",
+  ] as const) {
+    cases.push([
+      {
+        attention: {
+          id: "wake",
+          reason,
+          at: now,
+          disposition: "pending",
+          admitted: false,
+        },
+      },
+      {
+        condition: "condition met",
+        timeout: "timed out",
+        evaluation_failure: "evaluation failed",
+        coverage_failure: "coverage lost",
+      }[reason],
+      reason.includes("failure")
+        ? "error"
+        : reason === "condition"
+          ? "success"
+          : "warning",
+    ]);
+  }
+  cases.push([
+    {
+      delayMs: 5000,
+      attention: {
+        id: "wake",
+        reason: "condition",
+        at: now,
+        disposition: "pending",
+        admitted: false,
+      },
+    },
+    "timer elapsed",
+    "success",
+  ]);
+  for (const [patch, state, color] of cases) {
+    const styled: [string, string][] = [];
+    const r = receipt(patch);
+    const before = JSON.stringify(r);
+    const line = widgetLines([r], now, 150, {
+      ...theme,
+      fg: (token: string, value: string) => {
+        styled.push([token, value]);
+        return value;
+      },
+    } as any)[0];
+    assert.ok(line.startsWith(`monitor ${state} CI check`), line);
+    assert.ok(
+      styled.some(([token, value]) => token === color && value === state),
+    );
+    assert.ok(
+      styled.some(([token, value]) => token === "muted" && value === "monitor"),
+    );
+    assert.doesNotMatch(line, /effects may persist|watching events/);
+    assert.equal(JSON.stringify(r), before);
+  }
+  const line = widgetLines(
+    [receipt({ outcomeUnknown: true })],
+    now,
+    150,
+    theme,
+  )[0];
+  assert.match(
+    line,
+    /^monitor watching CI check · polling · next check 3s · timeout 12s · effects uncertain$/,
+  );
+});
+
+test("widget mechanism is muted, secondary to timing and warnings, and absent during attention", () => {
+  const r = receipt({ eventCount: 1 });
+  const styled: [string, string][] = [];
+  const localTheme = {
+    ...theme,
+    fg: (token: string, value: string) => {
+      styled.push([token, value]);
+      return value;
+    },
+  } as any;
+  assert.equal(
+    widgetLines([r], now, 120, localTheme)[0],
+    "monitor watching CI check · polling + events · next check 3s · timeout 12s",
+  );
+  assert.ok(
+    styled.some(
+      ([token, value]) => token === "muted" && value === "polling + events",
+    ),
+  );
+  assert.equal(
+    widgetLines([r], now, 55, theme)[0],
+    "monitor watching CI check · next check 3s · timeout 12s",
+  );
+  const warning = widgetLines(
+    [{ ...r, outcomeUnknown: true }],
+    now,
+    76,
+    theme,
+  )[0];
+  assert.match(warning, /next check 3s · timeout 12s · effects uncertain/);
+  assert.doesNotMatch(warning, /polling|events/);
+  for (const patch of [
+    { intervalMs: undefined, eventCount: undefined },
+    { awaitingSettlement: true },
+    { delayMs: 5000 },
+    {
+      attention: {
+        id: "wake",
+        reason: "condition" as const,
+        at: now,
+        disposition: "pending" as const,
+        admitted: false,
+      },
+    },
+  ])
+    assert.doesNotMatch(
+      widgetLines([{ ...r, ...patch }], now, 120, theme)[0],
+      /polling|events/,
+    );
 });
 
 test("monitor expansion preserves original framed evidence without changing payloads", () => {

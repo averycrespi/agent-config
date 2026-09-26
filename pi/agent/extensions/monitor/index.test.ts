@@ -365,7 +365,7 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
       .render(80)
       .join("\n");
     assert.match(rendered, /monitor/);
-    assert.match(rendered, /monitor attention condition/);
+    assert.match(rendered, /monitor condition met/);
     assert.equal(rendered.includes(input.message), expanded);
   }
   assert.equal(JSON.stringify(message), original);

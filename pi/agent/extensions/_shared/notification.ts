@@ -31,7 +31,7 @@ const EXECUTION: Record<string, [string, ThemeColor]> = {
   interrupted: ["interrupted", "warning"],
 };
 const OBSERVATION: Record<string, [string, ThemeColor]> = {
-  condition: ["condition", "warning"],
+  condition: ["condition met", "success"],
   timeout: ["timed out", "warning"],
   evaluation_failure: ["evaluation failed", "error"],
   coverage_failure: ["coverage lost", "error"],
@@ -136,22 +136,25 @@ export function notificationRenderer(
         ? ["effects may persist"]
         : []),
     ];
+    const compactWarnings =
+      source === "monitor"
+        ? warnings.filter((warning) => warning !== "effects may persist")
+        : warnings;
     return {
       invalidate() {},
       render(width) {
         const w = Math.max(0, Math.floor(width));
         const separator = " ";
         const title = theme.fg("toolTitle", theme.bold(type));
-        const state =
-          source === "monitor" && valid ? `attention ${reason}` : reason;
+        const state = reason;
         let prefix = `${title} ${theme.fg(color, state)}`;
         let essential =
           prefix +
-          (warnings.length
-            ? separator + theme.fg("warning", `(${warnings.join("; ")})`)
+          (compactWarnings.length
+            ? separator + theme.fg("warning", `(${compactWarnings.join("; ")})`)
             : "");
         if (visibleWidth(essential) > w) {
-          const compactWarnings: Record<string, string> = {
+          const warningLabels: Record<string, string> = {
             "effects unknown": "unknown",
             interrupted: "interrupted",
             "coverage gap": "gap",
@@ -165,11 +168,11 @@ export function notificationRenderer(
           prefix = `${title} ${theme.fg(color, shortReason)}`;
           essential =
             prefix +
-            (warnings.length
+            (compactWarnings.length
               ? separator +
                 theme.fg(
                   "warning",
-                  warnings.map((s) => compactWarnings[s]).join("/"),
+                  compactWarnings.map((s) => warningLabels[s]).join("/"),
                 )
               : "");
         }

@@ -49,11 +49,11 @@ for (const source of ["background", "monitor"] as const) {
             interrupted: "interrupted",
           }
         : {
-            condition: "attention condition",
-            timeout: "attention timed out",
-            evaluation_failure: "attention evaluation failed",
-            coverage_failure: "attention coverage lost",
-            budget_exhausted: "attention budget exhausted",
+            condition: "condition met",
+            timeout: "timed out",
+            evaluation_failure: "evaluation failed",
+            coverage_failure: "coverage lost",
+            budget_exhausted: "budget exhausted",
           };
     for (const [status, expected] of Object.entries(statuses)) {
       const m = message(source, status);
@@ -74,7 +74,8 @@ for (const source of ["background", "monitor"] as const) {
       assert.doesNotMatch(normal[0], /·/);
       assert.doesNotMatch(normal[0], /11111111|Continue|result.json|UNTRUSTED/);
       assert.deepEqual(backgrounds, ["customMessageBg"]);
-      if (source === "monitor") assert.ok(!colors.includes("success"));
+      if (source === "monitor")
+        assert.equal(colors.includes("success"), status === "condition");
       for (let width = 0; width <= 100; width++) {
         const rows = compact.render(width);
         assert.equal(rows.length, 1);
@@ -118,7 +119,9 @@ for (const source of ["background", "monitor"] as const) {
             assert.equal(rows.length, 1);
             assert.ok(visibleWidth(rows[0]) <= 48);
             if (outcomeUnknown) assert.match(rows[0], /unknown/);
-            else if (effectsMayPersist) assert.match(rows[0], /effects/);
+            else if (effectsMayPersist && source === "background")
+              assert.match(rows[0], /effects/);
+            else assert.doesNotMatch(rows[0], /effects/);
             if (interrupted) assert.match(rows[0], /interrupted/);
             if (gap) assert.match(rows[0], /gap/);
           }
@@ -203,6 +206,43 @@ for (const source of ["background", "monitor"] as const) {
     assert.equal(large.content, before);
   });
 }
+test("Monitor hides routine effects only in compact display and styles attention truthfully", () => {
+  for (const [status, mode, state, color] of [
+    ["condition", "observation", "condition met", "success"],
+    ["condition", "timer", "timer elapsed", "success"],
+    ["timeout", "observation", "timed out", "warning"],
+    ["evaluation_failure", "observation", "evaluation failed", "error"],
+    ["coverage_failure", "observation", "coverage lost", "error"],
+  ]) {
+    const m = message("monitor", status, { mode, effectsMayPersist: true });
+    const before = JSON.stringify(m);
+    const styled: [string, string][] = [];
+    const renderer = notificationRenderer("monitor");
+    const localTheme = {
+      ...theme,
+      fg: (token: string, value: string) => {
+        styled.push([token, value]);
+        return value;
+      },
+    };
+    const line = renderer(m, { expanded: false } as any, localTheme)!.render(
+      100,
+    )[0];
+    assert.ok(line.startsWith(`monitor ${state} Build`), line);
+    assert.doesNotMatch(line, /effects|attention/);
+    assert.ok(
+      styled.some(([token, value]) => token === color && value === state),
+    );
+    assert.match(
+      renderer(m, { expanded: true } as any, localTheme)!
+        .render(100)
+        .join("\n"),
+      /Warnings: effects may persist/,
+    );
+    assert.equal(JSON.stringify(m), before);
+  }
+});
+
 test("producer metadata alone selects timer and singular/batch labels", () => {
   for (const [total, source] of [
     [1, "subagent"],
@@ -226,9 +266,6 @@ test("producer metadata alone selects timer and singular/batch labels", () => {
       { expanded: false } as any,
       theme,
     )!.render(100)[0];
-    assert.match(
-      line,
-      mode === "timer" ? /timer elapsed/ : /attention condition/,
-    );
+    assert.match(line, mode === "timer" ? /timer elapsed/ : /condition met/);
   }
 });
