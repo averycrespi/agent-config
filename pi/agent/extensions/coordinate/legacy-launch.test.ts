@@ -120,6 +120,9 @@ function model(options: any = {}) {
       files.has(p) ||
       (p === brief.checkout && (created || options.pathCollision)),
     real: async (p: string) => (options.symlink ? "/elsewhere" : p),
+    ignoreAtBase: async () => {
+      if (options.unignored) throw Error("not ignored at selected base");
+    },
     read: async (p: string) => {
       if (!files.has(p)) throw Error("missing file");
       return files.get(p);

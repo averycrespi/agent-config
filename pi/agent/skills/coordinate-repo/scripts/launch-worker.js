@@ -2,9 +2,18 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { readIndex, updateIndex } from "./index.js";
 
@@ -67,6 +76,52 @@ export const host = {
   },
   async real(path) {
     return realpath(path);
+  },
+  async ignoreAtBase(repo, base, launchId) {
+    const git = (...args) => host.exec("git", ["-C", repo, ...args]);
+    const common = await git(
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-common-dir",
+    );
+    const entries = await git("ls-tree", base, "--", ".gitignore", ".handoffs");
+    // Handoffs must be private/untracked, not inherited task artifacts or symlinks.
+    if (entries.split("\n").some((line) => line.endsWith("\t.handoffs")))
+      fail("selected base contains tracked .handoffs; choose a safe base");
+    const ignore = entries
+      .split("\n")
+      .find((line) => line.endsWith("\t.gitignore"));
+    if (
+      ignore &&
+      !/^100(?:644|755) blob [a-f0-9]{40}\t.gitignore$/.test(ignore)
+    )
+      fail("unsafe selected-base .gitignore");
+    const root = await mkdtemp(join(tmpdir(), "coordinate-ignore-"));
+    try {
+      if (ignore)
+        await writeFile(
+          join(root, ".gitignore"),
+          await git("show", `${base}:.gitignore`),
+          { mode: 0o600 },
+        );
+      // Ask Git, not a reimplementation of gitignore precedence. The scratch tree
+      // has only the selected root rules; shared info/exclude/global rules remain.
+      await host.exec("git", [
+        "--git-dir",
+        common,
+        "--work-tree",
+        root,
+        "-C",
+        root,
+        "check-ignore",
+        "--no-index",
+        "-q",
+        "--",
+        `.handoffs/launch-${launchId}.md`,
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   },
   async handoff(path, content, repo) {
     const dir = dirname(path);
@@ -316,12 +371,14 @@ export async function preflightWorker(
       fail("branch/path collision");
   } else if ((await git(repo, "rev-parse", "HEAD")) !== b.base)
     fail("research checkout base mismatch");
-  await git(
-    repo,
-    "check-ignore",
-    "-q",
-    join(repo, ".handoffs", `launch-${launchId}.md`),
-  );
+  if (b.coordinate === true) await io.ignoreAtBase(repo, b.base, launchId);
+  else
+    await git(
+      repo,
+      "check-ignore",
+      "-q",
+      join(repo, ".handoffs", `launch-${launchId}.md`),
+    );
   if (await io.exists(join(b.checkout, ".handoffs", `launch-${launchId}.md`)))
     fail("handoff collision");
   return { listed, spaces };

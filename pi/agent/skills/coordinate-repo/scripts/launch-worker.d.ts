@@ -6,6 +6,7 @@ export const host: {
   read(path: string, limit?: number): Promise<string>;
   exists(path: string): Promise<boolean>;
   real(path: string): Promise<string>;
+  ignoreAtBase(repo: string, base: string, launchId: string): Promise<void>;
 };
 export function preflightWorker(
   request: { brief: Record<string, unknown>; launchId: string },

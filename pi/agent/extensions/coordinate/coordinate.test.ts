@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import {
   mkdtemp,
+  mkdir,
   readFile,
   readdir,
   realpath,
@@ -317,6 +318,8 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
     "first",
   );
   const first = git("rev-parse", "HEAD");
+  await writeFile(join(f.cwd, ".gitignore"), "/.handoffs/\n");
+  git("add", ".gitignore");
   git(
     "-c",
     "user.name=Fixture",
@@ -365,7 +368,9 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
     });
   };
   const snapshot = (await load(f.cwd, session)).index.text;
-  await assert.rejects(attempt(), /check-ignore/);
+  // Caller HEAD ignores handoffs, but the explicit predecessor does not.
+  git("check-ignore", "-q", ".handoffs/launch-invalid.md");
+  await assert.rejects(attempt({ base: first }), /check-ignore/);
   assert.equal((await load(f.cwd, session)).index.text, snapshot);
   await writeFile(join(f.cwd, ".git/info/exclude"), "/.handoffs/\n");
   await assert.rejects(attempt({ path: f.cwd }), /collision/);
@@ -397,4 +402,42 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
   }
   assert.equal(herdr.filter((args) => args[1] === "create").length, 2);
   assert.equal(git("rev-parse", "HEAD"), second);
+});
+
+test("selected-base ignore validation uses Git precedence and rejects inherited handoffs", async (t) => {
+  const f = await fixture(t);
+  const git = (...args: string[]) =>
+    execFileSync(
+      "git",
+      [
+        "-C",
+        f.cwd,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.com",
+        ...args,
+      ],
+      { encoding: "utf8" },
+    ).trim();
+  await writeFile(join(f.cwd, ".git/info/exclude"), "/.handoffs/\n");
+  await writeFile(join(f.cwd, ".gitignore"), "!/.handoffs/\n");
+  git("add", ".gitignore");
+  git("commit", "-qm", "negation");
+  await assert.rejects(
+    host.ignoreAtBase(f.cwd, git("rev-parse", "HEAD"), "example"),
+    /check-ignore/,
+  );
+  await writeFile(join(f.cwd, ".gitignore"), "/.handoffs/\n");
+  git("add", ".gitignore");
+  git("commit", "-qm", "ignore");
+  await host.ignoreAtBase(f.cwd, git("rev-parse", "HEAD"), "example");
+  await mkdir(join(f.cwd, ".handoffs"));
+  await writeFile(join(f.cwd, ".handoffs/old.md"), "fixture artifact");
+  git("add", "-f", ".handoffs/old.md");
+  git("commit", "-qm", "tracked handoff");
+  await assert.rejects(
+    host.ignoreAtBase(f.cwd, git("rev-parse", "HEAD"), "example"),
+    /tracked .handoffs/,
+  );
 });
