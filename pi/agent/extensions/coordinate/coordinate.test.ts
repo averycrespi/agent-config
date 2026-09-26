@@ -317,6 +317,18 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
     "-qm",
     "first",
   );
+  const emptyBase = git("rev-parse", "HEAD");
+  await writeFile(join(f.cwd, ".gitignore"), " /.handoffs/\n");
+  git("add", ".gitignore");
+  git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.com",
+    "commit",
+    "-qm",
+    "space-sensitive pattern",
+  );
   const first = git("rev-parse", "HEAD");
   await writeFile(join(f.cwd, ".gitignore"), "/.handoffs/\n");
   git("add", ".gitignore");
@@ -370,6 +382,9 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
   const snapshot = (await load(f.cwd, session)).index.text;
   // Caller HEAD ignores handoffs, but the explicit predecessor does not.
   git("check-ignore", "-q", ".handoffs/launch-invalid.md");
+  await assert.rejects(attempt({ base: emptyBase }), /check-ignore/);
+  assert.equal((await load(f.cwd, session)).index.text, snapshot);
+  // The leading space at this base is significant and must survive git show.
   await assert.rejects(attempt({ base: first }), /check-ignore/);
   assert.equal((await load(f.cwd, session)).index.text, snapshot);
   await writeFile(join(f.cwd, ".git/info/exclude"), "/.handoffs/\n");

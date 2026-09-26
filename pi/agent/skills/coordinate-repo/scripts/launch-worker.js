@@ -101,7 +101,14 @@ export const host = {
       if (ignore)
         await writeFile(
           join(root, ".gitignore"),
-          await git("show", `${base}:.gitignore`),
+          // Ignore patterns are byte-sensitive; the command helper trims text.
+          (
+            await runFile("git", ["-C", repo, "show", `${base}:.gitignore`], {
+              encoding: null,
+              timeout: 10000,
+              maxBuffer: 2 * 1024 * 1024,
+            })
+          ).stdout,
           { mode: 0o600 },
         );
       // Ask Git, not a reimplementation of gitignore precedence. The scratch tree
