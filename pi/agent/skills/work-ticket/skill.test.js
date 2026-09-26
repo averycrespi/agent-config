@@ -9,7 +9,6 @@ for (const name of [
   "shape-ticket",
   "work-ticket",
   "work-stack",
-  "coordinate-repo",
   "spin-out",
   "review",
   "challenge",
@@ -40,7 +39,7 @@ for (const name of [
 }
 
 test("retired skill entrypoints and Goal extension are absent", async () => {
-  for (const name of ["dispatch-ticket", "advance-ticket"]) {
+  for (const name of ["dispatch-ticket", "advance-ticket", "coordinate-repo"]) {
     await assert.rejects(access(resolve(root, name, "SKILL.md")), {
       code: "ENOENT",
     });

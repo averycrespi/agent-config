@@ -6,7 +6,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("stack shares coordination mechanics while retaining serial release gates", async () => {
   const stack = await read("./SKILL.md");
   for (const path of [
-    "coordinate-repo/SKILL.md",
+    "extensions/coordinate/README.md",
     "spin-out/references/launch.md",
     "spin-out/references/decisions.md",
     "coordinate-repo/references/supervision.md",

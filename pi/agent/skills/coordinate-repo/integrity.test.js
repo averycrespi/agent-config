@@ -354,7 +354,7 @@ test("consequential effects require receipt identity, intended bytes and fresh r
 
 test("managed callers discover canonical persistence gates and readable references", async () => {
   for (const path of [
-    "./SKILL.md",
+    "./RECOVERY.md",
     "./references/index.md",
     "./references/supervision.md",
     "../spin-out/references/launch.md",
@@ -369,8 +369,11 @@ test("managed callers discover canonical persistence gates and readable referenc
       if (!match[1].includes(":")) await readFile(new URL(match[1], url));
     }
   }
-  const skill = await readFile(new URL("./SKILL.md", import.meta.url), "utf8");
-  assert.match(skill, /^---\nname: coordinate-repo\ndescription: Use when/m);
+  const recovery = await readFile(
+    new URL("./RECOVERY.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(recovery, /not an active skill/);
   const docs = await readFile(
     new URL("./references/index.md", import.meta.url),
     "utf8",

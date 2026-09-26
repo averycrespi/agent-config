@@ -76,6 +76,15 @@ export class MonitorEngine {
     const r = this.jobs.get(id)?.r;
     return r && structuredClone(r);
   }
+  inspect(id: string, source: string) {
+    const j = this.jobs.get(id);
+    return (
+      j && {
+        receipt: structuredClone(j.r),
+        sourceMatches: j.reg.source?.trim() === source.trim(),
+      }
+    );
+  }
   private publish(type: MonitorEvent["type"], j: Job) {
     try {
       this.host.event?.(

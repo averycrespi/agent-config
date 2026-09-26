@@ -142,11 +142,22 @@ export default async function monitor(pi: ExtensionAPI) {
     engine.restore(restore(ctx.sessionManager));
     refresh();
   };
+  const offInspection = pi.events.on("monitor:inspect-v1", (data) => {
+    const request = data as { id?: unknown; source?: unknown; reply?: unknown };
+    if (
+      isId(request?.id) &&
+      typeof request.source === "string" &&
+      request.source.length <= 4096 &&
+      typeof request.reply === "function"
+    )
+      request.reply(engine?.inspect(request.id, request.source));
+  });
   pi.on("session_start", (_e, ctx) => initialize(ctx));
   pi.on("session_before_tree", () => close(false));
   pi.on("session_tree", (_e, ctx) => initialize(ctx));
   pi.on("session_shutdown", () => {
     close(true);
+    offInspection();
     context = undefined;
   });
   pi.on("agent_settled", () => {

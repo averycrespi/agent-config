@@ -2,6 +2,10 @@
 
 Trusted sibling extensions import `registerMonitorProvider` and types from `../monitor/api.ts`. This combines ordinary Script method registration with typed host event sources. Providers retain full host authority; this API is not a sandbox for extension authors. Tool controls remain immutable `start/list/get/cancel`; engine modules are internal. Cycle/lifetime policy ceilings come from Monitor's [global/environment configuration](README.md#configuration), snapshotted at extension load; per-job bounds remain explicit.
 
+## Read-only local inspection
+
+`inspectMonitor(pi, id, expectedSource)` from `api.ts` returns a cloned `{receipt, sourceMatches}` for a retained job in this process, otherwise `undefined`. It uses private `monitor:inspect-v1`; source matching trims outer whitespace and never exposes the registered source. Ended jobs release source and cannot qualify an active recipe. Inspection cannot start, rearm, cancel or deliver anything. Absence after reload/navigation is unknown, not proof that an old observer is inactive. Coordinate uses this narrow seam to qualify its canonical recurring Mailbox recipe; callers still own authority and cumulative allowances. No guest API or general service registry is added.
+
 ## Typed event registration
 
 `MonitorProvider` extends Script's `ScriptProvider` with `events: Record<string, EventSource>`. Register at most 16 named event sources per provider. Provider namespaces/methods obey [Script's registration contract](../script/API.md); event names match `[a-z][a-z0-9_]{0,47}`. There is one session-bus registration per namespace, not a process-global registry. Conflicts reject; disposal is explicit and idempotent. Validation finishes before any listener is installed. Dispose on shutdown or authority revocation.
@@ -64,6 +68,8 @@ pi.on("session_shutdown", dispose);
 ## Evaluator input
 
 Each fresh Script child receives `trigger` and `state` function arguments. Trigger is `{kind: "initial" | "timer" | "event", at, subscription?, payload?}`. `subscription` is the zero-based immutable event selection index; `at` is host acceptance time. Provider payloads may additionally carry their own timestamp/sequence. Explicit state is the last committed JSON replacement, never a shared host object. See [execution and attention semantics](README.md#clocks-queues-and-attention).
+
+Mailbox's [recurring supervision recipe](../mailbox/API.md#recurring-supervision-recipe) returns these ordinary evaluator results from a single selected read-only provider call. It carries a small successful-condition watermark in `state`; no Monitor scheduler or receipt extension is needed. Keep the recipe's incorporation/ACK guidance in the registration message for every attention cause. The provider never ACKs and delivery never proves handling.
 
 ## Observational lifecycle events
 

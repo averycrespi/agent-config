@@ -6,6 +6,7 @@ import { describeScriptProviders } from "../script/api.ts";
 import { subscribeProvider, describeEvents } from "../monitor/providers.ts";
 import mailbox from "./index.ts";
 import { MailboxStore } from "./store.ts";
+import { mailboxSupervision, inspectMailbox } from "./api.ts";
 
 async function setup(t: import("node:test").TestContext) {
   const f = await fixture(t);
@@ -38,7 +39,7 @@ test("explicit provider selection, durable gap catch-up, minimal events and lost
   const schema = await describeScriptProviders(h.pi, h.dir, ["mailbox"]);
   assert.deepEqual(
     schema[0].methods.map((m) => m.name),
-    ["send", "list", "ack"],
+    ["send", "list", "observe", "ack"],
   );
   assert.equal(
     (await describeEvents(h.pi, h.dir, ["mailbox"]))[0].provider,
@@ -86,6 +87,29 @@ test("explicit provider selection, durable gap catch-up, minimal events and lost
     "success",
   );
 });
+test("supervision recipe executes through real Script with bounded state and sticky invalid policy", async (t) => {
+  const h = await setup(t);
+  const store = new MailboxStore(h.root);
+  for (let i = 0; i < 60; i++) store.send("p", "result", "private body");
+  const recipe = mailboxSupervision({ mailbox: "p" });
+  const first = await h.run(`const state = null; ${recipe.source}`);
+  assert.equal(first.status, "success");
+  const value = JSON.parse(first.json!);
+  assert.equal(value.decision, "wake");
+  assert.equal(value.evidence.pending, 60);
+  assert.ok(!first.json!.includes("private body"));
+  const second = await h.run(
+    `const state = ${JSON.stringify(value.state)}; ${recipe.source}`,
+  );
+  assert.equal(second.status, "success");
+  assert.equal(JSON.parse(second.json!).decision, "wait");
+  assert.equal(store.list("p").pending, 60);
+  const invalid = await h.run(
+    'try { await mailbox.observe("p", null, {ageMs: 60000, reminderMs: 60000}); } catch {} return true;',
+  );
+  assert.equal(invalid.status, "failed");
+  assert.equal(store.list("p").pending, 60);
+});
 test("invalid direct mutations and caught provider failures cannot conceal host failure", async (t) => {
   const h = await setup(t);
   await assert.rejects(
@@ -103,4 +127,15 @@ test("invalid direct mutations and caught provider failures cannot conceal host 
   );
   assert.equal(result.status, "failed");
   assert.equal(new MailboxStore(h.root).list("p").pending, 0);
+});
+
+test("local inspection projects availability/count only without creating or acknowledging reports", async (t) => {
+  const h = await setup(t);
+  assert.deepEqual(inspectMailbox(h.pi, "project"), { pending: 0 });
+  const store = new MailboxStore(h.root);
+  store.send("project", "result", "PRIVATE BODY");
+  assert.deepEqual(inspectMailbox(h.pi, "project"), { pending: 1 });
+  assert.equal(store.list("project").messages[0].message, "PRIVATE BODY");
+  h.hooks.get("session_shutdown")!();
+  assert.equal(inspectMailbox(h.pi, "project"), undefined);
 });

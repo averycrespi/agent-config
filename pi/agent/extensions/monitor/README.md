@@ -99,7 +99,7 @@ Before requesting user input, cancel the continuation job for affected input-blo
 
 ### Compound polling and events with explicit state
 
-Use the [mailbox count/nonempty-age example](../mailbox/README.md#events-and-batching). Events and polling share one fresh evaluator, with durable messages as truth. Evaluator state is optional bounded JSON, committed only on success; never use it as the sole copy of unanswered questions or acknowledge messages from an evaluator.
+Use the [recurring mailbox batching/reminder recipe](../mailbox/README.md#events-and-batching). One observer spans worker membership changes; `mailbox.observe` reads bounded retained metadata, suppresses immediate repeat conditions for covered reports and makes missed ACKs eligible again after a longer cooldown. New arrivals keep independent count/age eligibility. Normal handling needs no model-driven re-registration. Events and polling share one fresh evaluator, with durable messages as truth. Evaluator state is optional bounded JSON, committed only on success; never use it as the sole copy of unanswered questions or acknowledge messages from an evaluator.
 
 ## Authority, configuration, and retention
 
