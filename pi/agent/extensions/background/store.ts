@@ -79,8 +79,15 @@ export function validate(records: unknown): Execution[] {
         r.outcomeUnknown,
       ].every((v) => typeof v === "boolean") ||
       !r.notification ||
-      Object.keys(r.notification).sort().join() !==
-        "consumed,handoff,id,intent" ||
+      ![
+        "consumed,handoff,id,intent",
+        "consumed,handedAt,handoff,id,intent",
+      ].includes(Object.keys(r.notification).sort().join()) ||
+      (r.notification.handedAt !== undefined &&
+        (r.notification.handoff !== "handed_to_pi" ||
+          !Number.isSafeInteger(r.notification.handedAt) ||
+          r.endedAt === undefined ||
+          r.notification.handedAt < r.endedAt)) ||
       (r.status === "running" &&
         (r.notification.intent || r.dismissed || r.endedAt !== undefined)) ||
       (r.status !== "running" && !r.notification.intent) ||

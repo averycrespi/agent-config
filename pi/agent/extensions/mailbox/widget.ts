@@ -1,3 +1,4 @@
+import { visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import type { DeliveryStatus } from "./delivery.ts";
@@ -29,23 +30,37 @@ export function mailboxLine(
         ),
       );
     if (s.uncertain) fields.push(theme.fg("warning", "handoff uncertain"));
-    fields.push(
-      theme.fg(
-        s.pending ? "text" : "muted",
-        s.pending ? `${s.pending} unacked` : "empty",
-      ),
+    const wake =
+      s.wakeAt !== undefined && s.wakeAt <= now
+        ? theme.fg(
+            "warning",
+            s.hold === "draft" || s.hold === "dialog"
+              ? `wake held: ${s.hold}`
+              : "wake pending",
+          )
+        : undefined;
+    const count = theme.fg(
+      s.pending ? "text" : "muted",
+      s.pending ? `${s.pending} unacked` : "empty",
     );
-    let meta = "";
-    if (s.wakeAt !== undefined)
-      meta =
-        s.wakeAt > now
-          ? `wake in ${formatWidgetCountdown(s.wakeAt - now)}`
-          : s.hold === "draft" || s.hold === "dialog"
-            ? `held: ${s.hold}`
-            : "awaiting idle";
-    else if (s.redeliveryAt !== undefined)
-      meta = `redelivery in ${formatWidgetCountdown(s.redeliveryAt - now)}`;
-    if (meta) fields.push(theme.fg("muted", meta));
+    // Reserve held/pending delivery ahead of counts under width pressure, but
+    // keep the ordinary count-first grammar when the complete row fits.
+    if (wake) fields.push(wake);
+    fields.push(count);
+    if (s.wakeAt !== undefined && s.wakeAt > now)
+      fields.push(
+        theme.fg("muted", "wake in ") +
+          theme.fg("text", formatWidgetCountdown(s.wakeAt - now)),
+      );
+    else if (s.wakeAt === undefined && s.redeliveryAt !== undefined)
+      fields.push(
+        theme.fg("muted", "redelivery in ") +
+          theme.fg("text", formatWidgetCountdown(s.redeliveryAt - now)),
+      );
+    if (wake && visibleWidth([head, ...fields].join(" · ")) <= width) {
+      const index = fields.indexOf(wake);
+      fields.splice(index, 2, count, wake);
+    }
   }
   return fitWidgetRow(head, fields, width, theme.fg("dim", " · "));
 }

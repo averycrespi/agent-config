@@ -1,7 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
   executionCounts,
-  executionState,
+  executionRecordState,
   executionTokens,
   executionWarnings,
 } from "./display.ts";
@@ -34,21 +34,45 @@ export function widgetLines(
   width: number,
   theme: Theme,
   now = Date.now(),
+  hold?: "draft" | "dialog",
 ) {
   return records.filter(visible).map((r) => {
     const singleChild = r.owner === "subagents" && r.progress?.total === 1;
     const elapsed = formatDuration(
       Math.max(0, (r.endedAt ?? now) - r.createdAt),
     );
-    const [state, color] = executionState(r.status);
+    const [state, color] = executionRecordState(r);
     const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(color, r.status === "running" && r.cancelRequested ? "cancellation requested" : state)}`;
     const warnings = executionWarnings(r);
+    if (r.notification.intent && r.notification.handoff === "none") {
+      const wake = hold ? `wake held: ${hold}` : "wake pending";
+      warnings.push([wake, wake]);
+    }
     const separator = theme.fg("dim", " · ");
     const narrow =
       visibleWidth([primary, ...warnings.map(([full]) => full)].join(" · ")) >
       width;
+    const compactWidth =
+      visibleWidth(primary) +
+      3 +
+      warnings.map(([, compact]) => compact).join("/").length;
+    const tight: Record<string, string> = {
+      "persist failed": "save",
+      "wake pending": "wake",
+      "wake held: draft": "wake:draft",
+      "wake held: dialog": "wake:dialog",
+    };
     const warning = warnings
-      .map(([full, compact]) => theme.fg("warning", narrow ? compact : full))
+      .map(([full, compact]) =>
+        theme.fg(
+          "warning",
+          narrow
+            ? compactWidth > width
+              ? (tight[compact] ?? compact)
+              : compact
+            : full,
+        ),
+      )
       .join(theme.fg("dim", narrow ? "/" : " · "));
     const counts = singleChild ? undefined : executionCounts(r, theme);
     const tokens = executionTokens(r);
@@ -93,6 +117,12 @@ export default function background(pi: ExtensionAPI) {
   let candidateIds = new Set<string>();
   const widget = createPersistentWidget("background-executions");
   let widgetShown = false;
+  const deliveryHold = () =>
+    prompt
+      ? ("dialog" as const)
+      : ctx?.mode === "tui" && ctx.ui.getEditorText().length > 0
+        ? ("draft" as const)
+        : undefined;
   const refresh = () => {
     if (!ctx || !service) return;
     const now = Date.now();
@@ -102,7 +132,9 @@ export default function background(pi: ExtensionAPI) {
     if (rows.length || widgetShown)
       widget.update(
         ctx,
-        rows.length ? (w, t) => widgetLines(rows, w, t) : undefined,
+        rows.length
+          ? (w, t) => widgetLines(rows, w, t, Date.now(), deliveryHold())
+          : undefined,
       );
     widgetShown = rows.length > 0;
   };
@@ -207,9 +239,11 @@ export default function background(pi: ExtensionAPI) {
   pi.on("session_shutdown", close);
   pi.on("ui_prompt_start", () => {
     prompt = true;
+    refresh();
   });
   pi.on("ui_prompt_end", () => {
     prompt = false;
+    refresh();
   });
   pi.on("agent_settled", () => {
     service?.flush();

@@ -27,7 +27,7 @@ test("widget exact states, countdown ceiling, holds, totals and independent warn
   for (const hold of ["idle", "draft", "dialog"] as const)
     assert.match(
       mailboxLine({ ...base, pending: 3, wakeAt: 0, hold }, 1, 100, theme),
-      hold === "idle" ? /awaiting idle/ : new RegExp(`held: ${hold}`),
+      hold === "idle" ? /wake pending/ : new RegExp(`wake held: ${hold}`),
     );
   assert.match(
     mailboxLine({ ...base, pending: 3, redeliveryAt: 240000 }, 0, 100, theme),
@@ -68,6 +68,37 @@ test("widget exact states, countdown ceiling, holds, totals and independent warn
     /2 at limit/,
   );
 });
+test("delivery warnings stay independent and countdown values use text color", () => {
+  for (const hold of ["idle", "draft", "dialog"] as const) {
+    const colors: [string, string][] = [];
+    const styled = {
+      ...theme,
+      fg: (color: string, text: string) => {
+        colors.push([color, text]);
+        return text;
+      },
+    } as Theme;
+    const input = { ...base, pending: 3, wakeAt: 0, hold };
+    const wake = hold === "idle" ? "wake pending" : `wake held: ${hold}`;
+    assert.equal(
+      mailboxLine(input, 1, 100, styled),
+      `mailbox pending · 3 unacked · ${wake}`,
+    );
+    assert.ok(colors.some(([c, t]) => c === "warning" && t === wake));
+    assert.ok(colors.some(([c, t]) => c === "warning" && t === "pending"));
+    assert.ok(colors.some(([c, t]) => c === "text" && t === "3 unacked"));
+    assert.ok(mailboxLine(input, 1, 36, theme).includes(wake));
+    colors.length = 0;
+    mailboxLine({ ...base, pending: 3, wakeAt: 3500 }, 0, 100, styled);
+    assert.ok(colors.some(([c, t]) => c === "muted" && t === "wake in "));
+    assert.ok(colors.some(([c, t]) => c === "text" && t === "4s"));
+    colors.length = 0;
+    mailboxLine({ ...base, pending: 3, redeliveryAt: 240000 }, 0, 100, styled);
+    assert.ok(colors.some(([c, t]) => c === "muted" && t === "redelivery in "));
+    assert.ok(colors.some(([c, t]) => c === "text" && t === "4m"));
+  }
+});
+
 test("wake renderer preserves model content, hides body collapsed and sanitizes bounded expansion", () => {
   const message = {
     role: "custom" as const,

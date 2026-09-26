@@ -669,11 +669,13 @@ Workflow runs are background-only (the default); explicit foreground is rejected
           };
         },
       });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const current = background.inspect("workflow", execution.id);
       return {
         content: text(
-          `Workflow admitted as background execution ${execution.id}. One automatic notification follows settlement; inspect with workflow action inspect and this id. Execution completion is not acceptance.`,
+          `${JSON.stringify(current)}\nInspect with workflow action inspect and id ${current.id}. One automatic notification follows settlement; execution completion is not acceptance.`,
         ),
-        details: { action: "run", execution },
+        details: { action: "run", execution: current },
       };
     },
   });

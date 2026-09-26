@@ -364,6 +364,7 @@ test("background controls and validation/framework failures render honest bounde
       invalidate() {},
       lastComponent: undefined,
       isError: false,
+      args: { action: details.executions ? "list" : "run" },
     };
     const component = renderAgentsResult(
       { content: [{ type: "text", text: "Error: invalid\x1b[2J" }], details },
@@ -374,7 +375,9 @@ test("background controls and validation/framework failures render honest bounde
     const lines = component.render(100);
     assert.match(
       lines[0],
-      details.validationError ? /^Error:/ : /^(?:admitted|0 executions)/,
+      details.validationError
+        ? /^Error:/
+        : /^(?:Running · bad labe|Failed · id|0 executions)/,
     );
     assert.doesNotMatch(lines.join("\n"), /\x1b|0 done|✓/);
     assert.ok(component.render(12).every((line) => visibleWidth(line) <= 12));

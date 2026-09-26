@@ -47,14 +47,14 @@ ACK permanently removes incorporated IDs and frees capacity; repeated/unknown va
 
 Human-only `/mailbox-clear` atomically removes the current inbox's messages, attempts, visibility deadlines and extension-owned pending batch. Sends committed after clear survive, and listening continues. It reports the removed count and that **already-handed Pi messages cannot be retracted**. Clear is not ACK, task acceptance or completion; it does not touch TODO, Coordinate or Background. No tool or Script equivalent exists.
 
-One below-editor line uses muted `mailbox`, immediately followed by exactly one state: accent `listening`, warning `pending`, or error `unavailable`. Counts are normal text, metadata muted, separators dim. Limit/uncertainty sections are independently warning-colored and preserved before optional timing at narrow widths. No bodies, sender labels or unsafe strings enter the widget.
+One below-editor line uses muted `mailbox`, immediately followed by exactly one state: accent `listening`, warning `pending`, or error `unavailable`. Counts and countdown values are normal text, metadata/countdown labels muted, separators dim. Pending/held wake and limit/uncertainty sections are independently warning-colored and preserved before optional counts/timing at narrow widths. `pending` means unacknowledged mail; `wake pending` means notification delivery is waiting. Unlike Background's handoff-based auto-hide, Mailbox stays pending until ACK or human clear. No bodies, sender labels or unsafe strings enter the widget.
 
 ```text
 mailbox listening · empty
 mailbox pending · 3 unacked · wake in 4s
-mailbox pending · 3 unacked · awaiting idle
-mailbox pending · 3 unacked · held: draft
-mailbox pending · 3 unacked · held: dialog
+mailbox pending · 3 unacked · wake pending
+mailbox pending · 3 unacked · wake held: draft
+mailbox pending · 3 unacked · wake held: dialog
 mailbox pending · 3 unacked · redelivery in 4m
 mailbox pending · delivery limit reached · 2 unacked
 mailbox pending · 2 at limit · 5 unacked · wake in 3s

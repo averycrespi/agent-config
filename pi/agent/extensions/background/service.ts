@@ -353,7 +353,11 @@ export class Service implements BackgroundService {
       this.change(
         {
           ...current,
-          notification: { ...current.notification, handoff: "handed_to_pi" },
+          notification: {
+            ...current.notification,
+            handoff: "handed_to_pi",
+            handedAt: Date.now(),
+          },
         },
         "notification",
       );

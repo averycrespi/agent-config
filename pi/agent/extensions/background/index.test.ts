@@ -211,7 +211,7 @@ test("Script background returns stable persisted ID, remains responsive, automat
     consumed: false,
   });
 });
-test("terminal widget expiry retains disk state and delayed notifications across restoration", async (t) => {
+test("held terminal rows survive old expiry and restoration; confirmed handoff starts hide clock", async (t) => {
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
   const h = await harness(t);
   const finished = h.terminal();
@@ -235,17 +235,39 @@ test("terminal widget expiry retains disk state and delayed notifications across
   t.mock.timers.tick(14000);
   assert.ok(h.component);
   t.mock.timers.tick(1000);
-  assert.equal(h.component, undefined);
+  assert.match(h.component.render(100).join(""), /wake pending/);
   assert.deepEqual(h.service().inspect("script", r.id), before);
   assert.equal(readFileSync(path, "utf8"), disk);
   assert.equal(h.messages.length, 0);
   assert.equal(h.events.length, 1);
   await h.hook("session_tree");
-  assert.equal(h.component, undefined);
+  assert.ok(h.component);
   assert.deepEqual(h.service().inspect("script", r.id), before);
   h.idle();
+  h.draft("human draft");
+  t.mock.timers.tick(20000);
+  assert.match(h.component.render(100).join(""), /wake held: draft/);
+  await h.hook("ui_prompt_start");
+  t.mock.timers.tick(20000);
+  assert.match(h.component.render(100).join(""), /wake held: dialog/);
+  assert.equal(h.messages.length, 0);
+  h.draft("");
+  await h.hook("ui_prompt_end");
   await h.hook("agent_settled");
   assert.equal(h.messages.length, 1);
+  assert.ok(h.component);
+  const handed = h.service().inspect("script", r.id);
+  assert.equal(handed.notification.handedAt, Date.now());
+  assert.equal(handed.endedAt, before.endedAt);
+  assert.match(h.component.render(100).join(""), /0s/);
+  t.mock.timers.tick(14000);
+  await h.hook("session_tree");
+  assert.ok(h.component);
+  assert.equal(
+    h.service().inspect("script", r.id).notification.handedAt,
+    handed.notification.handedAt,
+  );
+  t.mock.timers.tick(1000);
   assert.equal(h.component, undefined);
   assert.deepEqual(h.service().inspect("script", r.id).result, {
     evidence: 42,
@@ -292,8 +314,13 @@ test("RPC rows keep running work visible and expire terminal rows without model 
   await tick();
   assert.match(rows!.join(""), /succeeded RPC child/);
   t.mock.timers.tick(15000);
-  assert.equal(rows, undefined);
+  assert.match(rows!.join(""), /wake pending/);
   assert.equal(h.messages.length, 0);
+  h.idle();
+  await h.hook("agent_settled");
+  t.mock.timers.tick(15000);
+  assert.equal(rows, undefined);
+  assert.equal(h.messages.length, 1);
 });
 
 test("widget settings load per session and config inspection does not mutate receipts", async (t) => {
@@ -308,6 +335,7 @@ test("widget settings load per session and config inspection does not mutate rec
     }),
   );
   await h.hook("session_tree");
+  h.idle();
   const finished = h.terminal();
   const r = h.service().admit({
     owner: "workflow",

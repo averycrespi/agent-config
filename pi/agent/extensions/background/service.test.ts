@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Service } from "./service.ts";
 import type { Execution, Outcome } from "./api.ts";
-import { LIMITS } from "./store.ts";
+import { LIMITS, validate } from "./store.ts";
+import { widgetVisible } from "./visibility.ts";
+import { DEFAULT_WIDGET_CONFIG } from "./config.ts";
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function harness() {
   let records: Execution[] = [],
@@ -94,6 +96,92 @@ test("persisted admission precedes work; terminal intent, uncertain handoff and 
   assert.deepEqual(h.service.inspect("script", r.id).result, { answer: 42 });
   h.service.close();
 });
+test("unknown handoff and historical timing remain visible without replay; dismissal and consumption still clear", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const h = harness();
+  const r = h.service.admit(request(async () => success));
+  await tick();
+  h.idle();
+  h.uncertain();
+  h.service.flush();
+  t.mock.timers.tick(60000);
+  const unknown = h.service.inspect("script", r.id);
+  assert.equal(unknown.notification.handedAt, undefined);
+  assert.equal(widgetVisible(unknown, DEFAULT_WIDGET_CONFIG, Date.now()), true);
+  const restored = new Service(h.store, h.hooks);
+  restored.flush();
+  assert.equal(h.sent.length, 1);
+  assert.equal(
+    widgetVisible(
+      restored.inspect("script", r.id),
+      DEFAULT_WIDGET_CONFIG,
+      Date.now(),
+    ),
+    true,
+  );
+  restored.dismiss("script", r.id);
+  assert.equal(
+    widgetVisible(
+      restored.inspect("script", r.id),
+      DEFAULT_WIDGET_CONFIG,
+      Date.now(),
+    ),
+    false,
+  );
+  restored.close();
+  h.service.close();
+  const old = {
+    ...unknown,
+    notification: { ...unknown.notification, handoff: "handed_to_pi" as const },
+  };
+  validate([old]);
+  assert.equal(widgetVisible(old, DEFAULT_WIDGET_CONFIG, Date.now()), true);
+  old.notification.consumed = true;
+  assert.equal(widgetVisible(old, DEFAULT_WIDGET_CONFIG, Date.now()), false);
+});
+
+test("handoff timestamp is validated atomically and zero/disabled hide delays preserve delivery", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const h = harness();
+  const r = h.service.admit(request(async () => success));
+  await tick();
+  t.mock.timers.tick(30000);
+  const pending = h.service.inspect("script", r.id);
+  const zero = { autoHide: true, terminalHideAfterMs: 0 };
+  assert.equal(widgetVisible(pending, zero, Date.now()), true);
+  h.idle();
+  h.service.flush();
+  const handed = h.service.inspect("script", r.id);
+  assert.equal(handed.notification.handedAt, Date.now());
+  assert.equal(handed.endedAt, pending.endedAt);
+  validate([handed]);
+  assert.equal(widgetVisible(handed, zero, Date.now()), false);
+  assert.equal(
+    widgetVisible(handed, { ...zero, autoHide: false }, Date.now() + 60000),
+    true,
+  );
+  for (const handedAt of [-1, NaN, Infinity, handed.endedAt! - 1])
+    assert.throws(
+      () =>
+        validate([
+          { ...handed, notification: { ...handed.notification, handedAt } },
+        ]),
+      /invalid/,
+    );
+  assert.throws(
+    () =>
+      validate([
+        {
+          ...handed,
+          notification: { ...handed.notification, handoff: "unknown" },
+        },
+      ]),
+    /invalid/,
+  );
+  assert.deepEqual(h.service.inspect("script", r.id), handed);
+  h.service.close();
+});
+
 test("failed admission starts no work; failed settlement aborts peers and retains honest uncertainty", async () => {
   const h = harness();
   h.fail();
