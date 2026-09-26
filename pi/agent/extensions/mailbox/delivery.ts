@@ -60,6 +60,7 @@ export class Delivery {
         .filter(
           (r) =>
             r.attempts < this.config.maxDeliveryAttempts &&
+            !r.uncertain &&
             r.visibleUntil !== null &&
             r.visibleUntil > now,
         )

@@ -100,7 +100,7 @@ function publicMessage({ seq: _seq, ...message }: Row): Message {
 export function eligible(row: Message, maxAttempts: number, now: number) {
   return (
     row.attempts < maxAttempts &&
-    !(row.uncertain && row.visibleUntil === null) &&
+    !row.uncertain &&
     (row.visibleUntil === null || row.visibleUntil <= now)
   );
 }
@@ -380,7 +380,8 @@ export class MailboxStore {
         handoff(rows.map(publicMessage), at);
         for (const row of rows) row.uncertain = false;
       } catch {
-        // Submission may have happened. Retain uncertainty and full visibility.
+        // Submission may have happened. Retain uncertainty; eligibility stays
+        // suspended even after visibility expires, until explicit incorporation.
       }
       const limited = rows.filter(
         (r) => r.attempts >= maxAttempts && !r.warned,

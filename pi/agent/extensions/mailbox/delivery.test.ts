@@ -123,7 +123,7 @@ test("stable ID/sender/time redeliver, reset visibility, stop at limit and warn 
   h.store.ack(SESSION, [sent.id]);
   assert.equal(h.engine.tick(null).limited, 0);
 });
-test("uncertain handoff delays same-ID redelivery; durable orphan intent never blindly replays", (t) => {
+test("uncertain handoff remains suspended after timeout; durable orphan intent never replays", (t) => {
   const h = fixture(t, { batchWindowMs: 0 });
   h.send();
   const engine = new Delivery(
@@ -139,7 +139,28 @@ test("uncertain handoff delays same-ID redelivery; durable orphan intent never b
   assert.equal(engine.tick(null).uncertain, 1);
   assert.equal(h.store.list(SESSION).messages[0].attempts, 1);
   engine.tick(null);
+  h.time(1000000);
+  const resumed = new Delivery(
+    h.store,
+    SESSION,
+    { ...DEFAULTS, batchWindowMs: 0 },
+    h.handoff,
+    () => {},
+    () => 1000000,
+  );
+  resumed.tick(null);
   assert.equal(h.store.list(SESSION).messages[0].attempts, 1);
+  assert.equal(h.wakes.length, 0);
+  const uncertain = h.store.list(SESSION).messages[0];
+  const fresh = h.send("new message unaffected");
+  resumed.tick(null);
+  assert.deepEqual(
+    h.wakes[0].rows.map((r) => r.id),
+    [fresh.id],
+  );
+  h.store.ack(SESSION, [uncertain.id]);
+  assert.equal(h.store.list(SESSION).pending, 1);
+  h.wakes.length = 0;
   h.engine.clear();
   h.send();
   t.mock.method(_durability, "syncDirectory", () => {
