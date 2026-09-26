@@ -544,8 +544,14 @@ test("compact rows show contextual counts and outcomes, with payloads only expan
     bold: (text: string) => text,
   };
   for (const [name, args, header, expected] of [
-    ["mcp_search", { query: "" }, "mcp_search", "50 shown · 55 matches"],
-    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 shown · 1 match"],
+    ["mcp_search", { query: "" }, "mcp_search", "50 shown (55 matches)"],
+    ["mcp_search", { query: "24" }, 'mcp_search "24"', "1 shown (1 match)"],
+    [
+      "mcp_search",
+      { query: "not-present" },
+      'mcp_search "not-present"',
+      "0 shown (0 matches)",
+    ],
     [
       "mcp_describe",
       { name: "example.lookup_0" },
@@ -588,6 +594,87 @@ test("compact rows show contextual counts and outcomes, with payloads only expan
   }
   assert.ok(colors.includes("text"));
   assert.ok(colors.includes("muted"));
+});
+
+test("spilled MCP output explains truncation in muted text and labels the full response path", async (t) => {
+  const f = await fixture(t);
+  const prepared = await prepareContent(
+    "EXTERNAL MCP TOOL RESULT",
+    [{ type: "text", text: "response ".repeat(4000) }],
+    "render-spill",
+    join(f.dir, "spill"),
+  );
+  assert.ok(prepared.details.spillFilePath);
+  const before = JSON.stringify(prepared);
+  const styled: { color: string; text: string }[] = [];
+  const theme: any = {
+    bold: (text: string) => text,
+    fg: (color: string, text: string) => {
+      styled.push({ color, text });
+      return text;
+    },
+  };
+  const context: any = {
+    args: { name: "example.read" },
+    state: {},
+    invalidate() {},
+  };
+  const renderer = renderers("mcp_call");
+  const collapsed = renderer.renderResult!(
+    prepared,
+    { expanded: false, isPartial: false },
+    theme,
+    context,
+  );
+  assert.equal(
+    collapsed.render(120).join("\n"),
+    "output truncated · full response saved to file",
+  );
+  assert.ok(
+    styled.some(
+      ({ color, text }) => color === "muted" && text === "output truncated",
+    ),
+  );
+  assert.ok(
+    !styled.some(({ color }) => color === "warning" || color === "error"),
+  );
+  const expanded = renderer.renderResult!(
+    prepared,
+    { expanded: true, isPartial: false },
+    theme,
+    context,
+  )
+    .render(1000)
+    .join("\n");
+  assert.ok(
+    expanded.includes(`Full response: ${prepared.details.spillFilePath}`),
+  );
+  assert.doesNotMatch(expanded, /spillFilePath:/);
+  assert.match(expanded, /BEGIN UNTRUSTED/);
+  assert.equal(JSON.stringify(prepared), before);
+  styled.length = 0;
+  const failed = renderer.renderResult!(
+    {
+      ...prepared,
+      details: {
+        ...prepared.details,
+        gatewayError: true,
+        outcomeUnknown: true,
+      },
+    },
+    { expanded: false, isPartial: false },
+    theme,
+    context,
+  )
+    .render(48)
+    .join("\n");
+  assert.match(failed, /^failed; unknown effects; no replay/);
+  assert.ok(
+    styled.some(
+      ({ color, text }) =>
+        color === "error" && text.includes("unknown effects"),
+    ),
+  );
 });
 
 test("unknown-outcome warning remains collapsed even when the error preview is long", () => {

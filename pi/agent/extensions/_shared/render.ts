@@ -57,10 +57,11 @@ export function toolCall(
   action: unknown = "",
   target: unknown = "",
   modifiers: unknown = "",
+  targetLimit = 200,
 ): string {
   const name = displayLabel(tool);
   const verb = displayLabel(action);
-  const identity = displayLabel(target);
+  const identity = displayLabel(target, targetLimit);
   const options = displayLabel(modifiers);
   return (
     theme.fg("toolTitle", theme.bold(name)) +

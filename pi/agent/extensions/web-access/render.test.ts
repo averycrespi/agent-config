@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { webRenderers } from "./render.ts";
 
@@ -10,7 +11,7 @@ const theme: any = {
   },
   bold: (s: string) => s,
 };
-test("routine web fetch has no collapsed result, but retained output remains visible", () => {
+test("routine web fetch is silent, while spill summaries are muted and expanded paths are labelled", () => {
   const renderer = webRenderers("web_fetch");
   const context: any = {
     args: { url: "https://example.com/page" },
@@ -22,7 +23,7 @@ test("routine web fetch has no collapsed result, but retained output remains vis
     details: {},
   };
   const call = renderer.renderCall(context.args, theme, context).render(120);
-  assert.deepEqual(call, ["web_fetch https://example.com"]);
+  assert.deepEqual(call, ["web_fetch https://example.com/page"]);
   assert.deepEqual(renderer.renderCall({}, theme, context).render(120), [
     "web_fetch",
   ]);
@@ -32,17 +33,87 @@ test("routine web fetch has no collapsed result, but retained output remains vis
       .render(120),
     [],
   );
+  const styled: { color: string; text: string }[] = [];
+  const spillTheme = {
+    ...theme,
+    fg: (color: string, text: string) => {
+      styled.push({ color, text });
+      return theme.fg(color, text);
+    },
+  };
+  const spilled = {
+    ...result,
+    details: { spilled: true, spillFilePath: "/tmp/example-output.txt" },
+  };
+  const before = JSON.stringify(spilled);
   assert.deepEqual(
     renderer
+      .renderResult(spilled, { isPartial: false }, spillTheme, context)
+      .render(120),
+    ["output truncated · full response saved to file"],
+  );
+  assert.ok(
+    styled.some(
+      ({ color, text }) => color === "muted" && text === "output truncated",
+    ),
+  );
+  assert.ok(
+    !styled.some(({ color }) => color === "warning" || color === "error"),
+  );
+  assert.match(
+    renderer
       .renderResult(
-        { ...result, details: { spilled: true } },
-        { isPartial: false },
+        spilled,
+        { expanded: true, isPartial: false },
         theme,
         context,
       )
-      .render(120),
-    ["retained output"],
+      .render(200)
+      .join("\n"),
+    /Full response: \/tmp\/example-output.txt/,
   );
+  assert.equal(JSON.stringify(spilled), before);
+});
+
+test("fetch titles retain paths and useful queries, redact recognizable credentials, and truncate to width", () => {
+  const renderer = webRenderers("web_fetch");
+  const context: any = { state: {}, invalidate() {} };
+  const url =
+    "https://user:PASSWORD@example.com/docs/api?version=2&access_token=SECRET&API_KEY=HIDDEN&X-Amz-Signature=SIGNED&%74oken=ENCODED#SECRET";
+  const args = { url };
+  const title = renderer
+    .renderCall(args, theme, context)
+    .render(1000)
+    .join("\n");
+  assert.match(title, /https:\/\/example.com\/docs\/api\?version=2/);
+  assert.doesNotMatch(title, /user:|PASSWORD|SECRET|HIDDEN|SIGNED|ENCODED/);
+  assert.match(title, /access_token=REDACTED/);
+  assert.equal(args.url, url);
+  const longUrl = `https://example.com/${"a".repeat(260)}/last?version=2`;
+  const longCall = renderer.renderCall({ url: longUrl }, theme, context);
+  assert.equal(longCall.render(500).join("\n"), `web_fetch ${longUrl}`);
+  assert.match(
+    stripVTControlCharacters(longCall.render(48).join("\n")),
+    /\.\.\.$/,
+  );
+  for (const width of [0, 1, 20, 48, 120]) {
+    assert.equal(longCall.render(width).length, 1);
+    assert.ok(
+      longCall
+        .render(width)
+        .every((line: string) => visibleWidth(line) <= width),
+    );
+  }
+  for (const invalid of [
+    "not a URL",
+    "data:text/plain,SECRET",
+    "file:///SECRET",
+    undefined,
+  ])
+    assert.deepEqual(
+      renderer.renderCall({ url: invalid }, theme, context).render(120),
+      ["web_fetch"],
+    );
 });
 
 for (const name of ["web_search", "web_fetch"] as const)
@@ -50,7 +121,7 @@ for (const name of ["web_search", "web_fetch"] as const)
     const renderer = webRenderers(name);
     const args = {
       query: "例\nquery\x1b]52;c;HIDDEN\x07",
-      url: "https://user:PASSWORD@example.com/PATH_SECRET?token=SECRET#SECRET",
+      url: "https://user:PASSWORD@example.com/docs?token=SECRET#SECRET",
     };
     const context: any = { args, state: {}, invalidate() {} };
     const body =

@@ -85,6 +85,7 @@ export function renderers(
       clearPartialTimer(context);
       const details = result.details as Record<string, unknown> | undefined;
       const failed = context.isError || details?.gatewayError === true;
+      const searchSummary = `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown (${typeof details?.matchCount === "number" ? (details.matchCount === 1 ? "1 match" : `${details.matchCount} matches`) : "? matches"})`;
       if (!expanded) {
         const outcome =
           details?.outcomeUnknown === true
@@ -94,23 +95,25 @@ export function renderers(
             : failed
               ? "request failed"
               : name === "mcp_search"
-                ? `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown · ${typeof details?.matchCount === "number" ? (details.matchCount === 1 ? "1 match" : `${details.matchCount} matches`) : "? matches"}`
+                ? searchSummary
                 : name === "mcp_describe"
                   ? "schema read"
                   : "returned";
         const summary =
           outcome === "schema read" || outcome === "returned" ? "" : outcome;
-        const retained = details?.spillFilePath ? "retained output" : "";
+        const retained = details?.spillFilePath
+          ? ["output truncated", "full response saved to file"]
+          : [];
         return getTruncatedText(
           context.lastComponent,
-          summary || retained
+          summary || retained.length
             ? [
                 outcomeSections(
                   theme,
-                  [...summary.split(" · "), retained],
+                  [summary, ...retained],
                   failed
                     ? "error"
-                    : details?.outcomeUnknown || retained
+                    : details?.outcomeUnknown
                       ? "warning"
                       : "muted",
                 ),
@@ -146,17 +149,7 @@ export function renderers(
         typeof details?.matchCount === "number" &&
         typeof details?.totalCount === "number"
       ) {
-        const shown =
-          typeof details.shownCount === "number" &&
-          details.shownCount < details.matchCount
-            ? `${details.shownCount} shown, `
-            : "";
-        lines.push(
-          theme.fg(
-            "muted",
-            `${shown}${details.matchCount} matches of ${details.totalCount} tools`,
-          ),
-        );
+        lines.push(theme.fg("muted", searchSummary));
       } else if (name !== "mcp_call" && preview) {
         lines.push(theme.fg("muted", display(preview)));
       }
@@ -173,7 +166,10 @@ export function renderers(
         ]) {
           if (details?.[key] !== undefined)
             lines.push(
-              theme.fg("muted", `${key}: ${display(String(details[key]))}`),
+              theme.fg(
+                "muted",
+                `${key === "spillFilePath" ? "Full response" : key}: ${display(String(details[key]))}`,
+              ),
             );
         }
         lines.push(

@@ -11,8 +11,23 @@ import {
 
 function urlLabel(value: unknown): string {
   try {
-    const url = new URL(String(value));
-    return url.origin === "null" ? "" : displayLabel(url.origin);
+    if (typeof value !== "string") return "";
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    url.username = "";
+    url.password = "";
+    // Fragments are not fetched and may carry OAuth credentials.
+    url.hash = "";
+    for (const key of new Set(url.searchParams.keys())) {
+      if (
+        /token|secret|password|passwd|authorization|credential|api[-_]?key|signature|^(?:sig|key|auth)$/i.test(
+          key,
+        )
+      )
+        url.searchParams.set(key, "REDACTED");
+    }
+    const label = displayLabel(url.href, 4096);
+    return url.href.length > 4096 ? `${label.slice(0, 4095)}…` : label;
   } catch {
     return "";
   }
@@ -30,6 +45,8 @@ export function webRenderers(name: "web_search" | "web_fetch") {
           name === "web_search" && target(args)
             ? `"${target(args)}"`
             : target(args),
+          "",
+          name === "web_fetch" ? 4096 : 200,
         ),
       ]);
     },
@@ -73,12 +90,21 @@ export function webRenderers(name: "web_search" | "web_fetch") {
           ? [
               outcomeSections(
                 theme,
-                [summary, d?.spilled ? "retained output" : ""],
-                isPartial || unknown || d?.spilled
-                  ? "warning"
-                  : failed
-                    ? "error"
-                    : "muted",
+                [
+                  summary,
+                  ...(d?.spilled
+                    ? ["output truncated", "full response saved to file"]
+                    : []),
+                ],
+                isPartial || unknown ? "warning" : failed ? "error" : "muted",
+              ),
+            ]
+          : []),
+        ...(expanded && typeof d?.spillFilePath === "string"
+          ? [
+              theme.fg(
+                "muted",
+                `Full response: ${displayLabel(d.spillFilePath, 4096)}`,
               ),
             ]
           : []),
