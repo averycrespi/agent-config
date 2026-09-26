@@ -63,11 +63,12 @@ The loaded mailbox extension registers `mailbox` through the supported Script/Mo
 
 ### Methods
 
-| Signature                                  | Result                                        |
-| ------------------------------------------ | --------------------------------------------- |
-| `mailbox.send(address, type, message)`     | Persisted `{id, at, type, message}`           |
-| `mailbox.list({mailbox, limit?, cursor?})` | Same page envelope as the direct tool         |
-| `mailbox.ack(address, ids)`                | `{mailbox, acknowledged}` newly removed count |
+| Signature                                  | Result                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------- |
+| `mailbox.send(address, type, message)`     | Persisted `{id, at, type, message}`                                 |
+| `mailbox.list({mailbox, limit?, cursor?})` | Same page envelope as the direct tool                               |
+| `mailbox.ack(address, ids)`                | `{mailbox, acknowledged}` newly removed count                       |
+| `mailbox.observe(address, state, policy)`  | Monitor `{decision, evidence, state}`; read-only batching/reminders |
 
 ### Example
 
@@ -87,7 +88,7 @@ script({
 
 ### Permissions and effects
 
-Send/ack mutate local storage; list reads it. Subscription can create the empty storage root and open a filesystem watcher. No network, credentials, role gating or environment routing exists. Message content is untrusted data; inspect identity and authority independently. Script's host allowlist remains authoritative; nested calls emit no synthetic Pi tool hooks. Monitor evaluators must remain read-only and never acknowledge.
+Send/ack mutate local storage; list and observe read it. Subscription can create the empty storage root and open a filesystem watcher. No network, credentials, role gating or environment routing exists. Message content is untrusted data; inspect identity and authority independently. Script's host allowlist remains authoritative; nested calls emit no synthetic Pi tool hooks. Monitor evaluators must remain read-only and never acknowledge.
 
 ### Failure and lifecycle
 
@@ -97,26 +98,42 @@ Declared failure codes preserve Script's sticky host accounting; catching a fail
 
 See [API.md](API.md) for minimal `mailbox.changed` and process-local `mailbox:changed` contracts. Notifications are hints, not retained messages. Subscribe before initial listing and combine events with bounded polling to survive missing notifications and registration gaps. Monitor is the **only scheduler**.
 
-Illustrative one-shot policy: wake at three pending messages or when a nonempty batch is 60 seconds old. Discover schemas first and reduce bounds to the existing coordinator deadline/remaining wake allowance:
+Use one **recurring** observer per mailbox, independent of worker membership. `observe` reads the entire bounded metadata snapshot in one call, without reading report bodies into the guest or depending on body pagination. Its small returned state tracks a sequence high-water mark and the last condition-attention time. Pass Monitor's last committed `state` (initially `null`), never fabricate a fresh state on each evaluation. This is attention coverage, **not handling or ACK**.
+
+### Uniform batching policy
+
+| Field        | Default  | Valid range                                   | Precedence                               |
+| ------------ | -------- | --------------------------------------------- | ---------------------------------------- |
+| `count`      | `3`      | Integer 1–1000                                | Explicit per-observer field over default |
+| `ageMs`      | `60000`  | Integer 1000–86399999, less than `reminderMs` | Explicit per-observer field over default |
+| `reminderMs` | `300000` | Integer 1001–86400000, greater than `ageMs`   | Explicit per-observer field over default |
+
+Pass `{}` for defaults or a partial policy object. Unknown fields, invalid numbers and inconsistent intervals reject, never silently fall back. There are no urgency classes, global policy settings or environment overrides: policy is explicit immutable evaluator input per authorized observer, not ambient session configuration. It never changes Monitor's separate host ceilings or required lifetime/wake bounds.
+
+Wake when **new, not previously covered** pending reports reach `count` OR their oldest timestamp reaches `ageMs`. Continuous arrivals cannot push that timestamp forward. Previously covered pending reports instead qualify after `reminderMs`; each condition wake covers the entire current snapshot (including mixed old/new reports), resetting its reminder clock. This repeats attention only, never sends/copies reports. Empty inboxes never meet either age condition; ACK removes eligibility. Later arrivals retain their sequence even when ACK races observation. Pending attention coalesces in Monitor; arrivals during handling can create one pending follow-up. A later ACK cannot retract already pending/handed attention, so a wake may legitimately find an empty inbox. Inspect and continue rather than manufacturing work.
+
+Discover schemas first. This example permits up to ten wake attempts within one hour; reduce all bounds to the actual authority and retained allowance. The longer independent cycle timeout can also request attention on a quiet inbox: it is not a report, reminder or failure.
 
 ```js
 monitor({
   action: "start",
   name: "project reports",
   message:
-    "Reconcile receipt, drain reports, persist changed coordination state, then ack incorporated IDs. Do not resume unanswered work.",
+    "List/read pending messages in bounded pages and start a fresh scan for later arrivals. Validate reports, durably incorporate facts and report identities, then ACK incorporated IDs. ACK means recorded, not answered, accepted or completed; questions awaiting humans may be ACKed once recorded. Unacknowledged reports will trigger another reminder within original limits. Evaluators never ACK or mutate coordination records. Reconcile the receipt; cancel when no useful authorized observation remains. No replay or resuming unanswered work.",
   providers: ["mailbox"],
   events: [{ provider: "mailbox", event: "changed", args: ["project-alpha"] }],
   interval_ms: 30000,
   cycle_timeout_ms: 600000,
-  lifetime_ms: 900000,
-  max_wakes: 1,
-  source: `const p = await mailbox.list({mailbox: "project-alpha", limit: 1});
-    const ready = p.pending >= 3 || (p.pending > 0 && trigger.at - p.oldestAt >= 60000);
-    return {decision: ready ? "wake" : "wait", evidence: {pending: p.pending, oldestAt: p.oldestAt}};`,
+  lifetime_ms: 3600000,
+  max_wakes: 10,
+  recurring: true,
+  source: `return await mailbox.observe("project-alpha", state,
+    {count: 3, ageMs: 60000, reminderMs: 300000});`,
 });
 ```
 
-Empty inboxes never meet batch age. Monitor's independent timeout still requests attention; it is not a report or failure. After processing/ack, reconcile the sole owned observer and re-register one-shot within retained allowances. Do not register repeatedly for a still-outstanding batch. Questions already incorporated stay in the project record, not the inbox.
+Normal handling needs no cancel/re-registration: Monitor continues polling during agent work and rearms delivery only after positive message admission and correlated settlement. Cancel at completion or when no useful authorized observation remains; retain original lifetime/wake accounting across explicitly authorized replacements. An unknown/unobserved handoff is never replayed. Navigation/reload restores receipts only, not observation or budgets. Questions already incorporated stay in the project record, not the inbox; ACK them once durably recorded even if their answer is pending.
+
+Trusted callers can import the small [`mailboxSupervision` recipe](API.md#recurring-supervision-recipe), which supplies this evaluator and mandatory handling guidance, but no scheduler, default lifetime or wake authority. Existing one-shot registrations/launch helpers remain compatible; do not replace an active legacy run or install/reload candidate code implicitly. See the [bounded transition](../../skills/coordinate-repo/references/supervision.md#legacy-one-shot-transition).
 
 Monitor holds TUI attention while a visible draft is nonempty and never writes editor text. RPC cannot verify drafts and queues for the next human turn. See [Monitor delivery qualification](../monitor/README.md#clocks-queues-and-attention). Fixtures do not prove actual editor behavior or model compliance. The [bounded live recipe](../../skills/coordinate-repo/references/verification.md#live-validation-recipe-requires-separate-authority) is unrun unless separately authorized.

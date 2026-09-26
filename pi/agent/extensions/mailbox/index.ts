@@ -10,6 +10,7 @@ import { registerMonitorProvider } from "../monitor/api.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { MailboxError, MailboxStore, address } from "./store.ts";
 import { renderMailboxCall, renderMailboxResult } from "./render.ts";
+import { checkpointSchema, policySchema } from "./supervision.ts";
 
 const mailboxSchema = {
   type: "string",
@@ -105,6 +106,11 @@ export default function mailboxExtension(
         ]),
         ([options]) =>
           store.list(options.mailbox, options.limit, options.cursor),
+      ),
+      observe: method(
+        "Read all pending metadata once and return Monitor wait/wake/state for uniform count/age batching and delayed reminders. No ACK or writes; use state from the prior successful evaluation. Monitor owns all clocks and wake limits.",
+        tuple([mailboxSchema, checkpointSchema, policySchema]),
+        ([box, previous, policy]) => store.observe(box, previous, policy),
       ),
       ack: method(
         "Idempotently remove incorporated message IDs after coordinator state is durable; not task completion.",

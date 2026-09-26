@@ -105,6 +105,68 @@ test("fixed-section index: no-change status/replacement writes nothing; conflict
   );
 });
 
+test("recurring supervision reserves full cap and charges cumulative attempts once without resetting bounds", () => {
+  const reserve = {
+    action: "reserve",
+    group: "mailbox",
+    members: ["a/1/s/i"],
+    reference: "intent",
+    recurring: true,
+    maxWakes: 3,
+  };
+  let state = supervision(allowance(1000000, 4), reserve, 1000);
+  const original = structuredClone(state);
+  assert.throws(
+    () => supervision(state, { ...reserve, group: "other", maxWakes: 2 }, 1001),
+    /exhausted/,
+  );
+  assert.deepEqual(state, original);
+  const r = {
+    ...receipt("recurring", 1000),
+    recurring: true,
+    maxWakes: 3,
+    wakes: 2,
+  };
+  state = supervision(
+    state,
+    { action: "attach", group: "mailbox", receipt: r },
+    2000,
+  );
+  assert.throws(
+    () =>
+      supervision(
+        state,
+        {
+          action: "reconcile",
+          group: "mailbox",
+          receipt: { ...r, status: "active" },
+          reference: "active",
+        },
+        3000,
+      ),
+    /inactivity/,
+  );
+  const op = {
+    action: "reconcile",
+    group: "mailbox",
+    receipt: r,
+    reference: "terminal",
+  };
+  state = supervision(state, op, 3000);
+  assert.equal(state.used, 2);
+  assert.deepEqual(supervision(state, op, 4000), state);
+  const recovered = JSON.parse(JSON.stringify(state));
+  state = supervision(recovered, { ...reserve, maxWakes: 2 }, 900000);
+  assert.equal(state.deadline, 1000000);
+  assert.equal(state.groups.mailbox.pending.lifetimeMs, 100000);
+  assert.equal(state.used, 2);
+  assert.throws(
+    () =>
+      supervision(state, { ...reserve, group: "other", maxWakes: 1 }, 900001),
+    /exhausted/,
+  );
+});
+
 test("shared supervision reserves per job, accounts once and retains original deadline across replacement", () => {
   let state = allowance(1000000, 4);
   state = supervision(

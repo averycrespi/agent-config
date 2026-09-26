@@ -65,6 +65,8 @@ pi.on("session_shutdown", dispose);
 
 Each fresh Script child receives `trigger` and `state` function arguments. Trigger is `{kind: "initial" | "timer" | "event", at, subscription?, payload?}`. `subscription` is the zero-based immutable event selection index; `at` is host acceptance time. Provider payloads may additionally carry their own timestamp/sequence. Explicit state is the last committed JSON replacement, never a shared host object. See [execution and attention semantics](README.md#clocks-queues-and-attention).
 
+Mailbox's [recurring supervision recipe](../mailbox/API.md#recurring-supervision-recipe) returns these ordinary evaluator results from a single selected read-only provider call. It carries a small successful-condition watermark in `state`; no Monitor scheduler or receipt extension is needed. Keep the recipe's incorporation/ACK guidance in the registration message for every attention cause. The provider never ACKs and delivery never proves handling.
+
 ## Observational lifecycle events
 
 `MonitorEvent` is the safe, shallow-frozen payload `{type, id, status, notification}` emitted on `monitor:<type>`:
