@@ -350,7 +350,7 @@ async function runSpawn(
       exitCode: null,
       signal: null,
       errorMessage:
-        "Subagent execution failed unexpectedly; effects may persist",
+        "Subagent execution failed unexpectedly; inspect retained evidence before further action",
     };
   }
   tracker.finish(result);

@@ -22,7 +22,7 @@ export { DEFAULT_BATCH_POLICY } from "./supervision.ts";
 export type { BatchPolicy, BatchCheckpoint } from "./supervision.ts";
 
 export const MAILBOX_WAKE_GUIDANCE =
-  "List/read pending mailbox messages in bounded pages; start a fresh scan after cursor exhaustion for later arrivals. Validate reports, durably incorporate relevant facts and report identities, then ACK incorporated message IDs. ACK means recorded, not answered, accepted or completed; questions awaiting humans may be ACKed once safely recorded. Unacknowledged messages will trigger another reminder within the original lifetime/wake limits. Evaluators never ACK or mutate coordination records. Reconcile this receipt; cancel when no useful authorized observation remains. Never replay uncertain handoffs or resume unanswered work.";
+  "List/read pending mailbox messages in bounded pages; start a fresh scan after cursor exhaustion for later arrivals. Validate reports, preserve meaningful obligations in existing TODO items with source references when useful, then ACK incorporated message IDs promptly. Do not create ACK/report histories or replace unresolved TODO items with a new plan. ACK means incorporated, not answered, accepted or completed; questions awaiting humans may be ACKed once safely recorded. Unacknowledged messages will trigger another reminder within the original lifetime/wake limits. Evaluators never ACK or mutate coordination records. Reconcile this receipt; cancel when no useful authorized observation remains. Never replay uncertain handoffs or resume unanswered work.";
 
 /** Recipe fields only: caller supplies explicit authorized name, clocks and wake cap. */
 export function mailboxSupervision(options: {

@@ -58,7 +58,7 @@ test("stable call header hides body, cursor and IDs and reuses its component", (
   );
 });
 test("send summarizes persistence, expanded metadata and untrusted preview", () => {
-  assert.equal(render("send", sent), "persisted result (not consumed)");
+  assert.equal(render("send", sent), "Sent 1 message");
   const expanded = render("send", sent, true);
   assert.match(expanded, /Persisted, not consumed, accepted or completed/);
   assert.match(expanded, /1970-01-01T00:00:00.000Z/);
@@ -99,10 +99,7 @@ test("list distinguishes page size, current pending count and scan completion", 
 test("ack shows counts and requested IDs without inventing removed IDs", () => {
   const value = { mailbox: "project-alpha", acknowledged: 1 };
   const input = { ids: [id, other] };
-  assert.equal(
-    render("ack", value, false, input),
-    "acknowledged 1 message (not task resolution)",
-  );
+  assert.equal(render("ack", value, false, input), "Acked 1 message");
   const expanded = render("ack", value, true, input);
   assert.match(expanded, /Acknowledged 1 of 2 requested/);
   assert.match(expanded, /1 requested ID was not pending/);
@@ -111,11 +108,11 @@ test("ack shows counts and requested IDs without inventing removed IDs", () => {
   assert.match(expanded, new RegExp(`Requested ID: ${other}`));
   assert.equal(
     render("ack", { ...value, acknowledged: 0 }, false, input),
-    "No messages acknowledged (2 requested)",
+    "No messages acked",
   );
   assert.equal(
     render("ack", { ...value, acknowledged: 2 }, false, input),
-    "acknowledged 2 messages (not task resolution)",
+    "Acked 2 messages",
   );
 });
 test("partial and failures use warning/error, never success, with safe fixed summaries", () => {
@@ -147,7 +144,7 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     ["invalid_input", "Failed: invalid input"],
     ["mailbox_full", "Failed: mailbox full"],
     ["storage_failed", "Failed: storage unavailable"],
-    ["publication_unknown", "publication uncertain; no replay"],
+    ["publication_unknown", "Send outcome unknown"],
     ["SECRET\n\x1b[2J", "Failed: mailbox operation"],
   ]) {
     for (const semantic of [false, true]) {
@@ -175,7 +172,7 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     th,
     context(args("send"), { isError: true }),
   );
-  assert.equal(prefixed.render(200)[0], "publication uncertain; no replay");
+  assert.equal(prefixed.render(200)[0], "Send outcome unknown");
   assert.match(
     render("send", { error: "storage_failed" }),
     /Failed: storage unavailable/,
@@ -186,7 +183,7 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     th,
     context(args("send")),
   );
-  assert.match(uncertain.render(200)[0], /publication uncertain; no replay/);
+  assert.match(uncertain.render(200)[0], /Send outcome unknown/);
 });
 test("malformed, missing and mismatched results cannot render success", () => {
   for (const [action, value] of [
@@ -245,7 +242,7 @@ test("hostile controls are sanitized, previews bounded and every width truncates
     ),
     r,
   );
-  assert.deepEqual(r.render(200), ["persisted result (not consumed)"]);
+  assert.deepEqual(r.render(200), ["Sent 1 message"]);
 });
 test("registered renders preserve real direct envelopes, paging, ack and uncertain persistence", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "mailbox-render-"));
@@ -287,7 +284,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs),
       )
       .render(100)[0],
-    "persisted result (not consumed)",
+    "Sent 1 message",
   );
   assert.equal(JSON.stringify(response), before);
   const second = await tool.execute("call", { ...sendArgs, message: "second" });
@@ -375,7 +372,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs, { isError: failure.isError }),
       )
       .render(200)[0],
-    "publication uncertain; no replay",
+    "Send outcome unknown",
   );
   assert.equal(new MailboxStore(root).list("project-alpha").pending, 2);
 });

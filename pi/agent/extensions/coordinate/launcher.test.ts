@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { copyFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { savedFixture } from "../script/saved-fixture.ts";
-import { registerScriptProvider } from "../script/api.ts";
-import {
-  launchWorker,
-  preflightWorker,
-} from "../../skills/coordinate-repo/scripts/launch-worker.js";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { persistIndex, readIndex } from "./record.js";
+import { complete } from "./state.ts";
+import { launchWorker, preflightWorker } from "./launcher.js";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const clone = (x: any) => JSON.parse(JSON.stringify(x));
@@ -20,6 +19,9 @@ function model(options: any = {}) {
   const transcript = `/sessions/time_${session}.jsonl`;
   const brief: any = {
     kind: "implementation",
+    coordinate: true,
+    workspaceLabel: "Example",
+    extensionPaths: ["/source/coordinate.ts", "/source/mailbox.ts"],
     repo,
     checkout,
     base,
@@ -29,25 +31,13 @@ function model(options: any = {}) {
     runId: "run-1",
     agent: "example",
     task: "Read the brief; literal $(touch NEVER) ' ; no shell interpretation",
-    acceptance: "Report the observed file count",
-    constraints: "Read only. No cleanup or publication.",
-    executionAuthority: "user message 1",
-    publicationAuthority: "none; no publication",
-    launchAuthority: "user message 1",
     coordinator: "parent-session",
     ownerDigest: hash("Owner parent-session"),
     mailbox: "example-inbox",
     checkpoint: "/private/checkpoint.json",
-    reportingInstructions:
-      "Read shared reporting reference and checkpoint before mailbox result.",
     references: ["/references/decisions.md"],
     bounds: { startMs: 30000, confirmMs: 15000, deadline: 1000000 },
   };
-  if (options.research) {
-    brief.kind = "research";
-    brief.checkout = repo;
-    delete brief.branch;
-  }
   Object.assign(brief, options.brief);
   const path = "/git/pi-repo-coordination/example.md";
   let values: any = {
@@ -78,6 +68,8 @@ function model(options: any = {}) {
   const commands: any[] = [];
   const files = new Map<string, string>([
     ["/references/decisions.md", "reporting contract"],
+    ["/source/coordinate.ts", "trusted coordinate"],
+    ["/source/mailbox.ts", "trusted mailbox"],
   ]);
   const row = () => JSON.parse(values.Assignments)[0];
   const snapshot = () => ({
@@ -305,165 +297,46 @@ function model(options: any = {}) {
     expire: () => {
       clock = 1000001;
     },
-    cover: (change: (o: any) => void = () => {}) => {
-      const rows = JSON.parse(values.Assignments),
-        r = rows[0],
-        w = r.launch.worker;
-      const member = `example/1/${w.sessionId}/${w.incarnation}`;
-      r.reporting = {
-        mailbox: brief.mailbox,
-        checkpoint: brief.checkpoint,
-        coordinator: brief.coordinator,
-        index: path,
-        handoff: r.launch.handoff,
-        member,
+    cover: () => {
+      io.coverageCheck = async () => {
+        if (clock >= 999000) throw Error("supervision expired");
+        return { id: "observer-1" };
       };
-      values.Assignments = JSON.stringify(rows);
-      const observation: any = {
-        accounting: {
-          deadline: 999999,
-          maxAttempts: 4,
-          used: 1,
-          groups: {
-            mailbox: {
-              pending: {
-                id: "observer-1",
-                members: ["historical-member"],
-                reference: "original reservation",
-                preparedAt: 50,
-                lifetimeMs: 999900,
-              },
-            },
-          },
-        },
-        launchCoverage: {
-          example: {
-            member,
-            mailbox: brief.mailbox,
-            reference: "host receipt call",
-            receipt: {
-              id: "observer-1",
-              status: "active",
-              createdAt: 60,
-              deadline: 999000,
-              recurring: false,
-              maxWakes: 1,
-              coverage: [{ mailbox: brief.mailbox, startedAt: 60 }],
-            },
-          },
-        },
-      };
-      change(observation);
-      values.Observation = JSON.stringify(observation);
     },
   };
 }
 
-async function setup(t: any, options: any = {}) {
-  const h = await savedFixture(t);
-  await h.config({ allowedProviders: ["builtins"] });
-  await copyFile(
-    resolve(
-      import.meta.dirname,
-      "../../skills/coordinate-repo/scripts/legacy-launch-definition.js",
-    ),
-    join(h.store, "launch-worker.js"),
-  );
+async function setup(_t: unknown, options: any = {}) {
   const m = model(options);
-  const dispose = registerScriptProvider(h.pi, {
-    namespace: "builtins",
-    available: () => true,
-    methods: {
-      bash: {
-        description: "Controlled shell boundary",
-        inputSchema: {
-          type: "array",
-          items: [{ type: "object" }],
-          minItems: 1,
-          maxItems: 1,
-        },
-        handler: async (args) => {
-          const command = (args[0] as any).command;
-          assert.ok(!command.includes(m.brief.task));
-          const phase = command.includes("'prepare'") ? "prepare" : "submit";
-          const result = await launchWorker({ ...m.request, phase }, m.io);
-          return {
-            value: {
-              content: [{ type: "text", text: JSON.stringify(result) }],
-            },
-          };
-        },
-      },
-    },
-  });
-  t.after(dispose);
-  const call = async (phase = "prepare", background = false) => {
-    const terminal = background ? h.terminal() : null;
-    const r = await h.call({
-      action: "run",
-      name: "launch-worker",
-      providers: ["builtins"],
-      args: {
-        phase,
-        repo: m.request.repo,
-        index_id: "example",
-        launch_id: "launch-1",
-        helper_path: "/trusted/launch-worker.js",
-      },
-      ...(background ? { execution: "background" } : {}),
-    });
-    if (terminal) {
-      await terminal;
-      const record = h.service.inspect("script", r.details.records[0].id);
-      assert.equal(record.status, "success");
-      return JSON.parse((record.result as any).json);
-    }
-    assert.equal(r.details.status, "success");
-    const framed = r.content.find((x: any) =>
-      x.text?.includes('"launchId"'),
-    ).text;
-    return JSON.parse(
-      framed.slice(framed.indexOf("{"), framed.lastIndexOf("}") + 1),
-    );
-  };
-  return { h, m, call };
+  const call = (phase: "prepare" | "submit" = "prepare") =>
+    launchWorker({ ...m.request, phase }, m.io);
+  return { m, call };
 }
 
-test("actual saved definition prepares without prompt then submits with shared coverage and automatic notifications", async (t) => {
-  const { h, m, call } = await setup(t);
-  assert.equal((await call("prepare", true)).status, "prepared");
+test("private launcher prepares without prompt then submits once with actual coverage", async (t) => {
+  const { m, call } = await setup(t);
+  assert.equal((await call("prepare")).status, "prepared");
   assert.deepEqual(m.effects, ["create", "handoff", "start"]);
-  assert.match(
-    m.files.get(m.row().launch.handoff)!,
-    /literal \$\(touch NEVER\)/,
+  assert.match(m.files.get(m.row().launch.handoff)!, /field launchBrief.task/);
+  assert.doesNotMatch(m.files.get(m.row().launch.handoff)!, /touch NEVER/);
+  assert.match(m.row().launchBrief.task, /literal \$\(touch NEVER\)/);
+  assert.ok(
+    !m.commands.some(([, args]) =>
+      args.some((s: string) => s.includes("touch NEVER")),
+    ),
   );
   const writes = m.writes();
   assert.equal((await call()).status, "prepared");
   assert.equal(m.writes(), writes);
   m.cover();
-  assert.equal((await call("submit", true)).status, "execution-confirmed");
+  assert.equal((await call("submit")).status, "execution-confirmed");
   assert.deepEqual(m.effects, ["create", "handoff", "start", "prompt"]);
-  assert.equal(h.messages.length, 2);
+  assert.equal(m.row().reporting, undefined);
+  assert.equal(m.row().launch.receipts, undefined);
+  assert.equal(m.row().launch.prompt, undefined);
   m.expire();
   assert.equal((await call("submit")).status, "execution-confirmed");
   assert.equal(m.effects.filter((s) => s === "prompt").length, 1);
-});
-
-test("legacy-only research recovery gets a separate unfocused workspace without branch/worktree creation", async (t) => {
-  const { m, call } = await setup(t, { research: true });
-  assert.equal((await call()).status, "prepared");
-  assert.ok(
-    m.commands.some(
-      ([f, a]) =>
-        f === "herdr" &&
-        a[0] === "workspace" &&
-        a[1] === "create" &&
-        a.includes("--no-focus"),
-    ),
-  );
-  assert.ok(
-    !m.commands.some(([, a]) => a[0] === "worktree" && a[1] === "create"),
-  );
 });
 
 for (const options of [
@@ -485,7 +358,7 @@ for (const options of [
     try {
       assert.notEqual((await call()).status, "prepared");
     } catch (e) {
-      assert.match(String(e), /failed|success/);
+      assert.ok(e instanceof Error);
     }
     assert.deepEqual(m.effects, []);
     assert.equal(m.writes(), 0);
@@ -530,37 +403,19 @@ for (const options of [
     assert.ok(!m.effects.includes("prompt"));
   });
 }
-for (const defect of [
-  "missing",
-  "expired",
-  "member",
-  "allowance",
-  "reservation",
-  "receipt",
-]) {
-  test(`submit refuses ${defect} observation`, async (t) => {
-    const { m, call } = await setup(t);
-    await call();
-    if (defect !== "missing")
-      m.cover((o) => {
-        if (defect === "expired") o.launchCoverage.example.receipt.deadline = 1;
-        if (defect === "member") o.launchCoverage.example.member = "different";
-        if (defect === "allowance") o.accounting.used = 4;
-        if (defect === "reservation")
-          o.accounting.groups.mailbox.pending.id = "different";
-        if (defect === "receipt")
-          o.launchCoverage.example.receipt.status = "finished";
-      });
-    assert.notEqual((await call("submit")).status, "execution-confirmed");
-    assert.ok(!m.effects.includes("prompt"));
-  });
-}
+test("submit requires coverage and never bypasses a failed inspection", async (t) => {
+  const { m, call } = await setup(t);
+  await call();
+  assert.notEqual((await call("submit")).status, "execution-confirmed");
+  assert.ok(!m.effects.includes("prompt"));
+});
 for (const options of [
   { noTranscript: true },
   { wrongTask: true },
   { noActivity: true },
   { uncertainPrompt: true },
   { blocked: true },
+  { blocked: true, noActivity: true },
   { waitTimeout: true },
 ]) {
   test(`execution evidence is task correlated ${JSON.stringify(options)}`, async (t) => {
@@ -570,16 +425,56 @@ for (const options of [
     const r = await call("submit");
     assert.equal(
       r.status,
-      options.blocked
-        ? "blocked"
-        : options.waitTimeout
-          ? "execution-confirmed"
-          : "submitted-unconfirmed",
+      (options.blocked && !options.noActivity) || options.waitTimeout
+        ? "execution-confirmed"
+        : "submitted-unconfirmed",
     );
     await call("submit");
     assert.equal(m.effects.filter((s) => s === "prompt").length, 1);
   });
 }
+test("verified blocked worker remains explicitly acceptable without prompt replay", async (t) => {
+  const { m, call } = await setup(t, { blocked: true });
+  await call();
+  m.cover();
+  const launched = await call("submit");
+  assert.equal(launched.status, "execution-confirmed");
+  assert.equal(launched.execution?.status, "blocked");
+  assert.equal(launched.execution?.submittedEntry, "submitted");
+  assert.equal(launched.execution?.activity, true);
+  const cwd = await mkdtemp(join(tmpdir(), "coordinate-blocked-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  execFileSync("git", ["init", "-q", cwd]);
+  await persistIndex({
+    cwd,
+    id: "example",
+    expected: null,
+    attemptId: "fixture",
+    values: {
+      "Owner and authority": "fixture",
+      Assignments: JSON.stringify([m.row()]),
+      Next: "inspect evidence",
+    },
+  });
+  const index = await readIndex(cwd, "example");
+  assert.equal(JSON.parse(index.values!.Assignments)[0].acceptance, undefined);
+  const accepted = await complete(cwd, index, {
+    assignmentId: "example",
+    revision: 1,
+    head: "b".repeat(40),
+    resultRevision: "result-1",
+    evidence: "/verified-result",
+    release: "/explicit-release",
+    furtherWrites: false,
+  });
+  assert.equal(
+    JSON.parse(accepted.values!.Assignments)[0].acceptance.head,
+    "b".repeat(40),
+  );
+  await call("submit");
+  assert.equal(m.effects.filter((s) => s === "prompt").length, 1);
+});
+
 test("coverage expiry during persistence prevents prompt without replay", async (t) => {
   const { m, call } = await setup(t, { expireCoverageAtWrite: 9 });
   await call();
@@ -647,7 +542,6 @@ test("Coordinate adapter preserves exact base, caller names/path, unfocused work
       start.includes("/source/mailbox.ts"),
   );
   assert.match(m.files.get(prepared.handoff!)!, /Assignment: example\/1/);
-  m.cover();
   const submitted = await launchWorker({ ...m.request, phase: "submit" }, m.io);
   assert.equal(submitted.status, "execution-confirmed");
   assert.equal(submitted.execution?.submittedEntry, "submitted");

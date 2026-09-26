@@ -16,7 +16,7 @@ import { createEventBus } from "@earendil-works/pi-coding-agent";
 import coordinate, { REMINDER } from "./index.ts";
 import { bind, load, patch, complete } from "./state.ts";
 import { coverage, spawn } from "./launch.ts";
-import { host } from "../../skills/coordinate-repo/scripts/launch-worker.js";
+import { host } from "./launcher.js";
 import { registerScriptProvider } from "../script/api.ts";
 import { mailboxSupervision } from "../mailbox/api.ts";
 
@@ -46,14 +46,7 @@ async function fixture(t: TestContext) {
   coordinate(pi);
   const call = (args: any) =>
     tool.execute("test", args, undefined, undefined, ctx);
-  const enable = () =>
-    commands.get("coordinate-enable").handler(
-      JSON.stringify({
-        mailbox: "project",
-        authority: "actual user message",
-      }),
-      ctx,
-    );
+  const enable = () => commands.get("coordinate-enable").handler("", ctx);
   const context = (messages: any[] = []) =>
     hooks.get("context")({ messages }, ctx);
   return {
@@ -133,7 +126,7 @@ test("status is read-only; external accepted facts survive tree history and fork
   });
   f.ctx.sessionManager.getSessionId = () =>
     "00000000-0000-4000-8000-000000000002";
-  await assert.rejects(f.call({ action: "status" }), /unbound/);
+  await assert.rejects(f.call({ action: "status" }), /disabled/);
   assert.equal(await f.context(), undefined);
 });
 
@@ -228,7 +221,7 @@ test("disable refuses pending reports/assignments/control and never kills or rem
   await patch(f.cwd, index, { "Unresolved control": null });
   await disable();
   assert.equal(await f.context(), undefined);
-  await assert.rejects(f.call({ action: "status" }), /unbound/);
+  await assert.rejects(f.call({ action: "status" }), /disabled/);
   await f.enable();
   assert.ok((await load(f.cwd, session)).binding?.active);
 });
@@ -301,7 +294,7 @@ test("spawn resolves caller HEAD once, discloses dirty files, and honors explici
         deadline: Date.now() + 100000,
         wakes: 0,
         maxWakes: 5,
-        coverage: [{ mailbox: "project" }],
+        coverage: [{ mailbox: `coordinate-${session}` }],
       },
     }),
   );

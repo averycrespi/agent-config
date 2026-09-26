@@ -153,7 +153,7 @@ test("widget sources, singular batches and critical warnings precede optional id
     r.outcomeUnknown = true;
     for (const width of [48, 64]) {
       const line = widgetLines([r], width, theme)[0];
-      assert.match(line, /effects unknown/);
+      assert.match(line, /outcome unknown/);
       assert.doesNotMatch(line, /11111111/);
       assert.ok(visibleWidth(line) <= width);
     }
@@ -214,7 +214,7 @@ test("widget sources, singular batches and critical warnings precede optional id
     /^script interrupted.* · unknown\/persist failed\/handoff\?/,
   );
   assert.doesNotMatch(line, /11111111/);
-  assert.match(
+  assert.doesNotMatch(
     widgetLines([{ ...base, effectsMayPersist: true }], 80, theme)[0],
     /effects may persist/,
   );

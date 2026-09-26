@@ -27,7 +27,7 @@ List returns `{mailbox, messages, nextCursor, pending, oldestAt}`. Supply `next_
 
 ## Tool display
 
-The TUI shows a `mailbox [action] [address]` call and a separate flush-left result, such as `persisted result (not consumed)`, `3 shown · 7 pending · more pages`, or `acknowledged 3 messages (not task resolution)`. Status and uncertainty remain visible at narrow widths; full IDs and message bodies remain expanded.
+The TUI shows a `mailbox [action] [address]` call and a separate flush-left result, such as `Sent 1 message`, `3 shown · 7 pending · more pages`, `Acked 3 messages`, or `No messages acked`. Uncertain publication shows `Send outcome unknown`. Status and uncertainty remain visible at narrow widths; full IDs and message bodies remain expanded.
 Sending, listing and acknowledging use warning styling while in flight; settled
 mutations use success styling, list counts remain muted with muted middle-dot separators, and failures or uncertain publication use error styling.
 Sent means persisted, not consumed, accepted or completed. Ack is not task resolution.
@@ -119,7 +119,7 @@ monitor({
   action: "start",
   name: "project reports",
   message:
-    "List/read pending messages in bounded pages and start a fresh scan for later arrivals. Validate reports, durably incorporate facts and report identities, then ACK incorporated IDs. ACK means recorded, not answered, accepted or completed; questions awaiting humans may be ACKed once recorded. Unacknowledged reports will trigger another reminder within original limits. Evaluators never ACK or mutate coordination records. Reconcile the receipt; cancel when no useful authorized observation remains. No replay or resuming unanswered work.",
+    "List/read pending messages in bounded pages and start a fresh scan for later arrivals. Validate reports, preserve meaningful obligations in existing TODO items with source references, then ACK incorporated IDs promptly; no ACK/report histories. ACK means recorded, not answered, accepted or completed; questions awaiting humans may be ACKed once recorded. Unacknowledged reports will trigger another reminder within original limits. Evaluators never ACK or mutate coordination records. Reconcile the receipt; cancel when no useful authorized observation remains. No replay or resuming unanswered work.",
   providers: ["mailbox"],
   events: [{ provider: "mailbox", event: "changed", args: ["project-alpha"] }],
   interval_ms: 30000,
@@ -132,8 +132,8 @@ monitor({
 });
 ```
 
-Normal handling needs no cancel/re-registration: Monitor continues polling during agent work and rearms delivery only after positive message admission and correlated settlement. Cancel at completion or when no useful authorized observation remains; retain original lifetime/wake accounting across explicitly authorized replacements. An unknown/unobserved handoff is never replayed. Navigation/reload restores receipts only, not observation or budgets. Questions already incorporated stay in the project record, not the inbox; ACK them once durably recorded even if their answer is pending.
+Normal handling needs no cancel/re-registration: Monitor continues polling during agent work and rearms delivery only after positive message admission and correlated settlement. Cancel at completion or when no useful authorized observation remains; retain original lifetime/wake accounting across explicitly authorized replacements. An unknown/unobserved handoff is never replayed. Navigation/reload restores receipts only, not observation or budgets. Preserve unresolved questions/actions in existing TODO items with source references, not the inbox; ACK promptly after incorporation even if their answer is pending. Delayed reminders request attention again; they never resend messages.
 
-Trusted callers can import the small [`mailboxSupervision` recipe](API.md#recurring-supervision-recipe), which supplies this evaluator and mandatory handling guidance, but no scheduler, default lifetime or wake authority. Existing one-shot registrations/launch helpers remain compatible; do not replace an active legacy run or install/reload candidate code implicitly. See the [bounded transition](../../skills/coordinate-repo/references/supervision.md#legacy-one-shot-transition).
+Trusted callers can import the small [`mailboxSupervision` recipe](API.md#recurring-supervision-recipe), which supplies this evaluator and mandatory handling guidance, but no scheduler, default lifetime or wake authority. Existing one-shot registrations remain compatible; do not replace an active historical run or install/reload candidate code implicitly. Inspect original Monitor receipts and authority before any explicitly authorized replacement; never reset consumed allowances.
 
-Monitor holds TUI attention while a visible draft is nonempty and never writes editor text. RPC cannot verify drafts and queues for the next human turn. See [Monitor delivery qualification](../monitor/README.md#clocks-queues-and-attention). Fixtures do not prove actual editor behavior or model compliance. The [bounded live recipe](../../skills/coordinate-repo/references/verification.md#live-validation-recipe-requires-separate-authority) is unrun unless separately authorized.
+Monitor holds TUI attention while a visible draft is nonempty and never writes editor text. RPC cannot verify drafts and queues for the next human turn. See [Monitor delivery qualification](../monitor/README.md#clocks-queues-and-attention). Fixtures do not prove actual editor behavior or model compliance. The [bounded live recipe](../coordinate/README.md#verification) is unrun unless separately authorized.

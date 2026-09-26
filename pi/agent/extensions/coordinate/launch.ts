@@ -1,15 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
-import {
-  digest,
-  readIndex,
-  type Index,
-} from "../../skills/coordinate-repo/scripts/index.js";
-import {
-  host,
-  launchWorker,
-  preflightWorker,
-} from "../../skills/coordinate-repo/scripts/launch-worker.js";
+import { basename } from "node:path";
+import { digest, readIndex, type Index } from "./record.js";
+import { host, launchWorker, preflightWorker } from "./launcher.js";
 import { inspectMonitor } from "../monitor/api.ts";
 import { inspectMailbox, mailboxSupervision } from "../mailbox/api.ts";
 import { describeScriptProviders } from "../script/api.ts";
@@ -59,7 +52,7 @@ export function coverage(pi: ExtensionAPI, mailbox: string, id: string) {
           !Array.isArray(c) &&
           c.mailbox === mailbox,
       ),
-    "Active matching recurring mailbox supervision required; inspect Monitor and retained allowance, do not auto-rearm",
+    "Active matching recurring mailbox supervision required; inspect Monitor, do not auto-rearm",
   );
   return r;
 }
@@ -95,7 +88,7 @@ export async function spawn(
   );
   need(inspectMailbox(pi, b.mailbox), "Mailbox unavailable");
   await describeScriptProviders(pi, cwd, ["mailbox"]);
-  coverage(pi, b.mailbox, input.supervisionId);
+  const observer = coverage(pi, b.mailbox, input.supervisionId);
   signal?.throwIfAborted();
   // Resolve once in the CALLER checkout, never the primary checkout or moving tip.
   const base = await host.exec("git", [
@@ -139,22 +132,17 @@ export async function spawn(
     runId: launchId,
     agent: input.workerName,
     task: input.brief,
-    acceptance:
-      "The self-contained objective above owns the acceptance criteria.",
-    constraints:
-      "One checkout writer. No nested persistent delegation, uncertain replay, implicit installation, reload, cleanup or unrelated effects. Read Coordinate role guidance. Live qualification requires separate authority.",
-    executionAuthority: b.authority,
-    publicationAuthority:
-      "Only explicit authority in the task brief; enabling Coordinate grants none.",
-    launchAuthority: b.authority,
+
     coordinator: b.sessionId,
     ownerDigest: digest(index.values!["Owner and authority"]),
     mailbox: b.mailbox,
     checkpoint: input.checkpoint,
-    reportingInstructions:
-      "Checkpoint and retain an immutable artifact before mailbox send (question/blocker/result/resolution). Include reportId, assignmentId, revision, runId, sessionId/incarnation from this index, exact head, checkpoint and reference. Questions add requestId/contextRevision; resolutions retain questionHead/answerReference. Questions use mailbox, not modal UI. Routine progress stays child-owned. No automatic resend. Result requires exact evidence and release/no further writes; ACK is not acceptance.",
     references: [roleGuide],
-    bounds: { startMs: 30000, confirmMs: 15000, deadline: Date.now() + 180000 },
+    bounds: {
+      startMs: 30000,
+      confirmMs: 15000,
+      deadline: Math.min(observer.deadline, Date.now() + 180000),
+    },
   };
   await preflightWorker({ brief, launchId });
   signal?.throwIfAborted();
@@ -222,20 +210,13 @@ export async function spawn(
     sessionId: worker.sessionId,
     checkout: input.path,
     parentId: index.id,
+    parentName: b.parentName ?? basename(b.checkout),
     assignmentId: input.assignmentId,
     revision: input.revision,
     brief: prepared.handoff,
     checkpoint: input.checkpoint,
   });
   row.launch!.intent = null;
-  row.reporting = {
-    mailbox: b.mailbox,
-    checkpoint: input.checkpoint,
-    coordinator: b.sessionId,
-    index: index.path,
-    handoff: prepared.handoff,
-    member: `${input.assignmentId}/${input.revision}/${worker.sessionId}/${worker.incarnation}`,
-  };
   await patch(cwd, index, { Assignments: JSON.stringify(preparedRows) });
   return {
     ...(await launchWorker({ ...request, phase: "submit" }, io)),

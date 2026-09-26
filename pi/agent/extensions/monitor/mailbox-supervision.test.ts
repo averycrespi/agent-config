@@ -35,7 +35,10 @@ async function fixture(
       changed() {},
       persist() {},
       handoff(r, message) {
-        assert.match(message, /durably incorporate/);
+        assert.match(
+          message,
+          /preserve meaningful obligations in existing TODO items/,
+        );
         assert.match(message, /Unacknowledged messages/);
         messages.push(r);
         busy = true;

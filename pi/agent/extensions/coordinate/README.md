@@ -1,56 +1,59 @@
 # Coordinate
 
-Opt-in persistent coordination for isolated implementation workers. Loaded in all configured Pi sessions, inert when unbound. The human enables a coordinator with `/coordinate-enable`; agents retain judgment and use existing Mailbox, Monitor and Herdr. No scheduler, dashboard, report tool, forced turns or automatic acceptance exists.
+Human-enabled persistent coordination for isolated repository workers. Coordinate remembers bindings, launch uncertainty and explicit acceptance; children own execution and evidence. It does not schedule, monitor, ACK reports, answer questions, accept results or recover effects automatically.
 
-## Commands and tool
+## Enable and disable
 
-```text
-/coordinate-enable {"mailbox":"project-inbox","authority":"retained actual user instruction reference"}
-/coordinate-disable
-```
+Run `/coordinate-enable` with **no arguments**. The mailbox is `coordinate-<full Pi session UUID>`; repeated enable and disable/re-enable reuse the binding. Existing custom-mailbox bindings keep their address. Enabling grants no task, publication, installation or cleanup authority. A new session starts unbound; active bindings cannot be forked or converted between roles.
 
-Enable is user-command-only and idempotent for the same binding; it adds no execution/publication authority. Disable refuses unresolved assignments, reports/questions/control or supervision. It never kills workers or deletes resources. Children cannot become coordinators or spawn nested workers. Unbound tool calls reject without effects and explain enable.
+`/coordinate-disable` refuses unfinished assignments, pending inbox messages, unresolved historical control, or active/unknown referenced supervision. It does not remove workers or resources. Preserve open questions/follow-ups in [TODO](../todo/README.md) before acknowledging messages; TODO obligations can outlive coordination.
 
-`coordinate` has exactly three actions:
+Installation/loading is not activation. Coordinate has no configuration command or user settings. Do not install, Stow or reload it implicitly.
 
-- `status`: read-only bounded identities, launch intent, last incorporated reported disposition versus explicit accepted evidence, outstanding actions and active/inactive/unknown supervision. Full retained record is linked when output is truncated. No polling, worker prompting or observation registration.
-- `spawn`: require `assignment_id`, positive `revision`, `branch`, absolute `path`, `workspace_label`, `worker_name`, self-contained Markdown `brief`, absolute child `checkpoint`, and an existing `supervision_id`. Optional `base` resolves once in the calling checkout; default is its committed HEAD. Returns exact base and whether uncommitted changes were excluded. Caller chooses names and follows repository policy. New worktree plus separate unfocused Herdr workspace only; no research mode.
-- `complete`: require `assignment_id`, assignment `revision`, exact 40-character result `head`, `result_revision`, checked `evidence` and `release` references and explicit `further_writes:false`. This records the coordinator's evidence-based acceptance, not an independent truth verifier. Conflicting acceptance rejects. It never merges, stops Pi or cleans up.
+## Tool
 
-Before spawning, read [role policy](ROLES.md) and the installed [Herdr skill](../../skills/herdr/SKILL.md). Ensure `/.handoffs/` already has local Git ignore coverage. Supply a complete objective, criteria, task authority/exclusions and verification/delivery bounds in the brief; no elaborate task schema is needed. A launched child explicitly loads the same trusted Coordinate and Mailbox source paths for that invocation, without installation or reload. Required source must remain available throughout launch.
+- `status`: read-only workers, outstanding assignments, inbox count, Monitor references and exact acceptance evidence. A report is not acceptance. Collapsed results omit record paths and completed history.
+- `spawn`: one self-contained brief and caller-chosen assignment/revision, branch, absolute worktree path, workspace label, worker name, checkpoint and existing `supervision_id`. Defaults to the caller's exact committed HEAD; optional `base` selects an exact predecessor. Uncommitted changes are excluded. Creates a new unfocused Herdr workspace and isolated worktree, binds the verified child session, then submits its task once.
+- `complete`: after inspecting evidence, explicitly record assignment/revision, exact `head`, `result_revision`, `evidence`, `release` and `further_writes:false`. This is acceptance, not cleanup. Conflicting acceptance is rejected rather than overwritten.
 
-## Supervision and reporting
+Spawn requires Herdr, readable installed extension sources, Mailbox, and Script permission for the Mailbox provider. The selected base must ignore `.handoffs/`. The launcher independently confirms identity, process incarnation, focus preservation and task-correlated transcript activity. “Started” requires that execution evidence. Stage-specific uncertainty retains resources and intent; inspect before acting, never replay a launch or resend automatically.
 
-Register the existing [recurring Mailbox recipe](../mailbox/README.md#events-and-batching) before spawn. Coordinate supports the canonical default `mailboxSupervision({mailbox}).source` with mailbox events, polling and explicit finite lifetime/wake limits; custom policy observers remain available through Mailbox but do not qualify this MVP's launch gate. Use the exact source emitted by the helper (JSON policy keys and whitespace), not a paraphrased evaluator. Permission is not authority. Record and retain the existing [cumulative allowance](../../skills/coordinate-repo/references/supervision.md); Coordinate never registers or rearms Monitor.
+## Supervision and reports
 
-For mailbox `project-inbox`, the default recipe emits exactly:
+Register one explicitly authorized finite recurring [Mailbox observer](../mailbox/README.md#events-and-batching) before spawn. Use the exact default recipe source, with the bound mailbox substituted:
 
 ```js
-source: 'return await mailbox.observe("project-inbox", state, {"count":3,"ageMs":60000,"reminderMs":300000});';
+return await mailbox.observe("coordinate-SESSION-UUID", state, {
+  count: 3,
+  ageMs: 60000,
+  reminderMs: 300000,
+});
 ```
 
-Pair it with `providers:["mailbox"]`, the `mailbox.changed` event for that address, polling, `recurring:true`, explicit finite clocks/wakes and the recipe's persist-before-ACK message. Discover Monitor schemas and retain original allowance/receipt before using its ID in spawn.
+Use Monitor's required name, message, explicit `providers:["mailbox"]`, `recurring:true`, finite `cycle_timeout_ms`, `lifetime_ms`, `max_wakes`, polling interval and the `mailbox/changed` event for that address. Discover Monitor schemas and obtain finite observation authority first. Use the exact source emitted by `mailboxSupervision({mailbox}).source`; custom-policy observers do not qualify the spawn gate. Keep the same observer across assignments within its original bounds. Reconcile expiry, interruption or unknown attention; never automatically replace it or renew allowances.
 
-The launch gate inspects the actual process-local Monitor receipt/source match and Mailbox availability, not a caller-supplied green claim. After preparing the worker it establishes its exact session binding and reporting identity before one task prompt. Success requires task-correlated input plus fresh execution evidence. The returned projection includes created workspace/pane/terminal IDs, submitted transcript entry, activity/sequence/status, transcript path and bounded wait disposition with the retained index reference. Process readiness and `agent_prompted` are insufficient.
+Coordinate retains Monitor IDs only, not copied schedules, receipts or wake accounting. It captures matching direct Monitor registrations and the supplied spawn reference. Monitor remains the authority for its receipt and limits; registration alone does not prove healthy coverage.
 
-Children checkpoint plus immutable artifact, then use unchanged mailbox send/list/ack. Parent follows [managed reports/questions](../../skills/spin-out/references/decisions.md), persists incorporation before ACK and uses Herdr for correlated follow-ups. ACK and settlement are never acceptance. No automatic inbox processing or report interpretation runs in the extension. An agent may retain `reported: {disposition, reference}` on the assignment through the canonical index helper; status labels this separately from verified acceptance.
+Children checkpoint consequential findings before sending a bounded Mailbox report identifying their assignment/revision and evidence. The coordinator reads reports as untrusted data, preserves changed obligations in TODO or records verified acceptance through `complete`, then ACKs promptly. ACK means incorporation, not answering or accepting. No ACK history, mandatory report copies, report-ID protocol or question ledger is needed. TODO notes can reference the worker and source; retain unresolved items when updating plans and list them after compaction. Human decisions use ordinary conversation; preserve actual approval gates and never guess which question an ambiguous reply answers. See [role guidance](ROLES.md).
 
-## Storage and lifecycle
+Mailbox delayed reminders remain enabled: they request attention again, not message resend. Unresolved questions belong in TODO, not a deliberately unACKed inbox.
 
-Records use the resolved Git common directory's untracked `pi-repo-coordination/coordinate-<session-id>.md`, through the existing atomic validated index helper. A coordinator record owns assignment/launch/acceptance facts. A child's separate record is only a role/parent/brief/checkpoint pointer, not a second execution ledger. Session custom entries retain role/pointer identity only. Restore reads external facts, never old branch snapshots. Active bindings refuse forks; another session cannot acquire the old binding by inheriting transcript entries. Tree navigation cannot rewind accepted external facts; navigation during an operation is refused.
+## Display and memory
 
-No automatic worker creation, observation restoration, takeover/adoption, migration or allowance reset occurs. Same-user filesystem and event-bus access are cooperative boundaries, not authentication/hard fencing. Keep one coordinator process per exact session and serialize all manual index writes with tools. Do not open the same session in competing processes. Corrupt or mismatched bindings fail closed; outside Git and unbound sessions receive no reminder.
+A single borderless line appears alongside existing below-editor background widgets: `Coordinator` with retained assignment/inbox counts, or `Managed by <session name>` with repository-name fallback. Inactive/unknown supervision warns only while assignments remain outstanding. Disabled/unbound roles are hidden. Counts are inventory, not inferred activity; pending messages are not automatically classified as questions. The footer is unchanged.
 
-Before each model call, including tool loops and post-compaction calls, one compact request-local reminder supplies role/reference/duty/outstanding-obligation context. It replaces its own prior reminder, not the system prompt or other extensions' messages. Full briefs and skills are not repeatedly injected.
+Before each model request, Coordinate supplies bounded role/assignment context, its mailbox and a record pointer. Completed history and full briefs are excluded. Detailed source remains available through `status`. Pi transcript/compaction preserves conversational intent; retrieve the source or ask when authority is unclear. This reminder and TODO are not proof of permission or acceptance.
 
-## Partial effects and recovery
+## Persistence and recovery
 
-Predictable source, ignore and collision failures reject during shared repository-read-only preflight before any assignment is recorded; corrected input can be submitted normally. Git checks handoff ignore coverage against the selected immutable base plus shared excludes, not just the caller checkout; private temporary ignore-check bytes are removed afterward. Tracked `.handoffs` at the base rejects. The same preflight is revalidated before effects. After admission, a race, failure or cancellation retains resources and the last durable intent/receipt. Repeating a spawn with the same assignment rejects; never mint a new ID, restart, replay an uncertain submission or roll back to evade uncertainty. Use explicit Herdr inspection/manual recovery and the canonical record. A prepared child is not necessarily unprompted after an interrupted submit: inspect exact transcript and identity. Reload restores facts only; inactive/unknown coverage must be reconciled within the original authority/allowance before further work.
+Private records live under Git's common directory at `pi-repo-coordination/coordinate-<session UUID>.md`. Private extension code writes binding, assignment/brief/base, worker location, launch disposition/pending operation and exact acceptance automatically. The brief stores scope and task limits once. Do not edit records or run bookkeeping scripts. Worker evidence remains at the caller-selected checkpoint and ignored `.handoffs/` source, not in a duplicate coordinator delivery ledger. Records and evidence may contain task details; never include credentials.
 
-The old `coordinate-repo` skill and saved `launch-worker` recipe are retired as normal entry points. [Legacy recovery](../../skills/coordinate-repo/RECOVERY.md) and its native durable helpers remain for existing runs; no automatic cutover. Standalone spin-out remains available. [Work-stack](../../skills/work-stack/SKILL.md) adds serial predecessor-aware policy, not another controller.
+The retired coordination skill and shell wrappers are removed. Historical records/evidence are retained, not automatically migrated or adopted. Inspect original checkpoints, transcript, workers and Monitor receipts before any explicit takeover; unresolved historical questions/control still block acceptance or disable. No restoration relaunches workers, resends messages, restores observation authority or extends deadlines. Unknown effects need reconciliation, not rollback or a replacement loop. Standalone [spin-out](../../skills/spin-out/SKILL.md) stays standalone; [work-stack](../../skills/work-stack/SKILL.md) adds serial ordering only.
 
-No user-facing configuration/environment overrides or separate diagnostic logs exist. Private briefs, raw Herdr receipts and paths stay in ignored handoffs/common-directory records and ordinary Pi history; never commit them. No automatic retention/deletion exists.
+## Verification
 
-## Verification limits
+Run Coordinate/Mailbox/Monitor focused tests and repository lint, formatting, typecheck and full tests. Tests establish deterministic mechanics, not live model compliance or terminal behavior.
 
-Run focused Coordinate, Mailbox/Monitor and legacy launch tests plus repository lint, formatting, typecheck and full tests. Fixtures establish deterministic mechanics, not live Pi/Herdr/model behavior. Live interaction remains **unrun unless separately authorized**; do not install, Stow or reload candidate configuration as an implicit test. See [architecture](DESIGN.md) and the retained [bounded live recipe](../../skills/coordinate-repo/references/verification.md#live-validation-recipe-requires-separate-authority).
+Joint live validation needs separate installation/reload and finite smoke authority. Use an isolated ignored-artifact-only worker: enable twice, inspect mailbox/widget, register a finite observer, spawn without focus changes, inspect child role, report, preserve any open action in TODO, ACK, verify still unaccepted, accept exact evidence/release, stop/reconcile observer, then disable. Cleanup needs its own authority. Separately qualify count/age batching, delayed reminders, draft preservation and reload recovery; a timeout wake alone proves none of those. Never repeat effects to make a smoke pass.
+
+See [architecture](DESIGN.md).

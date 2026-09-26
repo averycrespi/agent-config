@@ -1,6 +1,6 @@
 # Work-stack verification
 
-Use [shared coordination verification](../../coordinate-repo/references/verification.md) for mailbox durability, batching, questions, wellness and explicit replacement. Discovery/link checks establish packaging, not model obedience. Preserve work-ticket publication/CI and settlement regressions; do not substitute fixture evidence for live ticket delivery.
+Use [shared coordination verification](../../../extensions/coordinate/README.md#verification) for mailbox durability, batching, TODO obligations and explicit reconciliation. Discovery/link checks establish packaging, not model obedience. Preserve work-ticket publication/CI and settlement regressions; do not substitute fixture evidence for live ticket delivery.
 
 ## Stack-specific scenarios
 
@@ -12,7 +12,7 @@ Test these bounded read-only decision scenarios against the actual entry point a
 - Question or child-owned pending CI: retain A, process its mailbox report without modal wait, and never advance to B. Parent does not duplicate child CI observation. Answer provenance/relay uncertainty uses the shared protocol.
 - Changed predecessor: preserve original H1, pause the stack and ask for the required authority; never silently restack, retarget, force-push or substitute a newer head.
 - Missing required source, forward dependency or competing writer: investigate and stop affected launch without reshaping/reordering the requested stack.
-- Observer exhaustion, uncertain handoff or replacement: preserve shared deadlines, attempts and reservations. Final reconciliation may accept a proven boundary, but cannot manufacture fresh observation authority for the successor.
+- Observer exhaustion, uncertain handoff or replacement: inspect original Monitor bounds and uncertain attention; never create a shadow allowance ledger. Final reconciliation may accept a proven boundary, but cannot manufacture fresh observation authority for the successor.
 - Interrupted publication or cleanup: keep original work-ticket effects/evidence, confirm matching authoritative effects without replay, preserve branches/resources and require separate cleanup authority.
 
 ## Controlled exercise
