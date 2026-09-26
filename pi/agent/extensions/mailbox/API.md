@@ -2,6 +2,10 @@
 
 The agent-facing tool and selected Script methods are documented in [README.md](README.md#script-provider). Storage modules are internal; no shared host storage API is promised.
 
+## Read-only local inspection
+
+`inspectMailbox(pi, mailbox)` from `api.ts` returns `{pending}` when the loaded extension is active, otherwise `undefined`. It uses the private `mailbox:inspect-v1` bus query, validates the address and reads one bounded storage page without returning message contents. It never sends, ACKs, creates storage or starts a watcher. Storage errors propagate; absence is unknown availability, not an empty inbox. Coordinate uses this narrow trusted-host seam; it is not a guest provider method or authentication boundary.
+
 ## Recurring supervision recipe
 
 Trusted callers import `mailboxSupervision`, `MAILBOX_WAKE_GUIDANCE`, `DEFAULT_BATCH_POLICY` and types `BatchPolicy` / `BatchCheckpoint` from `./api.ts`. `mailboxSupervision({mailbox, policy?, instructions?, events?})` returns `providers`, `recurring: true`, `message`, `source`, and (unless `events: false`) an address-only event selection. Supply explicit authorized `name`, `interval_ms`, `cycle_timeout_ms`, `lifetime_ms`, and `max_wakes` at the Monitor boundary. The helper neither registers work nor selects budgets; it rejects invalid policy and oversized combined instructions. Extra instructions supplement, never replace, persist-before-ACK guidance.

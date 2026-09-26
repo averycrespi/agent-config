@@ -6,7 +6,7 @@ import { describeScriptProviders } from "../script/api.ts";
 import { subscribeProvider, describeEvents } from "../monitor/providers.ts";
 import mailbox from "./index.ts";
 import { MailboxStore } from "./store.ts";
-import { mailboxSupervision } from "./api.ts";
+import { mailboxSupervision, inspectMailbox } from "./api.ts";
 
 async function setup(t: import("node:test").TestContext) {
   const f = await fixture(t);
@@ -127,4 +127,15 @@ test("invalid direct mutations and caught provider failures cannot conceal host 
   );
   assert.equal(result.status, "failed");
   assert.equal(new MailboxStore(h.root).list("p").pending, 0);
+});
+
+test("local inspection projects availability/count only without creating or acknowledging reports", async (t) => {
+  const h = await setup(t);
+  assert.deepEqual(inspectMailbox(h.pi, "project"), { pending: 0 });
+  const store = new MailboxStore(h.root);
+  store.send("project", "result", "PRIVATE BODY");
+  assert.deepEqual(inspectMailbox(h.pi, "project"), { pending: 1 });
+  assert.equal(store.list("project").messages[0].message, "PRIVATE BODY");
+  h.hooks.get("session_shutdown")!();
+  assert.equal(inspectMailbox(h.pi, "project"), undefined);
 });

@@ -172,11 +172,21 @@ export default function mailboxExtension(
       },
     },
   });
+  const offInspection = pi.events.on("mailbox:inspect-v1", (data) => {
+    const request = data as { mailbox?: unknown; reply?: unknown };
+    if (
+      active &&
+      typeof request?.mailbox === "string" &&
+      typeof request.reply === "function"
+    )
+      request.reply({ pending: store.list(request.mailbox, 1).pending });
+  });
   pi.on("session_start", () => {
     active = true;
   });
   pi.on("session_shutdown", () => {
     active = false;
+    offInspection();
     dispose();
     for (const w of watchers) w.close();
     watchers.clear();

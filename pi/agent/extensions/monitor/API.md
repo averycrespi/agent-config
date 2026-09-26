@@ -2,6 +2,10 @@
 
 Trusted sibling extensions import `registerMonitorProvider` and types from `../monitor/api.ts`. This combines ordinary Script method registration with typed host event sources. Providers retain full host authority; this API is not a sandbox for extension authors. Tool controls remain immutable `start/list/get/cancel`; engine modules are internal. Cycle/lifetime policy ceilings come from Monitor's [global/environment configuration](README.md#configuration), snapshotted at extension load; per-job bounds remain explicit.
 
+## Read-only local inspection
+
+`inspectMonitor(pi, id, expectedSource)` from `api.ts` returns a cloned `{receipt, sourceMatches}` for a retained job in this process, otherwise `undefined`. It uses private `monitor:inspect-v1`; source matching trims outer whitespace and never exposes the registered source. Ended jobs release source and cannot qualify an active recipe. Inspection cannot start, rearm, cancel or deliver anything. Absence after reload/navigation is unknown, not proof that an old observer is inactive. Coordinate uses this narrow seam to qualify its canonical recurring Mailbox recipe; callers still own authority and cumulative allowances. No guest API or general service registry is added.
+
 ## Typed event registration
 
 `MonitorProvider` extends Script's `ScriptProvider` with `events: Record<string, EventSource>`. Register at most 16 named event sources per provider. Provider namespaces/methods obey [Script's registration contract](../script/API.md); event names match `[a-z][a-z0-9_]{0,47}`. There is one session-bus registration per namespace, not a process-global registry. Conflicts reject; disposal is explicit and idempotent. Validation finishes before any listener is installed. Dispose on shutdown or authority revocation.

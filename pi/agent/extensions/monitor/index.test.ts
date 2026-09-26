@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fixture } from "../script/fixture.ts";
 import { pause, theme, value } from "./test-support.ts";
-import { registerMonitorProvider } from "./api.ts";
+import { registerMonitorProvider, inspectMonitor } from "./api.ts";
 import monitor from "./index.ts";
 import { restore, parseReceipt } from "./receipts.ts";
 import { widgetLines, renderers, notificationContent } from "./tool.ts";
@@ -240,6 +240,7 @@ test("configuration snapshot aligns tool schema and admission until extension re
   // A new factory (reload) takes the new policy; it does not mutate old jobs.
   const reloaded = new Map<string, any>();
   await monitor({
+    events: { on: () => () => {} },
     registerMessageRenderer() {},
     registerCommand() {},
     on() {},
@@ -700,4 +701,24 @@ test("widget and tool renderers are width bounded and never expose scripts, evid
   assert.match(text, /timeout/);
   assert.match(text, /evidenceAgeMs/);
   assert.match(text, /Recurrence disabled/);
+});
+
+test("read-only local inspection matches source without exposing it or restarting restored observation", async (t) => {
+  const h = await harness(t);
+  const source = 'return {decision:"wait",evidence:null};';
+  const r = value(await h.call({ ...input, source, interval_ms: 1000 }));
+  const writes = h.entries.length;
+  const inspection = inspectMonitor(h.pi, r.id, source)!;
+  assert.equal(inspection.sourceMatches, true);
+  assert.equal(inspectMonitor(h.pi, r.id, "different")!.sourceMatches, false);
+  inspection.receipt.status = "cancelled";
+  assert.equal(inspectMonitor(h.pi, r.id, source)!.receipt.status, "active");
+  assert.equal(h.entries.length, writes);
+  assert.equal(h.messages.length, 0);
+  await h.hook("session_before_tree");
+  await h.hook("session_tree");
+  assert.notEqual(inspectMonitor(h.pi, r.id, source)?.receipt.status, "active");
+  assert.notEqual(inspectMonitor(h.pi, r.id, source)?.sourceMatches, true);
+  await h.hook("session_shutdown");
+  assert.equal(inspectMonitor(h.pi, r.id, source), undefined);
 });

@@ -1,6 +1,6 @@
-# Coordinated worker launch Script
+# Legacy coordinated launch recovery
 
-Use the saved [`launch-worker`](../../../scripts/launch-worker.js) definition for authorized managed launches. It calls the finite host [CLI helper](../scripts/launch-worker.js) through `builtins.bash`; it does not install worker code or introduce a coordinator service. Keep the [shared launch gates](../../spin-out/references/launch.md) and [index persistence contract](index.md) authoritative.
+The saved `launch-worker` entry point is retired. New bound runs use [Coordinate spawn](../../../extensions/coordinate/README.md). Preserve existing assignments under their original procedures; do not auto-cutover, replay or restart. The retained [`launch-worker` definition](../scripts/legacy-launch-definition.js) below is an existing-run recovery artifact, not normally discoverable saved automation. It calls the finite host [CLI helper](../scripts/launch-worker.js) through `builtins.bash`; it does not install worker code or introduce a coordinator service. Keep the [shared launch gates](../../spin-out/references/launch.md) and [index persistence contract](index.md) authoritative.
 
 ## Prerequisites and ownership
 

@@ -54,6 +54,8 @@ Receipts add optional validated intervalMs/delayMs/eventCount display metadata, 
 
 `index.ts` registers the pure `_shared/notification.ts` custom-message renderer for `monitor-wake` and display-only historical `background-wake`. Handoff adds versioned name/reason/effect/interruption/gap metadata and typed timer/observation mode alongside unchanged job/wake correlation IDs. The shared projection renders a single theme-backed line, with warning priority before optional identity. No receipt schema or engine path changes. Compact observation vocabulary is distinct from execution success/failure; expansion projects original continuation/evidence text with trust framing and terminal safety. Missing or invalid metadata never infers status from prose. The renderer has no engine/context callbacks: expansion cannot persist, mark admission, settle, rearm or resend. Complete model-facing messages and TUI/RPC/headless delivery options remain unchanged.
 
+The narrow `inspectMonitor` trusted-host query projects a cloned receipt and exact expected-source match without exposing source or scheduling/control methods. Coordinate can check an actual active Mailbox observer; restored receipts cannot restore source or observation. The query listener is disposed on shutdown and does not change the lifecycle/attention engine.
+
 ## Verification and change guidance
 
 Keep tests at observable boundaries: fake-clock scheduling/message counts, state snapshots, actual Script child accounting, typed provider schemas/revocation, cross-process mailbox durability, minimal notification metadata and controlled lifecycle/UI fixtures. Live-session/model/provider qualification remains explicitly separate. Never install/reload the delivered extension as a test side effect.

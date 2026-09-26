@@ -22,6 +22,8 @@ A successful condition decision covers all pending rows through the snapshot seq
 
 Coverage is deliberately not delivery or incorporation. Monitor continues evaluating during pending attention and agent work; condition wakes coalesce, and subsequent arrivals can leave one pending follow-up. Already queued attention is not retracted by an ACK, so a bounded stale notification may find no pending rows. Missed ACK leads to another delayed notification, never another send. Monitor alone controls admission, correlated settlement, cancellation, uncertainty, finite clocks and wake counts; no provider timer or scheduler is introduced. Successful evaluator state/evidence commits remain atomic in Monitor. The recipe's fixed guidance requires durable incorporation before ACK on every cause of wake, including timeout/failure.
 
+`api.ts` also supplies a narrow read-only local readiness/pending-count query for Coordinate. The bus handler exists only for the extension lifetime, exposes no report bodies and never mutates storage or starts observation. It does not interpret reports or grant authority.
+
 ## Verification
 
 Renderer fixtures cover stable headers, collapsed/expanded send/list/ack, partial and error styling, uncertain persistence, empty cursor pages with later arrivals, no-op acknowledgments, hostile controls and narrow widths. Real direct-tool fixtures preserve exact untrusted envelopes and provider/store regressions remain unchanged. These fixtures do not qualify a live TUI.

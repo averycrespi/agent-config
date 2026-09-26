@@ -132,7 +132,12 @@ function briefCheck(b, now) {
     fail("finite unexpired launch bounds required");
   if (
     b.kind === "implementation" &&
-    !/^avery\/[a-zA-Z0-9][a-zA-Z0-9/_-]{0,100}$/.test(b.branch)
+    !(b.coordinate === true
+      ? typeof b.branch === "string" &&
+        b.branch.length <= 200 &&
+        !/[\s\u0000-\u001f]/.test(b.branch) &&
+        !b.branch.startsWith("-")
+      : /^avery\/[a-zA-Z0-9][a-zA-Z0-9/_-]{0,100}$/.test(b.branch))
   )
     fail("new implementation branch required");
   if (
@@ -421,6 +426,14 @@ export async function launchWorker(
       )
         fail("repository/base mismatch");
       for (const path of b.references) await io.read(path);
+      if (b.coordinate === true) {
+        if (!Array.isArray(b.extensionPaths) || b.extensionPaths.length !== 2)
+          fail("Coordinate and Mailbox source required");
+        for (const path of b.extensionPaths) {
+          absolute(path);
+          await io.read(path);
+        }
+      }
       const listed = await herdr("worktree", "list", "--cwd", repo);
       if (
         !listed.source?.repo_root ||
@@ -444,15 +457,19 @@ export async function launchWorker(
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-|-$/g, "");
         if (
+          b.coordinate !== true &&
           b.checkout !==
-          join(
-            io.home,
-            "worktrees",
-            slug(basename(listed.source.repo_root)),
-            slug(b.branch),
-          )
+            join(
+              io.home,
+              "worktrees",
+              slug(basename(listed.source.repo_root)),
+              slug(b.branch),
+            )
         )
           fail("noncanonical checkout path");
+        await git(repo, "check-ref-format", "--branch", b.branch);
+        if (b.coordinate === true)
+          text(b.workspaceLabel, "workspace label", 100);
         const refs = await git(
           repo,
           "for-each-ref",
@@ -513,6 +530,7 @@ export async function launchWorker(
               b.base,
               "--path",
               b.checkout,
+              ...(b.coordinate === true ? ["--label", b.workspaceLabel] : []),
               "--no-focus",
             )
           : await herdr(
@@ -551,6 +569,19 @@ export async function launchWorker(
       if (
         (await io.real(b.checkout)) !== b.checkout ||
         (await git(b.checkout, "rev-parse", "HEAD")) !== b.base ||
+        (b.coordinate === true &&
+          (await git(
+            b.checkout,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+          )) !==
+            (await git(
+              repo,
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir",
+            ))) ||
         (b.kind === "implementation" &&
           (await git(b.checkout, "branch", "--show-current")) !== b.branch)
       )
@@ -570,6 +601,9 @@ export async function launchWorker(
         state.resources.pane,
         "--timeout",
         String(b.bounds.startMs),
+        ...(b.coordinate === true
+          ? ["--", ...b.extensionPaths.flatMap((path) => ["--extension", path])]
+          : []),
       );
       await receipt("start", started);
       const w = await identity();
@@ -607,7 +641,11 @@ export async function launchWorker(
           `${b.assignmentId}/${b.revision}/${workerKey(state.worker)}`
       )
         fail("persisted reporting mismatch");
-      const coverage = coverageCheck(
+      const checkCoverage =
+        b.coordinate === true ? io.coverageCheck : coverageCheck;
+      if (typeof checkCoverage !== "function")
+        fail("Coordinate coverage integration unavailable");
+      const coverage = await checkCoverage(
         JSON.parse(current.values.Observation),
         b,
         state.worker,
@@ -628,6 +666,19 @@ export async function launchWorker(
         fail("handoff changed");
       if (
         (await git(b.checkout, "rev-parse", "HEAD")) !== b.base ||
+        (b.coordinate === true &&
+          (await git(
+            b.checkout,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+          )) !==
+            (await git(
+              repo,
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir",
+            ))) ||
         (b.kind === "implementation" &&
           (await git(b.checkout, "branch", "--show-current")) !== b.branch)
       )
@@ -636,7 +687,7 @@ export async function launchWorker(
       state.prompt = `Read ${state.handoff} completely, then execute that managed assignment within its authority and reporting contract.`;
       state.baselineSeq = w.seq;
       await intent("prompt");
-      coverageCheck(
+      await checkCoverage(
         JSON.parse(current.values.Observation),
         b,
         state.worker,
