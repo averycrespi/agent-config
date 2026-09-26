@@ -10,6 +10,7 @@ import { registerMonitorProvider } from "../monitor/api.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { MailboxError, MailboxStore, address } from "./store.ts";
 import { renderMailboxCall, renderMailboxResult } from "./render.ts";
+import { checkpointSchema, policySchema } from "./supervision.ts";
 
 const mailboxSchema = {
   type: "string",
@@ -106,6 +107,11 @@ export default function mailboxExtension(
         ([options]) =>
           store.list(options.mailbox, options.limit, options.cursor),
       ),
+      observe: method(
+        "Read all pending metadata once and return Monitor wait/wake/state for uniform count/age batching and delayed reminders. No ACK or writes; use state from the prior successful evaluation. Monitor owns all clocks and wake limits.",
+        tuple([mailboxSchema, checkpointSchema, policySchema]),
+        ([box, previous, policy]) => store.observe(box, previous, policy),
+      ),
       ack: method(
         "Idempotently remove incorporated message IDs after coordinator state is durable; not task completion.",
         tuple([
@@ -166,11 +172,21 @@ export default function mailboxExtension(
       },
     },
   });
+  const offInspection = pi.events.on("mailbox:inspect-v1", (data) => {
+    const request = data as { mailbox?: unknown; reply?: unknown };
+    if (
+      active &&
+      typeof request?.mailbox === "string" &&
+      typeof request.reply === "function"
+    )
+      request.reply({ pending: store.list(request.mailbox, 1).pending });
+  });
   pi.on("session_start", () => {
     active = true;
   });
   pi.on("session_shutdown", () => {
     active = false;
+    offInspection();
     dispose();
     for (const w of watchers) w.close();
     watchers.clear();

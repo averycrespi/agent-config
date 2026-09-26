@@ -2,9 +2,18 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { readIndex, updateIndex } from "./index.js";
 
@@ -67,6 +76,59 @@ export const host = {
   },
   async real(path) {
     return realpath(path);
+  },
+  async ignoreAtBase(repo, base, launchId) {
+    const git = (...args) => host.exec("git", ["-C", repo, ...args]);
+    const common = await git(
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-common-dir",
+    );
+    const entries = await git("ls-tree", base, "--", ".gitignore", ".handoffs");
+    // Handoffs must be private/untracked, not inherited task artifacts or symlinks.
+    if (entries.split("\n").some((line) => line.endsWith("\t.handoffs")))
+      fail("selected base contains tracked .handoffs; choose a safe base");
+    const ignore = entries
+      .split("\n")
+      .find((line) => line.endsWith("\t.gitignore"));
+    if (
+      ignore &&
+      !/^100(?:644|755) blob [a-f0-9]{40}\t.gitignore$/.test(ignore)
+    )
+      fail("unsafe selected-base .gitignore");
+    const root = await mkdtemp(join(tmpdir(), "coordinate-ignore-"));
+    try {
+      if (ignore)
+        await writeFile(
+          join(root, ".gitignore"),
+          // Ignore patterns are byte-sensitive; the command helper trims text.
+          (
+            await runFile("git", ["-C", repo, "show", `${base}:.gitignore`], {
+              encoding: null,
+              timeout: 10000,
+              maxBuffer: 2 * 1024 * 1024,
+            })
+          ).stdout,
+          { mode: 0o600 },
+        );
+      // Ask Git, not a reimplementation of gitignore precedence. The scratch tree
+      // has only the selected root rules; shared info/exclude/global rules remain.
+      await host.exec("git", [
+        "--git-dir",
+        common,
+        "--work-tree",
+        root,
+        "-C",
+        root,
+        "check-ignore",
+        "--no-index",
+        "-q",
+        "--",
+        `.handoffs/launch-${launchId}.md`,
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   },
   async handoff(path, content, repo) {
     const dir = dirname(path);
@@ -132,7 +194,12 @@ function briefCheck(b, now) {
     fail("finite unexpired launch bounds required");
   if (
     b.kind === "implementation" &&
-    !/^avery\/[a-zA-Z0-9][a-zA-Z0-9/_-]{0,100}$/.test(b.branch)
+    !(b.coordinate === true
+      ? typeof b.branch === "string" &&
+        b.branch.length <= 200 &&
+        !/[\s\u0000-\u001f]/.test(b.branch) &&
+        !b.branch.startsWith("-")
+      : /^avery\/[a-zA-Z0-9][a-zA-Z0-9/_-]{0,100}$/.test(b.branch))
   )
     fail("new implementation branch required");
   if (
@@ -209,6 +276,121 @@ function coverageCheck(observation, b, w, now) {
   return c;
 }
 
+// Read-only deterministic checks shared by admission and immediate pre-effect revalidation.
+export async function preflightWorker(
+  { brief: b, launchId },
+  io = host,
+  commands,
+) {
+  briefCheck(b, io.now());
+  id(launchId);
+  const repo = b.repo;
+  const deadline = Math.min(b.bounds.deadline, io.now() + 100000);
+  const exec = (file, args) => {
+    const left = deadline - io.now();
+    if (left < 1000) fail("preflight deadline exhausted");
+    return io.exec(file, args, Math.min(10000, left));
+  };
+  const git =
+    commands?.git ?? ((cwd, ...args) => exec("git", ["-C", cwd, ...args]));
+  const herdr =
+    commands?.herdr ??
+    (async (...args) => {
+      const envelope = JSON.parse(await exec("herdr", args));
+      if (
+        envelope.error ||
+        !envelope.result ||
+        typeof envelope.result.type !== "string"
+      )
+        fail("malformed Herdr response");
+      return envelope.result;
+    });
+  if (
+    (await io.real(repo)) !== repo ||
+    (await git(repo, "rev-parse", "--show-toplevel")) !== repo ||
+    (await git(repo, "rev-parse", "--verify", `${b.base}^{commit}`)) !== b.base
+  )
+    fail("repository/base mismatch");
+  for (const path of b.references) await io.read(path);
+  if (b.coordinate === true) {
+    if (!Array.isArray(b.extensionPaths) || b.extensionPaths.length !== 2)
+      fail("Coordinate and Mailbox source required");
+    for (const path of b.extensionPaths) {
+      absolute(path);
+      await io.read(path);
+    }
+  }
+  const listed = await herdr("worktree", "list", "--cwd", repo);
+  if (
+    !listed.source?.repo_root ||
+    !Array.isArray(listed.worktrees) ||
+    !listed.worktrees.some((w) => w.path === repo)
+  )
+    fail("malformed worktree inventory");
+  const spaces = (await herdr("workspace", "list")).workspaces;
+  const agents = (await herdr("agent", "list")).agents;
+  if (
+    !Array.isArray(spaces) ||
+    spaces.filter((w) => w.focused).length !== 1 ||
+    !Array.isArray(agents) ||
+    agents.some((a) => a.name === b.agent)
+  )
+    fail("workspace/agent collision or malformed inventory");
+  if (b.kind === "implementation") {
+    const slug = (s) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+    if (
+      b.coordinate !== true &&
+      b.checkout !==
+        join(
+          io.home,
+          "worktrees",
+          slug(basename(listed.source.repo_root)),
+          slug(b.branch),
+        )
+    )
+      fail("noncanonical checkout path");
+    await git(repo, "check-ref-format", "--branch", b.branch);
+    if (b.coordinate === true) text(b.workspaceLabel, "workspace label", 100);
+    const refs = await git(
+      repo,
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+    );
+    if (
+      refs
+        .split("\n")
+        .some(
+          (r) =>
+            r === `refs/heads/${b.branch}` ||
+            (r.startsWith("refs/remotes/") && r.endsWith(`/${b.branch}`)),
+        ) ||
+      (await io.exists(b.checkout)) ||
+      listed.worktrees.some(
+        (w) => w.path === b.checkout || w.branch === b.branch,
+      )
+    )
+      fail("branch/path collision");
+  } else if ((await git(repo, "rev-parse", "HEAD")) !== b.base)
+    fail("research checkout base mismatch");
+  if (b.coordinate === true) await io.ignoreAtBase(repo, b.base, launchId);
+  else
+    await git(
+      repo,
+      "check-ignore",
+      "-q",
+      join(repo, ".handoffs", `launch-${launchId}.md`),
+    );
+  if (await io.exists(join(b.checkout, ".handoffs", `launch-${launchId}.md`)))
+    fail("handoff collision");
+  return { listed, spaces };
+}
+
 export async function launchWorker(
   { phase, repo, indexId, launchId },
   io = host,
@@ -251,6 +433,11 @@ export async function launchWorker(
     status: state?.status ?? "blocked",
     index: current.path,
     worker: state?.worker ?? null,
+    resources: state?.resources ?? null,
+    execution: state?.execution ?? null,
+    wait: state?.wait
+      ? { outcome: state.wait.outcome ?? "observed", reference: current.path }
+      : null,
     handoff: state?.handoff ?? null,
     next: state?.next ?? "Coordinator: reconcile preflight",
     effect: state?.intent?.effect ?? null,
@@ -413,80 +600,11 @@ export async function launchWorker(
     ].every((k) => a[k] === w[k]);
   try {
     if (phase === "prepare") {
-      if (
-        (await io.real(repo)) !== repo ||
-        (await git(repo, "rev-parse", "--show-toplevel")) !== repo ||
-        (await git(repo, "rev-parse", "--verify", `${b.base}^{commit}`)) !==
-          b.base
-      )
-        fail("repository/base mismatch");
-      for (const path of b.references) await io.read(path);
-      const listed = await herdr("worktree", "list", "--cwd", repo);
-      if (
-        !listed.source?.repo_root ||
-        !Array.isArray(listed.worktrees) ||
-        !listed.worktrees.some((w) => w.path === repo)
-      )
-        fail("malformed worktree inventory");
-      const spaces = (await herdr("workspace", "list")).workspaces;
-      const agents = (await herdr("agent", "list")).agents;
-      if (
-        !Array.isArray(spaces) ||
-        spaces.filter((w) => w.focused).length !== 1 ||
-        !Array.isArray(agents) ||
-        agents.some((a) => a.name === b.agent)
-      )
-        fail("workspace/agent collision or malformed inventory");
-      if (b.kind === "implementation") {
-        const slug = (s) =>
-          s
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, "");
-        if (
-          b.checkout !==
-          join(
-            io.home,
-            "worktrees",
-            slug(basename(listed.source.repo_root)),
-            slug(b.branch),
-          )
-        )
-          fail("noncanonical checkout path");
-        const refs = await git(
-          repo,
-          "for-each-ref",
-          "--format=%(refname)",
-          "refs/heads",
-          "refs/remotes",
-        );
-        if (
-          refs
-            .split("\n")
-            .some(
-              (r) =>
-                r === `refs/heads/${b.branch}` ||
-                (r.startsWith("refs/remotes/") && r.endsWith(`/${b.branch}`)),
-            ) ||
-          (await io.exists(b.checkout)) ||
-          listed.worktrees.some(
-            (w) => w.path === b.checkout || w.branch === b.branch,
-          )
-        )
-          fail("branch/path collision");
-      } else if ((await git(repo, "rev-parse", "HEAD")) !== b.base)
-        fail("research checkout base mismatch");
-      // Ignore coverage must already exist at the base. No mutation of shared excludes.
-      await git(
-        repo,
-        "check-ignore",
-        "-q",
-        join(repo, ".handoffs", `launch-${launchId}.md`),
+      const { listed, spaces } = await preflightWorker(
+        { brief: b, launchId },
+        io,
+        { git, herdr },
       );
-      if (
-        await io.exists(join(b.checkout, ".handoffs", `launch-${launchId}.md`))
-      )
-        fail("handoff collision");
       state = {
         briefDigest: fingerprint,
         status: "blocked",
@@ -513,6 +631,7 @@ export async function launchWorker(
               b.base,
               "--path",
               b.checkout,
+              ...(b.coordinate === true ? ["--label", b.workspaceLabel] : []),
               "--no-focus",
             )
           : await herdr(
@@ -551,6 +670,19 @@ export async function launchWorker(
       if (
         (await io.real(b.checkout)) !== b.checkout ||
         (await git(b.checkout, "rev-parse", "HEAD")) !== b.base ||
+        (b.coordinate === true &&
+          (await git(
+            b.checkout,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+          )) !==
+            (await git(
+              repo,
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir",
+            ))) ||
         (b.kind === "implementation" &&
           (await git(b.checkout, "branch", "--show-current")) !== b.branch)
       )
@@ -570,6 +702,9 @@ export async function launchWorker(
         state.resources.pane,
         "--timeout",
         String(b.bounds.startMs),
+        ...(b.coordinate === true
+          ? ["--", ...b.extensionPaths.flatMap((path) => ["--extension", path])]
+          : []),
       );
       await receipt("start", started);
       const w = await identity();
@@ -607,7 +742,11 @@ export async function launchWorker(
           `${b.assignmentId}/${b.revision}/${workerKey(state.worker)}`
       )
         fail("persisted reporting mismatch");
-      const coverage = coverageCheck(
+      const checkCoverage =
+        b.coordinate === true ? io.coverageCheck : coverageCheck;
+      if (typeof checkCoverage !== "function")
+        fail("Coordinate coverage integration unavailable");
+      const coverage = await checkCoverage(
         JSON.parse(current.values.Observation),
         b,
         state.worker,
@@ -628,6 +767,19 @@ export async function launchWorker(
         fail("handoff changed");
       if (
         (await git(b.checkout, "rev-parse", "HEAD")) !== b.base ||
+        (b.coordinate === true &&
+          (await git(
+            b.checkout,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+          )) !==
+            (await git(
+              repo,
+              "rev-parse",
+              "--path-format=absolute",
+              "--git-common-dir",
+            ))) ||
         (b.kind === "implementation" &&
           (await git(b.checkout, "branch", "--show-current")) !== b.branch)
       )
@@ -636,7 +788,7 @@ export async function launchWorker(
       state.prompt = `Read ${state.handoff} completely, then execute that managed assignment within its authority and reporting contract.`;
       state.baselineSeq = w.seq;
       await intent("prompt");
-      coverageCheck(
+      await checkCoverage(
         JSON.parse(current.values.Observation),
         b,
         state.worker,

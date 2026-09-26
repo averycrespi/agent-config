@@ -17,6 +17,11 @@ const need = (condition, message) => {
 };
 const integer = (n) => Number.isSafeInteger(n) && n >= 0;
 const text = (s) => typeof s === "string" && s.trim().length > 0;
+const reservedAttempts = (groups) =>
+  Object.values(groups).reduce(
+    (sum, g) => sum + (g.pending ? (g.pending.maxWakes ?? 1) : 0),
+    0,
+  );
 
 // Stored once as JSON in the index's Observation section; never a child CI ledger.
 export function allowance(deadline, maxAttempts) {
@@ -55,6 +60,10 @@ export function supervision(current, operation, now = Date.now()) {
           p.members.every(text) &&
           new Set(p.members).size === p.members.length &&
           text(p.reference) &&
+          (p.recurring === undefined || typeof p.recurring === "boolean") &&
+          (p.maxWakes === undefined ||
+            (integer(p.maxWakes) && p.maxWakes >= 1 && p.maxWakes <= 100)) &&
+          (p.recurring === true || (p.maxWakes ?? 1) === 1) &&
           integer(p.preparedAt) &&
           integer(p.cycleMs) &&
           p.cycleMs >= 1000 &&
@@ -76,9 +85,7 @@ export function supervision(current, operation, now = Date.now()) {
       );
   }
   need(
-    current.used +
-      Object.values(current.groups).filter((g) => g.pending).length <=
-      current.maxAttempts,
+    current.used + reservedAttempts(current.groups) <= current.maxAttempts,
     "corrupt reserved allowance",
   );
   const s = structuredClone(current);
@@ -90,10 +97,20 @@ export function supervision(current, operation, now = Date.now()) {
   const group = s.groups[operation.group];
   if (operation.action === "reserve") {
     need(!group?.pending, "reconcile existing registration first");
-    const reserved = Object.values(s.groups).filter((g) => g.pending).length;
+    const reserved = reservedAttempts(s.groups);
+    const maxWakes = operation.maxWakes ?? 1;
+    const recurring = operation.recurring ?? false;
+    need(
+      typeof recurring === "boolean" &&
+        integer(maxWakes) &&
+        maxWakes >= 1 &&
+        maxWakes <= 100 &&
+        (recurring || maxWakes === 1),
+      "invalid recurrence bounds",
+    );
     const remaining = s.deadline - now;
     need(
-      remaining >= 1000 && s.used + reserved < s.maxAttempts,
+      remaining >= 1000 && s.used + reserved + maxWakes <= s.maxAttempts,
       "supervision allowance exhausted",
     );
     need(
@@ -110,6 +127,7 @@ export function supervision(current, operation, now = Date.now()) {
         members: [...operation.members],
         reference: operation.reference,
         preparedAt: now,
+        ...(recurring ? { recurring, maxWakes } : {}),
         lifetimeMs: Math.min(remaining, 86400000),
         cycleMs: Math.min(remaining, 1500000),
         id: null,
@@ -132,8 +150,8 @@ export function supervision(current, operation, now = Date.now()) {
         integer(r.cycleMs) &&
         r.cycleMs >= 1000 &&
         r.cycleMs <= p.cycleMs &&
-        r.maxWakes === 1 &&
-        r.recurring === false &&
+        r.maxWakes === (p.maxWakes ?? 1) &&
+        r.recurring === (p.recurring ?? false) &&
         (!p.id ||
           (p.id === r.id &&
             p.registrationSignature === registrationIdentity(r))) &&
@@ -163,9 +181,9 @@ export function supervision(current, operation, now = Date.now()) {
         ["finished", "cancelled", "invalidated"].includes(r.status) &&
         !r.inFlight &&
         integer(r.wakes) &&
-        r.wakes <= 1 &&
-        r.maxWakes === 1 &&
-        r.recurring === false &&
+        r.wakes <= (p.maxWakes ?? 1) &&
+        r.maxWakes === (p.maxWakes ?? 1) &&
+        r.recurring === (p.recurring ?? false) &&
         r.attention?.disposition !== "pending",
       "reconcile inactivity/pending attention before accounting",
     );

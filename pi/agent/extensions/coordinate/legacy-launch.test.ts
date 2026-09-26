@@ -3,10 +3,12 @@ import { test } from "node:test";
 import { copyFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { savedFixture } from "../extensions/script/saved-fixture.ts";
-import { registerScriptProvider } from "../extensions/script/api.ts";
-// @ts-expect-error Existing coordination helpers are native JavaScript CLIs.
-import { launchWorker } from "../skills/coordinate-repo/scripts/launch-worker.js";
+import { savedFixture } from "../script/saved-fixture.ts";
+import { registerScriptProvider } from "../script/api.ts";
+import {
+  launchWorker,
+  preflightWorker,
+} from "../../skills/coordinate-repo/scripts/launch-worker.js";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const clone = (x: any) => JSON.parse(JSON.stringify(x));
@@ -118,6 +120,9 @@ function model(options: any = {}) {
       files.has(p) ||
       (p === brief.checkout && (created || options.pathCollision)),
     real: async (p: string) => (options.symlink ? "/elsewhere" : p),
+    ignoreAtBase: async () => {
+      if (options.unignored) throw Error("not ignored at selected base");
+    },
     read: async (p: string) => {
       if (!files.has(p)) throw Error("missing file");
       return files.get(p);
@@ -140,6 +145,7 @@ function model(options: any = {}) {
             : options.wrongBase
               ? "b".repeat(40)
               : base;
+        if (cmd === "check-ref-format") return "";
         if (cmd === "branch") return brief.branch;
         if (cmd === "for-each-ref")
           return options.branchCollision
@@ -197,6 +203,15 @@ function model(options: any = {}) {
           "w2:p1",
           "--timeout",
           "30000",
+          ...(brief.coordinate
+            ? [
+                "--",
+                ...brief.extensionPaths.flatMap((p: string) => [
+                  "--extension",
+                  p,
+                ]),
+              ]
+            : []),
         ]);
         return response("agent_started");
       }
@@ -348,7 +363,10 @@ async function setup(t: any, options: any = {}) {
   const h = await savedFixture(t);
   await h.config({ allowedProviders: ["builtins"] });
   await copyFile(
-    resolve(import.meta.dirname, "launch-worker.js"),
+    resolve(
+      import.meta.dirname,
+      "../../skills/coordinate-repo/scripts/legacy-launch-definition.js",
+    ),
     join(h.store, "launch-worker.js"),
   );
   const m = model(options);
@@ -431,7 +449,7 @@ test("actual saved definition prepares without prompt then submits with shared c
   assert.equal(m.effects.filter((s) => s === "prompt").length, 1);
 });
 
-test("research gets a separate unfocused workspace without branch/worktree creation", async (t) => {
+test("legacy-only research recovery gets a separate unfocused workspace without branch/worktree creation", async (t) => {
   const { m, call } = await setup(t, { research: true });
   assert.equal((await call()).status, "prepared");
   assert.ok(
@@ -589,3 +607,76 @@ test("changed worker after prepare never receives task", async (t) => {
   assert.notEqual((await call("submit")).status, "execution-confirmed");
   assert.ok(!m.effects.includes("prompt"));
 });
+
+test("Coordinate adapter preserves exact base, caller names/path, unfocused workspace and canonical handshake", async () => {
+  const m = model({
+    brief: {
+      coordinate: true,
+      branch: "feature/custom",
+      checkout: "/custom/new-checkout",
+      workspaceLabel: "Chosen label",
+      extensionPaths: ["/source/coordinate.ts", "/source/mailbox.ts"],
+    },
+  });
+  m.files.set("/source/coordinate.ts", "trusted coordinate");
+  m.files.set("/source/mailbox.ts", "trusted mailbox");
+  let coverageChecks = 0;
+  m.io.coverageCheck = async () => {
+    coverageChecks++;
+    return { id: "actual-recurring" };
+  };
+  const prepared = await launchWorker({ ...m.request, phase: "prepare" }, m.io);
+  assert.equal(prepared.status, "prepared");
+  const create = m.commands.find(
+    ([, a]) => a[0] === "worktree" && a[1] === "create",
+  )[1];
+  assert.deepEqual(
+    create.slice(create.indexOf("--base"), create.indexOf("--base") + 2),
+    ["--base", "a".repeat(40)],
+  );
+  assert.ok(
+    create.includes("/custom/new-checkout") &&
+      create.includes("Chosen label") &&
+      create.includes("--no-focus"),
+  );
+  const start = m.commands.find(
+    ([, a]) => a[0] === "agent" && a[1] === "start",
+  )[1];
+  assert.ok(
+    start.includes("/source/coordinate.ts") &&
+      start.includes("/source/mailbox.ts"),
+  );
+  assert.match(m.files.get(prepared.handoff!)!, /Assignment: example\/1/);
+  m.cover();
+  const submitted = await launchWorker({ ...m.request, phase: "submit" }, m.io);
+  assert.equal(submitted.status, "execution-confirmed");
+  assert.equal(submitted.execution?.submittedEntry, "submitted");
+  assert.equal(submitted.execution?.activity, true);
+  assert.equal(submitted.execution?.transcript, submitted.worker?.transcript);
+  assert.deepEqual(submitted.resources, {
+    workspace: "w2",
+    pane: "w2:p1",
+    terminal: "term-2",
+  });
+  assert.equal(submitted.wait?.reference, submitted.index);
+  assert.equal(coverageChecks, 2);
+  assert.equal(m.effects.filter((x) => x === "prompt").length, 1);
+  await launchWorker({ ...m.request, phase: "submit" }, m.io);
+  assert.equal(m.effects.filter((x) => x === "prompt").length, 1);
+});
+
+for (const options of [
+  { pathCollision: true },
+  { branchCollision: true },
+  { unignored: true },
+  { brief: { references: ["/missing-source"] } },
+]) {
+  test(`shared deterministic preflight writes nothing: ${JSON.stringify(options)}`, async () => {
+    const m = model(options);
+    await assert.rejects(
+      preflightWorker({ brief: m.brief, launchId: "launch-1" }, m.io),
+    );
+    assert.equal(m.writes(), 0);
+    assert.deepEqual(m.effects, []);
+  });
+}

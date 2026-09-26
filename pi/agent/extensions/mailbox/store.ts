@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  observeBatch,
+  type BatchCheckpoint,
+  type BatchPolicy,
+} from "./supervision.ts";
+import {
   closeSync,
   constants,
   fsyncSync,
@@ -286,6 +291,15 @@ export class MailboxStore {
       pending: state?.rows.length ?? 0,
       oldestAt: state?.rows[0]?.at ?? null,
     };
+  }
+  observe(
+    mailbox: string,
+    previous: BatchCheckpoint | null = null,
+    policy: Partial<BatchPolicy> = {},
+    now = Date.now(),
+  ) {
+    address(mailbox);
+    return observeBatch(mailbox, this.read(mailbox), previous, policy, now);
   }
   ack(mailbox: string, ids: string[]) {
     address(mailbox);

@@ -1,109 +1,76 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
-
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-// These guard discoverability and required instruction placement, not model behavior.
-test("global async guidance and conversational skills retain dependency and authority boundaries", async () => {
-  const global = await read("../../AGENTS.md");
-  assert.match(global, /continue useful authorized work/);
-  assert.match(
-    global,
-    /end the turn and let the supported notification resume it/,
+// Discovery/placement only; these assertions do not prove model behavior.
+test("Coordinate replaces active skill and saved launch entrypoint without losing legacy recovery", async () => {
+  await assert.rejects(access(new URL("./SKILL.md", import.meta.url)), {
+    code: "ENOENT",
+  });
+  await assert.rejects(
+    access(new URL("../../scripts/launch-worker.js", import.meta.url)),
+    { code: "ENOENT" },
   );
-  assert.match(global, /Yielding is not task completion/);
-  assert.match(global, /Silence or cancellation never grants permission/);
+  assert.match(await read("./RECOVERY.md"), /not an active skill/);
   assert.match(
-    global,
-    /Cancel and reconcile continuation for input-blocked work/,
+    await read("./references/launch-script.md"),
+    /recovery artifact/,
   );
-  for (const path of [
-    "../clarify/references/protocol.md",
-    "../challenge/references/protocol.md",
-    "../spin-out/SKILL.md",
-    "../spin-out/references/decisions.md",
-    "./SKILL.md",
-  ]) {
-    const text = await read(path);
-    assert.doesNotMatch(text, /ask_user|ask-user/);
-    assert.match(text, /conversation/);
-  }
-});
-test("routing metadata exposes managed continuity and standalone launch mechanics", async () => {
-  const coordinate = await read("./SKILL.md");
-  const spinOut = await read("../spin-out/SKILL.md");
-  const description = (text) => text.match(/^description: (.+)$/m)?.[1];
-  assert.match(description(coordinate), /already-active managed coordination/);
-  assert.match(description(coordinate), /exactly one worker/);
-  assert.match(
-    description(spinOut),
-    /Preserve already-active managed coordination/,
-  );
-  assert.match(coordinate, /unless the human explicitly changes mode/);
-  assert.match(spinOut, /Before choosing standalone mode/);
-  assert.match(spinOut, /launch mechanics, not a mode switch/);
-  assert.match(spinOut, /Outside active managed coordination/);
-  assert.match(coordinate, /worker owns CI monitoring/);
-  assert.match(
-    coordinate,
-    /parent owns blocker\/result supervision and acceptance/,
-  );
+  const coordinate = await read("../../extensions/coordinate/README.md");
+  for (const pattern of [
+    /coordinate-enable/,
+    /request-local/,
+    /not a second execution ledger/,
+    /no automatic cutover/,
+    /unrun unless separately authorized/,
+  ])
+    assert.match(coordinate, pattern);
 });
 
-test("shared launch gates managed completion without changing standalone or serial policy", async () => {
-  const launch = await read("../spin-out/references/launch.md");
-  const gate = launch
-    .split("## Managed launch completion gate\n")[1]
-    ?.split("\n## ")[0];
-  assert.ok(gate, "shared launch must expose a managed completion gate");
-  for (const requirement of [
-    /current assignment\/revision and reporting contract/,
-    /exact worker session\/incarnation/,
-    /attached host receipt/,
-    /before the task prompt/,
-    /task-correlated execution confirmation/,
-    /delivery TODO remains open/,
-    /retain unprompted resources/,
-    /no replay or restart/,
-    /original deadline, consumed attempts and uncertain reservations/,
-  ])
-    assert.match(gate, requirement);
-  assert.match(launch, /Standalone mode needs no coordinator\/index/);
+test("routing preserves standalone spin-out and thin serial stack policy", async () => {
+  const spin = await read("../spin-out/SKILL.md");
+  assert.match(spin, /Before choosing standalone mode/);
+  assert.match(spin, /coordinate.*spawn/);
+  assert.match(spin, /Standalone questions use ordinary conversation/);
   const stack = await read("../work-stack/SKILL.md");
-  assert.match(stack, /exactly one active ticket child/);
-  assert.match(
-    stack,
-    /do not commission duplicate delivery or competing parent CI monitors/,
-  );
-  const coordinate = await read("./SKILL.md");
-  assert.match(coordinate, /explicit mode change.*recovery\/handover/s);
-  assert.match(coordinate, /Never automatically adopt existing workers/);
+  for (const pattern of [
+    /exactly one active ticket child/,
+    /base.*explicitly/,
+    /verified predecessor head/,
+    /incremental diff/,
+    /cumulative resulting tree/,
+    /Released child ownership/,
+    /changed predecessor pauses/,
+    /coordinate complete/,
+  ])
+    assert.match(stack, pattern);
 });
 
-test("routing qualification scenarios and changed local links remain discoverable", async () => {
-  const recipe = await read("./references/verification.md");
-  for (const scenario of [
-    "Active coordination → one delegation",
-    "Genuinely standalone delegation",
-    "Missing managed launch prerequisites",
-    "Explicit opt-out or handover",
-    "Serial stack and multiple workers",
+test("role policy retains authority, nonblocking questions and persist-before-ACK without forced turns", async () => {
+  const role = await read("../../extensions/coordinate/ROLES.md");
+  for (const pattern of [
+    /persist.*before ACK/i,
+    /ordinary conversation/,
+    /Do not use modal UI/,
+    /no forced reporting turn/i,
+    /never.*replenish budgets/i,
+    /released ownership\/no-further-writes/,
+    /uncertain prompt replay/,
   ])
-    assert.ok(recipe.includes(scenario), scenario);
-  assert.match(recipe, /without the expected outcomes/);
-  assert.match(recipe, /do not prove model compliance/);
+    assert.match(role, pattern);
   for (const path of [
-    "./SKILL.md",
+    "./RECOVERY.md",
     "../spin-out/SKILL.md",
     "../spin-out/references/launch.md",
-    "./references/verification.md",
+    "../../extensions/coordinate/README.md",
+    "../../extensions/coordinate/ROLES.md",
     "../../../README.md",
   ]) {
     const url = new URL(path, import.meta.url);
-    const text = await readFile(url, "utf8");
-    for (const [, target] of text.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g)) {
-      if (!target.includes(":")) await readFile(new URL(target, url));
-    }
+    for (const [, target] of (await readFile(url, "utf8")).matchAll(
+      /\]\(([^)#]+)(?:#[^)]*)?\)/g,
+    ))
+      if (!target.includes(":")) await access(new URL(target, url));
   }
 });

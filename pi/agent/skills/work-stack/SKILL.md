@@ -5,7 +5,7 @@ description: Use when the user explicitly requests an ordered series of tickets 
 
 # Work stack
 
-Use the [shared coordination mechanics](../coordinate-repo/SKILL.md) directly in this session with the serial policy below. Do not introduce an intermediate manager. Share the [exact-base launch procedure](../spin-out/references/launch.md), [managed report/question protocol](../spin-out/references/decisions.md), [supervision/accounting](../coordinate-repo/references/supervision.md), [index persistence](../coordinate-repo/references/index.md) and [explicit recovery](../coordinate-repo/references/recovery.md); do not maintain stack-specific copies. One child owns implementation and [work-ticket delivery](../work-ticket/SKILL.md); the parent owns ordering/control facts only.
+Use the user-enabled [Coordinate extension](../../extensions/coordinate/README.md) directly in this session with the serial policy below. Ask the human to run `/coordinate-enable` if unbound; an agent cannot enable it. Existing runs retain [legacy recovery](../coordinate-repo/RECOVERY.md), without automatic cutover. Do not introduce an intermediate manager. Share the [exact-base launch procedure](../spin-out/references/launch.md), [managed report/question protocol](../spin-out/references/decisions.md), [supervision/accounting](../coordinate-repo/references/supervision.md), [index persistence](../coordinate-repo/references/index.md) and [explicit recovery](../coordinate-repo/references/recovery.md); do not maintain stack-specific copies. One child owns implementation and [work-ticket delivery](../work-ticket/SKILL.md); the parent owns ordering/control facts only.
 
 ## Resolve ordered scope
 
@@ -15,7 +15,7 @@ Record actual authority and local-only or PR-ready boundary per child. Work-tick
 
 ## Serial launch policy
 
-Use the shared mailbox-based launch/report mechanics with exactly one active ticket child. Store stack-specific facts in the [compact stack policy section](references/checkpoint.md), not a second delivery ledger. Include the explicit mailbox, assignment ID/revision, child checkpoint, readable shared contracts, canonical criteria and selected finite child repair/CI policy in each handoff. Standalone spin-outs remain standalone.
+Use Coordinate `spawn` and shared mailbox-based reporting with exactly one active ticket child. Supply one complete Markdown brief and caller-chosen branch/path/workspace/worker names, plus an existing recurring supervision ID. Pass `base` explicitly as the verified immutable predecessor SHA, never rely on the coordinator checkout's default HEAD. Store stack-specific facts in the [compact stack policy section](references/checkpoint.md), not a second delivery ledger. Include the explicit mailbox, assignment ID/revision, child checkpoint, readable shared contracts, canonical criteria and selected finite child repair/CI policy in each handoff. Standalone spin-outs remain standalone.
 
 Ticket one starts at the verified initial SHA and target. Each successor starts at the **verified predecessor head** and targets its predecessor branch for PR publication. Preserve separate creation SHA, source branch and PR target. Reconcile all prior heads, ancestry and outgoing history before creation; branch labels alone are insufficient. Required source unavailable in the checkout blocks launch.
 
@@ -25,7 +25,7 @@ Review each child's incremental diff against its predecessor/base; run required 
 
 A question, setup milestone, commit, draft PR, mailbox message, Monitor timeout or runtime settlement never permits advancement. A pending question blocks successor launch; use the shared conversational answer/provenance/uncertain-relay protocol with the same owner. No replacement child or prompt replay.
 
-Before the next child, require:
+Use `coordinate complete` only after inspecting the exact result revision/evidence and release/no-further-writes disposition. Before the next child, require:
 
 - Exact assigned branch, creation base, final head, ancestry, intended clean tree and incremental history reconciled.
 - Required cumulative-tree checks and independent incremental review covering the accepted revision, with failures/exceptions disclosed.
