@@ -4,7 +4,7 @@ Trusted sibling extensions import `registerMonitorProvider` and types from `../m
 
 ## Read-only local inspection
 
-`inspectMonitor(pi, id, expectedSource)` from `api.ts` returns a cloned `{receipt, sourceMatches}` for a retained job in this process, otherwise `undefined`. It uses private `monitor:inspect-v1`; source matching trims outer whitespace and never exposes the registered source. Ended jobs release source and cannot qualify an active recipe. Inspection cannot start, rearm, cancel or deliver anything. Absence after reload/navigation is unknown, not proof that an old observer is inactive. Coordinate uses this narrow seam to qualify its canonical recurring Mailbox recipe; callers still own authority and cumulative allowances. No guest API or general service registry is added.
+`inspectMonitor(pi, id, expectedSource)` from `api.ts` returns a cloned `{receipt, sourceMatches}` for a retained job in this process, otherwise `undefined`. It uses private `monitor:inspect-v1`; source matching trims outer whitespace and never exposes the registered source. Ended jobs release source and cannot qualify an active recipe. Inspection cannot start, rearm, cancel or deliver anything. Absence after reload/navigation is unknown, not proof that an old observer is inactive. Trusted callers still own authority and cumulative allowances; this seam grants neither control nor observation authority. No guest API or general service registry is added.
 
 ## Typed event registration
 

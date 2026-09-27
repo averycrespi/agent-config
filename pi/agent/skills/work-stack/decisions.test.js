@@ -6,11 +6,9 @@ const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 test("stack shares coordination mechanics while retaining serial release gates", async () => {
   const stack = await read("./SKILL.md");
   for (const path of [
-    "extensions/coordinate/README.md",
-    "spin-out/references/launch.md",
-    "spin-out/references/decisions.md",
-    "extensions/coordinate/README.md#supervision-and-reports",
-    "extensions/coordinate/README.md#persistence-and-recovery",
+    "spawn-agent/SKILL.md",
+    "spawn-agent/references/decisions.md",
+    "extensions/mailbox/README.md",
   ])
     assert.ok(stack.includes(path), path);
   for (const pattern of [
@@ -29,7 +27,7 @@ test("stack shares coordination mechanics while retaining serial release gates",
   );
 });
 test("shared questions require durable incorporation and provenance rather than modal interaction", async () => {
-  const shared = await read("../spin-out/references/decisions.md");
+  const shared = await read("../spawn-agent/references/decisions.md");
   for (const pattern of [
     /before ack/,
     /TODO items/,
@@ -42,10 +40,7 @@ test("shared questions require durable incorporation and provenance rather than 
   ])
     assert.match(shared, pattern);
   assert.doesNotMatch(shared, /PI_ASK_USER_MODE|sessions\.lifecycle/);
-  const launch = await read("../spin-out/references/launch.md");
-  assert.match(launch, /mailbox address, assignment ID\/revision/);
-  assert.match(
-    launch,
-    /Standalone spin-outs leave ordinary interactive questions unchanged/,
-  );
+  const launch = await read("../spawn-agent/SKILL.md");
+  assert.match(launch, /parent mailbox address/);
+  assert.match(launch, /send its task separately/i);
 });

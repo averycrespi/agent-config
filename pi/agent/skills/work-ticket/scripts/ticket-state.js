@@ -19,7 +19,7 @@ import {
   remainingWaitMs,
 } from "./ci-observation.js";
 import { WAIT_MS } from "./ci-monitor.js";
-import { validateCoordination } from "../../spin-out/scripts/coordination.js";
+import { validateCoordination } from "./coordination.js";
 
 const LEGACY_WAIT_MS = 30 * 60_000;
 const LIMIT = 64 * 1024;

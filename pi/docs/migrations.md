@@ -2,11 +2,15 @@
 
 Guidance for older installations. For current components, see the [Pi configuration reference](../README.md). Installation, Stow linking, settings changes and running-session reloads remain explicit user actions; repository edits do not perform them.
 
+## Coordinate and spin-out retirement
+
+For new persistent workers use the [spawn-agent skill](../agent/skills/spawn-agent/SKILL.md) and saved Script, then send tasks separately through Mailbox. Coordinate role commands, bindings, registry and widget are removed; no replacement registry or automatic migration exists. Keep historical private records and existing runtime assignments under their original reporting contracts. Candidate source changes do not reload running sessions. Removing stale installed links, installing/linking candidate configuration and reloading remain explicit user actions. Do not terminate, adopt or clean up existing workers automatically.
+
 ## Scheduled tasks and Ask User retirement
 
 The `scheduled-tasks` and `ask-user` extensions, their tools/commands, and the bundled `manage-scheduled-tasks` skill are removed. During an explicitly authorized transition, remove any explicit extension load paths and scheduler settings/environment overrides. If installed, remove only the managed `BEGIN PI SCHEDULED TASKS` / `END PI SCHEDULED TASKS` crontab block before deleting its CLI files, and reconcile active runners. Preserve task definitions, handoffs, run artifacts and session history; repository removal does not delete that data or change crontab.
 
-Questions now use ordinary conversation: give options/recommendations when useful, identify blocked scope, and continue independent authorized work. Managed workers retain the [mailbox question protocol](../agent/skills/spin-out/references/decisions.md); unresolved questions and uncertain relays remain pending. Ask User's process-local input events and Herdr blocked signals have no replacement producer. Do not infer approval from silence or replay historical tool calls. Reload is explicit and remains user-owned. Monitor is session-bound observation/continuation, not a replacement cron scheduler.
+Questions now use ordinary conversation: give options/recommendations when useful, identify blocked scope, and continue independent authorized work. Managed workers retain the [mailbox question protocol](../agent/skills/spawn-agent/references/decisions.md); unresolved questions and uncertain relays remain pending. Ask User's process-local input events and Herdr blocked signals have no replacement producer. Do not infer approval from silence or replay historical tool calls. Reload is explicit and remains user-owned. Monitor is session-bound observation/continuation, not a replacement cron scheduler.
 
 ## Background to Monitor
 

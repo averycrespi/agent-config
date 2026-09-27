@@ -1,6 +1,6 @@
 # Work-stack verification
 
-Use [shared coordination verification](../../../extensions/coordinate/README.md#verification) for mailbox durability, batching, TODO obligations and explicit reconciliation. Discovery/link checks establish packaging, not model obedience. Preserve work-ticket publication/CI and settlement regressions; do not substitute fixture evidence for live ticket delivery.
+Use [shared spawn verification](../../spawn-agent/SKILL.md#verification) for mailbox durability, batching, TODO obligations and explicit reconciliation. Discovery/link checks establish packaging, not model obedience. Preserve work-ticket publication/CI and settlement regressions; do not substitute fixture evidence for live ticket delivery.
 
 ## Stack-specific scenarios
 

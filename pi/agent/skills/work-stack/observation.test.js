@@ -4,22 +4,20 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
-test("stack uses automatic session messaging without parent observation setup", async () => {
+test("stack uses separate automatic messaging without role or observer setup", async () => {
   const stack = await read("./SKILL.md");
-  const launch = await read("../spin-out/references/launch.md");
-  const decisions = await read("../spin-out/references/decisions.md");
-  const tool = await read("../../extensions/coordinate/index.ts");
-  const spawn = await read("../../extensions/coordinate/launch.ts");
+  const launch = await read("../spawn-agent/SKILL.md");
+  const decisions = await read("../spawn-agent/references/decisions.md");
   assert.match(stack, /do not create a parent mailbox Monitor/);
   assert.match(stack, /Child execution\/CI budgets remain independent/);
-  assert.match(launch, /automatic session mailbox readiness before submission/);
+  assert.match(launch, /healthy automatic Mailbox listening in both sessions/);
   assert.match(decisions, /messages in both directions/);
   assert.match(decisions, /full session UUID/);
   assert.match(decisions, /same-ID redelivery against prior application/);
   assert.doesNotMatch(
-    tool + spawn,
-    /supervision_id|inspectMonitor|describeScriptProviders|mailboxSupervision/,
+    stack + launch + decisions,
+    /coordinate (?:spawn|complete)|coordinate-enable|extensions\/coordinate/,
   );
-  assert.match(spawn, /result\?\.listening && result.sessionId === mailbox/);
-  assert.match(tool, /further_writes === false/);
+  assert.match(stack, /release\/no-further-writes/);
+  assert.match(launch, /Spawning itself writes no handoff and submits no task/);
 });

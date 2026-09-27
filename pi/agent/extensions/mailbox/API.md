@@ -4,7 +4,7 @@ The direct tool and optional Script methods are documented in [README.md](README
 
 ## Read-only local inspection
 
-`inspectMailbox(pi, mailbox)` from `api.ts` returns `{pending, sessionId, listening}` when the loaded extension is active, otherwise `undefined`. `pending` counts every unacknowledged message, including exhausted/visibility-held ones. `listening` is true only for this runtime's owned session-ID inbox with healthy delivery. Coordinate requires matching session identity and listening before launch; arbitrary address storage is not automatic listening.
+`inspectMailbox(pi, mailbox)` from `api.ts` returns `{pending, sessionId, listening}` when the loaded extension is active, otherwise `undefined`. `pending` counts every unacknowledged message, including exhausted/visibility-held ones. `listening` is true only for this runtime's owned session-ID inbox with healthy delivery. Callers must match session identity and listening when qualifying readiness; arbitrary address storage is not automatic listening.
 
 The private `mailbox:inspect-v1` query validates the address and returns no bodies. Inspection never sends, ACKs, creates storage or starts observation. Storage errors propagate; absence means unavailable, not an empty inbox. This same-process seam is not an authorization boundary.
 

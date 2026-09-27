@@ -9,7 +9,7 @@ for (const name of [
   "shape-ticket",
   "work-ticket",
   "work-stack",
-  "spin-out",
+  "spawn-agent",
   "review",
   "challenge",
   "simplify",
@@ -39,12 +39,20 @@ for (const name of [
 }
 
 test("retired skill entrypoints and Goal extension are absent", async () => {
-  for (const name of ["dispatch-ticket", "advance-ticket", "coordinate-repo"]) {
+  for (const name of [
+    "dispatch-ticket",
+    "advance-ticket",
+    "coordinate-repo",
+    "spin-out",
+  ]) {
     await assert.rejects(access(resolve(root, name, "SKILL.md")), {
       code: "ENOENT",
     });
   }
   await assert.rejects(access(resolve(root, "../extensions/goal")), {
+    code: "ENOENT",
+  });
+  await assert.rejects(access(resolve(root, "../extensions/coordinate")), {
     code: "ENOENT",
   });
   await access(resolve(root, "work-ticket/scripts/ticket-state.js"));

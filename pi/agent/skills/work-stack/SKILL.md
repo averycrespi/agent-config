@@ -5,7 +5,7 @@ description: Use when the user explicitly requests an ordered series of tickets 
 
 # Work stack
 
-Use the user-enabled [Coordinate extension](../../extensions/coordinate/README.md) directly in this session with the serial policy below. Ask the human to run `/coordinate-enable` if unbound; an agent cannot enable it. Existing runs retain original evidence, without automatic cutover. Do not introduce an intermediate manager. Share the [exact-base launch procedure](../spin-out/references/launch.md), [managed reporting guidance](../spin-out/references/decisions.md), [automatic session messaging](../../extensions/coordinate/README.md#supervision-and-reports) and [explicit recovery](../../extensions/coordinate/README.md#persistence-and-recovery). Coordinate maintains worker facts automatically; TODO tracks unresolved actions. Do not maintain stack-specific bookkeeping scripts or copied observation ledgers. One child owns implementation and [work-ticket delivery](../work-ticket/SKILL.md); the parent owns ordering/control facts only.
+Use [spawn-agent](../spawn-agent/SKILL.md) directly in this session with the serial policy below. Existing runs retain original evidence and reporting contracts, without automatic cutover. Do not introduce an intermediate manager. Share its exact-base launch and recovery procedure, [reporting guidance](../spawn-agent/references/decisions.md) and [automatic session messaging](../../extensions/mailbox/README.md). Retain worker identities and verified result references in the conversation or existing checkpoints; TODO tracks unresolved actions. Do not maintain stack-specific bookkeeping scripts or copied observation ledgers. One child owns implementation and [work-ticket delivery](../work-ticket/SKILL.md); the parent owns ordering/control facts only.
 
 ## Resolve ordered scope
 
@@ -15,7 +15,7 @@ Record actual authority and local-only or PR-ready boundary per child. Work-tick
 
 ## Serial launch policy
 
-Use Coordinate `spawn` and shared mailbox-based reporting with exactly one active ticket child. Supply one complete Markdown brief and caller-chosen branch/path/workspace/worker names, with automatic session Mailbox readiness. Pass `base` explicitly as the verified immutable predecessor SHA, never rely on the coordinator checkout's default HEAD. Keep [stack policy](references/checkpoint.md) in complete briefs and the conversation, not a second delivery ledger. Include the explicit mailbox, assignment ID/revision, child checkpoint, readable shared contracts, canonical criteria and selected finite child repair/CI policy in each handoff. Standalone spin-outs remain standalone.
+Use the saved `spawn-agent` Script and shared mailbox-based reporting with exactly one active ticket child. Supply caller-chosen branch/path/workspace/worker names, then send one complete Markdown brief separately through Mailbox after inspecting launch readiness and identity. Pass `base` explicitly as the verified immutable predecessor SHA, never rely on the coordinator checkout's default HEAD. Keep [stack policy](references/checkpoint.md) in complete briefs and the conversation, not a second delivery ledger. Include the explicit mailbox, assignment ID/revision, child checkpoint, readable shared contracts, canonical criteria and selected finite child repair/CI policy in each handoff.
 
 Ticket one starts at the verified initial SHA and target. Each successor starts at the **verified predecessor head** and targets its predecessor branch for PR publication. Preserve separate creation SHA, source branch and PR target. Reconcile all prior heads, ancestry and outgoing history before creation; branch labels alone are insufficient. Required source unavailable in the checkout blocks launch.
 
@@ -25,7 +25,7 @@ Review each child's incremental diff against its predecessor/base; run required 
 
 A question, setup milestone, commit, draft PR, mailbox message, Monitor timeout or runtime settlement never permits advancement. A pending question blocks successor launch; use the shared conversational answer/provenance/uncertain-relay protocol with the same owner. No replacement child or prompt replay.
 
-Use `coordinate complete` only after inspecting the exact result revision/evidence and release/no-further-writes disposition. Before the next child, require:
+Record acceptance in the conversation or existing checkpoint only after inspecting the exact result revision/evidence and release/no-further-writes disposition. Before the next child, require:
 
 - Exact assigned branch, creation base, final head, ancestry, intended clean tree and incremental history reconciled.
 - Required cumulative-tree checks and independent incremental review covering the accepted revision, with failures/exceptions disclosed.
@@ -38,6 +38,6 @@ Use automatic Mailbox listening across the stack; do not create a parent mailbox
 
 ## Finish
 
-Recover with the shared explicit-takeover procedure: read Coordinate status, TODO, mailbox, original worker evidence and any separately owned observer receipts before control. No automatic migration or failover. Report each ticket's status, branch/target/base/exact head, accepted evidence/release references, blockers/exceptions and next actor/action. Preserve predecessor-first merge order without merging; green against a stack base is not independent readiness for main. Later merge/restack/retarget needs authority and fresh qualification. Retain resources; cleanup is separate.
+Recover with the shared explicit-takeover procedure: read existing conversation/checkpoints, TODO, mailbox, original worker evidence and any separately owned observer receipts before control. No automatic migration or failover. Report each ticket's status, branch/target/base/exact head, accepted evidence/release references, blockers/exceptions and next actor/action. Preserve predecessor-first merge order without merging; green against a stack base is not independent readiness for main. Later merge/restack/retarget needs authority and fresh qualification. Retain resources; cleanup is separate.
 
-Use the [shared verification and live recipe](../../extensions/coordinate/README.md#verification) plus [stack-specific scenarios](references/verification.md). Fixtures do not prove live model compliance or actual ticket delivery.
+Use the [shared verification and live recipe](../spawn-agent/SKILL.md#verification) plus [stack-specific scenarios](references/verification.md). Fixtures do not prove live model compliance or actual ticket delivery.
