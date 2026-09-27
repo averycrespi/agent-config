@@ -5,11 +5,7 @@ import {
   readExtensionSettings,
   readPiSettingsFiles,
 } from "../_shared/config.ts";
-import {
-  DEFAULT_MAX_CONCURRENCY,
-  DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
-  MAX_CONCURRENCY,
-} from "./types.ts";
+import { DEFAULT_MAX_CONCURRENCY, MAX_CONCURRENCY } from "./types.ts";
 
 export const WORKFLOWS_EXTENSION_NAME = "workflows";
 
@@ -19,7 +15,6 @@ export type WorkflowConfig = {
   maxConcurrency: number;
   maxTokensPerRun: number;
   maxAgentsPerRun: number;
-  maxVisibleSettledAgents: number;
   userWorkflowsDir: string;
 };
 
@@ -29,7 +24,6 @@ export const DEFAULT_WORKFLOW_CONFIG: WorkflowConfig = {
   maxConcurrency: DEFAULT_MAX_CONCURRENCY,
   maxTokensPerRun: 0,
   maxAgentsPerRun: 100,
-  maxVisibleSettledAgents: DEFAULT_MAX_VISIBLE_SETTLED_AGENTS,
   userWorkflowsDir: join(getAgentDir(), "workflows"),
 };
 
@@ -85,7 +79,7 @@ function parseConcurrency(value: unknown, warnings: string[]): number {
 
 function parseLimit(
   value: unknown,
-  field: "maxTokensPerRun" | "maxAgentsPerRun" | "maxVisibleSettledAgents",
+  field: "maxTokensPerRun" | "maxAgentsPerRun",
   warnings: string[],
 ): number {
   const parsed = parseNonNegativeInteger(value);
@@ -142,7 +136,6 @@ export function readEnvSettings(
   const limitFields = [
     ["WORKFLOWS_MAX_TOKENS_PER_RUN", "maxTokensPerRun"],
     ["WORKFLOWS_MAX_AGENTS_PER_RUN", "maxAgentsPerRun"],
-    ["WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS", "maxVisibleSettledAgents"],
   ] as const;
   for (const [environment, field] of limitFields) {
     const raw = env[environment];
@@ -152,6 +145,10 @@ export function readEnvSettings(
     else warnings.push(`Ignoring invalid ${environment}.`);
   }
 
+  if (env.WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS !== undefined)
+    warnings.push(
+      "WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS was removed with the foreground progress layout.",
+    );
   const workflowsDir = env.WORKFLOWS_USER_WORKFLOWS_DIR;
   if (workflowsDir !== undefined) {
     if (workflowsDir.trim()) settings.userWorkflowsDir = workflowsDir.trim();
@@ -183,6 +180,10 @@ export function normalizeWorkflowConfig(
       );
     }
   }
+  if (value.maxVisibleSettledAgents !== undefined)
+    warnings.push(
+      "maxVisibleSettledAgents was removed with the foreground progress layout.",
+    );
   return {
     workflowTimeoutMs: parsePositiveField(
       value.workflowTimeoutMs,
@@ -203,11 +204,6 @@ export function normalizeWorkflowConfig(
     maxAgentsPerRun: parseLimit(
       value.maxAgentsPerRun,
       "maxAgentsPerRun",
-      warnings,
-    ),
-    maxVisibleSettledAgents: parseLimit(
-      value.maxVisibleSettledAgents,
-      "maxVisibleSettledAgents",
       warnings,
     ),
     userWorkflowsDir: parseWorkflowsDir(value.userWorkflowsDir, cwd, warnings),

@@ -7,6 +7,8 @@ import {
   plural,
   toolCall,
   outcomeSections,
+  displayBody,
+  getResultTextComponent,
 } from "../_shared/render.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import type { Message } from "./store.ts";
@@ -60,10 +62,10 @@ function payload(result: AgentToolResult<unknown>): Record<string, unknown> {
   }
 }
 const failures: Record<string, string> = {
-  invalid_input: "Failed: invalid input",
-  storage_failed: "Failed: storage unavailable",
-  mailbox_full: "Failed: mailbox full",
-  publication_unknown: "Send outcome unknown",
+  invalid_input: "failed: invalid input",
+  storage_failed: "failed: storage unavailable",
+  mailbox_full: "failed: mailbox full",
+  publication_unknown: "send outcome unknown; no replay",
 };
 
 export function renderMailboxCall(
@@ -89,19 +91,22 @@ export function renderMailboxResult(
   const value = payload(result);
   const details = record(result.details);
   const lines: string[] = [];
-  const add = (text: string) => lines.push(theme.fg("muted", text));
+  const add = (text: string) => lines.push(theme.fg("text", text));
   const finish = (
     summary: string | string[],
-    color: "muted" | "success" | "warning" | "error",
+    color: "muted" | "success" | "warning" | "error" | "accent",
   ) =>
-    getTruncatedText(context.lastComponent, [
-      outcomeSections(
-        theme,
-        Array.isArray(summary) ? summary : [summary],
-        color,
-      ),
-      ...lines,
-    ]);
+    getResultTextComponent(
+      context.lastComponent,
+      [
+        outcomeSections(
+          theme,
+          Array.isArray(summary) ? summary : [summary],
+          color,
+        ),
+      ],
+      lines,
+    );
   const error = details.error ?? value.error;
   if (
     context.isError ||
@@ -121,38 +126,65 @@ export function renderMailboxResult(
       add(
         `Untrusted diagnostic: ${label(typeof error === "string" ? error : getResultText(result), 600)}`,
       );
+    if (code === "publication_unknown")
+      return getResultTextComponent(
+        context.lastComponent,
+        [
+          [
+            ...(context.isError || error ? [theme.fg("error", "failed")] : []),
+            theme.fg("warning", failures.publication_unknown),
+          ].join(theme.fg("dim", " · ")),
+        ],
+        lines,
+      );
     return finish(
       Object.hasOwn(failures, code)
         ? failures[code]
-        : "Failed: mailbox operation",
+        : "failed: mailbox operation",
       "error",
     );
   }
   if (isPartial) {
     return finish(
       args.action === "send"
-        ? "Sending..."
+        ? "sending…"
         : args.action === "ack"
-          ? "Acknowledging..."
+          ? "acknowledging…"
           : args.action === "list"
-            ? "Listing..."
-            : "Working...",
-      "warning",
+            ? "listing…"
+            : "working…",
+      "accent",
     );
   }
   const showMessage = (m: Message, previewLimit: number) => {
-    add(
-      `${m.id.slice(0, 8)} | ${label(m.type)} | ${new Date(m.at).toISOString()}`,
+    lines.push(
+      [
+        theme.fg("text", m.id.slice(0, 8)),
+        theme.fg("text", label(m.type)),
+        theme.fg("muted", new Date(m.at).toISOString()),
+      ].join(theme.fg("dim", " · ")),
     );
-    add(`ID: ${m.id}`);
-    add(`Untrusted message: ${label(m.message, previewLimit)}`);
+    lines.push(theme.fg("muted", "  ID: ") + theme.fg("text", m.id));
+    lines.push(theme.fg("muted", "  untrusted message:"));
+    lines.push(
+      ...displayBody(m.message.slice(0, previewLimit)).map((row) =>
+        theme.fg("text", row),
+      ),
+    );
+    if (m.message.length > previewLimit)
+      lines.push(
+        theme.fg(
+          "muted",
+          "Display truncated; full message remains in model/session context.",
+        ),
+      );
   };
   if (args.action === "send" && message(value)) {
     if (expanded) {
       add("Persisted, not consumed, accepted or completed.");
       showMessage(value, 1200);
     }
-    return finish("Sent 1 message", "success");
+    return finish("sent 1 message", "success");
   }
   if (
     args.action === "list" &&
@@ -176,7 +208,7 @@ export function renderMailboxResult(
     }
     return finish(
       shown === 0 && value.pending === 0
-        ? "No pending messages"
+        ? "no pending messages"
         : [
             `${shown} shown`,
             `${value.pending} pending`,
@@ -207,11 +239,11 @@ export function renderMailboxResult(
       for (const id of args.ids) add(`Requested ID: ${label(id, 80)}`);
     }
     return finish(
-      n ? `Acked ${plural(n, "message")}` : "No messages acked",
+      n ? `acked ${plural(n, "message")}` : "no messages acked",
       "success",
     );
   }
   if (expanded)
     add("No recognized mailbox result; inspect the underlying tool result.");
-  return finish("Failed: unrecognized mailbox result", "error");
+  return finish("failed: unrecognized mailbox result", "error");
 }

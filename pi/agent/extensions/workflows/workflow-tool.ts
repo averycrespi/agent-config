@@ -463,7 +463,6 @@ Workflow runs are background-only (the default); explicit foreground is rejected
               action: "run",
               scriptFile,
               ...(sourceFile ? { sourceFile } : {}),
-              maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
               snapshot: latestSnapshot,
             },
           });
@@ -509,7 +508,6 @@ Workflow runs are background-only (the default); explicit foreground is rejected
               agentFailureCount: result.agentFailureCount,
               loggedBranchFailureCount: result.loggedBranchFailureCount,
               settledBranchFailureCount: result.settledBranchFailureCount,
-              maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
               agents: [...agentStates.values()],
               phases: result.phases,
               logs: result.logs,
@@ -583,7 +581,6 @@ Workflow runs are background-only (the default); explicit foreground is rejected
                 : {}),
               ...(recoveryFile ? { recoveryFile } : {}),
               ...(persistenceWarning ? { persistenceWarning } : {}),
-              maxVisibleSettledAgents: currentConfig.maxVisibleSettledAgents,
               snapshot: latestSnapshot ?? diagnostic?.snapshot,
             },
           };

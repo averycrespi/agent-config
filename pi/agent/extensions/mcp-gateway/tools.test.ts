@@ -217,13 +217,14 @@ test("rejection reasons and framed guidance reach agents, renderers, and metadat
       );
       const lines = component.render(2000).join("\n");
       if (expanded) {
-        assert.match(lines, /Call failed:.*call_rejected/);
+        assert.match(lines, /^request failed\n\n/);
+        assert.match(lines, /code: call_rejected/);
         assert.ok(lines.includes(reason));
-        assert.match(lines, /Gateway guidance \(untrusted\):/);
+        assert.match(lines, /gateway guidance \(untrusted\):/);
         assert.ok(lines.includes(message));
       } else {
         assert.match(lines, /^request failed/);
-        assert.doesNotMatch(lines, /Gateway guidance/);
+        assert.doesNotMatch(lines, /gateway guidance/);
       }
       for (const width of [1, 8, 30, 120])
         assert.ok(
@@ -292,7 +293,7 @@ test("hostile rejection guidance cannot escape data framing, leak bearers, or hi
     assert.match(
       component.render(120).join("\n"),
       expanded
-        ? /Effects may have occurred. Do not automatically retry./
+        ? /effects may have occurred\. Do not\s+automatically retry\./
         : /unknown effects; no replay/,
     );
     assert.doesNotMatch(
@@ -509,7 +510,7 @@ test("all tool renderers preserve contextual rows, sanitize terminal controls, a
             assert.equal(component.render(200).length, 1);
           }
           if (state === "partial")
-            assert.match(lines, /Searching|Describing|Calling/);
+            assert.match(lines, /searching|describing|calling/);
           context.lastComponent = component;
         }
       }
@@ -668,11 +669,11 @@ test("spilled MCP output explains truncation in muted text and labels the full r
   )
     .render(48)
     .join("\n");
-  assert.match(failed, /^failed; unknown effects; no replay/);
+  assert.match(failed, /^failed · unknown effects; no replay/);
   assert.ok(
     styled.some(
       ({ color, text }) =>
-        color === "error" && text.includes("unknown effects"),
+        color === "warning" && text.includes("unknown effects"),
     ),
   );
 });
@@ -706,7 +707,7 @@ test("unknown-outcome warning remains collapsed even when the error preview is l
   )
     .render(48)
     .join("\n");
-  assert.equal(collapsed, "failed; unknown effects; no replay");
+  assert.equal(collapsed, "failed · unknown effects; no replay");
   assert.doesNotMatch(collapsed, /example-log/);
   const expanded = renderer.renderResult!(
     result,

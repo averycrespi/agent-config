@@ -1,12 +1,12 @@
 import {
   clearPartialTimer,
   displayLabel,
-  expandedResult,
+  expandedBodyResult,
+  getResultTextComponent,
   getTruncatedText,
   partialElapsed,
   plural,
   toolCall,
-  outcomeSections,
 } from "../_shared/render.ts";
 
 function urlLabel(value: unknown): string {
@@ -62,11 +62,11 @@ export function webRenderers(name: "web_search" | "web_fetch") {
       const failed = context.isError || !!d?.errorPreview;
       const unknown = d?.outcomeUnknown === true;
       const outcome = isPartial
-        ? `reading${elapsed}`
+        ? `reading…${elapsed}`
         : unknown
           ? failed
-            ? "failed; unknown effects; no replay"
-            : "effects unknown; no replay"
+            ? "failed"
+            : ""
           : failed
             ? "request failed"
             : name === "web_search"
@@ -85,31 +85,45 @@ export function webRenderers(name: "web_search" | "web_fetch") {
         ["results read", "repository read", "page read"].includes(outcome)
           ? ""
           : outcome;
-      return getTruncatedText(context.lastComponent, [
-        ...(summary || d?.spilled
-          ? [
-              outcomeSections(
-                theme,
+      return getResultTextComponent(
+        context.lastComponent,
+        [
+          ...(summary || unknown || d?.spilled
+            ? [
                 [
-                  summary,
-                  ...(d?.spilled
-                    ? ["output truncated", "full response saved to file"]
+                  ...(summary
+                    ? [
+                        theme.fg(
+                          isPartial ? "accent" : failed ? "error" : "muted",
+                          summary,
+                        ),
+                      ]
                     : []),
-                ],
-                isPartial || unknown ? "warning" : failed ? "error" : "muted",
-              ),
-            ]
-          : []),
-        ...(expanded && typeof d?.spillFilePath === "string"
-          ? [
-              theme.fg(
-                "muted",
-                `Full response: ${displayLabel(d.spillFilePath, 4096)}`,
-              ),
-            ]
-          : []),
-        ...(expanded ? expandedResult(result) : []),
-      ]);
+                  ...(unknown && !isPartial
+                    ? [theme.fg("warning", "unknown effects; no replay")]
+                    : []),
+                  ...(d?.spilled
+                    ? [
+                        theme.fg("muted", "output truncated"),
+                        theme.fg("muted", "full response saved to file"),
+                      ]
+                    : []),
+                ].join(theme.fg("dim", " · ")),
+              ]
+            : []),
+        ],
+        [
+          ...(expanded && typeof d?.spillFilePath === "string"
+            ? [
+                theme.fg("muted", "  Full response: ") +
+                  theme.fg("text", displayLabel(d.spillFilePath, 4096)),
+              ]
+            : []),
+          ...(expanded
+            ? expandedBodyResult(result).map((row) => theme.fg("text", row))
+            : []),
+        ],
+      );
     },
   };
 }

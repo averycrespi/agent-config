@@ -175,21 +175,22 @@ The host treats sandbox RPC as untrusted. It validates required execution fields
 
 Background admission/executions/inspect/cancel/dismiss have contextual one-line summaries, with uncertainty/no-replay guidance before optional identity and retained details on expansion. These use the shared Background control renderer; no raw source or arbitrary result previews appear collapsed. Inline run titles statically extract literal metadata names; inspect/cancel/dismiss titles show the requested short ID. Inspection retains lifecycle state and any bounded adapter failure cause alongside actionable warnings. Ordinary success uses green `succeeded` without generic effects-may-persist boilerplate; failure is red and cancellation yellow. Admission, cancellation requests and attention dismissal remain distinct.
 
-Immediate list/validate show a call row with action and optional saved name plus a flush-left count/validation result. Background run results show current execution state plus short ID (`Running · a1b2c3d4`, or an actual already-terminal outcome), not `admitted` or a duplicate name. Full ID/name/status and inspection instructions remain expanded and model-facing; expanded inspection holds agent progress in chronological start order. Background terminal widgets keep independently warning-colored pending/held delivery sections visible until handoff, then use the configured hide interval; execution elapsed still freezes at settlement. Compact capability labels are `fs`, `mcp`, and `web`; empty sets are omitted. List output shows only its saved count when collapsed, with the saved inventory on expansion; validate remains a concise status line. Expanding tool output preserves the header and progress rows, then adds workflow logs, failure metadata, retained paths, the list store path, invalid-entry diagnostics, or the validated source path as applicable. The call title is emphasized; renderer-authored tool lines do not use middle-dot separators or status icons. Execution and child progress use explicit state words with semantic colors; saved definitions say `valid`/`invalid`, never execution success. Dynamic text is control-normalized, bounded, and width-aware. Raw prompts, scripts, secrets, and compressed contents are never rendered.
+Immediate list/validate retain their count/validation summary and expanded inventory/source diagnostics. Background runs show current state plus short ID (`running… · a1b2c3d4`, or an actual terminal outcome), not a duplicate name or implied completion. Results follow the canonical [result convention](../_shared/README.md#tool-result-conventions): identical compact prefix, a blank line only when adding details, muted labels, semantic state/diagnostics, and bounded wrapping bodies. Saved validity is not execution success. Retired foreground snapshots use a sanitized original-text fallback rather than elaborate progress layouts or guessed Background envelopes; stored snapshots/recovery evidence remain intact. Call headers, widgets and notifications are unchanged.
 
 ## Configuration
 
+The obsolete renderer-only `maxVisibleSettledAgents` and `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` are ignored with diagnostics; they no longer control a foreground layout.
+
 Settings live under `extension:workflows`. Global, project, and valid environment values use normal precedence. Use `/workflows-config` to inspect effective values and `/workflows-list` for inventory.
 
-| Field                     | Default                | Environment override                   | Description                                                              |
-| ------------------------- | ---------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
-| `workflowTimeoutMs`       | `3600000`              | `WORKFLOWS_WORKFLOW_TIMEOUT_MS`        | Whole-run timeout in milliseconds.                                       |
-| `agentTimeoutMs`          | `600000`               | `WORKFLOWS_AGENT_TIMEOUT_MS`           | Default per-attempt agent/verify timeout; call `timeoutMs` overrides it. |
-| `maxConcurrency`          | `4`                    | `WORKFLOWS_MAX_CONCURRENCY`            | Sandbox scheduler limit, clamped to 16.                                  |
-| `maxTokensPerRun`         | `0`                    | `WORKFLOWS_MAX_TOKENS_PER_RUN`         | Observed-token limit; `0` disables.                                      |
-| `maxAgentsPerRun`         | `100`                  | `WORKFLOWS_MAX_AGENTS_PER_RUN`         | Logical-call limit; `0` disables.                                        |
-| `maxVisibleSettledAgents` | `5`                    | `WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS` | Settled progress rows shown; `0` shows running agents only.              |
-| `userWorkflowsDir`        | `<agentDir>/workflows` | `WORKFLOWS_USER_WORKFLOWS_DIR`         | Saved definition directory; relative paths resolve from call cwd.        |
+| Field               | Default                | Environment override            | Description                                                              |
+| ------------------- | ---------------------- | ------------------------------- | ------------------------------------------------------------------------ |
+| `workflowTimeoutMs` | `3600000`              | `WORKFLOWS_WORKFLOW_TIMEOUT_MS` | Whole-run timeout in milliseconds.                                       |
+| `agentTimeoutMs`    | `600000`               | `WORKFLOWS_AGENT_TIMEOUT_MS`    | Default per-attempt agent/verify timeout; call `timeoutMs` overrides it. |
+| `maxConcurrency`    | `4`                    | `WORKFLOWS_MAX_CONCURRENCY`     | Sandbox scheduler limit, clamped to 16.                                  |
+| `maxTokensPerRun`   | `0`                    | `WORKFLOWS_MAX_TOKENS_PER_RUN`  | Observed-token limit; `0` disables.                                      |
+| `maxAgentsPerRun`   | `100`                  | `WORKFLOWS_MAX_AGENTS_PER_RUN`  | Logical-call limit; `0` disables.                                        |
+| `userWorkflowsDir`  | `<agentDir>/workflows` | `WORKFLOWS_USER_WORKFLOWS_DIR`  | Saved definition directory; relative paths resolve from call cwd.        |
 
 ```json
 {
@@ -199,7 +200,6 @@ Settings live under `extension:workflows`. Global, project, and valid environmen
     "maxConcurrency": 4,
     "maxTokensPerRun": 0,
     "maxAgentsPerRun": 100,
-    "maxVisibleSettledAgents": 5,
     "userWorkflowsDir": "/Users/example/.pi/agent/workflows"
   }
 }

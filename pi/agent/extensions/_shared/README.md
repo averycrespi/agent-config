@@ -10,12 +10,85 @@ Keep helper-specific contracts here and in their modules. For extension authorin
 
 - `config.ts` — reads Pi settings files, extracts `extension:<name>` settings, merges defaults/global/project/environment config, parses boolean environment overrides, and registers masked `/EXTENSION-NAME-config` inspection commands.
 - `logging.ts` — creates managed temp logs under `${tmpdir()}/pi-extension-logs/<extensionName>/`, with sanitized unique filenames and explicit deletion support.
-- `render.ts` — compact tool helpers: `displayLabel` sanitizes/bounds before styling; `toolCall` styles tool/action/target/modifiers without placeholder sections (its optional final `targetLimit` argument permits longer URL labels instead of the default 200-character target cap, within `displayLabel`'s 4,096-character input bound), while `outcomeLine` provides a distinct flush-left result without repeating the call and `outcomeSections` joins explicit summary fields with muted middle dots (never parsing or rewriting arbitrary prose); `toolSummary` remains for specialized contextual rows with unknown-effect/no-replay outcomes before optional identity; `expandedResult` projects bounded plain-text evidence with truncation disclosure. Existing elapsed timers, width-aware text, path/command labels and extraction helpers remain available. These helpers never modify model-facing results or classify domain outcomes for callers.
+- `render.ts` — compact tool helpers: `displayLabel` sanitizes/bounds before styling; `toolCall` styles tool/action/target/modifiers without placeholder sections (its optional final `targetLimit` argument permits longer URL labels instead of the default 200-character target cap, within `displayLabel`'s 4,096-character input bound), while `outcomeLine` provides a distinct flush-left result without repeating the call and `outcomeSections` joins explicit summary fields with muted middle dots (never parsing or rewriting arbitrary prose); `toolSummary` remains for specialized contextual rows with unknown-effect/no-replay outcomes before optional identity; `expandedBodyResult` projects bounded indentation-preserving evidence with truncation disclosure, and `getResultTextComponent` keeps compact summaries truncated while wrapping additive details. `expandedResult` retains the builtin compatibility projection. Existing elapsed timers, width-aware text, path/command labels and extraction helpers remain available. These helpers never modify model-facing results or classify domain outcomes for callers.
 - `notification.ts` — pure asynchronous custom-message projection with compact outcomes, safe expansion and versioned display-only metadata. See [the helper contract](#asynchronous-custom-messages).
 - `widget.ts` — below-editor status mounting, row fitting, and countdown formatting. `createPersistentWidget(key).update(ctx, renderer?)` mounts one TUI component, replaces its renderer and requests repaint on subsequent updates, and clears it when no renderer is supplied. This preserves sibling insertion order because Pi's `setWidget` otherwise deletes/reinserts keys. Host disposal releases the repaint handle; RPC receives 100-column string arrays, and headless mode makes no UI calls. `fitWidgetRow` accepts already sanitized/styled content, reserves up to eight columns for identity/reason text, shortens that detail to preserve telemetry, then drops trailing fields in caller-supplied priority order. It never wraps or exceeds the available width. `formatWidgetCountdown` rounds positive milliseconds up to whole seconds, clamps expired values to zero, and renders `12s`, `1m`, or `1m 12s`. Styling conventions live in the create-extension skill, not this helper.
 - `retained-artifacts.ts` — securely stages, gzip-compresses, finalizes, ages, and quota-manages retained subagent failure logs and abnormal workflow recovery envelopes in one diagnostic pool.
 - `spillover.ts` — large-output spill-to-file helper. It joins text blocks, writes oversized text to an owner-controlled temp directory, returns a preview envelope that references the full file, preserves image blocks inline, and falls back to original content on write failure.
 - `untrusted.ts` — wraps external text and mixed text/image blocks in explicit untrusted-content boundaries while escaping delimiter-like lines from the external payload.
+
+## Tool-result conventions
+
+This is the canonical convention for current non-builtin tool results. Call headers, below-editor widgets and asynchronous notifications are separate surfaces and do not inherit this layout. Rendering never fetches artifacts, changes model-facing content, starts work, acknowledges delivery, or grants approval.
+
+### Color and grammar
+
+- Render authored status words lowercase. Use `accent` for active work (`running…`, `reading…`), `muted` for queued/pending work, and one single-glyph ellipsis for ongoing activity. Keep useful domain verbs.
+- Style each field independently: `success` for successful execution, `error` for failures, `warning` for cancellation or actionable warnings. Diagnostics follow their actual meaning, independently of lifecycle state. Counts, durations and supporting telemetry stay `muted`, even beside failure. Use words, never color alone.
+- Join authored peer fields with a `dim` middle dot; use parentheses for qualifiers and colons for key/value labels. Do not rewrite punctuation inside literal tool output, code or quoted evidence.
+- Keep metadata labels and section headings `muted`, normal weight. Render body/value content in ordinary `text`. Reserve bold tool titles for the unchanged call header. Add no decorative icons, borders, backgrounds or syntax highlighting.
+
+### Compact and expanded layout
+
+A collapsed result is optional. Keep routine successful reads silent when the only summary would be “returned” or “listed”; do not add universal green success rows. Show useful counts, empty results, confirmed effects, admission/lifecycle transitions, active progress, limits, errors and uncertainty. Never repeat the call identity unnecessarily or claim that admission means completion.
+
+Expanded output begins with exactly the collapsed lines **including styling and width truncation**, followed by one blank line and additional details. If compact output is silent, start directly with details. If there are no details, add no blank line. Group related information; indent authored secondary metadata by two spaces. Avoid headings for trivial results. Literal body indentation is preserved rather than normalized to authored indentation.
+
+Use `getResultTextComponent(lastComponent, summary, details)` with independently styled arrays. Summary lines truncate at the available width. Detail lines wrap, preserving logical lines and structured indentation; extremely narrow terminals may clip a grapheme wider than their entire width. No expansion performs I/O. `getTruncatedText` remains the compact-only component for call headers and specialized builtin layouts.
+
+Use `displayLabel` for bounded single-line labels, not bodies. `expandedBodyResult`/`displayBody` remove terminal controls before styling while preserving spaces, line breaks and indentation (tabs become three spaces). Body input is capped at 64,000 characters, 2,000 logical lines, and 4,000 characters per logical line, with explicit source-truncation disclosure. Wrapped details are also bounded to 2,000 display rows plus a disclosure; complete source remains in model/session context. Sanitization is not generic secret detection: retain domain credential redaction before rendering. Keep spill/recovery references visible. Renderer summaries must not infer outcomes from arbitrary untrusted body prose.
+
+### Surface inventory and exceptions
+
+| Surface                                                      | Projection                                                                                                                                                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Background Script, Workflow and Subagent run/control results | Shared `background/render.ts`: semantic lifecycle, independent warnings, muted telemetry; additive retained evidence                                                                              |
+| Script foreground run/describe and saved list/validate       | Host accounting, provider names, semantic traces and safe static diagnostics; no source/arguments or arbitrary return-value previews                                                              |
+| Workflow list/validate and pre-admission errors              | Saved count/validation summary, expanded inventory/source/diagnostics; validation is not execution                                                                                                |
+| Historical foreground Subagent and Workflow snapshots        | Generic sanitized original text fallback, not obsolete multi-agent/progress layouts or guessed Background envelopes; history/recovery data is untouched                                           |
+| Monitor                                                      | Observation state, independently styled attention/uncertainty and muted counters; success means a trigger, not watched-task completion                                                            |
+| Mailbox                                                      | Persistence/page/ack counts, expanded untrusted messages and metadata; send is not consumption and ack is not resolution                                                                          |
+| MCP Gateway                                                  | Silent ordinary describe/call success; search counts, visible errors/uncertainty/spill limits; wrapped framed evidence with gateway credential redaction                                          |
+| Web access                                                   | Silent ordinary fetch success; useful search/page counts and spill/error summaries; wrapped evidence                                                                                              |
+| TODO                                                         | Count/error summary and expanded literal task list; task status punctuation belongs to literal output                                                                                             |
+| Structured output                                            | Intentional host-native exception: the terminating schema-capture tool has no custom renderer and returns only a short fixed capture acknowledgment; it does not render private structured values |
+| Builtins                                                     | Explicit specialized/native exception: preserve Bash tails/first-line errors, directory/find heads, grep counts, silent reads and existing diagnostic expansion                                   |
+
+Builtin rendering is **not** migrated to the generic layout. Bash success shows up to three trailing nonempty lines; failure shows only the first nonempty line in error color, identically in both views. Other builtins retain bounded diagnostics and spill references even when compact output is silent. The legacy `expandedResult` projection is isolated for builtin compatibility. Preserve specialized credential masking and regression tests.
+
+Retired renderer-only foreground progress functions are removed after checking consumers. Activity extraction, stored snapshots, accounting and recovery evidence remain execution concerns. The obsolete Workflow `maxVisibleSettledAgents` setting/environment override is ignored with a diagnostic; no stored result is migrated or deleted.
+
+### Before and after examples
+
+Plain text below is separate from style annotations. Ellipses within literal evidence are not rewritten.
+
+| Before                                                      | After                                                        | Style annotations                                            |
+| ----------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `Calling example.lookup...`                                 | `calling example.lookup…`                                    | Active text: accent, not warning                             |
+| `condition met; follow-up queued · 0 wakes · 4 evaluations` | `condition met · follow-up queued · 0 wakes · 4 evaluations` | State: success; follow-up: warning; counts: muted; dots: dim |
+| `Running · a1b2c3d4`                                        | `running… · a1b2c3d4`                                        | State: accent; ID: text; dot: dim                            |
+| `12345678 \| report \| timestamp`                           | `12345678 · report · timestamp`                              | Identity/type: text; timestamp: muted; dots: dim             |
+
+An uncertain failed request renders `failed · unknown effects; no replay`: only `failed` is error-colored, the dot is dim, and the entire uncertainty/no-replay field is warning-colored. A warning never recolors or replaces the request failure (and a known failure never makes the warning red).
+
+Expanded Background example (first line is byte-for-byte the same styled compact projection at the same width):
+
+```text
+succeeded · 9s
+
+  execution: Example · a1b2c3d4
+{
+  "nested": {
+    "value": "long content wraps instead of clipping"
+  }
+}
+```
+
+The state is success-colored; duration and metadata label are muted; separators are dim; values and body use text. For a silent MCP call, the JSON starts directly—no empty summary or leading separator line. A validated Script with no further metadata stays one line in either view.
+
+### Verification
+
+Test semantic color tokens separately from plain-text layout. Assert identical compact prefixes, blank-line exceptions, narrow/wide wrapping versus truncation, bounded output, indentation, hostile controls, cancellation, current inventory/validation/error paths and historical fallback. Keep builtin regression coverage unchanged. Retain representative isolated fixture captures at narrow/wide widths with real light/dark theme tokens. Such captures and deterministic assertions are not live terminal/perceived-contrast qualification; disclose unrun live checks and never install, link or reload a user's session to obtain them without authorization.
 
 ## Asynchronous custom messages
 

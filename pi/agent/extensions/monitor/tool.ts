@@ -3,13 +3,12 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
-  expandedResult,
+  expandedBodyResult,
+  getResultTextComponent,
   getTruncatedText,
   plural,
   toolCall,
   outcomeLine,
-  outcomeSections,
-  type RenderLine,
 } from "../_shared/render.ts";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
@@ -342,22 +341,9 @@ export const renderers: Pick<
     const d = (result.details ?? {}) as DisplayDetails;
     const action = label(d.action ?? ctx.args?.action, 16);
     const failed = ctx.isError || d.monitorError;
-    const reason =
-      d.receipt?.attention?.reason ?? d.receipt?.lastAttention?.reason;
-    const jobFailed =
-      d.receipt?.outcomeUnknown ||
-      d.receipt?.lastAttention?.disposition === "handoff_unknown" ||
-      reason === "evaluation_failure" ||
-      reason === "coverage_failure";
     const polling =
       action === "start" && d.receipt ? pollingWarning(d.receipt) : undefined;
-    const caution =
-      polling ||
-      (d.receipt &&
-        (warnings(d.receipt).length > 0 ||
-          d.receipt.failureCode ||
-          reason === "timeout" ||
-          d.receipt.attention?.disposition === "pending"));
+
     const partial =
       action === "start"
         ? "registering…"
@@ -366,62 +352,107 @@ export const renderers: Pick<
           : action === "list"
             ? "listing jobs…"
             : "reading job…";
-    if (
-      !expanded &&
+    const unknown =
       !isPartial &&
       (d.receipt?.outcomeUnknown ||
         d.receipt?.lastAttention?.disposition === "handoff_unknown")
-    )
-      return getTruncatedText(ctx.lastComponent, [
-        outcomeLine(
-          theme,
-          failed
-            ? "failed; unknown; no replay"
-            : d.receipt.outcomeUnknown &&
-                d.receipt.lastAttention?.disposition === "handoff_unknown"
+        ? (failed ? theme.fg("error", "failed") + theme.fg("dim", " · ") : "") +
+          outcomeLine(
+            theme,
+            failed ||
+              (d.receipt?.outcomeUnknown &&
+                d.receipt.lastAttention?.disposition === "handoff_unknown")
               ? "unknown; no replay"
-              : d.receipt.outcomeUnknown
+              : d.receipt?.outcomeUnknown
                 ? "outcome unknown; no replay"
                 : "handoff unknown; no replay",
-          failed ? "error" : "warning",
-        ),
-      ]);
-    const lines: RenderLine[] = [
-      outcomeSections(
-        theme,
-        (isPartial
-          ? partial
-          : failed
-            ? "request failed"
-            : !expanded && polling
-              ? "registered; no repeat poll"
-              : resultLine(d, action)
-        ).split(" · "),
-        isPartial
-          ? "warning"
-          : failed || jobFailed
-            ? "error"
-            : caution
+            "warning",
+          )
+        : undefined;
+    const fields = (
+      isPartial
+        ? partial
+        : failed
+          ? "request failed"
+          : polling
+            ? "registered; no repeat poll"
+            : resultLine(d, action)
+    ).split(" · ");
+    const separator = theme.fg("dim", " · ");
+    const styleFields = (fields: string[], r = d.receipt) =>
+      fields
+        .map((field, index) => {
+          const [state, queued] = field.split("; follow-up queued");
+          const warning =
+            /uncertain|interrupted|gap|cancel|limit|expired|timed out|awaiting settlement|no repeat poll/.test(
+              state,
+            );
+          const active =
+            !failed &&
+            r?.status === "active" &&
+            !r.awaitingSettlement &&
+            !r.attention &&
+            index === 0;
+          const error =
+            state === "evaluation failed" ||
+            state === "coverage lost" ||
+            (!!r?.failureCode && state === r.failureCode);
+          const color = isPartial
+            ? "accent"
+            : warning
               ? "warning"
-              : "muted",
-      ),
-    ];
+              : error || (index === 0 && failed)
+                ? "error"
+                : state === "condition met"
+                  ? "success"
+                  : active && r?.delayMs === undefined
+                    ? "accent"
+                    : "muted";
+          return (
+            theme.fg(color, state + (active ? "…" : "")) +
+            (queued !== undefined
+              ? separator + theme.fg("warning", "follow-up queued")
+              : "")
+          );
+        })
+        .join(separator);
+    const summary = styleFields(fields);
+    const lines: string[] = [];
     if (expanded && polling && !failed && !isPartial)
       lines.push(theme.fg("warning", polling));
     if (expanded && !failed && !isPartial) {
       if (action === "list")
-        for (const r of d.receipts ?? []) lines.push(jobLine(r, true));
+        for (const r of d.receipts ?? [])
+          lines.push(styleFields(jobLine(r, true).split(" · "), r));
       else if (d.receipt) {
         const r = d.receipt;
-        lines.push(`job ${label(r.name)} (${label(r.id)})`);
-        if (action !== "get") lines.push(jobLine(r));
+        lines.push(
+          theme.fg("muted", "  job: ") +
+            theme.fg("text", `${label(r.name)} (${label(r.id)})`),
+        );
+        if (action !== "get")
+          lines.push(styleFields(jobLine(r).split(" · "), r));
         if (r.lastAttention)
           lines.push(
-            `follow-up ${label(r.lastAttention.disposition)}; admission ${r.lastAttention.admitted ? "observed" : "not observed"}`,
+            theme.fg("muted", "  follow-up: ") +
+              theme.fg("text", label(r.lastAttention.disposition)) +
+              separator +
+              theme.fg("muted", "admission: ") +
+              theme.fg(
+                "text",
+                r.lastAttention.admitted ? "observed" : "not observed",
+              ),
           );
       }
     }
-    if (expanded && !isPartial) lines.push(...expandedResult(result));
-    return getTruncatedText(ctx.lastComponent, lines);
+    if (expanded && !isPartial)
+      lines.push(
+        ...expandedBodyResult(result).map((row) => theme.fg("text", row)),
+      );
+    return getResultTextComponent(
+      ctx.lastComponent,
+      [unknown ?? summary],
+      lines,
+    );
   },
 };

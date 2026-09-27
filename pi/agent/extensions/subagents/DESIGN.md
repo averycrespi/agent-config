@@ -86,7 +86,7 @@ Environment inheritance is deliberate; `exec-shell` is not a security sandbox an
 
 ## Activity and rendering
 
-Child progress and historical aggregate renderers use semantic-colored state words rather than icons. Cancellation remains distinct from failure at the child level; these projections never change execution outcomes or acceptance.
+Current results use the canonical [result convention](../_shared/README.md#tool-result-conventions). Renderer-only foreground aggregate/progress machinery is retired; historical results use sanitized original text, not guessed Background envelopes. `getActivity` remains because execution consumers still use it. Cancellation remains distinct from failure; projections never change execution outcomes or acceptance.
 
 Background controls route through `background/render.ts`, a display-only projection of retained receipts. Calls show action and available intent or requested ID, while flush-left outcomes prioritize uncertain effects without repeating call identity; expansion preserves bounded evidence. This does not change execution, usage or notification ownership.
 

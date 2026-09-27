@@ -1,398 +1,82 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import {
-  agentProgressLines,
-  formatTokens,
-  getActivity,
-  renderAgentsResult,
-  statsLine,
-} from "./render.ts";
-
-const theme = {
-  bold: (text: string) => text,
-  fg: (_color: string, text: string) => text,
-};
-const state = (overrides: Record<string, unknown> = {}) => ({
-  intent: "docs",
-  capabilities: ["read-filesystem"],
-  profile: "balanced",
-  phase: "done",
-  recentEvents: [],
-  toolUseCount: 2,
-  totalTokens: 4100,
-  resolved: true,
-  startedAt: 1000,
-  lastUpdateAt: 13000,
-  ...overrides,
+import { getActivity, renderAgentsResult } from "./render.ts";
+const theme: any = { bold: (s: string) => s, fg: (_c: string, s: string) => s };
+const ctx = (action = "run") => ({
+  state: {},
+  args: { action },
+  invalidate() {},
 });
 
-for (const [value, expected] of [
-  [0, "0"],
-  [999, "999"],
-  [1_000, "1.0k"],
-  [20_300, "20.3k"],
-  [1_000_000, "1.0M"],
-  [2_450_000, "2.5M"],
-] as const) {
-  test(`formatTokens formats ${value}`, () =>
-    assert.equal(formatTokens(value), expected));
-}
-
-test("statsLine includes only nonzero counters and duration", () => {
-  assert.equal(statsLine(0, 0, 3000), "3s");
-  assert.equal(statsLine(1, 0, 5000), "5s, 1 tool use");
-  assert.equal(statsLine(5, 20_300, 20_000), "20s, 5 tool uses, 20.3k tokens");
-});
-
-test("done progress rows split intent stats from compact execution policy", () => {
-  assert.deepEqual(agentProgressLines(state() as any, theme), [
-    "succeeded docs 12s, 2 tool uses, 4.1k tokens",
-    "  balanced (fs)",
-  ]);
-
-  assert.deepEqual(
-    agentProgressLines(
-      state({
-        capabilities: [
-          "read-filesystem",
-          "write-filesystem",
-          "exec-shell",
-          "read-mcp",
-          "read-web",
-        ],
-      }) as any,
-      theme,
-    ),
-    [
-      "succeeded docs 12s, 2 tool uses, 4.1k tokens",
-      "  balanced (fs, write, shell, mcp, web)",
-    ],
-  );
-});
-
-test("queued progress rows use an explicit muted state", () => {
-  const queuedTheme = {
-    bold: (text: string) => text,
-    fg: (color: string, text: string) =>
-      color === "muted" ? `{${text}}` : text,
-  };
-  const lines = agentProgressLines(
-    state({
-      phase: "queued",
-      resolved: false,
-      toolUseCount: 0,
-      totalTokens: 0,
-      startedAt: Date.now(),
-      lastUpdateAt: Date.now(),
-    }) as any,
-    queuedTheme,
-  );
-  assert.match(lines[0]!, /^\{queued\} docs\{ \}\{\d+s\}$/);
-  assert.equal(lines[1], "  {balanced (fs), queued}");
-});
-
-test("running progress rows keep volatile tool identity at the end", () => {
-  const lines = agentProgressLines(
-    state({
-      intent: "tests",
-      capabilities: ["read-web"],
-      profile: "fast",
-      phase: "web_fetch",
-      resolved: false,
-      recentEvents: [{ kind: "tool", text: "web_fetch" }],
-      toolUseCount: 1,
-      totalTokens: 0,
-      startedAt: Date.now() - 8000,
-      lastUpdateAt: Date.now(),
-    }) as any,
-    theme,
-  );
-  assert.match(lines[0]!, /^running tests \d+s, 1 tool use$/);
-  assert.equal(lines[1], "  fast (web), web_fetch");
-});
-
-test("child states use semantic words without success on cancellation or failure", () => {
-  const marked = {
-    ...theme,
-    fg: (color: string, text: string) => `[${color}:${text}]`,
-  };
-  for (const [phase, resolved, expected] of [
-    ["queued", false, "[muted:queued]"],
-    ["thinking", false, "[accent:thinking]"],
-    ["read", false, "[accent:running]"],
-    ["done", true, "[success:succeeded]"],
-    ["error", true, "[error:failed]"],
-    ["aborted", true, "[warning:canceled]"],
-  ] as const) {
-    const rows = agentProgressLines(state({ phase, resolved }) as any, marked);
-    assert.ok(rows[0].startsWith(`${expected} docs`));
-    assert.doesNotMatch(rows.join("\n"), /[✓✗●○]/);
-  }
-});
-
-test("failure rows omit empty capabilities and keep retained logs hidden", () => {
-  const lines = agentProgressLines(
-    state({
-      intent: "security",
-      capabilities: [],
-      phase: "error",
-      toolUseCount: 0,
-      totalTokens: 0,
-      errorMessage: "Error: subagent failed\nstack",
-      logFile: "/tmp/log.txt",
-      startedAt: 1000,
-      lastUpdateAt: 2000,
-    }) as any,
-    theme,
-  );
-  assert.deepEqual(lines, [
-    "failed security 1s",
-    "  balanced: Error: subagent failed",
-  ]);
-  assert.doesNotMatch(lines.join("\n"), /Log:/);
-});
-
-function context() {
-  return {
-    state: {} as Record<string, unknown>,
-    invalidate() {},
-    lastComponent: undefined as any,
-  };
-}
-
-test("aggregate and per-agent separators are muted", () => {
-  const markerTheme = {
-    bold: (text: string) => text,
-    fg: (color: string, text: string) =>
-      color === "muted" ? `{${text}}` : text,
-  };
-
-  assert.deepEqual(agentProgressLines(state() as any, markerTheme), [
-    "succeeded docs{ }{12s, 2 tool uses, 4.1k tokens}",
-    "  {balanced (fs)}",
-  ]);
-
-  const result = renderAgentsResult(
-    {
-      content: [],
-      details: { total: 1, failed: 0, agents: [state()] },
-    },
-    { isPartial: false },
-    markerTheme,
-    context(),
-  );
-  assert.deepEqual(result.render(200), [
-    "succeeded subagents{ }{1 done, 0 failed, 12s}",
-    "",
-    "succeeded docs{ }{12s, 2 tool uses, 4.1k tokens}",
-    "  {balanced (fs)}",
-  ]);
-});
-
-test("default result includes progress rows but excludes diagnostics", () => {
-  const ctx = context();
-  try {
-    const partial = renderAgentsResult(
-      {
-        content: [],
-        details: {
-          total: 2,
-          agents: [
-            state(),
-            state({ intent: "tests", phase: "read", resolved: false }),
-          ],
-        },
-      },
-      { isPartial: true },
-      theme,
-      ctx,
-    );
-    const partialLines = partial.render(200);
-    assert.match(
-      partialLines[0]!,
-      /^subagents 1 done, 1 running, 0 failed, \d+(?:m \d+s|s)$/,
-    );
-    assert.ok(partialLines.some((line) => line.startsWith("succeeded docs ")));
-    assert.ok(partialLines.some((line) => line.startsWith("running tests ")));
-    assert.doesNotMatch(partialLines.join("\n"), /Log:/);
-
-    ctx.lastComponent = partial;
-    const final = renderAgentsResult(
-      {
-        content: [],
-        details: {
-          total: 2,
-          failed: 1,
-          agents: [
-            state({ logFile: "/tmp/docs.log" }),
-            state({
-              intent: "tests",
-              phase: "error",
-              resolved: false,
-              errorMessage: "Error: failed",
-              startedAt: 2000,
-              lastUpdateAt: 3000,
-            }),
-          ],
-        },
-      },
-      { isPartial: false },
-      theme,
-      ctx,
-    );
-    const finalLines = final.render(200);
-    assert.equal(finalLines[0], "failed subagents 1 done, 1 failed, 12s");
-    assert.ok(finalLines.some((line) => line.startsWith("succeeded docs ")));
-    assert.ok(finalLines.some((line) => line.startsWith("failed tests ")));
-    assert.doesNotMatch(finalLines.join("\n"), /Log: \/tmp\/docs\.log/);
-  } finally {
-    clearInterval(ctx.state.renderTimer as ReturnType<typeof setInterval>);
-  }
-});
-
-test("expanded result preserves every default progress row in order", () => {
+test("historical foreground results use sanitized text, not retired agent layouts or Background", () => {
   const result = {
-    content: [],
-    details: {
-      total: 2,
-      failed: 0,
-      agents: [
-        state({ logFile: "/tmp/docs.log" }),
-        state({
-          intent: "tests",
-          startedAt: 2000,
-          lastUpdateAt: 4000,
-        }),
-      ],
-    },
+    content: [
+      { type: "text", text: "old output\n  nested: value\n\x1b[2Jdiagnostic" },
+    ],
+    details: { total: 2, agents: [{ intent: "old agent" }] },
   };
-  const defaultLines = renderAgentsResult(
+  const compact = renderAgentsResult(
     result,
-    { isPartial: false, expanded: false },
+    { isPartial: false },
     theme,
-    context(),
-  ).render(200);
-  const expandedLines = renderAgentsResult(
+    ctx(),
+  ).render(60);
+  const expanded = renderAgentsResult(
     result,
     { isPartial: false, expanded: true },
     theme,
-    context(),
-  ).render(200);
-
-  assert.deepEqual(expandedLines.slice(0, defaultLines.length), defaultLines);
-  assert.equal(
-    expandedLines.filter((line) => line === "Log: /tmp/docs.log").length,
-    1,
-  );
+    ctx(),
+  ).render(60);
+  assert.deepEqual(compact, ["historical result"]);
+  assert.deepEqual(expanded, [
+    "historical result",
+    "",
+    "old output",
+    "  nested: value",
+    "diagnostic",
+  ]);
+  assert.doesNotMatch(expanded.join("\n"), /subagents|succeeded|\x1b/);
 });
 
-test("result renderer is width-aware for partial, final, and expanded states", () => {
-  const ctx = context();
-  try {
-    const partial = renderAgentsResult(
-      {
-        content: [],
-        details: {
-          total: 2,
-          agents: [
-            state(),
-            state({ intent: "tests", phase: "read", resolved: false }),
-          ],
-        },
-      },
-      { isPartial: true, expanded: true },
-      theme,
-      ctx,
-    );
-    const partialLines = partial.render(200);
-    assert.match(partialLines.join("\n"), /^subagents 1 done, 1 running/);
-    assert.ok(
-      partialLines.some((line: string) => line.startsWith("succeeded docs ")),
-    );
-    assert.ok(partialLines.some((line: string) => line === "  balanced (fs)"));
-    ctx.lastComponent = partial;
-    const final = renderAgentsResult(
-      {
-        content: [],
-        details: {
-          total: 1,
-          failed: 0,
-          agents: [state({ logFile: "/tmp/log.txt" })],
-        },
-      },
-      { isPartial: false, expanded: true },
-      theme,
-      ctx,
-    );
-    assert.ok(
-      final.render(200).some((line: string) => line === "Log: /tmp/log.txt"),
-    );
-    assert.ok(
-      final.render(25).every((line: string) => visibleWidth(line) <= 25),
-    );
-    assert.equal(ctx.state.renderTimer, undefined);
-  } finally {
-    clearInterval(ctx.state.renderTimer as ReturnType<typeof setInterval>);
-  }
-});
-
-test("renderer strips hostile controls and collapses line breaks", () => {
-  const lines = agentProgressLines(
-    state({
-      intent: "bad\x1b]8;;https://evil.example\x07link\x1b]8;;\x07\nnext",
-      phase: "error",
-      errorMessage: "Error: nope\x1b[2J\nsecret",
-    }) as any,
-    theme,
-  );
-  assert.doesNotMatch(lines.join("\n"), /\x1b/);
-  assert.match(lines[0]!, /badlink next/);
-  assert.match(lines[1]!, /Error: nope/);
-  assert.doesNotMatch(lines.join("\n"), /secret/);
-});
-
-test("background controls and validation/framework failures render honest bounded status", () => {
-  for (const details of [
-    { execution: { id: "bad\x1b[2J\nlabel", status: "running" } },
-    { execution: { id: "id", status: "failed" } },
-    { executions: [] },
-    { validationError: true },
-  ]) {
-    const ctx = {
-      state: {},
-      invalidate() {},
-      lastComponent: undefined,
-      isError: false,
-      args: { action: details.executions ? "list" : "run" },
+test("current receipts and pre-admission failures retain truthful state and additive expansion", () => {
+  for (const [details, action, expected] of [
+    [{ execution: { id: "id", status: "running" } }, "run", "running… · id"],
+    [{ execution: { id: "id", status: "failed" } }, "run", "failed · id"],
+    [{ executions: [] }, "list", "0 executions"],
+    [{ validationError: true }, "run", "request failed"],
+  ] as const) {
+    const result = {
+      content: [{ type: "text", text: "Error: invalid\x1b[2J" }],
+      details,
     };
-    const component = renderAgentsResult(
-      { content: [{ type: "text", text: "Error: invalid\x1b[2J" }], details },
+    const compact = renderAgentsResult(
+      result,
+      { isPartial: false },
+      theme,
+      ctx(action),
+    ).render(80);
+    const expanded = renderAgentsResult(
+      result,
       { isPartial: false, expanded: true },
       theme,
-      ctx,
+      ctx(action),
     );
-    const lines = component.render(100);
-    assert.match(
-      lines[0],
-      details.validationError
-        ? /^Error:/
-        : /^(?:Running · bad labe|Failed · id|0 executions)/,
-    );
-    assert.doesNotMatch(lines.join("\n"), /\x1b|0 done|✓/);
-    assert.ok(component.render(12).every((line) => visibleWidth(line) <= 12));
+    assert.equal(compact[0], expected);
+    assert.deepEqual(expanded.render(80).slice(0, compact.length), compact);
+    assert.equal(expanded.render(80)[compact.length], "");
+    assert.ok(expanded.render(12).every((line) => visibleWidth(line) <= 12));
+    assert.doesNotMatch(expanded.render(80).join("\n"), /\x1b/);
   }
-  const failed = renderAgentsResult(
-    { content: [{ type: "text", text: "execution error" }] },
-    { isPartial: false },
-    theme,
-    { state: {}, isError: true },
-  );
-  assert.match(failed.render(100)[0], /execution error/);
 });
 
-test("getActivity accepts nested or direct activity shapes", () => {
-  const activity = state();
+test("getActivity remains available to execution consumers", () => {
+  const activity = {
+    intent: "example",
+    phase: "done",
+    startedAt: 1,
+    lastUpdateAt: 2,
+  };
   assert.equal(getActivity({ activity }), activity);
   assert.equal(getActivity(activity), activity);
   assert.equal(getActivity({ intent: "x", phase: "done" }), undefined);

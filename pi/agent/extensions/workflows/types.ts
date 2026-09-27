@@ -9,7 +9,6 @@ import type {
 
 export const DEFAULT_MAX_CONCURRENCY = 4;
 export const MAX_CONCURRENCY = 16;
-export const DEFAULT_MAX_VISIBLE_SETTLED_AGENTS = 5;
 export const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 
 export interface WorkflowMeta {

@@ -10,9 +10,15 @@ import {
   getTruncatedText,
   partialElapsed,
   toolCall,
-  outcomeSections,
+  expandedBodyResult,
+  getResultTextComponent,
 } from "../_shared/render.ts";
-import { GatewayClient, GatewayError, record } from "./client.ts";
+import {
+  GatewayClient,
+  GatewayError,
+  record,
+  redactCredentials,
+} from "./client.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { searchTools, SEARCH_LIMIT } from "./catalog.ts";
 import {
@@ -66,32 +72,26 @@ export function renderers(
       ]);
     },
     renderResult(result, { isPartial, expanded }, theme, context) {
-      const action =
-        name === "mcp_search"
-          ? "Search"
-          : name === "mcp_describe"
-            ? "Describe"
-            : "Call";
       const target =
         display((context.args as Record<string, unknown>)?.name) ||
         "gateway tool";
       if (isPartial)
         return getTruncatedText(context.lastComponent, [
           theme.fg(
-            "warning",
-            `${name === "mcp_search" ? "Searching gateway tools" : name === "mcp_describe" ? `Describing ${target}` : `Calling ${target}`}...${partialElapsed(context)}`,
+            "accent",
+            `${name === "mcp_search" ? "searching gateway tools" : name === "mcp_describe" ? `describing ${target}` : `calling ${target}`}…${partialElapsed(context)}`,
           ),
         ]);
       clearPartialTimer(context);
       const details = result.details as Record<string, unknown> | undefined;
       const failed = context.isError || details?.gatewayError === true;
       const searchSummary = `${typeof details?.shownCount === "number" ? details.shownCount : "?"} shown (${typeof details?.matchCount === "number" ? (details.matchCount === 1 ? "1 match" : `${details.matchCount} matches`) : "? matches"})`;
-      if (!expanded) {
+      {
         const outcome =
           details?.outcomeUnknown === true
             ? failed
-              ? "failed; unknown effects; no replay"
-              : "unknown effects; no replay"
+              ? "failed"
+              : ""
             : failed
               ? "request failed"
               : name === "mcp_search"
@@ -104,82 +104,65 @@ export function renderers(
         const retained = details?.spillFilePath
           ? ["output truncated", "full response saved to file"]
           : [];
-        return getTruncatedText(
-          context.lastComponent,
-          summary || retained.length
+        const fields = [
+          ...(summary
             ? [
-                outcomeSections(
-                  theme,
-                  [summary, ...retained],
+                theme.fg(
                   failed
                     ? "error"
                     : details?.outcomeUnknown
                       ? "warning"
                       : "muted",
+                  summary,
                 ),
               ]
-            : [],
-        );
-      }
-      const lines: string[] = [];
-      const preview = details?.summary ?? textContent(result.content);
-      if (failed) {
-        lines.push(
-          theme.fg(
-            "error",
-            `${action} failed: ${display(preview) || "gateway tool error"}`,
-          ),
-        );
-        if (details?.guidance)
-          lines.push(
-            theme.fg(
-              "muted",
-              `Gateway guidance (untrusted): ${display(details.guidance)}`,
-            ),
-          );
-        if (details?.outcomeUnknown === true)
-          lines.push(
-            theme.fg(
-              "error",
-              "Effects may have occurred. Do not automatically retry.",
-            ),
-          );
-      } else if (
-        name === "mcp_search" &&
-        typeof details?.matchCount === "number" &&
-        typeof details?.totalCount === "number"
-      ) {
-        lines.push(theme.fg("muted", searchSummary));
-      } else if (name !== "mcp_call" && preview) {
-        lines.push(theme.fg("muted", display(preview)));
-      }
-      if (expanded) {
-        for (const key of [
-          "code",
-          "reason",
-          "invocationId",
-          "logFile",
-          "spillFilePath",
-          "matchCount",
-          "shownCount",
-          "totalCount",
-        ]) {
-          if (details?.[key] !== undefined)
+            : []),
+          ...(details?.outcomeUnknown
+            ? [theme.fg("warning", "unknown effects; no replay")]
+            : []),
+          ...retained.map((field) => theme.fg("muted", field)),
+        ];
+        const lines: string[] = [];
+        if (expanded) {
+          if (details?.guidance)
             lines.push(
-              theme.fg(
-                "muted",
-                `${key === "spillFilePath" ? "Full response" : key}: ${display(String(details[key]))}`,
-              ),
+              theme.fg("muted", "  gateway guidance (untrusted): ") +
+                theme.fg("text", display(details.guidance)),
             );
+          for (const key of [
+            "code",
+            "reason",
+            "invocationId",
+            "logFile",
+            "spillFilePath",
+            "matchCount",
+            "shownCount",
+            "totalCount",
+          ]) {
+            if (details?.[key] !== undefined)
+              lines.push(
+                theme.fg(
+                  "muted",
+                  `  ${key === "spillFilePath" ? "Full response" : key}: `,
+                ) +
+                  theme.fg(
+                    key === "code" || key === "reason" ? "error" : "text",
+                    display(String(details[key])),
+                  ),
+              );
+          }
+          lines.push(
+            ...expandedBodyResult(result).map((line) =>
+              theme.fg("text", redactCredentials(line)),
+            ),
+          );
         }
-        lines.push(
-          ...textContent(result.content)
-            .split("\n")
-            .slice(0, 2000)
-            .map((line) => theme.fg("muted", display(line, 500))),
+        return getResultTextComponent(
+          context.lastComponent,
+          fields.length ? [fields.join(theme.fg("dim", " · "))] : [],
+          lines,
         );
       }
-      return getTruncatedText(context.lastComponent, lines);
     },
   };
 }

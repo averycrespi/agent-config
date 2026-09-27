@@ -2,6 +2,8 @@
 
 Session-scoped Pi extension that adds a lightweight `todo` tool plus a compact sticky widget above the editor.
 
+Tool results follow the canonical [result convention](../_shared/README.md#tool-result-conventions): count/error summary, accent activity and additive wrapped task-list evidence. The widget and literal task-status glyphs are separate, unchanged surfaces.
+
 ## What it does
 
 - registers one agent-facing `todo` tool with `list`, `set`, `add`, `update`, `remove`, and `clear`

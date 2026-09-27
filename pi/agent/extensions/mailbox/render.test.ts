@@ -59,12 +59,12 @@ test("stable call header hides body, cursor and IDs and reuses its component", (
   );
 });
 test("send summarizes persistence, expanded metadata and untrusted preview", () => {
-  assert.equal(render("send", sent), "Sent 1 message");
+  assert.equal(render("send", sent), "sent 1 message");
   const expanded = render("send", sent, true);
   assert.match(expanded, /Persisted, not consumed, accepted or completed/);
   assert.match(expanded, /1970-01-01T00:00:00.000Z/);
   assert.match(expanded, new RegExp(`ID: ${id}`));
-  assert.match(expanded, /Untrusted message: body only/);
+  assert.match(expanded, /untrusted message:\nbody only/);
   assert.doesNotMatch(render("send", sent), /body only|12345678/);
 });
 test("list distinguishes page size, current pending count and scan completion", () => {
@@ -85,7 +85,7 @@ test("list distinguishes page size, current pending count and scan completion", 
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 0 }),
-    "No pending messages",
+    "no pending messages",
   );
   const expanded = render("list", page, true);
   assert.match(expanded, /later arrivals require a fresh scan/);
@@ -93,14 +93,14 @@ test("list distinguishes page size, current pending count and scan completion", 
     expanded,
     /Shown counts this page; pending counts the current inbox/,
   );
-  assert.match(expanded, /Untrusted message: body only/);
+  assert.match(expanded, /untrusted message:\nbody only/);
   assert.match(expanded, new RegExp(id));
   assert.doesNotMatch(expanded, /OPAQUE/);
 });
 test("ack shows counts and requested IDs without inventing removed IDs", () => {
   const value = { mailbox: "project-alpha", acknowledged: 1 };
   const input = { ids: [id, other] };
-  assert.equal(render("ack", value, false, input), "Acked 1 message");
+  assert.equal(render("ack", value, false, input), "acked 1 message");
   const expanded = render("ack", value, true, input);
   assert.match(expanded, /Acknowledged 1 of 2 requested/);
   assert.match(expanded, /1 requested ID was not pending/);
@@ -109,14 +109,14 @@ test("ack shows counts and requested IDs without inventing removed IDs", () => {
   assert.match(expanded, new RegExp(`Requested ID: ${other}`));
   assert.equal(
     render("ack", { ...value, acknowledged: 0 }, false, input),
-    "No messages acked",
+    "no messages acked",
   );
   assert.equal(
     render("ack", { ...value, acknowledged: 2 }, false, input),
-    "Acked 2 messages",
+    "acked 2 messages",
   );
 });
-test("partial and failures use warning/error, never success, with safe fixed summaries", () => {
+test("partial activity uses accent and failures use error with safe fixed summaries", () => {
   const colors: string[] = [];
   const th = {
     ...theme,
@@ -126,9 +126,9 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     },
   } as Theme;
   for (const [action, summary] of [
-    ["send", "Sending..."],
-    ["list", "Listing..."],
-    ["ack", "Acknowledging..."],
+    ["send", "sending…"],
+    ["list", "listing…"],
+    ["ack", "acknowledging…"],
   ]) {
     colors.length = 0;
     const c = renderMailboxResult(
@@ -138,15 +138,15 @@ test("partial and failures use warning/error, never success, with safe fixed sum
       context(args(action)),
     );
     assert.equal(c.render(100)[0], summary);
-    assert.ok(colors.includes("warning"));
+    assert.ok(colors.includes("accent"));
     assert.ok(!colors.includes("success"));
   }
   for (const [error, summary] of [
-    ["invalid_input", "Failed: invalid input"],
-    ["mailbox_full", "Failed: mailbox full"],
-    ["storage_failed", "Failed: storage unavailable"],
-    ["publication_unknown", "Send outcome unknown"],
-    ["SECRET\n\x1b[2J", "Failed: mailbox operation"],
+    ["invalid_input", "failed: invalid input"],
+    ["mailbox_full", "failed: mailbox full"],
+    ["storage_failed", "failed: storage unavailable"],
+    ["publication_unknown", "failed · send outcome unknown; no replay"],
+    ["SECRET\n\x1b[2J", "failed: mailbox operation"],
   ]) {
     for (const semantic of [false, true]) {
       colors.length = 0;
@@ -173,10 +173,13 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     th,
     context(args("send"), { isError: true }),
   );
-  assert.equal(prefixed.render(200)[0], "Send outcome unknown");
+  assert.equal(
+    prefixed.render(200)[0],
+    "failed · send outcome unknown; no replay",
+  );
   assert.match(
     render("send", { error: "storage_failed" }),
-    /Failed: storage unavailable/,
+    /failed: storage unavailable/,
   );
   const uncertain = renderMailboxResult(
     { ...result(sent), details: { outcomeUnknown: true } },
@@ -184,7 +187,7 @@ test("partial and failures use warning/error, never success, with safe fixed sum
     th,
     context(args("send")),
   );
-  assert.match(uncertain.render(200)[0], /Send outcome unknown/);
+  assert.match(uncertain.render(200)[0], /send outcome unknown/);
 });
 test("malformed, missing and mismatched results cannot render success", () => {
   for (const [action, value] of [
@@ -195,7 +198,7 @@ test("malformed, missing and mismatched results cannot render success", () => {
   ]) {
     assert.match(
       render(action as string, value, false, { ids: [id] }),
-      /^Failed:/,
+      /^failed:/,
     );
   }
   for (const text of [
@@ -210,10 +213,10 @@ test("malformed, missing and mismatched results cannot render success", () => {
       theme,
       context(args("send")),
     );
-    assert.match(c.render(100)[0], /^Failed:/);
+    assert.match(c.render(100)[0], /^failed:/);
   }
 });
-test("hostile controls are sanitized, previews bounded and every width truncates without wrapping", () => {
+test("hostile controls are sanitized, previews bounded and expanded bodies wrap", () => {
   const hostile = "\x1b[2J\x1b]0;title\x07hello\nworld\r\t\u009b\u202e";
   const input = { action: "send", mailbox: hostile };
   const c = renderMailboxCall(input, theme, context(input));
@@ -228,11 +231,12 @@ test("hostile controls are sanitized, previews bounded and every width truncates
     assert.ok(wide.every((line) => !/[\x00-\x1f\x7f-\x9f\u202e]/.test(line)));
     for (const width of [0, 1, 2, 8, 20, 80]) {
       const narrow = component.render(width);
-      assert.equal(narrow.length, wide.length);
+      if (component === c) assert.equal(narrow.length, wide.length);
+      else if (width >= 8) assert.ok(narrow.length >= wide.length);
       assert.ok(narrow.every((line) => visibleWidth(line) <= width));
     }
   }
-  assert.match(r.render(5000).join("\n"), /\[truncated\]/);
+  assert.match(r.render(5000).join("\n"), /Display truncated/);
   assert.ok(r.render(5000).join("\n").length < 1600);
   assert.equal(
     renderMailboxResult(
@@ -243,7 +247,7 @@ test("hostile controls are sanitized, previews bounded and every width truncates
     ),
     r,
   );
-  assert.deepEqual(r.render(200), ["Sent 1 message"]);
+  assert.deepEqual(r.render(200), ["sent 1 message"]);
 });
 test("registered renders preserve real direct envelopes, paging, ack and uncertain persistence", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "mailbox-render-"));
@@ -288,7 +292,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs),
       )
       .render(100)[0],
-    "Sent 1 message",
+    "sent 1 message",
   );
   assert.equal(JSON.stringify(response), before);
   const second = await tool.execute("call", { ...sendArgs, message: "second" });
@@ -376,7 +380,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs, { isError: failure.isError }),
       )
       .render(200)[0],
-    "Send outcome unknown",
+    "failed · send outcome unknown; no replay",
   );
   assert.equal(new MailboxStore(root).list("project-alpha").pending, 2);
 });

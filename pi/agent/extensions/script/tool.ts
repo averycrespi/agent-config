@@ -7,6 +7,7 @@ import {
   plural,
   toolCall,
   outcomeLine,
+  getResultTextComponent,
 } from "../_shared/render.ts";
 import {
   isBackgroundControl,
@@ -201,19 +202,22 @@ export const renderers: Pick<
       const lines = [
         outcomeLine(
           theme,
-          `${isPartial ? "checking..." : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : `${entries.length} saved script(s)`}${d?.truncated ? "; truncated" : ""}`,
-          isPartial ? "warning" : failed ? "error" : "muted",
+          `${isPartial ? "checking…" : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : `${entries.length} saved script(s)`}${d?.truncated ? " (truncated)" : ""}`,
+          isPartial ? "accent" : failed ? "error" : "muted",
         ),
       ];
+      const details: string[] = [];
       if (expanded)
         for (const entry of entries)
-          lines.push(
-            theme.fg(
-              entry.valid ? "muted" : "error",
-              `${display(entry.name ?? entry.filename)} (${entry.valid ? "valid" : display(entry.diagnostic)})`,
-            ),
+          details.push(
+            theme.fg("text", display(entry.name ?? entry.filename)) +
+              " " +
+              theme.fg(
+                entry.valid ? "muted" : "error",
+                `(${entry.valid ? "valid" : display(entry.diagnostic)})`,
+              ),
           );
-      return getTruncatedText(ctx.lastComponent, lines);
+      return getResultTextComponent(ctx.lastComponent, lines, details);
     }
     if (d?.background === true || isBackgroundControl("script", args)) {
       return renderExecutionResult(
@@ -243,8 +247,7 @@ export const renderers: Pick<
         : traces.filter((t) => t.state === "succeeded").length;
     let summary: string;
     if (isPartial)
-      summary =
-        action === "describe" ? "discovering providers..." : "running...";
+      summary = action === "describe" ? "discovering providers…" : "running…";
     else if (failed) {
       const state =
         d?.status === "cancelled"
@@ -266,12 +269,24 @@ export const renderers: Pick<
     } else if (calls === 0) {
       summary = "completed (no calls)";
     } else summary = `completed (${plural(succeeded, "call")} succeeded)`;
+    const separator = theme.fg("dim", " · ");
+    const colon = summary.indexOf(": ");
     const lines = [
-      outcomeLine(
-        theme,
-        summary,
-        isPartial ? "warning" : failed ? "error" : "muted",
-      ),
+      failed && !isPartial && colon >= 0
+        ? theme.fg(
+            d?.status === "cancelled" ? "warning" : "error",
+            summary.slice(0, colon),
+          ) +
+          theme.fg("muted", ": ") +
+          theme.fg(
+            d?.code === "cancelled" ? "warning" : "error",
+            summary.slice(colon + 2),
+          )
+        : outcomeLine(
+            theme,
+            summary,
+            isPartial ? "accent" : failed ? "error" : "muted",
+          ),
     ];
     if (d?.outcomeUnknown)
       lines.push(
@@ -281,6 +296,8 @@ export const renderers: Pick<
       lines.push(
         theme.fg("warning", "Partial execution; inspect provider outcomes."),
       );
+    const compact = [...lines];
+    lines.length = 0;
     if (expanded && !isPartial) {
       if (failed && d?.effectsMayPersist)
         lines.push(
@@ -289,12 +306,16 @@ export const renderers: Pick<
             "Inspect dispatched provider outcomes before further action; no automatic retry.",
           ),
         );
-      if (failed && info) lines.push(theme.fg("muted", info.guidance));
+      if (failed && info) lines.push(theme.fg("text", info.guidance));
       if (failed && d?.code)
-        lines.push(theme.fg("muted", `code: ${display(d.code)}`));
+        lines.push(
+          theme.fg("muted", "  code: ") + theme.fg("error", display(d.code)),
+        );
       if ((providerNames(args.providers)?.length ?? 0) > 3)
         for (const name of providerNames(args.providers)!)
-          lines.push(theme.fg("muted", `selected provider: ${name}`));
+          lines.push(
+            theme.fg("muted", "  selected provider: ") + theme.fg("text", name),
+          );
       if (action === "describe" && d?.providerCount === 0)
         lines.push(
           theme.fg(
@@ -308,27 +329,39 @@ export const renderers: Pick<
             ? p.methods.slice(0, 32)
             : [])
             lines.push(
-              theme.fg("muted", `${display(p.namespace)}.${display(method)}`),
+              theme.fg("text", `  ${display(p.namespace)}.${display(method)}`),
             );
       if (calls > 0)
         lines.push(
-          theme.fg(
-            "muted",
-            `${plural(calls, "call")} attempted, ${succeeded} succeeded`,
-          ),
+          theme.fg("muted", `  ${plural(calls, "call")} attempted`) +
+            separator +
+            theme.fg("muted", `${succeeded} succeeded`),
         );
       for (const t of traces) {
         lines.push(
-          theme.fg(
-            "muted",
-            `${display(t.id)} ${display(t.tool)} (${display(t.state)}, ${display(t.durationMs)}ms${t.code ? `, ${display(t.code)}` : ""})`,
-          ),
+          [
+            theme.fg("text", `  ${display(t.id)} ${display(t.tool)}`),
+            theme.fg(
+              t.state === "succeeded"
+                ? "success"
+                : t.state === "cancelled"
+                  ? "warning"
+                  : t.state === "failed"
+                    ? "error"
+                    : t.state === "running"
+                      ? "accent"
+                      : "muted",
+              display(t.state),
+            ),
+            theme.fg("muted", `${display(t.durationMs)}ms`),
+            ...(t.code ? [theme.fg("error", display(t.code))] : []),
+          ].join(theme.fg("dim", " · ")),
         );
         const callInfo = diagnostic(t.code, "run");
         if (callInfo && t.code !== d?.code)
-          lines.push(theme.fg("muted", callInfo.guidance));
+          lines.push(theme.fg("text", callInfo.guidance));
       }
     }
-    return getTruncatedText(ctx.lastComponent, lines);
+    return getResultTextComponent(ctx.lastComponent, compact, lines);
   },
 };
