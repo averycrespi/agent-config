@@ -21,12 +21,13 @@ const record = (status: Execution["status"]): Execution => ({
   notification: {
     id: "notice",
     intent: true,
-    handoff: "unknown",
+    handoff: "handed_to_pi",
+    handedAt: 1000,
     consumed: false,
   },
 });
 
-test("all terminal states and warnings use the same visibility-only deadline", () => {
+test("all terminal states use the same confirmed-handoff visibility deadline", () => {
   for (const owner of ["script", "subagents", "workflow"]) {
     for (const status of [
       "success",
@@ -49,7 +50,7 @@ test("all terminal states and warnings use the same visibility-only deadline", (
       );
       assert.equal(
         widgetVisible(
-          { ...r, endedAt: undefined },
+          { ...r, notification: { ...r.notification, handedAt: undefined } },
           DEFAULT_WIDGET_CONFIG,
           90000,
         ),

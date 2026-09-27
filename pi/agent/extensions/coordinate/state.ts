@@ -2,12 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { realpath } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import {
-  readIndex,
-  persistIndex,
-  updateIndex,
-  type Index,
-} from "../../skills/coordinate-repo/scripts/index.js";
+import { readIndex, persistIndex, updateIndex, type Index } from "./record.js";
 
 export interface Binding {
   version: 1;
@@ -17,7 +12,8 @@ export interface Binding {
   common: string;
   active: boolean;
   mailbox: string;
-  authority: string;
+  authority?: string;
+  parentName?: string;
   parentId?: string;
   assignmentId?: string;
   revision?: number;
@@ -127,7 +123,7 @@ export async function load(cwd: string, sessionId: string) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(b.mailbox),
     "Invalid bound mailbox",
   );
-  text(b.authority, "bound authority");
+  if (b.authority !== undefined) text(b.authority, "bound authority");
   if (b.role === "child") {
     need(
       typeof b.parentId === "string" &&
@@ -196,17 +192,11 @@ export async function bind(cwd: string, binding: Binding) {
       ...(binding.role === "coordinator"
         ? {
             Assignments: "[]",
-            Mailbox: JSON.stringify({
-              address: binding.mailbox,
-              reports: {},
-              questions: {},
-            }),
-            Observation: "{}",
           }
         : {}),
       Next:
         binding.role === "coordinator"
-          ? "Coordinator: record authority and finite supervision before spawn"
+          ? "Use coordinate tools for worker state; TODO for open actions"
           : "Worker: read brief, own checkpoint and report through mailbox",
     },
   });
@@ -222,6 +212,7 @@ export function absolute(
   );
 }
 export function obligations(index: Index) {
+  // Old records stay readable; do not silently discard unresolved legacy work.
   const box = JSON.parse(index.values?.Mailbox ?? "{}");
   const questions = Object.values(box.questions ?? {}).filter(
     (q) => (q as { status?: string }).status !== "resolved",

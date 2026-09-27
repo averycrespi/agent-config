@@ -7,6 +7,17 @@ import { Service } from "../background/service.ts";
 import { SERVICE_EVENT, type Execution } from "../background/api.ts";
 import { validate } from "../background/store.ts";
 import { retainBatchResult } from "./background.ts";
+import { renderAgentsResult } from "./render.ts";
+const theme: any = {
+  fg: (_: string, text: string) => text,
+  bold: (text: string) => text,
+};
+const runLine = (result: any) =>
+  renderAgentsResult(result, { expanded: false, isPartial: false }, theme, {
+    args: { action: "run" },
+    state: {},
+    invalidate() {},
+  }).render(120)[0];
 
 const tick = () => new Promise<void>((r) => setImmediate(r));
 const child = (capabilities: string[] = []) => ({
@@ -119,6 +130,15 @@ test("background returns before completion; mixed results and usage stay aligned
   });
   assert.equal(admission.usage, undefined);
   assert.equal(admission.details.execution.label, "bad");
+  assert.equal(
+    runLine(admission),
+    `Running · ${admission.details.execution.id.slice(0, 8)}`,
+  );
+  assert.match(admission.content[0].text, /"label":"bad"/);
+  assert.match(
+    admission.content[0].text,
+    /Inspect with subagent action inspect/,
+  );
   const id = admission.details.execution.id;
   for (let i = 0; !finish && i < 100; i++) await tick();
   assert.equal(h.service.inspect("subagents", id).status, "running");
@@ -217,9 +237,9 @@ test("foreground/background share capacity; queued cancellation starts no child"
   });
   const foreground = await h.call({ agent: child() });
   for (let i = 0; !finish && i < 100; i++) await tick();
-  const {
-    details: { execution },
-  } = await h.call({ agent: child() });
+  const queued = await h.call({ agent: child() });
+  const execution = queued.details.execution;
+  assert.equal(runLine(queued), `Queued · ${execution.id.slice(0, 8)}`);
   await tick();
   assert.equal(run.mock.callCount(), 1);
   assert.equal(
@@ -237,6 +257,17 @@ test("foreground/background share capacity; queued cancellation starts no child"
     (await settled(h, foreground.details.execution.id)).status,
     "success",
   );
+});
+
+test("a child finishing before the run returns reports its actual terminal outcome", async (t) => {
+  const h = harness(t);
+  mock.method(_runSubagent, "fn", async () => ok);
+  const result = await h.call({ agent: child() });
+  const r = result.details.execution;
+  assert.equal(r.status, "success");
+  assert.equal(runLine(result), `Succeeded · ${r.id.slice(0, 8)}`);
+  assert.match(result.content[0].text, new RegExp(r.id));
+  assert.match(result.content[0].text, /"status":"success"/);
 });
 
 test("mutable cross-mode gate remains exclusive; running cancellation drains and retains abort usage", async (t) => {

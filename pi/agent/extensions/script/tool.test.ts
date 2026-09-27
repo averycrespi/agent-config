@@ -317,12 +317,15 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
   const collapsed = renderResult(failed, args);
   assert.match(collapsed, /failed: returned JSON exceeds 24,000 bytes/);
   assert.match(collapsed, /Outcome unknown; do not automatically retry/);
-  assert.match(collapsed, /Partial execution; effects may persist/);
+  assert.match(collapsed, /Partial execution; inspect provider outcomes/);
   assert.doesNotMatch(collapsed, /web.fetch|Reduce the returned JSON/);
   const expanded = renderResult(failed, args, true);
   assert.match(expanded, /web.fetch \(succeeded/);
   assert.match(expanded, /Reduce the returned JSON/);
-  assert.match(JSON.stringify(failed.content), /Reconcile provider effects/);
+  assert.match(
+    JSON.stringify(failed.content),
+    /Provider calls were dispatched/,
+  );
   assert.match(
     renderResult(
       presentRun({ ...run, status: "timeout", code: "deadline_exceeded" }),

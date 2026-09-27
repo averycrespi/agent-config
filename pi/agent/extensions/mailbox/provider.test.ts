@@ -6,25 +6,29 @@ import { describeScriptProviders } from "../script/api.ts";
 import { subscribeProvider, describeEvents } from "../monitor/providers.ts";
 import mailbox from "./index.ts";
 import { MailboxStore } from "./store.ts";
-import { mailboxSupervision, inspectMailbox } from "./api.ts";
+import { inspectMailbox } from "./api.ts";
+import { context, SESSION } from "./fixture.ts";
 
 async function setup(t: import("node:test").TestContext) {
   const f = await fixture(t);
   await f.config({ allowedProviders: ["mailbox"] });
-  const hooks = new Map<string, () => void>();
+  const hooks = new Map<string, any>();
   let tool: any;
   const root = join(f.dir, "mailboxes");
   mailbox(
     {
       ...f.pi,
       on: (n: string, fn: () => void) => hooks.set(n, fn),
+      registerCommand() {},
+      registerMessageRenderer() {},
+      sendMessage() {},
       registerTool: (t: any) => {
         tool = t;
       },
     } as any,
     root,
   );
-  hooks.get("session_start")!();
+  await hooks.get("session_start")!({}, context(f.dir));
   t.after(() => hooks.get("session_shutdown")!());
   return {
     ...f,
@@ -39,7 +43,7 @@ test("explicit provider selection, durable gap catch-up, minimal events and lost
   const schema = await describeScriptProviders(h.pi, h.dir, ["mailbox"]);
   assert.deepEqual(
     schema[0].methods.map((m) => m.name),
-    ["send", "list", "observe", "ack"],
+    ["send", "list", "ack"],
   );
   assert.equal(
     (await describeEvents(h.pi, h.dir, ["mailbox"]))[0].provider,
@@ -69,12 +73,17 @@ test("explicit provider selection, durable gap catch-up, minimal events and lost
   t.after(() => sub.close());
   const first = await h.run('return await mailbox.list({mailbox: "project"});');
   assert.equal(JSON.parse(first.json!).pending, 1);
-  new MailboxStore(h.root).send("project", "result", "PRIVATE result");
+  new MailboxStore(h.root).send("project", "result", "PRIVATE result", SESSION);
   await new Promise((r) => setTimeout(r, 50));
   assert.ok(events.length > 0);
   assert.ok(events.every((e) => JSON.stringify(e) === '{"mailbox":"project"}'));
   sub.close();
-  new MailboxStore(h.root).send("project", "question", "registration gap");
+  new MailboxStore(h.root).send(
+    "project",
+    "question",
+    "registration gap",
+    SESSION,
+  );
   assert.equal(
     JSON.parse(
       (await h.run('return await mailbox.list({mailbox: "project"});')).json!,
@@ -87,28 +96,15 @@ test("explicit provider selection, durable gap catch-up, minimal events and lost
     "success",
   );
 });
-test("supervision recipe executes through real Script with bounded state and sticky invalid policy", async (t) => {
+test("Script sender is runtime attributed and removed observer is unavailable", async (t) => {
   const h = await setup(t);
-  const store = new MailboxStore(h.root);
-  for (let i = 0; i < 60; i++) store.send("p", "result", "private body");
-  const recipe = mailboxSupervision({ mailbox: "p" });
-  const first = await h.run(`const state = null; ${recipe.source}`);
-  assert.equal(first.status, "success");
-  const value = JSON.parse(first.json!);
-  assert.equal(value.decision, "wake");
-  assert.equal(value.evidence.pending, 60);
-  assert.ok(!first.json!.includes("private body"));
-  const second = await h.run(
-    `const state = ${JSON.stringify(value.state)}; ${recipe.source}`,
+  const sent = await h.run('return await mailbox.send("p", "result", "body");');
+  assert.equal(sent.status, "success");
+  assert.equal(JSON.parse(sent.json!).sender, SESSION);
+  const schema = await describeScriptProviders(h.pi, h.dir, ["mailbox"]);
+  assert.ok(
+    !schema[0].methods.some((m) => ["observe", "clear"].includes(m.name)),
   );
-  assert.equal(second.status, "success");
-  assert.equal(JSON.parse(second.json!).decision, "wait");
-  assert.equal(store.list("p").pending, 60);
-  const invalid = await h.run(
-    'try { await mailbox.observe("p", null, {ageMs: 60000, reminderMs: 60000}); } catch {} return true;',
-  );
-  assert.equal(invalid.status, "failed");
-  assert.equal(store.list("p").pending, 60);
 });
 test("invalid direct mutations and caught provider failures cannot conceal host failure", async (t) => {
   const h = await setup(t);
@@ -131,10 +127,18 @@ test("invalid direct mutations and caught provider failures cannot conceal host 
 
 test("local inspection projects availability/count only without creating or acknowledging reports", async (t) => {
   const h = await setup(t);
-  assert.deepEqual(inspectMailbox(h.pi, "project"), { pending: 0 });
+  assert.deepEqual(inspectMailbox(h.pi, "project"), {
+    pending: 0,
+    sessionId: SESSION,
+    listening: false,
+  });
   const store = new MailboxStore(h.root);
-  store.send("project", "result", "PRIVATE BODY");
-  assert.deepEqual(inspectMailbox(h.pi, "project"), { pending: 1 });
+  store.send("project", "result", "PRIVATE BODY", SESSION);
+  assert.deepEqual(inspectMailbox(h.pi, "project"), {
+    pending: 1,
+    sessionId: SESSION,
+    listening: false,
+  });
   assert.equal(store.list("project").messages[0].message, "PRIVATE BODY");
   h.hooks.get("session_shutdown")!();
   assert.equal(inspectMailbox(h.pi, "project"), undefined);

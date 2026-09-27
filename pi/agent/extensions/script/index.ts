@@ -243,28 +243,34 @@ export default function (pi: ExtensionAPI) {
             running.delete(task);
           }
         }
-        return backgroundResult([
-          service.admit({
-            owner: "script",
-            label: params.description,
-            deadlineMs: prepared.deadlineMs,
-            ...(saved ? { result: { definition: saved } } : {}),
-            run: async (signal) => {
-              const run = await prepared.run(signal);
-              return {
-                status: run.status,
-                effectsMayPersist: run.effectsMayPersist,
-                outcomeUnknown: run.outcomeUnknown,
-                result: JSON.parse(
-                  JSON.stringify({
-                    ...run,
-                    ...(saved ? { definition: saved } : {}),
-                  }),
-                ),
-              };
-            },
-          }),
-        ]);
+        const execution = service.admit({
+          owner: "script",
+          label: params.description,
+          deadlineMs: prepared.deadlineMs,
+          ...(saved ? { result: { definition: saved } } : {}),
+          run: async (signal) => {
+            const run = await prepared.run(signal);
+            return {
+              status: run.status,
+              effectsMayPersist: run.effectsMayPersist,
+              outcomeUnknown: run.outcomeUnknown,
+              result: JSON.parse(
+                JSON.stringify({
+                  ...run,
+                  ...(saved ? { definition: saved } : {}),
+                }),
+              ),
+            };
+          },
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const current = service.inspect("script", execution.id);
+        const receipt = backgroundResult([current]);
+        receipt.content.push({
+          type: "text",
+          text: `Inspect with script action inspect and id ${current.id}.`,
+        });
+        return receipt;
       }
       const task = (async () => {
         if (params.action === "describe") {

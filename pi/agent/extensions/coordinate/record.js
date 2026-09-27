@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -11,7 +10,6 @@ import {
   unlink,
 } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 export const sections = [
   "Owner and authority",
@@ -213,18 +211,6 @@ export async function confirmIndex(
   return { ...receipt, confirmed: true };
 }
 
-export async function confirmIndexResponse(request, stdout) {
-  let envelope;
-  try {
-    envelope = JSON.parse(stdout);
-  } catch {
-    throw new Error("missing or malformed persistence response");
-  }
-  if (!envelope || Object.keys(envelope).length !== 1 || !envelope.result)
-    throw new Error("invalid persistence response");
-  return confirmIndex(request, envelope.result);
-}
-
 export async function persistIndex(request) {
   validateAttempt(request);
   const receipt = await replaceIndex(request);
@@ -255,30 +241,4 @@ export async function updateIndex({ cwd, id, expected, changes, attemptId }) {
   return persistIndex({ cwd, id, expected, values, attemptId });
 }
 
-// A sole cooperative writer is required: compare-and-replace is not fencing or a lock.
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(await realpath(process.argv[1])).href
-) {
-  try {
-    let input = "";
-    for await (const chunk of process.stdin) input += chunk;
-    const request = JSON.parse(input);
-    const result =
-      request.action === "status"
-        ? await readIndex(request.cwd, request.id)
-        : request.action === "replace"
-          ? await persistIndex(request)
-          : request.action === "update"
-            ? await updateIndex(request)
-            : request.action === "confirm"
-              ? await confirmIndexResponse(request, request.response)
-              : (() => {
-                  throw new Error("unknown action");
-                })();
-    process.stdout.write(JSON.stringify({ result }) + "\n");
-  } catch (error) {
-    process.stderr.write(JSON.stringify({ error: error.message }) + "\n");
-    process.exitCode = 1;
-  }
-}
+// Private storage only: a sole cooperative writer is required; no agent CLI.

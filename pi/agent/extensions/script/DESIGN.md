@@ -51,7 +51,7 @@ Discovery failures retain only known core categories (or `discovery_unavailable`
 
 Background controls use the shared display-only `background/render.ts` projection: a flush-left outcome without repeated call identity, no provider placeholder, and full retained evidence only on expansion. Foreground calls use action/description with optional parenthesized provider selection; settled rows keep safe host accounting and warnings separate.
 
-Foreground rendering consumes host accounting and `context.args`, not source or result payloads. Selection labels describe the request, not effective authority. Discovery details retain only namespace/method names and counts, not duplicate schemas. Expanded rows show bounded inventories, traces, and static guidance; collapsed rows prioritize outcomes and partial/unknown warnings over zero-call accounting. No renderer performs discovery, grants access, or adds live-session state.
+Foreground rendering consumes host accounting and `context.args`, not source or result payloads. Selection labels describe the request, not effective authority. Discovery details retain only namespace/method names and counts, not duplicate schemas. Expanded rows show bounded inventories, traces, and static guidance; collapsed rows prioritize outcomes and partial/unknown warnings over zero-call accounting. Dispatch flags include read-only handlers and are not proof of mutation: failures say to inspect dispatched provider outcomes instead of asserting effects may persist. Success adds no generic effects prose; underlying flags, traces and no-replay safeguards remain unchanged. No renderer performs discovery, grants access, or adds live-session state.
 
 ## Verification and change guidance
 

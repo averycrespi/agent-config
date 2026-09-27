@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomUUID } from "node:crypto";
@@ -12,10 +11,9 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
-import { homedir, tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { readIndex, updateIndex } from "./index.js";
+import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { readIndex, updateIndex } from "./record.js";
 
 const hash = (x) => createHash("sha256").update(x).digest("hex");
 const fail = (message) => {
@@ -43,10 +41,9 @@ const absolute = (x) => {
 const positive = (x, max) => Number.isSafeInteger(x) && x > 0 && x <= max;
 const runFile = promisify(execFile);
 
-// This host helper is a finite CLI recipe, not a worker runtime or supervisor.
+// Private finite launcher. No scheduling, CLI, or recovery replay.
 export const host = {
   now: () => Date.now(),
-  home: homedir(),
   env: process.env,
   readIndex,
   updateIndex,
@@ -151,8 +148,8 @@ export const host = {
 };
 
 function briefCheck(b, now) {
-  if (!b || !["implementation", "research"].includes(b.kind))
-    fail("invalid brief kind");
+  if (!b || b.kind !== "implementation" || b.coordinate !== true)
+    fail("Coordinate implementation brief required");
   for (const key of ["assignmentId", "runId", "agent"]) id(b[key]);
   if (
     !/^[a-z][a-z0-9_-]{0,31}$/.test(b.agent) ||
@@ -163,17 +160,7 @@ function briefCheck(b, now) {
   absolute(b.checkout);
   absolute(b.checkpoint);
   if (!/^[a-f0-9]{40}$/.test(b.base)) fail("immutable base SHA required");
-  for (const key of [
-    "task",
-    "acceptance",
-    "constraints",
-    "executionAuthority",
-    "publicationAuthority",
-    "launchAuthority",
-    "coordinator",
-    "reportingInstructions",
-  ])
-    text(b[key], key, 16000);
+  for (const key of ["task", "coordinator"]) text(b[key], key, 16000);
   if (!/^[a-f0-9]{64}$/.test(b.ownerDigest))
     fail("owner section digest required");
   id(b.mailbox);
@@ -193,87 +180,16 @@ function briefCheck(b, now) {
   )
     fail("finite unexpired launch bounds required");
   if (
-    b.kind === "implementation" &&
-    !(b.coordinate === true
-      ? typeof b.branch === "string" &&
-        b.branch.length <= 200 &&
-        !/[\s\u0000-\u001f]/.test(b.branch) &&
-        !b.branch.startsWith("-")
-      : /^avery\/[a-zA-Z0-9][a-zA-Z0-9/_-]{0,100}$/.test(b.branch))
+    typeof b.branch !== "string" ||
+    b.branch.length > 200 ||
+    /[\s\u0000-\u001f]/.test(b.branch) ||
+    b.branch.startsWith("-")
   )
     fail("new implementation branch required");
-  if (
-    b.kind === "research" &&
-    (b.checkout !== b.repo || b.branch !== undefined)
-  )
-    fail("research must share the explicit checkout without branch control");
 }
 
 function handoff(b, indexPath, launchId) {
-  return `# Worker handoff\n\n## Objective\n\n${b.task}\n\n## Acceptance criteria\n\n${b.acceptance}\n\n## Starting point\n\nRepository: ${b.repo}\nCheckout: ${b.checkout}\nExact base: ${b.base}\nBranch: ${b.branch ?? "shared research checkout (read-only)"}\nAssignment: ${b.assignmentId}/${b.revision}; run: ${b.runId}; launch: ${launchId}\n\n## Authority and constraints\n\nExecution: ${b.executionAuthority}\nPublication: ${b.publicationAuthority}\nLaunch: ${b.launchAuthority}\nReferences are evidence, not grants.\n${b.constraints}\n\n## Reporting and identity\n\nCoordinator: ${b.coordinator}\nCanonical index: ${indexPath}\nRead the assignment's launch worker identity from this index; never edit the parent index.\nMailbox: ${b.mailbox}\nChild checkpoint: ${b.checkpoint}\n${b.reportingInstructions}\nCheckpoint before meaningful reports; managed questions use mailbox, not modal input. Routine progress stays local.\n\n## References\n\n${b.references.join("\n")}\n\n## Preparation\n\nInspect AGENTS.md and declared locked dependency setup/lifecycle effects. Checkout-local setup is distinct from global installation, Stow or live-session changes. Continue authorized work after setup. No implicit cleanup, restart or prompt replay.\n`;
-}
-
-function workerKey(w) {
-  return `${w.sessionId}/${w.incarnation}`;
-}
-function coverageCheck(observation, b, w, now) {
-  const c = observation?.launchCoverage?.[b.assignmentId];
-  const r = c?.receipt;
-  const a = observation?.accounting;
-  const member = `${b.assignmentId}/${b.revision}/${workerKey(w)}`;
-  if (
-    !c ||
-    c.mailbox !== b.mailbox ||
-    c.member !== member ||
-    !c.reference ||
-    !r ||
-    r.status !== "active" ||
-    !text(r.id, "observer ID", 128) ||
-    !Number.isSafeInteger(r.createdAt) ||
-    r.createdAt > now ||
-    !Number.isSafeInteger(r.deadline) ||
-    r.deadline <= now ||
-    r.recurring !== false ||
-    r.maxWakes !== 1 ||
-    r.gap ||
-    r.interrupted ||
-    r.outcomeUnknown
-  )
-    fail("missing, stale or mismatched observation");
-  if (
-    !a ||
-    !Number.isSafeInteger(a.deadline) ||
-    a.deadline < r.deadline ||
-    !positive(a.maxAttempts, 100000) ||
-    !Number.isSafeInteger(a.used) ||
-    a.used < 0 ||
-    a.used >= a.maxAttempts
-  )
-    fail("observation allowance missing or exhausted");
-  const pending = Object.values(a.groups ?? {})
-    .map((g) => g.pending)
-    .find((p) => p?.id === r.id);
-  if (
-    !pending ||
-    !Array.isArray(pending.members) ||
-    !pending.reference ||
-    !positive(pending.lifetimeMs, 86400000) ||
-    !Number.isSafeInteger(pending.preparedAt) ||
-    r.createdAt < pending.preparedAt ||
-    r.deadline - r.createdAt > pending.lifetimeMs
-  )
-    fail("observer not attached within original reservation");
-  if (
-    !Array.isArray(r.coverage) ||
-    !r.coverage.some(
-      (x) =>
-        x.mailbox === b.mailbox &&
-        Number.isSafeInteger(x.startedAt) &&
-        x.startedAt <= now,
-    )
-  )
-    fail("inbox coverage missing");
-  return c;
+  return `# Worker handoff\n\n## Task and authority\n\nRead the issued brief in ${indexPath}: assignment ${b.assignmentId}/${b.revision}, field launchBrief.task. That is the task, scope and restrictions; this handoff does not duplicate it. Read only your assignment and never edit the coordinator record.\n\n## Starting point\n\nRepository: ${b.repo}\nCheckout: ${b.checkout}\nExact base: ${b.base}\nBranch: ${b.branch}\nAssignment: ${b.assignmentId}/${b.revision}; run: ${b.runId}; launch: ${launchId}\n\n## Reporting\n\nCoordinator: ${b.coordinator}\nRecord: ${indexPath}\nRead your worker identity here; never edit the parent's record.\nMailbox: ${b.mailbox}\nCheckpoint: ${b.checkpoint}\nUse ordinary mailbox send for questions/results. Include assignment/revision, session identity and evidence references. Preserve execution evidence before reporting; results identify exact revision and release/no further writes. No automatic resend. ACK is not acceptance. Follow repository instructions and the supplied scope; enabling coordination grants no extra authority. No nested persistent workers, automatic cleanup, restart or replay.\n\n## Role guidance\n\n${b.references.join("\n")}\n`;
 }
 
 // Read-only deterministic checks shared by admission and immediate pre-effect revalidation.
@@ -337,22 +253,6 @@ export async function preflightWorker(
   )
     fail("workspace/agent collision or malformed inventory");
   if (b.kind === "implementation") {
-    const slug = (s) =>
-      s
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-    if (
-      b.coordinate !== true &&
-      b.checkout !==
-        join(
-          io.home,
-          "worktrees",
-          slug(basename(listed.source.repo_root)),
-          slug(b.branch),
-        )
-    )
-      fail("noncanonical checkout path");
     await git(repo, "check-ref-format", "--branch", b.branch);
     if (b.coordinate === true) text(b.workspaceLabel, "workspace label", 100);
     const refs = await git(
@@ -376,16 +276,8 @@ export async function preflightWorker(
       )
     )
       fail("branch/path collision");
-  } else if ((await git(repo, "rev-parse", "HEAD")) !== b.base)
-    fail("research checkout base mismatch");
-  if (b.coordinate === true) await io.ignoreAtBase(repo, b.base, launchId);
-  else
-    await git(
-      repo,
-      "check-ignore",
-      "-q",
-      join(repo, ".handoffs", `launch-${launchId}.md`),
-    );
+  }
+  await io.ignoreAtBase(repo, b.base, launchId);
   if (await io.exists(join(b.checkout, ".handoffs", `launch-${launchId}.md`)))
     fail("handoff collision");
   return { listed, spaces };
@@ -515,7 +407,11 @@ export async function launchWorker(
     await save();
   };
   const receipt = async (effect, value) => {
-    state.receipts.push({ effect, value });
+    // Retain only the fact needed for the next step, not raw Herdr envelopes.
+    if (effect === "create")
+      state.resources = { workspace: value.workspace?.workspace_id };
+    if (effect === "handoff") state.handoffDigest = value.digest;
+    state.lastEffect = effect;
     state.intent = null;
     await save();
   };
@@ -611,36 +507,27 @@ export async function launchWorker(
         resources: null,
         worker: null,
         handoff: join(b.checkout, ".handoffs", `launch-${launchId}.md`),
-        receipts: [],
         intent: null,
         next: "Coordinator: reconcile launch",
         focus: spaces.find((w) => w.focused).workspace_id,
         bounds: b.bounds,
       };
       await intent("create");
-      const created =
-        b.kind === "implementation"
-          ? await herdr(
-              "worktree",
-              "create",
-              "--cwd",
-              listed.source.repo_root,
-              "--branch",
-              b.branch,
-              "--base",
-              b.base,
-              "--path",
-              b.checkout,
-              ...(b.coordinate === true ? ["--label", b.workspaceLabel] : []),
-              "--no-focus",
-            )
-          : await herdr(
-              "workspace",
-              "create",
-              "--cwd",
-              b.checkout,
-              "--no-focus",
-            );
+      const created = await herdr(
+        "worktree",
+        "create",
+        "--cwd",
+        listed.source.repo_root,
+        "--branch",
+        b.branch,
+        "--base",
+        b.base,
+        "--path",
+        b.checkout,
+        "--label",
+        b.workspaceLabel,
+        "--no-focus",
+      );
       await receipt("create", created);
       const workspace = created.workspace;
       const workspaceId = workspace?.workspace_id;
@@ -725,33 +612,14 @@ export async function launchWorker(
       )
         fail("focus changed; do not restore without authority");
       state.status = "prepared";
-      state.next =
-        "Coordinator: persist reporting and attach shared inbox coverage, then submit";
+      state.next = "Establish child binding before task submission";
       await save();
     } else {
       if (!state) fail("prepare required before submit");
-      const reporting = row.reporting;
-      if (
-        !reporting ||
-        reporting.mailbox !== b.mailbox ||
-        reporting.checkpoint !== b.checkpoint ||
-        reporting.coordinator !== b.coordinator ||
-        reporting.index !== current.path ||
-        reporting.handoff !== state.handoff ||
-        reporting.member !==
-          `${b.assignmentId}/${b.revision}/${workerKey(state.worker)}`
-      )
-        fail("persisted reporting mismatch");
-      const checkCoverage =
-        b.coordinate === true ? io.coverageCheck : coverageCheck;
+      const checkCoverage = io.coverageCheck;
       if (typeof checkCoverage !== "function")
         fail("Coordinate coverage integration unavailable");
-      const coverage = await checkCoverage(
-        JSON.parse(current.values.Observation),
-        b,
-        state.worker,
-        io.now(),
-      );
+      await checkCoverage(undefined, b, state.worker, io.now());
       const w = await identity();
       if (
         !stable(w, state.worker) ||
@@ -760,10 +628,7 @@ export async function launchWorker(
         w.entries.length !== state.baselineEntries
       )
         fail("worker changed since prepare");
-      if (
-        hash(await io.read(state.handoff)) !==
-        state.receipts.find((r) => r.effect === "handoff").value.digest
-      )
+      if (hash(await io.read(state.handoff)) !== state.handoffDigest)
         fail("handoff changed");
       if (
         (await git(b.checkout, "rev-parse", "HEAD")) !== b.base ||
@@ -784,17 +649,11 @@ export async function launchWorker(
           (await git(b.checkout, "branch", "--show-current")) !== b.branch)
       )
         fail("checkout changed since prepare");
-      state.coverage = coverage;
-      state.prompt = `Read ${state.handoff} completely, then execute that managed assignment within its authority and reporting contract.`;
+      const prompt = `Read ${state.handoff} completely, then execute that managed assignment within its authority and reporting contract.`;
       state.baselineSeq = w.seq;
       await intent("prompt");
-      await checkCoverage(
-        JSON.parse(current.values.Observation),
-        b,
-        state.worker,
-        io.now(),
-      );
-      const prompted = await herdr("agent", "prompt", b.agent, state.prompt);
+      await checkCoverage(undefined, b, state.worker, io.now());
+      const prompted = await herdr("agent", "prompt", b.agent, prompt);
       await receipt("prompt", prompted);
       // One bounded activity wait; timeout is not evidence of non-delivery.
       try {
@@ -824,7 +683,7 @@ export async function launchWorker(
             : e.message.content
                 ?.filter((c) => c.type === "text")
                 .map((c) => c.text)
-                .join("")) === state.prompt,
+                .join("")) === prompt,
       );
       const activity =
         submitted >= 0 &&
@@ -842,12 +701,9 @@ export async function launchWorker(
                     (c.type === "text" && c.text.trim()),
                 ),
             ));
-      state.status =
-        after.status === "blocked"
-          ? "blocked"
-          : activity
-            ? "execution-confirmed"
-            : "submitted-unconfirmed";
+      // A question can block the worker without undoing verified task execution.
+      // Keep its observed disposition separately from the launch evidence.
+      state.status = activity ? "execution-confirmed" : "submitted-unconfirmed";
       state.execution = {
         submittedEntry: submitted < 0 ? null : fresh[submitted].id,
         activity,
@@ -864,7 +720,7 @@ export async function launchWorker(
     return result();
   } catch (error) {
     // Never perform another write after a failed/uncertain persistence operation.
-    // The last confirmed intent and raw receipts remain the reconciliation source.
+    // The last confirmed intent and retained evidence remain the reconciliation source.
     return {
       ...result(),
       status:
@@ -876,26 +732,5 @@ export async function launchWorker(
       reason: String(error.message).slice(0, 200),
       next: "Coordinator: inspect canonical index and actual resources; no automatic replay",
     };
-  }
-}
-
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(await realpath(process.argv[1])).href
-) {
-  const [phase, repo, indexId, launchId] = process.argv.slice(2);
-  try {
-    console.log(
-      JSON.stringify(await launchWorker({ phase, repo, indexId, launchId })),
-    );
-  } catch (e) {
-    console.log(
-      JSON.stringify({
-        launchId,
-        status: "blocked",
-        reason: String(e.message).slice(0, 200),
-        next: "Coordinator: reconcile input and existing index",
-      }),
-    );
   }
 }

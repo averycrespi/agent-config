@@ -8,7 +8,8 @@ export function widgetVisible(r: Execution, config: WidgetConfig, now: number) {
     visible(r) &&
     (r.status === "running" ||
       !config.autoHide ||
-      r.endedAt === undefined ||
-      now - r.endedAt < config.terminalHideAfterMs)
+      r.notification.handoff !== "handed_to_pi" ||
+      r.notification.handedAt === undefined ||
+      now - r.notification.handedAt < config.terminalHideAfterMs)
   );
 }

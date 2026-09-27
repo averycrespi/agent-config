@@ -80,7 +80,7 @@ test("one-line widgets distinguish queued/running/done/failed/canceled and repor
   });
   assert.equal(
     widgetLines([canceled], 200, theme)[0],
-    "workflow canceled smoke-progress · 1 canceled · 4s · effects unknown",
+    "workflow canceled smoke-progress · 1 canceled · 4s · outcome unknown",
   );
   assert.doesNotMatch(widgetLines([canceled], 200, theme)[0], /failed|tokens/);
   for (const width of [0, 1, 12, 32, 48, 64, 80, 120]) {
@@ -92,7 +92,7 @@ test("one-line widgets distinguish queued/running/done/failed/canceled and repor
     assert.equal(rows.length, 1);
     assert.ok(visibleWidth(rows[0]) <= width);
     assert.doesNotMatch(stripVTControlCharacters(rows[0]), /[\n\x1b]/);
-    if (width >= 48) assert.match(rows[0], /effects unknown/);
+    if (width >= 48) assert.match(rows[0], /outcome unknown/);
   }
   assert.equal(JSON.stringify(r), before);
   const child = record({
@@ -142,7 +142,9 @@ test("control summaries retain state and split semantic color from uncertainty",
     assert.doesNotMatch(line, /PRIVATE|\x1b/);
     if (status === "success") assert.doesNotMatch(line, /effects|Intentional/);
     else {
-      assert.match(line, /<dim> · <\/dim><warning>effects/);
+      if (r.outcomeUnknown)
+        assert.match(line, /<dim> · <\/dim><warning>outcome/);
+      else assert.doesNotMatch(line, /effects|outcome unknown/);
       assert.match(line, /Intentional failure/);
     }
     const dismissed = renderExecutionResult(
@@ -185,7 +187,7 @@ test("wake puts identity before warnings; ordinary success is green without effe
       row,
       status === "success"
         ? "workflow succeeded smoke"
-        : `workflow ${status === "cancelled" ? "canceled" : "failed"} smoke (effects may persist)`,
+        : `workflow ${status === "cancelled" ? "canceled" : "failed"} smoke`,
     );
     assert.equal(JSON.stringify(message), before);
   }
@@ -251,6 +253,64 @@ test("successful inspections include available telemetry and Script widgets show
     }).render(200)[0],
     "succeeded · 8s",
   );
+});
+
+test("pending delivery has independent warning color and survives width pressure", () => {
+  for (const status of ["success", "failed"] as const) {
+    for (const hold of [undefined, "draft", "dialog"] as const) {
+      const r = record({
+        status,
+        endedAt: 4000,
+        label: "Audit\n\x1b[2J世界".repeat(15),
+      });
+      r.notification.intent = true;
+      const wake = hold ? `wake held: ${hold}` : "wake pending";
+      const styled = widgetLines([r], 2000, marked, 90000, hold)[0];
+      assert.ok(
+        styled.includes(
+          `<${status === "success" ? "success" : "error"}>${status === "success" ? "succeeded" : "failed"}</${status === "success" ? "success" : "error"}>`,
+        ),
+      );
+      assert.ok(styled.includes(`<warning>${wake}</warning>`));
+      assert.match(styled, /<text>3s<\/text>/);
+      for (const width of [0, 1, 24, 48, 64, 100]) {
+        const row = widgetLines([r], width, theme, 90000, hold)[0];
+        assert.ok(visibleWidth(row) <= width);
+        assert.doesNotMatch(stripVTControlCharacters(row), /\x1b|\n/);
+        if (width >= 48) assert.ok(row.includes(wake));
+      }
+    }
+  }
+});
+
+test("combined adverse warnings retain wake and uncertainty at 48 columns", () => {
+  for (const owner of ["script", "workflow", "subagents"]) {
+    for (const status of ["success", "failed", "interrupted"] as const) {
+      for (const hold of [undefined, "draft", "dialog"] as const) {
+        const r = record({
+          owner,
+          status,
+          endedAt: 4000,
+          outcomeUnknown: true,
+          persistenceFailed: true,
+        });
+        r.notification.intent = true;
+        for (const width of [48, 64, 100]) {
+          const row = stripVTControlCharacters(
+            widgetLines([r], width, theme, 90000, hold)[0],
+          );
+          assert.ok(visibleWidth(row) <= width);
+          assert.match(row, /unknown/);
+          assert.match(row, /persist failed|persistence failed|save/);
+          assert.match(
+            row,
+            hold ? new RegExp(`wake(?::| held: )${hold}`) : /wake/,
+          );
+          assert.doesNotMatch(row.split(" · ").at(-1)!, /…/);
+        }
+      }
+    }
+  }
 });
 
 test("optional telemetry validates ranges while historical activity remains readable", () => {

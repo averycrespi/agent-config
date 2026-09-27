@@ -119,8 +119,6 @@ for (const source of ["background", "monitor"] as const) {
             assert.equal(rows.length, 1);
             assert.ok(visibleWidth(rows[0]) <= 48);
             if (outcomeUnknown) assert.match(rows[0], /unknown/);
-            else if (effectsMayPersist && source === "background")
-              assert.match(rows[0], /effects/);
             else assert.doesNotMatch(rows[0], /effects/);
             if (interrupted) assert.match(rows[0], /interrupted/);
             if (gap) assert.match(rows[0], /gap/);
@@ -206,7 +204,7 @@ for (const source of ["background", "monitor"] as const) {
     assert.equal(large.content, before);
   });
 }
-test("Monitor hides routine effects only in compact display and styles attention truthfully", () => {
+test("Monitor dispatch metadata is not mutation evidence in either display mode", () => {
   for (const [status, mode, state, color] of [
     ["condition", "observation", "condition met", "success"],
     ["condition", "timer", "timer elapsed", "success"],
@@ -233,7 +231,7 @@ test("Monitor hides routine effects only in compact display and styles attention
     assert.ok(
       styled.some(([token, value]) => token === color && value === state),
     );
-    assert.match(
+    assert.doesNotMatch(
       renderer(m, { expanded: true } as any, localTheme)!
         .render(100)
         .join("\n"),

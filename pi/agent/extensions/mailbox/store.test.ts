@@ -13,10 +13,15 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { MailboxStore, _durability } from "./store.ts";
 
+const sender = "00000000-0000-4000-8000-000000000001";
 function fixture(t: import("node:test").TestContext) {
   const root = mkdtempSync(join(tmpdir(), "mailbox-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  return new MailboxStore(root);
+  const store = new MailboxStore(root);
+  return Object.assign(store, {
+    send: (box: string, type: string, body: string) =>
+      MailboxStore.prototype.send.call(store, box, type, body, sender),
+  });
 }
 test("durable publication survives process exit and cursor excludes later arrivals", (t) => {
   const s = fixture(t);
@@ -24,7 +29,7 @@ test("durable publication survives process exit and cursor excludes later arriva
   s.send("project", "question", "second");
   const first = s.list("project", 1);
   assert.equal(first.messages[0].id, a.id);
-  const script = `import {MailboxStore} from ${JSON.stringify(new URL("./store.ts", import.meta.url).href)}; new MailboxStore(${JSON.stringify(s.root)}).send('project','result','third');`;
+  const script = `import {MailboxStore} from ${JSON.stringify(new URL("./store.ts", import.meta.url).href)}; new MailboxStore(${JSON.stringify(s.root)}).send('project','result','third', '${sender}');`;
   execFileSync(process.execPath, [
     "--import",
     "tsx",

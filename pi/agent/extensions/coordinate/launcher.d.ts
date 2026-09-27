@@ -24,7 +24,7 @@ export function launchWorker(
   launchId: string;
   status: string;
   index: string;
-  worker?: import("../../../extensions/coordinate/state.ts").Worker;
+  worker?: import("./state.ts").Worker;
   handoff?: string;
   resources?: { workspace: string; pane: string; terminal: string };
   execution?: {

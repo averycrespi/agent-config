@@ -125,21 +125,13 @@ export function notificationRenderer(
         ? "timer elapsed"
         : outcome;
     const warnings = [
-      ...(field(display, "outcomeUnknown") === true ? ["effects unknown"] : []),
+      ...(field(display, "outcomeUnknown") === true ? ["outcome unknown"] : []),
       ...(field(display, "interrupted") === true && status !== "interrupted"
         ? ["interrupted"]
         : []),
       ...(field(display, "gap") === true ? ["coverage gap"] : []),
-      ...(field(display, "effectsMayPersist") === true &&
-      !(source === "background" && valid && status === "success") &&
-      field(display, "outcomeUnknown") !== true
-        ? ["effects may persist"]
-        : []),
     ];
-    const compactWarnings =
-      source === "monitor"
-        ? warnings.filter((warning) => warning !== "effects may persist")
-        : warnings;
+    const compactWarnings = warnings;
     return {
       invalidate() {},
       render(width) {
@@ -155,10 +147,9 @@ export function notificationRenderer(
             : "");
         if (visibleWidth(essential) > w) {
           const warningLabels: Record<string, string> = {
-            "effects unknown": "unknown",
+            "outcome unknown": "unknown",
             interrupted: "interrupted",
             "coverage gap": "gap",
-            "effects may persist": "effects?",
           };
           // At narrow widths preserve every warning before optional identity.
           const shortReason = reason

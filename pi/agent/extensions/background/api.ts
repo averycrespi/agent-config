@@ -48,6 +48,8 @@ export type Execution = {
     id: string;
     intent: boolean;
     handoff: "none" | "unknown" | "handed_to_pi";
+    /** Confirmed synchronous handoff time; absent on historical receipts. */
+    handedAt?: number;
     consumed: boolean;
   };
 };

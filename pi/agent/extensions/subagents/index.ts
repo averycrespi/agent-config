@@ -350,7 +350,7 @@ async function runSpawn(
       exitCode: null,
       signal: null,
       errorMessage:
-        "Subagent execution failed unexpectedly; effects may persist",
+        "Subagent execution failed unexpectedly; inspect retained evidence before further action",
     };
   }
   tracker.finish(result);
@@ -541,6 +541,8 @@ export async function runParallelSpawn(
       }
       try {
         if (ctx.signal?.aborted) return cancelledBeforeLaunch(i);
+        states[i].phase = "starting";
+        emitCombined();
         const result = await runSpawn(
           spec,
           ctx,
@@ -795,11 +797,15 @@ export default function (pi: ExtensionAPI) {
             }
           },
         });
+        // Let the already-scheduled adapter enter its existing queue, then
+        // snapshot current state rather than returning the admission copy.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const current = service.inspect("subagents", execution.id);
         return {
           content: text(
-            `Subagent admitted as background execution ${execution.id}. One automatic notification follows settlement; use subagent action inspect for results.`,
+            `${JSON.stringify(current)}\nInspect with subagent action inspect and id ${current.id}. One automatic notification follows settlement; execution is not acceptance.`,
           ),
-          details: { execution },
+          details: { execution: current },
         };
       }
     },

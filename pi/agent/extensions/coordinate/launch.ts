@@ -1,18 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { fileURLToPath } from "node:url";
-import {
-  digest,
-  readIndex,
-  type Index,
-} from "../../skills/coordinate-repo/scripts/index.js";
-import {
-  host,
-  launchWorker,
-  preflightWorker,
-} from "../../skills/coordinate-repo/scripts/launch-worker.js";
-import { inspectMonitor } from "../monitor/api.ts";
-import { inspectMailbox, mailboxSupervision } from "../mailbox/api.ts";
-import { describeScriptProviders } from "../script/api.ts";
+import { basename } from "node:path";
+import { digest, readIndex, type Index } from "./record.js";
+import { host, launchWorker, preflightWorker } from "./launcher.js";
+import { inspectMailbox } from "../mailbox/api.ts";
 import {
   assignments,
   absolute,
@@ -36,32 +27,14 @@ export interface SpawnInput {
   brief: string;
   checkpoint: string;
   base?: string;
-  supervisionId: string;
 }
-export function coverage(pi: ExtensionAPI, mailbox: string, id: string) {
-  const result = inspectMonitor(pi, id, mailboxSupervision({ mailbox }).source);
-  const r = result?.receipt;
+export function messaging(pi: ExtensionAPI, mailbox: string) {
+  const result = inspectMailbox(pi, mailbox);
   need(
-    r &&
-      result.sourceMatches &&
-      r.status === "active" &&
-      r.recurring &&
-      r.intervalMs &&
-      r.deadline > Date.now() &&
-      !r.gap &&
-      !r.interrupted &&
-      !r.outcomeUnknown &&
-      r.wakes < r.maxWakes &&
-      r.coverage.some(
-        (c) =>
-          c &&
-          typeof c === "object" &&
-          !Array.isArray(c) &&
-          c.mailbox === mailbox,
-      ),
-    "Active matching recurring mailbox supervision required; inspect Monitor and retained allowance, do not auto-rearm",
+    result?.listening && result.sessionId === mailbox,
+    "Session mailbox listening required",
   );
-  return r;
+  return result;
 }
 export async function spawn(
   pi: ExtensionAPI,
@@ -93,9 +66,7 @@ export async function spawn(
     !rows.some((r) => r.assignmentId === input.assignmentId),
     "Assignment exists; inspect retained launch, never replay",
   );
-  need(inspectMailbox(pi, b.mailbox), "Mailbox unavailable");
-  await describeScriptProviders(pi, cwd, ["mailbox"]);
-  coverage(pi, b.mailbox, input.supervisionId);
+  messaging(pi, b.mailbox);
   signal?.throwIfAborted();
   // Resolve once in the CALLER checkout, never the primary checkout or moving tip.
   const base = await host.exec("git", [
@@ -127,7 +98,6 @@ export async function spawn(
     repo: b.checkout,
     checkout: input.path,
     base,
-    supervisionId: input.supervisionId,
     extensionPaths: [
       fileURLToPath(new URL("./index.ts", import.meta.url)),
       fileURLToPath(new URL("../mailbox/index.ts", import.meta.url)),
@@ -139,22 +109,17 @@ export async function spawn(
     runId: launchId,
     agent: input.workerName,
     task: input.brief,
-    acceptance:
-      "The self-contained objective above owns the acceptance criteria.",
-    constraints:
-      "One checkout writer. No nested persistent delegation, uncertain replay, implicit installation, reload, cleanup or unrelated effects. Read Coordinate role guidance. Live qualification requires separate authority.",
-    executionAuthority: b.authority,
-    publicationAuthority:
-      "Only explicit authority in the task brief; enabling Coordinate grants none.",
-    launchAuthority: b.authority,
+
     coordinator: b.sessionId,
     ownerDigest: digest(index.values!["Owner and authority"]),
     mailbox: b.mailbox,
     checkpoint: input.checkpoint,
-    reportingInstructions:
-      "Checkpoint and retain an immutable artifact before mailbox send (question/blocker/result/resolution). Include reportId, assignmentId, revision, runId, sessionId/incarnation from this index, exact head, checkpoint and reference. Questions add requestId/contextRevision; resolutions retain questionHead/answerReference. Questions use mailbox, not modal UI. Routine progress stays child-owned. No automatic resend. Result requires exact evidence and release/no further writes; ACK is not acceptance.",
     references: [roleGuide],
-    bounds: { startMs: 30000, confirmMs: 15000, deadline: Date.now() + 180000 },
+    bounds: {
+      startMs: 30000,
+      confirmMs: 15000,
+      deadline: Date.now() + 180000,
+    },
   };
   await preflightWorker({ brief, launchId });
   signal?.throwIfAborted();
@@ -187,11 +152,7 @@ export async function spawn(
           child.checkpoint === input.checkpoint,
         "Child binding missing or changed",
       );
-      need(
-        inspectMailbox(pi, b.mailbox),
-        "Mailbox unavailable before submission",
-      );
-      return coverage(pi, b.mailbox, input.supervisionId);
+      return messaging(pi, b.mailbox);
     },
   };
   const prepared = await launchWorker({ ...request, phase: "prepare" }, io);
@@ -222,20 +183,13 @@ export async function spawn(
     sessionId: worker.sessionId,
     checkout: input.path,
     parentId: index.id,
+    parentName: b.parentName ?? basename(b.checkout),
     assignmentId: input.assignmentId,
     revision: input.revision,
     brief: prepared.handoff,
     checkpoint: input.checkpoint,
   });
   row.launch!.intent = null;
-  row.reporting = {
-    mailbox: b.mailbox,
-    checkpoint: input.checkpoint,
-    coordinator: b.sessionId,
-    index: index.path,
-    handoff: prepared.handoff,
-    member: `${input.assignmentId}/${input.revision}/${worker.sessionId}/${worker.incarnation}`,
-  };
   await patch(cwd, index, { Assignments: JSON.stringify(preparedRows) });
   return {
     ...(await launchWorker({ ...request, phase: "submit" }, io)),

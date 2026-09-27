@@ -9,8 +9,8 @@ test("stack shares coordination mechanics while retaining serial release gates",
     "extensions/coordinate/README.md",
     "spin-out/references/launch.md",
     "spin-out/references/decisions.md",
-    "coordinate-repo/references/supervision.md",
-    "coordinate-repo/references/recovery.md",
+    "extensions/coordinate/README.md#supervision-and-reports",
+    "extensions/coordinate/README.md#persistence-and-recovery",
   ])
     assert.ok(stack.includes(path), path);
   for (const pattern of [
@@ -32,8 +32,8 @@ test("shared questions require durable incorporation and provenance rather than 
   const shared = await read("../spin-out/references/decisions.md");
   for (const pattern of [
     /before ack/,
-    /answered-relay-pending/,
-    /relay-unknown/,
+    /TODO items/,
+    /uncertain relay stays unresolved/,
     /Submission alone does not prove application/,
     /ordinary conversation/,
     /never guess/,

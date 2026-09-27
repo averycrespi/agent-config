@@ -10,7 +10,7 @@ import {
 import {
   executionCounts,
   executionTokens,
-  executionState,
+  executionRecordState,
   executionWarnings,
 } from "./display.ts";
 
@@ -46,7 +46,7 @@ export function renderExecutionResult(
   const selected = list[0];
   const bad = failed || context.isError;
   const inventory = action === "list" || action === "executions";
-  const [state, stateColor] = executionState(selected?.status);
+  const [state, stateColor] = executionRecordState(selected ?? { status: "" });
   let outcome = state;
   let color: ThemeColor = stateColor;
   if (options.isPartial) {
@@ -69,8 +69,7 @@ export function renderExecutionResult(
     outcome = "cancellation requested";
     color = "warning";
   } else if (action === "run") {
-    outcome = "admitted";
-    color = "muted";
+    outcome = state.charAt(0).toUpperCase() + state.slice(1);
   }
 
   const warnings = [
@@ -130,11 +129,13 @@ export function renderExecutionResult(
       );
     line += theme.fg("muted", ` — ${displayLabel(safe, 200)}`);
   }
+  if (action === "run" && selected?.id && !bad && !options.isPartial)
+    line += separator + theme.fg("text", displayLabel(selected.id, 8));
   const lines = [line];
   if (options.expanded) {
     for (const r of list)
       lines.push(
-        `${displayLabel(r.label)} (${executionState(r.status)[0]}; ${displayLabel(r.id)})`,
+        `${displayLabel(r.label)} (${executionRecordState(r)[0]}; ${displayLabel(r.id)})`,
       );
     lines.push(...expandedResult(result));
   }

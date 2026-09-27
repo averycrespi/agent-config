@@ -86,12 +86,13 @@ for (const [name, call, render, details] of adapters) {
       );
       assert.equal(collapsed.render(120).length, 1);
       assert.match(collapsed.render(120)[0], /^\S/);
-      assert.doesNotMatch(collapsed.render(120)[0], /·/);
       assert.doesNotMatch(
         collapsed.render(120)[0],
-        /background|11111111|PRIVATE_BODY|HIDDEN/,
+        /background|PRIVATE_BODY|HIDDEN|Demo/,
       );
-      if (action === "run") assert.match(collapsed.render(120)[0], /admitted/);
+      if (action === "run")
+        assert.equal(collapsed.render(120)[0], "Succeeded · 11111111");
+      else assert.doesNotMatch(collapsed.render(120)[0], /·|11111111/);
       if (action === "dismiss")
         assert.equal(collapsed.render(120)[0], "dismissed");
       const expanded = render(

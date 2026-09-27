@@ -63,7 +63,7 @@ const failures: Record<string, string> = {
   invalid_input: "Failed: invalid input",
   storage_failed: "Failed: storage unavailable",
   mailbox_full: "Failed: mailbox full",
-  publication_unknown: "publication uncertain; no replay",
+  publication_unknown: "Send outcome unknown",
 };
 
 export function renderMailboxCall(
@@ -152,7 +152,7 @@ export function renderMailboxResult(
       add("Persisted, not consumed, accepted or completed.");
       showMessage(value, 1200);
     }
-    return finish(`persisted ${label(value.type)} (not consumed)`, "success");
+    return finish("Sent 1 message", "success");
   }
   if (
     args.action === "list" &&
@@ -207,9 +207,7 @@ export function renderMailboxResult(
       for (const id of args.ids) add(`Requested ID: ${label(id, 80)}`);
     }
     return finish(
-      n
-        ? `acknowledged ${plural(n, "message")} (not task resolution)`
-        : `No messages acknowledged (${requested} requested)`,
+      n ? `Acked ${plural(n, "message")}` : "No messages acked",
       "success",
     );
   }

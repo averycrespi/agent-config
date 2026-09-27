@@ -21,13 +21,28 @@ export function executionState(status: string): [string, ThemeColor] {
   }
 }
 
+/** Queue telemetry is adapter-owned; never infer waiting from mere admission. */
+export function executionRecordState(
+  r: Pick<Execution, "status" | "activity">,
+): [string, ThemeColor] {
+  const a = r.activity;
+  if (
+    r.status === "running" &&
+    a &&
+    (a.queued ?? 0) > 0 &&
+    a.started - a.completed === a.queued
+  )
+    return ["queued", "muted"];
+  return executionState(r.status);
+}
+
 export function executionWarnings(r: Partial<Execution>): [string, string][] {
   return [
+    // Dispatch/restoration flags do not establish mutation. Keep actual outcome
+    // uncertainty visible without describing read-only execution as a write.
     ...(r.outcomeUnknown
-      ? [["effects unknown", "unknown"] as [string, string]]
-      : r.effectsMayPersist && r.status !== "success"
-        ? [["effects may persist", "effects?"] as [string, string]]
-        : []),
+      ? [["outcome unknown", "unknown"] as [string, string]]
+      : []),
     ...(r.persistenceFailed
       ? [["persistence failed", "persist failed"] as [string, string]]
       : []),
