@@ -57,14 +57,14 @@ test("renderWidgetLines styles each todo state and dims notes", () => {
 
   assert.deepEqual(renderWidgetLines(items, 80, fakeTheme as any), [
     fakeTheme.fg("borderMuted", "─".repeat(80)),
-    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "Backlog")}${fakeTheme.fg("dim", " (later)")}`,
     `${fakeTheme.fg("accent", fakeTheme.bold("[~]"))} ${fakeTheme.fg("accent", "Doing")}${fakeTheme.fg("dim", " (now)")}`,
-    `${fakeTheme.fg("success", "[✓]")} ${fakeTheme.fg("dim", "Done")}${fakeTheme.fg("dim", " (shipped)")}`,
     `${fakeTheme.fg("warning", fakeTheme.bold("[!]"))} ${fakeTheme.fg("text", "Blocked")}${fakeTheme.fg("dim", " (waiting)")}`,
+    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "Backlog")}${fakeTheme.fg("dim", " (later)")}`,
+    `${fakeTheme.fg("success", "[✓]")} ${fakeTheme.fg("dim", "Done")}${fakeTheme.fg("dim", " (shipped)")}`,
   ]);
 });
 
-test("renderWidgetLines shows only the first five todos and appends an aligned bottom overflow summary", () => {
+test("renderWidgetLines fills five slots by priority and classifies overflow", () => {
   const items: TodoItem[] = [
     { id: 1, text: "One", status: "todo" },
     { id: 2, text: "Two", status: "in_progress" },
@@ -77,16 +77,16 @@ test("renderWidgetLines shows only the first five todos and appends an aligned b
 
   assert.deepEqual(renderWidgetLines(items, 80, fakeTheme as any), [
     fakeTheme.fg("borderMuted", "─".repeat(80)),
-    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "One")}`,
     `${fakeTheme.fg("accent", fakeTheme.bold("[~]"))} ${fakeTheme.fg("accent", "Two")}`,
-    `${fakeTheme.fg("success", "[✓]")} ${fakeTheme.fg("dim", "Three")}`,
     `${fakeTheme.fg("warning", fakeTheme.bold("[!]"))} ${fakeTheme.fg("text", "Four")}`,
+    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "One")}`,
     `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "Five")}`,
-    fakeTheme.fg("dim", "    +2 more todos"),
+    `${fakeTheme.fg("muted", "[ ]")} ${fakeTheme.fg("text", "Six")}`,
+    fakeTheme.fg("dim", "    +0 unfinished, 2 done"),
   ]);
 });
 
-test("renderWidgetLines preserves item order and respects width", () => {
+test("renderWidgetLines respects narrow widths including overflow", () => {
   const items: TodoItem[] = [
     { id: 2, text: "Second", status: "done" },
     { id: 1, text: "First", status: "todo", notes: "needs design" },
@@ -96,7 +96,64 @@ test("renderWidgetLines preserves item order and respects width", () => {
     { id: 6, text: "Sixth", status: "todo" },
   ];
 
-  for (const line of renderWidgetLines(items, 12, fakeTheme as any)) {
-    assert.ok(visibleWidth(line) <= 12, `line should fit width: ${line}`);
+  for (const width of [0, 1, 4, 12, 24]) {
+    for (const line of renderWidgetLines(items, width, fakeTheme)) {
+      assert.ok(visibleWidth(line) <= width, `line should fit width: ${line}`);
+    }
   }
+});
+
+test("long completed prefixes cannot hide unfinished work or mutate input", () => {
+  const items: TodoItem[] = Array.from({ length: 10 }, (_, id) => ({
+    id,
+    text: `Done ${id}`,
+    status: "done",
+  }));
+  items.push(
+    { id: 10, text: "Later", status: "todo" },
+    { id: 11, text: "Waiting", status: "blocked" },
+    { id: 12, text: "Now", status: "in_progress" },
+  );
+  const before = structuredClone(items);
+  assert.deepEqual(renderWidgetLines(items, 60).slice(1), [
+    "[~] Now",
+    "[!] Waiting",
+    "[ ] Later",
+    "[✓] Done 0",
+    "[✓] Done 1",
+    "    +0 unfinished, 8 done",
+  ]);
+  assert.deepEqual(items, before);
+});
+
+test("stable priority order applies to every status group", () => {
+  for (const status of ["in_progress", "blocked", "todo", "done"] as const) {
+    const items: TodoItem[] = Array.from({ length: 7 }, (_, id) => ({
+      id: 20 - id,
+      text: `Item ${id}`,
+      status,
+    }));
+    assert.deepEqual(
+      renderWidgetLines(items, 60).slice(1, 6),
+      items.slice(0, 5).map((item) => `${glyphForStatus(status)} ${item.text}`),
+    );
+    assert.equal(
+      renderWidgetLines(items, 60).at(-1),
+      status === "done"
+        ? "    +0 unfinished, 2 done"
+        : "    +2 unfinished, 0 done",
+    );
+  }
+});
+
+test("mixed overflow counts only hidden unfinished and completed items", () => {
+  const items: TodoItem[] = Array.from({ length: 8 }, (_, id) => ({
+    id,
+    text: `Item ${id}`,
+    status: id < 2 ? "done" : "todo",
+  }));
+  assert.equal(
+    renderWidgetLines(items, 60).at(-1),
+    "    +1 unfinished, 2 done",
+  );
 });

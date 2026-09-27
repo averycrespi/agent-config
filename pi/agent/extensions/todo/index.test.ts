@@ -319,6 +319,61 @@ test("/todo-clear persists an empty snapshot, hides the widget, and notifies the
   );
 });
 
+test("priority refreshes on status updates without reordering results or persistence", async () => {
+  const pi = makePi();
+  // Exercise the supported ctx.ui path rather than the legacy compatibility shim.
+  pi.hasUI = false;
+  todoExtension(pi as any);
+  await startSession(pi);
+  const tool = pi._tools.get("todo")!;
+  const execute = (params: Record<string, unknown>) =>
+    tool.execute("priority", params, undefined, undefined, undefined);
+  await execute({
+    action: "set",
+    items: Array.from({ length: 7 }, (_, i) => ({
+      text: `Task ${i + 1}`,
+      status: "done",
+    })),
+  });
+  await execute({ action: "update", id: 7, status: "in_progress" });
+  assert.deepEqual(pi._widgetCalls.at(-1)?.lines?.slice(1), [
+    "[~] Task 7",
+    "[✓] Task 1",
+    "[✓] Task 2",
+    "[✓] Task 3",
+    "[✓] Task 4",
+    "    +0 unfinished, 2 done",
+  ]);
+  await execute({ action: "update", id: 6, status: "blocked" });
+  await execute({ action: "update", id: 7, status: "done" });
+  assert.equal(pi._widgetCalls.at(-1)?.lines?.[1], "[!] Task 6");
+  const expectedText =
+    "Current TODO list:\n" +
+    Array.from(
+      { length: 7 },
+      (_, i) => `${i + 1}. ${i === 5 ? "[!]" : "[✓]"} Task ${i + 1}`,
+    ).join("\n");
+  assert.equal(
+    (await execute({ action: "list" })).content[0]?.text,
+    expectedText,
+  );
+  const snapshot = pi._appendedEntries.at(-1)!;
+  assert.deepEqual(snapshot.data, {
+    items: Array.from({ length: 7 }, (_, i) => ({
+      id: i + 1,
+      text: `Task ${i + 1}`,
+      status: i === 5 ? "blocked" : "done",
+    })),
+    nextTodoId: 8,
+  });
+  await startSession(pi, [{ type: "custom", ...snapshot }]);
+  assert.equal(pi._widgetCalls.at(-1)?.lines?.[1], "[!] Task 6");
+  assert.equal(
+    (await execute({ action: "list" })).content[0]?.text,
+    expectedText,
+  );
+});
+
 test("session_shutdown unsubscribes, clears the store, and removes the widget", async () => {
   const pi = makePi();
   todoExtension(pi as any);

@@ -54,7 +54,9 @@ Action-specific validation belongs in `tools.ts`; generic status/state invariant
 
 ## Widget rendering
 
-The widget appears only when at least one item exists. It is placed above the editor and shows at most the first five items with status glyphs and optional notes. Hidden items are summarized with a `+N more` line.
+The widget appears only when at least one item exists. Above the editor, it selects at most five items by `in_progress`, `blocked`, `todo`, then `done`, preserving original relative order within each status group. Completed items fill any remaining slots. Status glyphs, optional notes, and the separator retain their styling. One overflow line reports hidden unfinished and done counts separately, including zero counts.
+
+Priority is a stable sort of a copied array in `render.ts`, never a store mutation. Persistence, IDs, tool results, restoration, and agent work-selection policy retain canonical list order. Existing store subscriptions immediately refresh the selection after mutations, including status transitions. No terminal-height allocation or configuration is introduced.
 
 `render.ts` is pure and width-aware. Keep truncation there rather than in store/tool code. The widget is an overview, not the canonical state; the full state is available through the tool result or `todo list`.
 
