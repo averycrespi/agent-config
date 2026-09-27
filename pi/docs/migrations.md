@@ -4,7 +4,7 @@ Guidance for older installations. For current components, see the [Pi configurat
 
 ## Coordinate and spin-out retirement
 
-For new persistent workers use the [spawn-agent skill](../agent/skills/spawn-agent/SKILL.md) and saved Script, then send tasks separately through Mailbox. Coordinate role commands, bindings, registry and widget are removed; no replacement registry or automatic migration exists. Keep historical private records and existing runtime assignments under their original reporting contracts. Candidate source changes do not reload running sessions. Removing stale installed links, installing/linking candidate configuration and reloading remain explicit user actions. Do not terminate, adopt or clean up existing workers automatically.
+For new persistent workers use the [spawn-agent skill](../agent/skills/spawn-agent/SKILL.md) and saved Script, then submit the initial scoped assignment once through `herdr agent prompt` and use Mailbox for authorized follow-up coordination. Existing workers retain their original assignment; never replay an uncertain initial submission through either transport. Coordinate role commands, bindings, registry and widget are removed; no replacement registry or automatic migration exists. Keep historical private records and existing runtime assignments under their original reporting contracts. Candidate source changes do not reload running sessions. Removing stale installed links, installing/linking candidate configuration and reloading remain explicit user actions. Do not terminate, adopt or clean up existing workers automatically.
 
 ## Scheduled tasks and Ask User retirement
 

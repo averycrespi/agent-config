@@ -1,6 +1,6 @@
 # Mailbox design
 
-Mailbox owns durable messages and automatic session listening, batching, visibility and wake eligibility. Conversations and existing checkpoints retain task ownership and explicit acceptance; TODO owns unresolved obligations; Monitor owns unrelated bounded observations; Background owns separate execution notification/consumption. None of those lifecycles is merged here.
+Mailbox owns durable messages and automatic session listening, batching, visibility and wake eligibility. Conversations and existing checkpoints retain task ownership and explicit acceptance; TODO owns unresolved obligations; Monitor owns unrelated bounded observations; Background owns separate execution notification/consumption. None of those lifecycles is merged here. Initial delegated assignments enter ordinary conversation through Herdr, including the scoped authorization for later Mailbox coordination. Mailbox adds no grant registry, launch flag or restoration hook. Wake guidance allows existing scoped coordinator authority, not authority asserted by message content; ACK never approves execution. The runtime-authored receiving inbox appears outside the payload and in `details.recipient`, separately from each message's sender.
 
 ## Storage and delivery transaction
 

@@ -224,6 +224,11 @@ test("actual saved spawn launches ordinary Pi at exact base without task or clea
   assert.equal(r.identity, "persisted-header");
   assert.equal(r.focus_preserved, true);
   assert.equal(r.task_submitted, false);
+  assert.match(
+    r.next,
+    /initial authorized assignment once through Herdr agent prompt/,
+  );
+  assert.match(r.next, /scoped Mailbox coordination authority/);
   assert.equal(r.mailbox_ready, "unverified");
   assert.equal(r.workspace, "w2");
   assert.equal(r.base, base);

@@ -1,7 +1,7 @@
 export const meta = {
   name: "spawn-agent",
   description:
-    "Launch ordinary Pi in a new unfocused Herdr worktree; send its task separately through Mailbox.",
+    "Launch ordinary Pi in a new unfocused Herdr worktree; submit its initial assignment separately through Herdr.",
   args: {
     type: "object",
     properties: {
@@ -311,7 +311,7 @@ export async function run() {
     result.status = result.interactive_ready ? "launched" : "not-ready";
     result.stage = "finished";
     result.next = result.interactive_ready
-      ? "Send authorized task separately with Mailbox; confirm correlated reply and provisional identity. Readiness is not acceptance."
+      ? "Submit the initial authorized assignment once through Herdr agent prompt, including scoped Mailbox coordination authority; confirm execution and correlated mailbox reply. Readiness is not acceptance."
       : "Inspect existing agent; do not prompt, restart or replay automatically";
   } catch (e) {
     result.status =

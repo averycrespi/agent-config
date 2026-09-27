@@ -74,7 +74,7 @@ Choose by the work you need to offload:
 | ------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | One self-contained reasoning question      | [Subagent](pi/agent/extensions/subagents/README.md) | Bounded asynchronous child with explicit capabilities and a configured profile                                     |
 | Coordinated research or independent review | [Workflow](pi/agent/extensions/workflows/README.md) | Deterministic orchestration of read-mostly children and verification; no writable filesystem or shell capabilities |
-| Ongoing work in a separate Pi session      | [Spawn-agent](pi/agent/skills/spawn-agent/SKILL.md) | Explicitly authorized, isolated Herdr worktree/workspace; task sent separately through Mailbox                     |
+| Ongoing work in a separate Pi session      | [Spawn-agent](pi/agent/skills/spawn-agent/SKILL.md) | Explicitly authorized, isolated Herdr worktree/workspace; initial assignment through Herdr, then Mailbox           |
 | Watch a condition or continue later        | [Monitor](pi/agent/extensions/monitor/README.md)    | Explicitly authorized, finite session-bound observation or continuation; no model turns while waiting              |
 | Paginate, join or aggregate tool results   | [Script](pi/agent/extensions/script/README.md)      | Bounded JavaScript with explicitly selected, host-permitted providers; no subagent reasoning                       |
 
@@ -82,7 +82,7 @@ Choose by the work you need to offload:
 
 Continue independent authorized work while a child runs; keep dependent work sequential. [Background execution](pi/agent/extensions/background/README.md) retains outcomes and automatically notifies the session for Subagents, Workflows and optionally Script. Inspect the result when notified, and yield when nothing independent remains—do not poll for completion.
 
-Persistent agents use [Mailbox](pi/agent/extensions/mailbox/README.md) for durable, automatic bidirectional tasks, questions and reports. The saved spawn-agent Script handles launch mechanics, not task submission or acceptance; ordinary Pi sessions need no role binding or assignment registry. The parent evaluates exact evidence before accepting results. An ACK means incorporated, not completed.
+Persistent agents receive their initial scoped assignment through Herdr, then use [Mailbox](pi/agent/extensions/mailbox/README.md) for durable, automatic bidirectional follow-up instructions, questions and reports within that authority. The saved spawn-agent Script handles launch mechanics, not task submission or acceptance; ordinary Pi sessions need no role binding or assignment registry. The parent evaluates exact evidence before accepting results. An ACK means incorporated, not completed.
 
 Implementation stays in the owning session by default. Writable delegation needs explicit scope and separate checkout ownership; parent and child must never write the same checkout concurrently. Launch does not authorize publication, installation, live reload or cleanup, and completed work does not remove its workspace automatically.
 
