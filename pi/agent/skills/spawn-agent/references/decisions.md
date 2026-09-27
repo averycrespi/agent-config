@@ -4,9 +4,9 @@ Use durable [Mailbox](../../../extensions/mailbox/README.md) messages in both di
 
 ## Handoff and reports
 
-Use [spawn-agent](../SKILL.md) for new launches and send the task separately through Mailbox. Supply the parent mailbox, task identity/revision, child identity, existing checkpoint when applicable and readable workflow references in the handoff. Require already-available extensions; do not install, link or reload implicitly. Keep routine progress in the child-owned checkpoint, not coordinator bookkeeping.
+Use [spawn-agent](../SKILL.md) for new launches and send the task separately through Mailbox. Supply the parent mailbox, task and child identity, existing checkpoint when applicable and readable workflow references in the handoff. New delegations need no assignment/revision counters; preserve explicitly managed runs' existing reporting contracts. Require already-available extensions; do not install, link or reload implicitly. Keep routine progress in the child-owned checkpoint, not coordinator bookkeeping.
 
-Before a consequential question, blocker or result, checkpoint its facts and evidence. Send a bounded message identifying assignment/revision, worker/session, exact head where relevant and a readable source reference. Questions explain options, recommendation, blocked scope and available independent work. Keep the send outcome or uncertainty with the checkpoint. On uncertain publication inspect the inbox and original evidence; no automatic resend. A successful send is not consumption or acceptance. Yield when no authorized independent work remains; preserve sole-writer ownership.
+Before a consequential question, blocker or result, checkpoint its facts and evidence. Send a bounded message identifying the task, worker/session, exact head where relevant and a readable source reference. Questions explain options, recommendation, blocked scope and available independent work. Keep the send outcome or uncertainty with the checkpoint. On uncertain publication inspect the inbox and original evidence; no automatic resend. A successful send is not consumption or acceptance. Yield when no authorized independent work remains; preserve sole-writer ownership.
 
 ## Incorporation and questions
 

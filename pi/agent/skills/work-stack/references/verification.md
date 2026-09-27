@@ -1,6 +1,6 @@
 # Work-stack verification
 
-Use [shared spawn verification](../../spawn-agent/SKILL.md#verification) for mailbox durability, batching, TODO obligations and explicit reconciliation. Discovery/link checks establish packaging, not model obedience. Preserve work-ticket publication/CI and settlement regressions; do not substitute fixture evidence for live ticket delivery.
+Use [shared spawn verification](../../spawn-agent/SKILL.md#verification) for launch/identity fixtures and [shared reporting guidance](../../spawn-agent/references/decisions.md) for Mailbox incorporation and questions. Discovery/link checks establish packaging, not model obedience. Preserve work-ticket publication/CI and settlement regressions; do not substitute fixture evidence for live ticket delivery.
 
 ## Stack-specific scenarios
 
@@ -10,7 +10,8 @@ Test these bounded read-only decision scenarios against the actual entry point a
 - Local-only versus PR-ready: never push local-only; PR-ready requires work-ticket draft publication, independent review, required exact-head target-applicable CI and promotion. No merge or cleanup.
 - Missing successor CI coverage: a main-only workflow cannot qualify a PR targeting A's branch. Missing checks are not green and never justify retargeting or weakened requirements.
 - Question or child-owned pending CI: retain A, process its mailbox report without modal wait, and never advance to B. Parent does not duplicate child CI observation. Answer provenance/relay uncertainty uses the shared protocol.
-- Changed predecessor: preserve original H1, pause the stack and ask for the required authority; never silently restack, retarget, force-push or substitute a newer head.
+- Changed predecessor: preserve original H1 and reconcile before advancing; ask only when the next action needs authority not already granted. Never silently restack, retarget, force-push or substitute a newer head.
+- Minimal recovery: recover A's session, blocker and original result references from TODO/conversation, messages, Git and its work-ticket checkpoint without creating a stack registry, requiring assignment counters or copying the child's evidence ledger.
 - Missing required source, forward dependency or competing writer: investigate and stop affected launch without reshaping/reordering the requested stack.
 - Mailbox delivery exhaustion or uncertain handoff: inspect retained same-ID messages and prior applied effects; never blindly resend, reset attempts or launch replacement workers. A delivery limit is not task completion. Reconcile unrelated child CI observers within their original bounds.
 - Interrupted publication or cleanup: keep original work-ticket effects/evidence, confirm matching authoritative effects without replay, preserve branches/resources and require separate cleanup authority.
