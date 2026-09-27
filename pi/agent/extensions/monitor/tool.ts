@@ -356,17 +356,17 @@ export const renderers: Pick<
       !isPartial &&
       (d.receipt?.outcomeUnknown ||
         d.receipt?.lastAttention?.disposition === "handoff_unknown")
-        ? outcomeLine(
+        ? (failed ? theme.fg("error", "failed") + theme.fg("dim", " · ") : "") +
+          outcomeLine(
             theme,
-            failed
-              ? "failed; unknown; no replay"
-              : d.receipt?.outcomeUnknown &&
-                  d.receipt.lastAttention?.disposition === "handoff_unknown"
-                ? "unknown; no replay"
-                : d.receipt?.outcomeUnknown
-                  ? "outcome unknown; no replay"
-                  : "handoff unknown; no replay",
-            failed ? "error" : "warning",
+            failed ||
+              (d.receipt?.outcomeUnknown &&
+                d.receipt.lastAttention?.disposition === "handoff_unknown")
+              ? "unknown; no replay"
+              : d.receipt?.outcomeUnknown
+                ? "outcome unknown; no replay"
+                : "handoff unknown; no replay",
+            "warning",
           )
         : undefined;
     const fields = (

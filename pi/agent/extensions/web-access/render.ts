@@ -65,8 +65,8 @@ export function webRenderers(name: "web_search" | "web_fetch") {
         ? `reading…${elapsed}`
         : unknown
           ? failed
-            ? "failed; unknown effects; no replay"
-            : "effects unknown; no replay"
+            ? "failed"
+            : ""
           : failed
             ? "request failed"
             : name === "web_search"
@@ -88,22 +88,19 @@ export function webRenderers(name: "web_search" | "web_fetch") {
       return getResultTextComponent(
         context.lastComponent,
         [
-          ...(summary || d?.spilled
+          ...(summary || unknown || d?.spilled
             ? [
                 [
                   ...(summary
                     ? [
                         theme.fg(
-                          isPartial
-                            ? "accent"
-                            : unknown
-                              ? "warning"
-                              : failed
-                                ? "error"
-                                : "muted",
+                          isPartial ? "accent" : failed ? "error" : "muted",
                           summary,
                         ),
                       ]
+                    : []),
+                  ...(unknown && !isPartial
+                    ? [theme.fg("warning", "unknown effects; no replay")]
                     : []),
                   ...(d?.spilled
                     ? [

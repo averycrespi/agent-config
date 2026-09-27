@@ -145,7 +145,7 @@ test("partial activity uses accent and failures use error with safe fixed summar
     ["invalid_input", "failed: invalid input"],
     ["mailbox_full", "failed: mailbox full"],
     ["storage_failed", "failed: storage unavailable"],
-    ["publication_unknown", "send outcome unknown; no replay"],
+    ["publication_unknown", "failed · send outcome unknown; no replay"],
     ["SECRET\n\x1b[2J", "failed: mailbox operation"],
   ]) {
     for (const semantic of [false, true]) {
@@ -173,7 +173,10 @@ test("partial activity uses accent and failures use error with safe fixed summar
     th,
     context(args("send"), { isError: true }),
   );
-  assert.equal(prefixed.render(200)[0], "send outcome unknown; no replay");
+  assert.equal(
+    prefixed.render(200)[0],
+    "failed · send outcome unknown; no replay",
+  );
   assert.match(
     render("send", { error: "storage_failed" }),
     /failed: storage unavailable/,
@@ -377,7 +380,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs, { isError: failure.isError }),
       )
       .render(200)[0],
-    "send outcome unknown; no replay",
+    "failed · send outcome unknown; no replay",
   );
   assert.equal(new MailboxStore(root).list("project-alpha").pending, 2);
 });

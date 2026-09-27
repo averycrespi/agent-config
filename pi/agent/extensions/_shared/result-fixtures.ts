@@ -200,6 +200,49 @@ export function resultFixtures() {
         ),
     },
     {
+      name: "mcp-uncertain-failure",
+      render: (expanded: boolean, theme: any) =>
+        mcp("mcp_call").renderResult!(
+          result({ gatewayError: true, outcomeUnknown: true }) as any,
+          { expanded, isPartial: false },
+          theme,
+          { state: {}, args: {} } as any,
+        ),
+    },
+    {
+      name: "web-uncertain-failure",
+      render: (expanded: boolean, theme: any) =>
+        webRenderers("web_fetch").renderResult(
+          result({ errorPreview: "failed", outcomeUnknown: true }),
+          { expanded, isPartial: false },
+          theme,
+          { state: {} },
+        ),
+    },
+    {
+      name: "mailbox-uncertain-failure",
+      render: (expanded: boolean, theme: any) =>
+        renderMailboxResult(
+          result({ error: "publication_unknown" }) as any,
+          { expanded, isPartial: false },
+          theme,
+          { args: { action: "send" } },
+        ),
+    },
+    {
+      name: "monitor-uncertain-failure",
+      render: (expanded: boolean, theme: any) =>
+        monitor.renderResult!(
+          result({
+            monitorError: true,
+            receipt: { outcomeUnknown: true },
+          }) as any,
+          { expanded, isPartial: false },
+          theme,
+          { args: { action: "get" } } as any,
+        ),
+    },
+    {
       name: "todo",
       render: (expanded: boolean, theme: any) =>
         todo.renderResult(

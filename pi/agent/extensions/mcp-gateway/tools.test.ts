@@ -669,11 +669,11 @@ test("spilled MCP output explains truncation in muted text and labels the full r
   )
     .render(48)
     .join("\n");
-  assert.match(failed, /^failed; unknown effects; no replay/);
+  assert.match(failed, /^failed · unknown effects; no replay/);
   assert.ok(
     styled.some(
       ({ color, text }) =>
-        color === "error" && text.includes("unknown effects"),
+        color === "warning" && text.includes("unknown effects"),
     ),
   );
 });
@@ -707,7 +707,7 @@ test("unknown-outcome warning remains collapsed even when the error preview is l
   )
     .render(48)
     .join("\n");
-  assert.equal(collapsed, "failed; unknown effects; no replay");
+  assert.equal(collapsed, "failed · unknown effects; no replay");
   assert.doesNotMatch(collapsed, /example-log/);
   const expanded = renderer.renderResult!(
     result,

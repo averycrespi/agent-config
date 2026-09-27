@@ -195,7 +195,7 @@ for (const name of ["web_search", "web_fetch"] as const)
       )
       .render(48);
     assert.equal(unknown.length, 1);
-    assert.match(unknown[0], /effects unknown; no replay/);
+    assert.match(unknown[0], /unknown effects; no replay/);
     assert.doesNotMatch(unknown[0], /example|query/);
     const unknownFailure = renderer
       .renderResult(

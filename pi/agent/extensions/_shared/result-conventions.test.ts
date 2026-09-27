@@ -80,6 +80,21 @@ test("field colors remain independent of lifecycle, telemetry and body", () => {
     );
 });
 
+test("uncertain failures separate error state from no-replay warnings across affected families", () => {
+  for (const fixture of resultFixtures().filter((f) =>
+    f.name.endsWith("uncertain-failure"),
+  )) {
+    for (const expanded of [false, true]) {
+      const row = fixture.render(expanded, marked).render(4000)[0];
+      assert.match(
+        row,
+        /^<error>failed<\/error><dim> · <\/dim><warning>.*unknown;? .*no replay<\/warning>$/,
+      );
+      assert.doesNotMatch(row, /<error>[^<]*unknown|<warning>failed/);
+    }
+  }
+});
+
 test("body sanitization preserves JSON spacing, removes hostile controls and discloses bounded source", () => {
   const input =
     '{\n  "nested": {\n    "value": "a  b"\n  }\n}\x1b]52;c;secret\x07\x1b[2J\u202e';

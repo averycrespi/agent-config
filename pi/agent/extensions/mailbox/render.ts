@@ -126,6 +126,17 @@ export function renderMailboxResult(
       add(
         `Untrusted diagnostic: ${label(typeof error === "string" ? error : getResultText(result), 600)}`,
       );
+    if (code === "publication_unknown")
+      return getResultTextComponent(
+        context.lastComponent,
+        [
+          [
+            ...(context.isError || error ? [theme.fg("error", "failed")] : []),
+            theme.fg("warning", failures.publication_unknown),
+          ].join(theme.fg("dim", " · ")),
+        ],
+        lines,
+      );
     return finish(
       Object.hasOwn(failures, code)
         ? failures[code]

@@ -69,6 +69,8 @@ Plain text below is separate from style annotations. Ellipses within literal evi
 | `Running · a1b2c3d4`                                        | `running… · a1b2c3d4`                                        | State: accent; ID: text; dot: dim                            |
 | `12345678 \| report \| timestamp`                           | `12345678 · report · timestamp`                              | Identity/type: text; timestamp: muted; dots: dim             |
 
+An uncertain failed request renders `failed · unknown effects; no replay`: only `failed` is error-colored, the dot is dim, and the entire uncertainty/no-replay field is warning-colored. A warning never recolors or replaces the request failure (and a known failure never makes the warning red).
+
 Expanded Background example (first line is byte-for-byte the same styled compact projection at the same width):
 
 ```text

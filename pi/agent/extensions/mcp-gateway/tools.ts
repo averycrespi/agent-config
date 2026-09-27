@@ -90,8 +90,8 @@ export function renderers(
         const outcome =
           details?.outcomeUnknown === true
             ? failed
-              ? "failed; unknown effects; no replay"
-              : "unknown effects; no replay"
+              ? "failed"
+              : ""
             : failed
               ? "request failed"
               : name === "mcp_search"
@@ -116,6 +116,9 @@ export function renderers(
                   summary,
                 ),
               ]
+            : []),
+          ...(details?.outcomeUnknown
+            ? [theme.fg("warning", "unknown effects; no replay")]
             : []),
           ...retained.map((field) => theme.fg("muted", field)),
         ];
