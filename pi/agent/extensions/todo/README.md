@@ -7,10 +7,12 @@ Session-scoped Pi extension that adds a lightweight `todo` tool plus a compact s
 - registers one agent-facing `todo` tool with `list`, `set`, `add`, `update`, `remove`, and `clear`
 - persists TODO state in the Pi session so reload, resume, and branch navigation restore the current list
 - provides `/todo-clear` as a manual reset command, and persists that clear across reloads too
-- shows the ordered list in a compact widget when at least one item exists
+- shows a compact widget when at least one item exists, prioritizing `in_progress`, `blocked`, `todo`, then `done`, with original list order preserved within each group
 - shows the action and optional ID/count in the call row; a flush-left result shows the current list count, progress or failure without repeating the action or task text. Expansion retains full task text and model-facing details are unchanged
 - renders status-specific glyphs for `todo`, `in_progress`, `done`, and `blocked`
-- caps the widget to the first five items and shows a `+N more` overflow line when needed
+- caps the widget to five items; completed items fill remaining slots after unfinished work
+- shows hidden counts separately (for example, `+2 unfinished, 3 done`) in one overflow line when needed; status changes immediately refresh the displayed selection
+- keeps this priority presentation-only: stored order, IDs, tool results, restoration, and agent work-selection guidance are unchanged
 
 ## Tool usage
 

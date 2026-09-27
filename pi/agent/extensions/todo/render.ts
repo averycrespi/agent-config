@@ -3,6 +3,12 @@ import type { TodoItem, TodoStatus } from "./state.ts";
 
 const WIDGET_SEPARATOR = "─";
 const WIDGET_VISIBLE_LIMIT = 5;
+const STATUS_PRIORITY: Record<TodoStatus, number> = {
+  in_progress: 0,
+  blocked: 1,
+  todo: 2,
+  done: 3,
+};
 
 const plainTheme = {
   fg: (_color: string, text: string) => text,
@@ -60,8 +66,15 @@ export function renderWidgetLines(
   if (items.length === 0) return [];
 
   const safeWidth = Math.max(0, width);
-  const visibleItems = items.slice(0, WIDGET_VISIBLE_LIMIT);
-  const hiddenCount = Math.max(0, items.length - visibleItems.length);
+  const orderedItems = [...items].sort(
+    (a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status],
+  );
+  const visibleItems = orderedItems.slice(0, WIDGET_VISIBLE_LIMIT);
+  const hiddenItems = orderedItems.slice(WIDGET_VISIBLE_LIMIT);
+  const hiddenDone = hiddenItems.filter(
+    (item) => item.status === "done",
+  ).length;
+  const hiddenUnfinished = hiddenItems.length - hiddenDone;
 
   const lines = [
     theme.fg("borderMuted", WIDGET_SEPARATOR.repeat(safeWidth)),
@@ -74,12 +87,12 @@ export function renderWidgetLines(
     }),
   ];
 
-  if (hiddenCount > 0) {
+  if (hiddenItems.length > 0) {
     lines.push(
       truncateToWidth(
         theme.fg(
           "dim",
-          `    +${hiddenCount} more todo${hiddenCount === 1 ? "" : "s"}`,
+          `    +${hiddenUnfinished} unfinished, ${hiddenDone} done`,
         ),
         safeWidth,
       ),
