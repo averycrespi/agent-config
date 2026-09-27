@@ -87,6 +87,18 @@ herdr agent list
 
 Creation responses expose the IDs to use next. `workspace create` returns `.result.workspace`, `.result.tab`, and `.result.root_pane`. `tab create` returns `.result.tab` and `.result.root_pane`. `pane split` returns the new pane as `.result.pane`.
 
+### Discover Pi session IDs and mailbox addresses
+
+Use read-only Herdr discovery instead of sending probe messages or asking another agent to identify itself:
+
+1. Run `herdr pane current --current` to resolve the caller's pane, including after a pane move. Run `herdr agent get <returned-pane-id>` for the current agent; never select the UI-focused pane as a substitute for caller identity.
+2. Run `herdr agent list` to discover other running agents, then `herdr agent get <pane-id-or-agent-name>` for the intended recipient. Match the reported repository/working directory and pane, not a display name alone.
+3. For a detected Pi agent, inspect `agent_session`. When `agent` is `pi` and `kind` is `path`, read only the first line of the exact file in `agent_session.value`, for example `head -n 1 '<reported-session-path>'`. Parse the session header and require `type: "session"` with a full UUID `id`. Use that `id` as the Pi session identity and Mailbox address, never a terminal ID or Herdr pane ID. No transcript-body scan is needed.
+4. Handle a newly launched Pi session whose reported file does not exist yet as a specific bootstrap case, not proof of launch failure. Recheck `herdr agent get` for the same live occupant and session reference. If the runtime-reported basename has the exact `<timestamp>_<full-UUID>.jsonl` form, use its UUID only as a provisional address for an already-authorized first message. Do not scan directories or pick a recent filename. Confirm against the persisted header when available and the runtime-attributed `sender` of a correlated reply; reconcile any mismatch before further sends. Do not create the session file, inject a terminal prompt, or resend to force persistence.
+5. If the reference is missing, unsupported, malformed or unreadable for another reason, report identity as unresolved rather than guessing. Recheck the targeted agent if it has exited, resumed another session or been replaced since discovery. A runtime-attributed `sender` from an already-authorized Mailbox send also identifies the sending session; do not send scratch messages solely to obtain it.
+
+Treat discovery as identity evidence only: a saved session file or detected Pi process does not establish healthy Mailbox listening, message consumption or permission to assign work. Use Coordinate's recorded worker identities for managed assignments. Do not launch, focus, prompt or reload another session merely to discover its address. See the [Mailbox address guidance](../../extensions/mailbox/README.md#finding-recipient-addresses).
+
 ## Start and coordinate an agent
 
 Default to a sibling pane in the current tab and the current working directory. Do not create a workspace, tab, worktree, or different cwd unless the user explicitly requests that topology or location.

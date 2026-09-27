@@ -41,6 +41,12 @@ List returns `{mailbox, messages, nextCursor, pending, oldestAt}`. Messages also
 
 ACK permanently removes incorporated IDs and frees capacity; repeated/unknown valid UUIDs are no-ops. Duplicate IDs in one request reject. **ACK after durable incorporation, not task completion.** Preserve unresolved obligations in TODO when useful, then ACK promptly even if a human answer is pending. Do not repeat effects on redelivery without reconciling prior application. Managed children checkpoint before consequential reports; both directions preserve exact assignment, identity, evidence and approval provenance.
 
+## Finding recipient addresses
+
+Use the recipient's **full Pi session UUID**. In Herdr, follow the [session discovery procedure](../../skills/herdr/SKILL.md#discover-pi-session-ids-and-mailbox-addresses): resolve the caller with `herdr pane current --current`, discover other agents with `herdr agent list` / `get`, and read the session header's `id` from the reported `agent_session.value` path. A newly launched session may report its path before writing the file; the Herdr procedure covers provisional addressing for an already-authorized first message and subsequent confirmation. Do not use the UI-focused pane as the current session or send scratch messages just to discover identity. Coordinate already records managed-worker identities.
+
+A detected process or saved session file does not prove that its Mailbox listener is healthy. Missing session references remain unresolved; discovery never starts sessions or grants authority to send work. `/mailbox` reports local delivery status, not the current inbox UUID or a cross-session directory.
+
 ## Commands and widget
 
 `/mailbox` is noninteractive, read-only status: IDs, senders, ages, attempt counts and delivery state, never message bodies. `/mailbox-config` displays effective configuration.
@@ -61,7 +67,7 @@ mailbox pending · 2 at limit · 5 unacked · wake in 3s
 mailbox unavailable · /mailbox
 ```
 
-The widget mounts once and refreshes no faster than once a second for countdowns. Automatic wake rendering is a compact untrusted notification; expansion shows bounded sanitized content without changing model context or ACK state. Tool rows retain compact send/list/ack outcomes and bounded expanded previews. Persistence is not consumption, and scan completion is not inbox emptiness.
+The widget mounts once and refreshes no faster than once a second for countdowns. Automatic wake rendering describes the event: neutral `mailbox received 2 messages`, warning-colored `mailbox redelivered 1 message`, or `mailbox received 2 messages (1 redelivered)` with only the redelivery qualifier warning-colored. Counts describe the delivered batch, not the whole inbox. Missing or malformed display metadata in historical wakes shows `mailbox status unavailable` rather than inferring delivery from prose. Expansion retains bounded sanitized sender/attempt/body details and trust guidance; the complete model-facing untrusted framing and ACK instructions are unchanged. Delivery-limit attention remains a warning toast (`mailbox delivery limit reached: 1 message`) and widget warning, not an additional model wake. Rendering changes neither model context nor ACK state. Tool rows retain compact send/list/ack outcomes and bounded expanded previews. Persistence is not consumption, and scan completion is not inbox emptiness.
 
 ## Configuration
 
