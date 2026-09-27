@@ -2,9 +2,9 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import {
   displayLabel,
-  expandedResult,
+  expandedBodyResult,
   formatDuration,
-  getTruncatedText,
+  getResultTextComponent,
   plural,
 } from "../_shared/render.ts";
 import {
@@ -68,9 +68,9 @@ export function renderExecutionResult(
   ) {
     outcome = "cancellation requested";
     color = "warning";
-  } else if (action === "run") {
-    outcome = state.charAt(0).toUpperCase() + state.slice(1);
   }
+  if (outcome === "running" || outcome === "queued" || outcome === "pending")
+    outcome += "…";
 
   const warnings = [
     ...new Set(list.flatMap((r) => executionWarnings(r).map(([full]) => full))),
@@ -98,7 +98,9 @@ export function renderExecutionResult(
   ) {
     const singleChild =
       selected.owner === "subagents" && selected.progress?.total === 1;
-    const counts = singleChild ? undefined : executionCounts(selected, theme);
+    const counts = singleChild
+      ? undefined
+      : executionCounts(selected, theme, separator);
     const tokens = executionTokens(selected);
     const elapsed =
       Number.isFinite(selected.createdAt) && Number.isFinite(selected.endedAt)
@@ -127,17 +129,27 @@ export function renderExecutionResult(
         /\b((?:token|secret|password|api[_-]?key|authorization)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s;]+)/gi,
         "$1[redacted]",
       );
-    line += theme.fg("muted", ` — ${displayLabel(safe, 200)}`);
+    line +=
+      separator +
+      theme.fg(
+        selected?.status === "cancelled" ? "warning" : "error",
+        displayLabel(safe, 200),
+      );
   }
   if (action === "run" && selected?.id && !bad && !options.isPartial)
     line += separator + theme.fg("text", displayLabel(selected.id, 8));
-  const lines = [line];
+  const details: string[] = [];
   if (options.expanded) {
     for (const r of list)
-      lines.push(
-        `${displayLabel(r.label)} (${executionRecordState(r)[0]}; ${displayLabel(r.id)})`,
+      details.push(
+        theme.fg("muted", "  execution: ") +
+          theme.fg("text", displayLabel(r.label)) +
+          separator +
+          theme.fg("text", displayLabel(r.id)),
       );
-    lines.push(...expandedResult(result));
+    details.push(
+      ...expandedBodyResult(result).map((row) => theme.fg("text", row)),
+    );
   }
-  return getTruncatedText(context.lastComponent, lines);
+  return getResultTextComponent(context.lastComponent, [line], details);
 }

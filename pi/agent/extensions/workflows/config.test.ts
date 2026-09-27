@@ -16,7 +16,7 @@ test("workflow config exposes all defaults", () => {
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxConcurrency, 4);
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxTokensPerRun, 0);
   assert.equal(DEFAULT_WORKFLOW_CONFIG.maxAgentsPerRun, 100);
-  assert.equal(DEFAULT_WORKFLOW_CONFIG.maxVisibleSettledAgents, 5);
+  assert.equal("maxVisibleSettledAgents" in DEFAULT_WORKFLOW_CONFIG, false);
   assert.equal(
     DEFAULT_WORKFLOW_CONFIG.userWorkflowsDir,
     join(getAgentDir(), "workflows"),
@@ -33,7 +33,6 @@ test("workflow config accepts settings and environment overrides", () => {
       maxConcurrency: 8,
       maxTokensPerRun: "0",
       maxAgentsPerRun: 12,
-      maxVisibleSettledAgents: 3,
       userWorkflowsDir: " saved-workflows ",
     }),
     {
@@ -42,7 +41,6 @@ test("workflow config accepts settings and environment overrides", () => {
       maxConcurrency: 8,
       maxTokensPerRun: 0,
       maxAgentsPerRun: 12,
-      maxVisibleSettledAgents: 3,
       userWorkflowsDir: resolve("saved-workflows"),
     },
   );
@@ -54,7 +52,6 @@ test("workflow config accepts settings and environment overrides", () => {
       WORKFLOWS_MAX_CONCURRENCY: "6",
       WORKFLOWS_MAX_TOKENS_PER_RUN: "10000",
       WORKFLOWS_MAX_AGENTS_PER_RUN: "0",
-      WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS: "0",
       WORKFLOWS_USER_WORKFLOWS_DIR: " /private/workflows ",
     } as NodeJS.ProcessEnv),
     {
@@ -63,7 +60,6 @@ test("workflow config accepts settings and environment overrides", () => {
       maxConcurrency: 6,
       maxTokensPerRun: 10_000,
       maxAgentsPerRun: 0,
-      maxVisibleSettledAgents: 0,
       userWorkflowsDir: "/private/workflows",
     },
   );
@@ -79,7 +75,6 @@ test("workflow config rejects invalid settings with warnings", () => {
         maxConcurrency: 0,
         maxTokensPerRun: -1,
         maxAgentsPerRun: 1.5,
-        maxVisibleSettledAgents: -1,
         userWorkflowsDir: "   ",
       },
       warnings,
@@ -92,8 +87,18 @@ test("workflow config rejects invalid settings with warnings", () => {
     "Ignoring invalid maxConcurrency; using default.",
     "Ignoring invalid maxTokensPerRun; using default.",
     "Ignoring invalid maxAgentsPerRun; using default.",
-    "Ignoring invalid maxVisibleSettledAgents; using default.",
     "Ignoring invalid userWorkflowsDir; using default.",
+  ]);
+});
+
+test("retired renderer-only visibility settings are diagnosed without changing execution limits", () => {
+  const warnings: string[] = [];
+  assert.deepEqual(
+    normalizeWorkflowConfig({ maxVisibleSettledAgents: 0 }, warnings),
+    DEFAULT_WORKFLOW_CONFIG,
+  );
+  assert.deepEqual(warnings, [
+    "maxVisibleSettledAgents was removed with the foreground progress layout.",
   ]);
 });
 
@@ -184,7 +189,7 @@ test("invalid environment values do not override lower-precedence settings", () 
     "Ignoring invalid WORKFLOWS_MAX_CONCURRENCY.",
     "Ignoring invalid WORKFLOWS_MAX_TOKENS_PER_RUN.",
     "Ignoring invalid WORKFLOWS_MAX_AGENTS_PER_RUN.",
-    "Ignoring invalid WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS.",
+    "WORKFLOWS_MAX_VISIBLE_SETTLED_AGENTS was removed with the foreground progress layout.",
     "Ignoring invalid WORKFLOWS_USER_WORKFLOWS_DIR.",
   ]);
 });

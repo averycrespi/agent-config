@@ -71,7 +71,7 @@ test("list counts distinguish active jobs, retained receipts and pending attenti
     text({ action: "list", receipts: receipts.slice(1) }),
     /^no active jobs · 2 retained$/,
   );
-  assert.match(text({ action: "list", receipts }, true), /polling · CI check/);
+  assert.match(text({ action: "list", receipts }, true), /polling… · CI check/);
   assert.doesNotMatch(text({ action: "list", receipts }), /CI check/);
 });
 
@@ -197,7 +197,7 @@ test("get uses a short title identity and muted section separators without repea
 test("get shows selected job state, counters and honest terminal reasons", () => {
   assert.match(
     text({ action: "get", receipt: display(receipt()) }),
-    /polling · 0 wakes · 4 evaluations/,
+    /polling… · 0 wakes · 4 evaluations/,
   );
   const failed = receipt({
     status: "finished",
@@ -271,7 +271,7 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   );
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }, true),
-    /follow-up already handed off/,
+    /follow-up: handed_to_pi/,
   );
   r.lastAttention.disposition = "handoff_unknown";
   assert.match(

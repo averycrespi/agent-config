@@ -91,7 +91,7 @@ for (const [name, call, render, details] of adapters) {
         /background|PRIVATE_BODY|HIDDEN|Demo/,
       );
       if (action === "run")
-        assert.equal(collapsed.render(120)[0], "Succeeded · 11111111");
+        assert.equal(collapsed.render(120)[0], "succeeded · 11111111");
       else assert.doesNotMatch(collapsed.render(120)[0], /·|11111111/);
       if (action === "dismiss")
         assert.equal(collapsed.render(120)[0], "dismissed");

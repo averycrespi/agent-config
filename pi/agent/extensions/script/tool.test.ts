@@ -320,7 +320,7 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
   assert.match(collapsed, /Partial execution; inspect provider outcomes/);
   assert.doesNotMatch(collapsed, /web.fetch|Reduce the returned JSON/);
   const expanded = renderResult(failed, args, true);
-  assert.match(expanded, /web.fetch \(succeeded/);
+  assert.match(expanded, /web.fetch · succeeded/);
   assert.match(expanded, /Reduce the returned JSON/);
   assert.match(
     JSON.stringify(failed.content),
@@ -422,7 +422,7 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
   assert.match(reused.render(200).join(), /scope: all/);
   assert.doesNotMatch(reused.render(200).join(), /providers: web/);
   for (const state of [
-    { isPartial: true, error: false, semantic: false, color: "warning" },
+    { isPartial: true, error: false, semantic: false, color: "accent" },
     { isPartial: false, error: false, semantic: false, color: "muted" },
     { isPartial: false, error: true, semantic: false, color: "error" },
     { isPartial: false, error: false, semantic: true, color: "error" },
@@ -450,7 +450,7 @@ test("renderers are bounded, payload-free, and distinguish framework/semantic fa
       theme,
       ctx,
     );
-    assert.equal(colors[0], state.color);
+    assert.ok(colors.includes(state.color));
     for (const width of [0, 1, 8, 100])
       for (const line of component.render(width)) {
         assert.ok(visibleWidth(line) <= width);

@@ -2,6 +2,7 @@ import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
   truncateToWidth,
   visibleWidth,
+  wrapTextWithAnsi,
   type Component,
 } from "@earendil-works/pi-tui";
 import { isAbsolute, relative, resolve } from "node:path";
@@ -92,7 +93,37 @@ export function outcomeSections(
     .join(theme.fg("dim", " · "));
 }
 
+/** Body sanitizer: preserve layout, unlike single-line displayLabel. */
+export function displayBody(value: string): string[] {
+  const bounded = value.slice(0, 64000);
+  const rows = stripVTControlCharacters(bounded)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\p{Cf}\u2028\u2029]/gu, " ")
+    .replace(/[\p{Cc}]/gu, (char) =>
+      char === "\n" || char === "\t" ? char : "",
+    )
+    .replaceAll("\t", "   ")
+    .split("\n");
+  return [
+    ...rows.slice(0, 2000).map((row) => row.slice(0, 4000)),
+    ...(value.length > 64000 ||
+    rows.length > 2000 ||
+    rows.some((row) => row.length > 4000)
+      ? ["Display truncated; full result remains in model/session context."]
+      : []),
+  ];
+}
+
 /** Bounded plain-text expansion; callers retain the original model-facing result. */
+export function expandedBodyResult(result: AgentToolResult<unknown>): string[] {
+  const text = result.content
+    .filter((c) => c.type === "text")
+    .map((c) => c.text)
+    .join("\n");
+  return text ? displayBody(text) : [];
+}
+
+/** Builtin compatibility projection; native/specialized layouts are unchanged. */
 export function expandedResult(result: AgentToolResult<unknown>): string[] {
   const text = result.content
     .filter((c) => c.type === "text")
@@ -353,6 +384,63 @@ export class TruncatedText implements Component {
     this.cachedLines = rendered;
     return rendered;
   }
+}
+
+/** Additive result layout; only details wrap, never the compact prefix. */
+export class ResultText implements Component {
+  constructor(
+    private summary: RenderLine[],
+    private details: string[],
+  ) {}
+  setLines(summary: RenderLine[], details: string[]): void {
+    this.summary = summary;
+    this.details = details;
+  }
+  invalidate(): void {}
+  render(width: number): string[] {
+    const compact = new TruncatedText(this.summary).render(width);
+    if (!this.details.length || width <= 0) return compact;
+    const body: string[] = [];
+    for (const line of this.details) {
+      const wrapped = wrapTextWithAnsi(
+        line.replaceAll("\t", TAB_REPLACEMENT),
+        width,
+      );
+      body.push(...wrapped.slice(0, Math.max(0, 2000 - body.length)));
+      if (body.length >= 2000) {
+        body.push(
+          truncateToWidth(
+            "Display truncated; full result remains in model/session context.",
+            width,
+          ),
+        );
+        break;
+      }
+    }
+    return (
+      [...compact, ...(compact.length && body.length ? [""] : []), ...body]
+        // A grapheme wider than a one-column terminal cannot be wrapped to fit.
+        .map((line) =>
+          truncateToWidth(line, width).replace(
+            SGR_FULL_RESET,
+            SGR_BG_SAFE_RESET,
+          ),
+        )
+    );
+  }
+}
+
+export function getResultTextComponent(
+  lastComponent: unknown,
+  summary: RenderLine[],
+  details: string[] = [],
+): ResultText {
+  const component =
+    lastComponent instanceof ResultText
+      ? lastComponent
+      : new ResultText([], []);
+  component.setLines(summary, details);
+  return component;
 }
 
 /**

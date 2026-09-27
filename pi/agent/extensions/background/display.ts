@@ -55,6 +55,7 @@ export function executionWarnings(r: Partial<Execution>): [string, string][] {
 export function executionCounts(
   r: Execution,
   theme: Theme,
+  separator?: string,
 ): string | undefined {
   const a = r.activity;
   if (a && a.canceled !== undefined) {
@@ -71,7 +72,7 @@ export function executionCounts(
       )
         .filter(([count]) => count > 0)
         .map(([count, name, color]) => theme.fg(color, `${count} ${name}`))
-        .join(", ") || undefined
+        .join(separator ?? ", ") || undefined
     );
   }
   // Historical receipts do not distinguish cancellation from failure.
@@ -82,7 +83,9 @@ export function executionCounts(
     ? undefined
     : theme.fg("muted", `${completed}/${total} settled`) +
         (unsuccessful
-          ? theme.fg("muted", `, ${unsuccessful} unsuccessful`)
+          ? separator === undefined
+            ? theme.fg("muted", `, ${unsuccessful} unsuccessful`)
+            : separator + theme.fg("muted", `${unsuccessful} unsuccessful`)
           : "");
 }
 

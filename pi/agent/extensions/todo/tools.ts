@@ -6,7 +6,8 @@ import {
   getTruncatedText,
   toolCall,
   outcomeLine,
-  expandedResult,
+  expandedBodyResult,
+  getResultTextComponent,
 } from "../_shared/render.ts";
 import { stringEnum } from "../_shared/schema.ts";
 import {
@@ -191,18 +192,23 @@ export function registerTodoTool(pi: ExtensionAPI, store: TodoStore): void {
       const failed =
         context.isError ||
         firstLine(getResultText(result)).startsWith("Error:");
-      return getTruncatedText(context.lastComponent, [
-        outcomeLine(
-          theme,
-          isPartial
-            ? "updating"
-            : failed
-              ? "request failed"
-              : summarizeResult(result.details),
-          isPartial ? "warning" : failed ? "error" : "muted",
-        ),
-        ...(expanded ? expandedResult(result) : []),
-      ]);
+      return getResultTextComponent(
+        context.lastComponent,
+        [
+          outcomeLine(
+            theme,
+            isPartial
+              ? "updating…"
+              : failed
+                ? "request failed"
+                : summarizeResult(result.details),
+            isPartial ? "accent" : failed ? "error" : "muted",
+          ),
+        ],
+        expanded
+          ? expandedBodyResult(result).map((row) => theme.fg("text", row))
+          : [],
+      );
     },
     async execute(_toolCallId, rawParams, _signal, _onUpdate, _ctx) {
       const params = rawParams as TodoParams;
