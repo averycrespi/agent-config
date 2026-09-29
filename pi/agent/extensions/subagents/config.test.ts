@@ -28,9 +28,9 @@ test("config exposes centralized policy defaults", () => {
   assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileFastEffort, "medium");
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileBalancedModel,
-    "openai-codex/gpt-6-sol",
+    "openai-codex/gpt-6.1-sol",
   );
-  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "medium");
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "high");
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileStrongModel,
     "openai-codex/gpt-6-astra",
