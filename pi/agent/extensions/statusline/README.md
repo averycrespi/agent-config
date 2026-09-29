@@ -40,6 +40,12 @@ Left-to-right priority is preserved within the status segment when the terminal 
 
 The footer updates on session start, model changes, thinking-level changes, and after each turn. Successful provider usage fetching is debounced to one API call per provider/model every 60 seconds.
 
+## Quota diagnostics
+
+Run `/statusline-debug` to inspect the cached quota snapshot used by this footer. It reports the quota source, fetch timestamp, primary/secondary percentages and reset durations, limit flag, and whether the effective request included an account-selection header (including one derived from OAuth claims). It makes no network request and does not bypass the normal refresh debounce. Before a successful fetch, or after usage is cleared, it reports no available usage.
+
+The output uses a fixed numeric/boolean field allowlist; it excludes tokens, header values, email, account IDs, credit balances, and raw API responses. It is shown locally without writing a diagnostic file. Compare this snapshot with the browser's usage response when investigating discrepancies. A matching browser account does not prove the OAuth usage endpoint returned the same quota. An unknown command indicates this version of the extension is not loaded.
+
 ## Configuration
 
 No extension-specific configuration. Path shortening uses the `HOME` environment variable when available.
@@ -51,6 +57,8 @@ Quota-fetch failures are logged once per session under `${tmpdir()}/pi-extension
 ## Current providers
 
 - `openai-codex` — polls the ChatGPT/Codex usage endpoint
+
+Usage requests preserve registry-provided headers and add `chatgpt-account-id` from the OAuth token's account claim when no explicit account header is supplied, matching Pi's model-request account routing. The token is decoded only to select the account, not to verify authentication. Malformed or missing claims retain bearer-only behavior. The account value is never included in diagnostics.
 
 The quota segment uses the API's top-level Codex quota, not additional feature-specific buckets. Percentages show quota consumed: primary window first, secondary in parentheses when available. A reported limit adds `limit` alongside available percentages rather than hiding them; it is an API flag, not proof that the selected model is blocked. The duration is the primary window's reported reset time, not necessarily the time until model access resumes. Credit-balance display is unchanged.
 

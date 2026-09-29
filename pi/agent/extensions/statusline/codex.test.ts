@@ -106,6 +106,87 @@ test("codexAdapter only accepts a boolean true limit flag", async () => {
   }
 });
 
+function tokenWithClaims(claims: unknown): string {
+  return `header.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.signature`;
+}
+
+test("codexAdapter supplies the OAuth account header when registry headers omit it", async () => {
+  const token = tokenWithClaims({
+    "https://api.openai.com/auth": { chatgpt_account_id: "example-account" },
+  });
+  const fetchStub = mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      rate_limit: {
+        primary_window: { used_percent: 91 },
+        limit_reached: false,
+      },
+    }),
+  );
+  try {
+    const stats = await codexAdapter.fetchUsage(token, {
+      "X-Extra": "example",
+    });
+    const sent = new Headers(fetchStub.mock.calls[0].arguments[1]?.headers);
+    assert.equal(sent.get("chatgpt-account-id"), "example-account");
+    assert.equal(sent.get("authorization"), `Bearer ${token}`);
+    assert.equal(sent.get("x-extra"), "example");
+    assert.equal(stats?.primary?.usedPercent, 91);
+    assert.equal(stats?.limitReached, false);
+  } finally {
+    fetchStub.mock.restore();
+  }
+});
+
+test("codexAdapter preserves explicit account selection regardless of header casing", async () => {
+  const token = tokenWithClaims({
+    "https://api.openai.com/auth": { chatgpt_account_id: "token-account" },
+  });
+  const fetchStub = mock.method(globalThis, "fetch", async () =>
+    Response.json({ rate_limit: {} }),
+  );
+  try {
+    for (const name of ["ChatGPT-Account-Id", "chatgpt-account-id"]) {
+      await codexAdapter.fetchUsage(token, { [name]: "selected-account" });
+      const sent = new Headers(
+        fetchStub.mock.calls.at(-1)!.arguments[1]?.headers,
+      );
+      assert.equal(sent.get("chatgpt-account-id"), "selected-account");
+    }
+  } finally {
+    fetchStub.mock.restore();
+  }
+});
+
+test("codexAdapter safely handles missing or malformed OAuth account claims", async () => {
+  const fetchStub = mock.method(globalThis, "fetch", async () =>
+    Response.json({ rate_limit: {} }),
+  );
+  try {
+    for (const token of [
+      "token",
+      "header.not-json.signature",
+      tokenWithClaims(null),
+      tokenWithClaims({}),
+      tokenWithClaims({
+        "https://api.openai.com/auth": { chatgpt_account_id: 42 },
+      }),
+      tokenWithClaims({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "invalid\r\nheader",
+        },
+      }),
+    ]) {
+      await codexAdapter.fetchUsage(token);
+      const sent = new Headers(
+        fetchStub.mock.calls.at(-1)!.arguments[1]?.headers,
+      );
+      assert.equal(sent.has("chatgpt-account-id"), false);
+    }
+  } finally {
+    fetchStub.mock.restore();
+  }
+});
+
 test("codexAdapter.fetchUsage forwards registry auth headers", async () => {
   const fetchStub = mock.method(
     globalThis,
@@ -127,8 +208,7 @@ test("codexAdapter.fetchUsage forwards registry auth headers", async () => {
   }
 
   assert.equal(fetchStub.mock.callCount(), 1);
-  assert.deepEqual(fetchStub.mock.calls[0].arguments[1]?.headers, {
-    "X-Account": "abc",
-    Authorization: "Bearer token",
-  });
+  const sent = new Headers(fetchStub.mock.calls[0].arguments[1]?.headers);
+  assert.equal(sent.get("X-Account"), "abc");
+  assert.equal(sent.get("Authorization"), "Bearer token");
 });

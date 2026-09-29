@@ -11,7 +11,7 @@
 - `utils.ts` defines the provider adapter interface, normalized usage types, and formatting helpers.
 - Tests cover provider parsing, footer layout, git parsing, event behavior, and utility formatting.
 
-There is no slash command, agent tool, persistent state, or user-facing configuration.
+`/statusline-debug` exposes a fixed safe projection of the cached quota snapshot and fetch metadata; it performs no fetch and writes no file. Never include auth/header values, account identity, credit balances, or raw response objects in this projection. There is no agent tool, persistent state, or user-facing configuration.
 
 ## Footer state model
 
@@ -60,7 +60,7 @@ Provider quota comes from adapter objects implementing `ProviderAdapter`. `index
 
 Quota fetches are debounced by provider/model key for 60 seconds. Failed quota fetches clear the usage segment and write one retained diagnostic log per session. Do not log API keys or auth headers.
 
-The current adapter is `codexAdapter`, which polls ChatGPT/Codex usage with a hard fetch timeout and normalizes the response into `UsageStats`. It reads the top-level `rate_limit` as the main Codex quota, matching the upstream client; `additional_rate_limits` are separate feature buckets and must not replace it, even when the main quota is absent. Only a boolean `true` sets the provider-reported limit flag. Renderers preserve available percentages alongside that flag rather than interpreting it as proof the selected model is blocked.
+The current adapter is `codexAdapter`, which polls ChatGPT/Codex usage with a hard fetch timeout and normalizes the response into `UsageStats`. `buildCodexUsageHeaders()` preserves explicit account headers case-insensitively; otherwise it derives `chatgpt-account-id` from the same OAuth JWT claim used by Pi's model provider. JWT decoding is not verification. Missing, malformed, or unsafe claims do not fabricate account selection. Diagnostics report only the presence of the effective account header, never its value. It reads the top-level `rate_limit` as the main Codex quota, matching the upstream client; `additional_rate_limits` are separate feature buckets and must not replace it, even when the main quota is absent. Only a boolean `true` sets the provider-reported limit flag. Renderers preserve available percentages alongside that flag rather than interpreting it as proof the selected model is blocked.
 
 ## Event lifecycle
 

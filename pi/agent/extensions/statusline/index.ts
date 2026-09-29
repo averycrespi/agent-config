@@ -7,10 +7,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createManagedLogger } from "../_shared/logging.ts";
-import { codexAdapter } from "./codex.ts";
+import { buildCodexUsageHeaders, codexAdapter } from "./codex.ts";
 import { renderFooterLines, type FooterState } from "./footer.ts";
 import { getGitSummary } from "./git.ts";
-import { type ProviderAdapter } from "./utils.ts";
+import { type ProviderAdapter, type WindowStats } from "./utils.ts";
 
 const ADAPTERS: ProviderAdapter[] = [codexAdapter];
 const DEBOUNCE_MS = 60_000;
@@ -21,6 +21,7 @@ export default function (pi: ExtensionAPI) {
   let requestRender: (() => void) | null = null;
   let gitGeneration = 0;
   let usageFailureLogged = false;
+  let usageAccountHeaderPresent = false;
   const state: FooterState = {
     cwd: process.cwd(),
     homeDir: process.env.HOME,
@@ -94,6 +95,10 @@ export default function (pi: ExtensionAPI) {
 
     lastFetchAt = now;
     lastFetchKey = fetchKey;
+    usageAccountHeaderPresent = buildCodexUsageHeaders(
+      auth.apiKey,
+      auth.headers,
+    ).has("chatgpt-account-id");
     state.usage = {
       label: adapter.label,
       stats,
@@ -122,6 +127,42 @@ export default function (pi: ExtensionAPI) {
     await refreshUsage(ctx);
     requestRender?.();
   }
+
+  pi.registerCommand("statusline-debug", {
+    description:
+      "Show safe cached quota diagnostics without fetching or credentials",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) return;
+      const stats = state.usage?.stats;
+      const finite = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
+      const window = (value: WindowStats | undefined) =>
+        value
+          ? {
+              usedPercent: finite(value.usedPercent),
+              resetAfterSeconds: finite(value.resetAfterSeconds),
+            }
+          : null;
+      ctx.ui.notify(
+        JSON.stringify(
+          {
+            diagnosticVersion: 2,
+            quotaSource: "rate_limit",
+            hasUsage: !!stats,
+            fetchedAt: stats ? new Date(lastFetchAt).toISOString() : null,
+            accountHeaderPresent: stats ? usageAccountHeaderPresent : null,
+            primary: window(stats?.primary),
+            secondary: window(stats?.secondary),
+            limitReached: stats ? stats.limitReached === true : null,
+            hasBalance: stats ? stats.balance !== undefined : null,
+          },
+          null,
+          2,
+        ),
+        "info",
+      );
+    },
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     syncState(ctx);
