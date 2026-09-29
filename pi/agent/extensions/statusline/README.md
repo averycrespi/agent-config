@@ -10,7 +10,7 @@ Example content rows below the separator:
 
 ```
 ~/Workspace/agent-config [main ✔]                  Codex 45% (20%) 2h · ctx 42%/200k · gpt-5-codex · medium
-/repo [feature/statusline-git ↓2↑3 ●1 ✚2 …1]       Codex limit 2h · ctx 92%/200k · gpt-5-codex · high
+/repo [feature/statusline-git ↓2↑3 ●1 ✚2 …1]       Codex 100% (20%) limit 2h · ctx 92%/200k · gpt-5-codex · high
 /repo [detached: abc1234 ⚑2]                        Codex $4.20 1h · ctx 18%/200k · gpt-5-codex · low
 ```
 
@@ -51,6 +51,8 @@ Quota-fetch failures are logged once per session under `${tmpdir()}/pi-extension
 ## Current providers
 
 - `openai-codex` — polls the ChatGPT/Codex usage endpoint
+
+The quota segment uses the API's top-level Codex quota, not additional feature-specific buckets. Percentages show quota consumed: primary window first, secondary in parentheses when available. A reported limit adds `limit` alongside available percentages rather than hiding them; it is an API flag, not proof that the selected model is blocked. The duration is the primary window's reported reset time, not necessarily the time until model access resumes. Credit-balance display is unchanged.
 
 ## Prior art
 

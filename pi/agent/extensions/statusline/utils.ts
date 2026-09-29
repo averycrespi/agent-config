@@ -10,7 +10,7 @@ export interface UsageStats {
   primary?: WindowStats;
   /** Long window (e.g. weekly) */
   secondary?: WindowStats;
-  /** True when the hard limit has been reached */
+  /** Provider-reported limit flag; not proof the selected model is blocked */
   limitReached?: boolean;
   /** Credit balance string for credit-based plans (e.g. "4.20") */
   balance?: string;
@@ -55,7 +55,11 @@ export function buildFooterText(
     return parts.join(" · ");
   }
 
-  if (stats.limitReached) {
+  if (
+    stats.limitReached &&
+    stats.primary?.usedPercent === undefined &&
+    stats.secondary?.usedPercent === undefined
+  ) {
     const parts = [`${adapter.label}: limit reached`];
     if (stats.primary?.resetAfterSeconds !== undefined) {
       parts.push(
@@ -90,7 +94,8 @@ export function buildFooterText(
     resetStr = `resets in ${formatDuration(sReset)}`;
   }
 
-  const parts = [`${adapter.label}: ${pctStr}`];
+  const limitText = stats.limitReached ? " · limit reached" : "";
+  const parts = [`${adapter.label}: ${pctStr}${limitText}`];
   if (resetStr) parts.push(resetStr);
 
   return parts.join(" · ");

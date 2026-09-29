@@ -60,7 +60,7 @@ Provider quota comes from adapter objects implementing `ProviderAdapter`. `index
 
 Quota fetches are debounced by provider/model key for 60 seconds. Failed quota fetches clear the usage segment and write one retained diagnostic log per session. Do not log API keys or auth headers.
 
-The current adapter is `codexAdapter`, which polls ChatGPT/Codex usage with a hard fetch timeout and normalizes the response into `UsageStats`.
+The current adapter is `codexAdapter`, which polls ChatGPT/Codex usage with a hard fetch timeout and normalizes the response into `UsageStats`. It reads the top-level `rate_limit` as the main Codex quota, matching the upstream client; `additional_rate_limits` are separate feature buckets and must not replace it, even when the main quota is absent. Only a boolean `true` sets the provider-reported limit flag. Renderers preserve available percentages alongside that flag rather than interpreting it as proof the selected model is blocked.
 
 ## Event lifecycle
 

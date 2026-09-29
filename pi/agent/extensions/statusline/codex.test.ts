@@ -37,6 +37,75 @@ test("parseWindow passes through missing subfields as undefined", () => {
   });
 });
 
+test("codexAdapter uses the main quota rather than an additional codex limit", async () => {
+  const fetchStub = mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      rate_limit: {
+        limit_reached: false,
+        primary_window: { used_percent: 24, reset_after_seconds: 7200 },
+        secondary_window: { used_percent: 38, reset_after_seconds: 338400 },
+      },
+      additional_rate_limits: [
+        {
+          metered_feature: "codex",
+          rate_limit: {
+            limit_reached: true,
+            primary_window: { used_percent: 100, reset_after_seconds: 338400 },
+          },
+        },
+      ],
+    }),
+  );
+  try {
+    assert.deepEqual(await codexAdapter.fetchUsage("token"), {
+      primary: { usedPercent: 24, resetAfterSeconds: 7200 },
+      secondary: { usedPercent: 38, resetAfterSeconds: 338400 },
+      limitReached: false,
+      balance: undefined,
+    });
+  } finally {
+    fetchStub.mock.restore();
+  }
+});
+
+test("codexAdapter does not substitute additional quotas when the main quota is absent", async () => {
+  const fetchStub = mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      rate_limit: null,
+      additional_rate_limits: [
+        {
+          metered_feature: "codex",
+          rate_limit: {
+            limit_reached: true,
+            primary_window: { used_percent: 100 },
+          },
+        },
+      ],
+    }),
+  );
+  try {
+    assert.deepEqual(await codexAdapter.fetchUsage("token"), {
+      primary: undefined,
+      secondary: undefined,
+      limitReached: false,
+      balance: undefined,
+    });
+  } finally {
+    fetchStub.mock.restore();
+  }
+});
+
+test("codexAdapter only accepts a boolean true limit flag", async () => {
+  const fetchStub = mock.method(globalThis, "fetch", async () =>
+    Response.json({ rate_limit: { limit_reached: "false" } }),
+  );
+  try {
+    assert.equal((await codexAdapter.fetchUsage("token"))?.limitReached, false);
+  } finally {
+    fetchStub.mock.restore();
+  }
+});
+
 test("codexAdapter.fetchUsage forwards registry auth headers", async () => {
   const fetchStub = mock.method(
     globalThis,

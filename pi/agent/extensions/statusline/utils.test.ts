@@ -70,6 +70,17 @@ test("buildFooterText appends reset time when limit reached", () => {
   );
 });
 
+test("buildFooterText keeps percentages alongside a reported limit", () => {
+  assert.equal(
+    buildFooterText(ADAPTER, {
+      limitReached: true,
+      primary: { usedPercent: 24, resetAfterSeconds: 120 },
+      secondary: { usedPercent: 38 },
+    }),
+    "Codex: 24% (38%) · limit reached · resets in 2m",
+  );
+});
+
 test("buildFooterText returns just the adapter label when no percentages are known", () => {
   assert.equal(buildFooterText(ADAPTER, {}), "Codex");
   assert.equal(

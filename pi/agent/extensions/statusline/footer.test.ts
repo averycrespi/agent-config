@@ -79,6 +79,40 @@ test("renderFooterLine renders statusline segments in priority order", () => {
   );
 });
 
+test("quota limit warnings preserve available percentages", () => {
+  const cases: Array<[UsageStats, string]> = [
+    [
+      { primary: { usedPercent: 24 }, secondary: { usedPercent: 38 } },
+      "24% (38%) limit",
+    ],
+    [
+      { primary: { usedPercent: 100, resetAfterSeconds: 338400 } },
+      "100% limit 3d 22h",
+    ],
+    [{ secondary: { usedPercent: 0 } }, "0% limit"],
+    [{ primary: { resetAfterSeconds: 338400 } }, "limit 3d 22h"],
+    [{}, "limit"],
+  ];
+  for (const [stats, expected] of cases) {
+    const state = {
+      cwd: "/repo",
+      usage: renderUsage({ ...stats, limitReached: true }),
+    };
+    assert.equal(
+      stripAnsi(renderFooterLine(state, 200, theme)),
+      `/repo · Codex ${expected}`,
+    );
+    for (const width of [12, 40, 100]) {
+      const lines = renderFooterLines(state, width, theme);
+      assert.ok(lines.every((line) => visibleWidth(line) <= width));
+      if (width >= 40)
+        assert.ok(
+          lines.some((line) => stripAnsi(line).includes(`Codex ${expected}`)),
+        );
+    }
+  }
+});
+
 test("renderFooterLine mutes status labels and supporting metadata", () => {
   const { calls, recordingTheme } = createRecordingTheme();
 

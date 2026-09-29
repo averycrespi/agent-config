@@ -32,11 +32,9 @@ export const codexAdapter: ProviderAdapter = {
       return null;
     }
 
-    const codexEntry = (data.additional_rate_limits ?? []).find(
-      (r: any) => r.metered_feature === "codex",
-    );
-    const rateLimit = codexEntry?.rate_limit ?? data.rate_limit;
-    const limitReached = rateLimit?.limit_reached ?? false;
+    // The main Codex quota is top-level; additional limits are separate buckets.
+    const rateLimit = data.rate_limit;
+    const limitReached = rateLimit?.limit_reached === true;
 
     return {
       primary: parseWindow(rateLimit?.primary_window),

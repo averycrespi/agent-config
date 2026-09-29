@@ -96,18 +96,15 @@ function buildUsageSegment(
       : `${labelText} $${stats.balance} ${theme.fg("muted", formatDuration(reset))}`;
   }
 
-  if (stats.limitReached) {
-    const reset = stats.primary?.resetAfterSeconds;
-    return reset === undefined
-      ? `${labelText} limit`
-      : `${labelText} limit ${theme.fg("muted", formatDuration(reset))}`;
-  }
-
   const primaryPercent = stats.primary?.usedPercent;
   const secondaryPercent = stats.secondary?.usedPercent;
   const primaryReset = stats.primary?.resetAfterSeconds;
 
-  if (primaryPercent === undefined && secondaryPercent === undefined) {
+  if (
+    primaryPercent === undefined &&
+    secondaryPercent === undefined &&
+    !stats.limitReached
+  ) {
     return labelText;
   }
 
@@ -125,7 +122,10 @@ function buildUsageSegment(
       ? ""
       : ` ${theme.fg("muted", formatDuration(primaryReset))}`;
 
-  return `${labelText} ${percentText}${resetText}`;
+  const quotaText = [percentText, stats.limitReached ? "limit" : ""]
+    .filter(Boolean)
+    .join(" ");
+  return `${labelText} ${quotaText}${resetText}`;
 }
 
 function buildContextSegment(
