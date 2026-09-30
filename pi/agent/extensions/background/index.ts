@@ -27,6 +27,10 @@ import { fileStore } from "./store.ts";
 import { registerConfigCommand } from "../_shared/config.ts";
 import { DEFAULT_WIDGET_CONFIG, loadBackgroundConfig } from "./config.ts";
 import { widgetVisible } from "./visibility.ts";
+import {
+  notificationHold,
+  type NotificationHold,
+} from "../_shared/notification-delivery.ts";
 
 export const NOTIFICATION = "background:execution-outcome-v1";
 export function widgetLines(
@@ -34,7 +38,7 @@ export function widgetLines(
   width: number,
   theme: Theme,
   now = Date.now(),
-  hold?: "draft" | "dialog",
+  hold?: NotificationHold,
 ) {
   return records.filter(visible).map((r) => {
     const singleChild = r.owner === "subagents" && r.progress?.total === 1;
@@ -113,16 +117,11 @@ export default function background(pi: ExtensionAPI) {
   });
   let widgetConfig = { ...DEFAULT_WIDGET_CONFIG };
   let generation = 0;
-  let prompt = false;
+  let dialogs = 0;
   let candidateIds = new Set<string>();
   const widget = createPersistentWidget("background-executions");
   let widgetShown = false;
-  const deliveryHold = () =>
-    prompt
-      ? ("dialog" as const)
-      : ctx?.mode === "tui" && ctx.ui.getEditorText().length > 0
-        ? ("draft" as const)
-        : undefined;
+  const deliveryHold = () => ctx && notificationHold(ctx, dialogs);
   const refresh = () => {
     if (!ctx || !service) return;
     const now = Date.now();
@@ -170,11 +169,7 @@ export default function background(pi: ExtensionAPI) {
         anchor: () => context.sessionManager.getLeafId() ?? "",
         inBranch: (anchor) =>
           context.sessionManager.getBranch().some((e) => e.id === anchor),
-        idle: () =>
-          !prompt &&
-          context.isIdle() &&
-          !context.hasPendingMessages() &&
-          (context.mode !== "tui" || context.ui.getEditorText().length === 0),
+        idle: () => !notificationHold(context, dialogs),
         changed: refresh,
         event: (type, r) =>
           pi.events.emit(`background:${type}`, {
@@ -205,7 +200,7 @@ export default function background(pi: ExtensionAPI) {
                 } satisfies NotificationDisplay,
               },
             },
-            { deliverAs: "followUp", triggerTurn: true },
+            { deliverAs: "steer", triggerTurn: true },
           ),
       });
       refresh();
@@ -238,11 +233,11 @@ export default function background(pi: ExtensionAPI) {
   pi.on("session_tree", (_e, context) => initialize(context));
   pi.on("session_shutdown", close);
   pi.on("ui_prompt_start", () => {
-    prompt = true;
+    dialogs++;
     refresh();
   });
   pi.on("ui_prompt_end", () => {
-    prompt = false;
+    dialogs = Math.max(0, dialogs - 1);
     refresh();
   });
   pi.on("agent_settled", () => {

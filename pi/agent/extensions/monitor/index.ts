@@ -12,6 +12,7 @@ import { registerConfigCommand } from "../_shared/config.ts";
 import { loadMonitorConfig, CONFIG_WARNING } from "./config.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { MonitorEngine } from "./engine.ts";
+import { notificationHold } from "../_shared/notification-delivery.ts";
 import { evaluateMonitor } from "./execution.ts";
 import { registration, RequestError, isId, type Receipt } from "./contract.ts";
 import { subscribeProvider, describeEvents } from "./providers.ts";
@@ -45,6 +46,7 @@ export default async function monitor(pi: ExtensionAPI) {
     },
   });
   let generation = 0;
+  let dialogs = 0;
   let context: ExtensionContext | undefined;
   let engine: MonitorEngine | undefined;
   let ticker: ReturnType<typeof setInterval> | undefined;
@@ -85,16 +87,7 @@ export default async function monitor(pi: ExtensionAPI) {
     };
     engine = new MonitorEngine({
       idle: () => {
-        if (token !== generation || !ctx.isIdle()) return false;
-        // Runtime idleness is not human idleness. Never disturb a visible draft.
-        if (ctx.mode === "tui") {
-          try {
-            return ctx.ui.getEditorText().length === 0;
-          } catch {
-            return false;
-          }
-        }
-        return true;
+        return token === generation && !notificationHold(ctx, dialogs);
       },
       persist: (r) => {
         current();
@@ -126,7 +119,7 @@ export default async function monitor(pi: ExtensionAPI) {
           },
           ctx.mode === "rpc"
             ? { deliverAs: "nextTurn", triggerTurn: false }
-            : { deliverAs: "followUp", triggerTurn: true },
+            : { deliverAs: "steer", triggerTurn: true },
         );
       },
       evaluate: (reg, trigger, state, signal, deadlineMs) =>
@@ -160,6 +153,12 @@ export default async function monitor(pi: ExtensionAPI) {
     offInspection();
     context = undefined;
   });
+  pi.on("ui_prompt_start", () => {
+    dialogs++;
+  });
+  pi.on("ui_prompt_end", () => {
+    dialogs = Math.max(0, dialogs - 1);
+  });
   pi.on("agent_settled", () => {
     engine?.settled();
   });
@@ -182,7 +181,7 @@ export default async function monitor(pi: ExtensionAPI) {
     label: "Monitor",
     parameters: parameters(config),
     ...renderers,
-    description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example (when configured ceilings permit): interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Pending wakes are held until settlement; handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
+    description: `Bounded session-branch observation/continuation: start/list/get/cancel. ${config.valid ? "" : "Starts disabled by invalid configuration. "}Start requires name, message, explicit providers, cycle_timeout_ms (1000–${config.maxCycleTimeoutMs} ms), lifetime_ms (1000–${config.maxLifetimeMs} ms), max_wakes (1–100); one-shot default requires 1 wake, recurring:true is explicit. Use interval_ms plus source for polling, delay_ms alone for settlement-based continuation, or typed events (provider/event/args). Combine polling/events. Polling clock example (when configured ceilings permit): interval_ms:30000, cycle_timeout_ms:600000, lifetime_ms:900000, max_wakes:1 (plus required name/message/providers/source) checks initially then 30s after each evaluation settles, for up to a 10m observation cycle, NOT a 10m API call. A longer lifetime does not prevent one-shot cycle expiry. Fresh Script evaluator receives trigger and state; return {decision:'wait'|'wake', evidence:JSON, state?:JSON}. State/evidence commit only on full success. No retries or evaluator stop. Eligible wakes steer active runs; drafts, dialogs and queued input hold delivery. Handoff is not consumption. list exposes permitted event schemas, get bounded receipts, never source. Cancel cannot retract Pi-owned messages. 4 jobs, 2 evaluations, 32 queued events/receipts; overflow/failure requests attention. Shutdown/navigation invalidate, restore receipts only.`,
     promptSnippet:
       "Observe typed events or poll in fresh Script evaluations; continue only within explicit finite bounds",
     promptGuidelines: [

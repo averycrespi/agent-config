@@ -20,6 +20,7 @@ export class Delivery {
     readonly handoff: (messages: Message[], now: number) => void,
     readonly warning: (count: number) => void,
     readonly now = Date.now,
+    readonly readiness: () => Hold = () => null,
   ) {}
   clear() {
     const removed = this.store.clear(this.mailbox);
@@ -45,8 +46,9 @@ export class Delivery {
             this.config.visibilityTimeoutMs,
             this.handoff,
             this.now,
+            () => !(hold = this.readiness()),
           );
-          this.wakeAt = undefined;
+          if (!hold) this.wakeAt = undefined;
           if (result.limited) this.warning(result.limited);
           rows = this.store.snapshot(this.mailbox);
         } catch (error) {

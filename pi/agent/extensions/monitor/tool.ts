@@ -116,7 +116,7 @@ const reasons = {
 };
 function activity(r: DisplayReceipt): string {
   if (r.attention?.disposition === "pending")
-    return `${reasons[r.attention.reason] ?? "attention"}; follow-up queued`;
+    return `${reasons[r.attention.reason] ?? "attention"}; wake pending`;
   if (r.status !== "active") {
     if (r.status !== "finished") return label(r.status);
     if (r.failureCode === "wake_limit") return "wake limit reached";
@@ -184,7 +184,7 @@ function resultLine(d: DisplayDetails, action: string): string {
     return [
       active ? `${active} active` : "no active jobs",
       `${receipts.length} retained`,
-      ...(pending ? [`${pending} follow-up queued`] : []),
+      ...(pending ? [`${pending} wake pending`] : []),
     ].join(" · ");
   }
   const r = d.receipt;
@@ -195,7 +195,7 @@ function resultLine(d: DisplayDetails, action: string): string {
       ...warnings(r),
       d.cancelChanged ? "cancelled" : `already ${label(r.status)}`,
       ...(r.lastAttention?.disposition === "handed_to_pi"
-        ? ["follow-up already handed off"]
+        ? ["notification already handed off"]
         : []),
     ].join(" · ");
   return jobLine(r);
@@ -233,7 +233,7 @@ export function widgetLines(
         ? "watching"
         : activity(r);
     const fields: string[] = pending
-      ? [theme.fg("warning", "follow-up queued")]
+      ? [theme.fg("warning", "wake pending")]
       : [];
     if (!pending && !r.awaitingSettlement) {
       if (!r.inFlight && r.nextAt !== undefined) {
@@ -382,7 +382,7 @@ export const renderers: Pick<
     const styleFields = (fields: string[], r = d.receipt) =>
       fields
         .map((field, index) => {
-          const [state, queued] = field.split("; follow-up queued");
+          const [state, queued] = field.split("; wake pending");
           const warning =
             /uncertain|interrupted|gap|cancel|limit|expired|timed out|awaiting settlement|no repeat poll/.test(
               state,
@@ -411,7 +411,7 @@ export const renderers: Pick<
           return (
             theme.fg(color, state + (active ? "…" : "")) +
             (queued !== undefined
-              ? separator + theme.fg("warning", "follow-up queued")
+              ? separator + theme.fg("warning", "wake pending")
               : "")
           );
         })
@@ -434,7 +434,7 @@ export const renderers: Pick<
           lines.push(styleFields(jobLine(r).split(" · "), r));
         if (r.lastAttention)
           lines.push(
-            theme.fg("muted", "  follow-up: ") +
+            theme.fg("muted", "  notification: ") +
               theme.fg("text", label(r.lastAttention.disposition)) +
               separator +
               theme.fg("muted", "admission: ") +

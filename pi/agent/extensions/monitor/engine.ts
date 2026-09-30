@@ -372,10 +372,10 @@ export class MonitorEngine {
       if (
         j.r.attention?.disposition === "pending" &&
         !j.r.inFlight &&
-        !j.waiting &&
-        this.host.idle()
+        !j.waiting
       )
-        next = Math.min(next, now);
+        // Reconsider safety holds while busy, using this engine's existing timer.
+        next = Math.min(next, this.host.idle() ? now : now + 1000);
     }
     this.timer = Number.isFinite(next)
       ? this.clock.set(
@@ -435,6 +435,8 @@ export class MonitorEngine {
       this.save(j);
       return;
     }
+    const previousAttention = j.r.lastAttention;
+    const cycleOpen = j.cycleOpen;
     a.disposition = "handoff_unknown";
     j.r.wakes++;
     j.cycleOpen = false;
@@ -445,6 +447,20 @@ export class MonitorEngine {
     this.save(j);
     if (this.closed) return;
     this.publish("notification", j);
+    // Recheck after persistence and observational callbacks, before the Pi effect.
+    if (this.closed) return;
+    if (j.r.status === "cancelled" || !this.host.idle()) {
+      j.r.wakes--;
+      j.r.awaitingSettlement = false;
+      j.waiting = undefined;
+      j.cycleOpen = cycleOpen;
+      if (previousAttention) j.r.lastAttention = previousAttention;
+      else delete j.r.lastAttention;
+      a.disposition = j.r.status === "cancelled" ? "suppressed" : "pending";
+      j.r.attention = a;
+      this.save(j);
+      return;
+    }
     try {
       this.host.handoff(structuredClone(j.r), j.reg.message);
       a.disposition = "handed_to_pi";

@@ -38,6 +38,7 @@ export class Service implements BackgroundService {
   private active = new Map<string, AbortController>();
   private open = true;
   private broken = false;
+  private flushing = false;
   constructor(
     private store: Store,
     private hooks: Hooks,
@@ -328,6 +329,15 @@ export class Service implements BackgroundService {
     return r;
   }
   flush() {
+    if (this.flushing) return;
+    this.flushing = true;
+    try {
+      this.flushReady();
+    } finally {
+      this.flushing = false;
+    }
+  }
+  private flushReady() {
     if (!this.open || this.broken || !this.hooks.idle()) return;
     for (const r of this.all()) {
       if (!this.hooks.idle()) break;
@@ -344,6 +354,17 @@ export class Service implements BackgroundService {
         notification: { ...r.notification, handoff: "unknown" as const },
       };
       this.change(next, "notification");
+      // Persistence/observers may introduce a hold or revoke this service.
+      // No Pi call occurred: restore only the intent, never replay uncertainty.
+      if (!this.open || this.broken) return;
+      const latest = this.records.find((x) => x.id === r.id)!;
+      if (latest.dismissed || !this.hooks.idle()) {
+        this.change({
+          ...latest,
+          notification: { ...latest.notification, handoff: "none" },
+        });
+        continue;
+      }
       try {
         this.hooks.handoff(structuredClone(next));
       } catch {
