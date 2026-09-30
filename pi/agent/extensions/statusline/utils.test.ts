@@ -4,6 +4,7 @@ import {
   buildFooterText,
   formatDuration,
   type ProviderAdapter,
+  type UsageStats,
 } from "./utils.ts";
 
 const ADAPTER: ProviderAdapter = {
@@ -37,6 +38,31 @@ test("formatDuration shows days with hour remainder", () => {
   assert.equal(formatDuration(24 * 3600), "1d");
   assert.equal(formatDuration(25 * 3600), "1d 1h");
   assert.equal(formatDuration(3 * 24 * 3600 + 5 * 3600), "3d 5h");
+});
+
+test("buildFooterText prefers available percentages over credits", () => {
+  const cases: Array<[UsageStats, string]> = [
+    [
+      { primary: { usedPercent: 95, resetAfterSeconds: 306161 } },
+      "95% · resets in 3d 13h",
+    ],
+    [{ primary: { usedPercent: 0 } }, "0%"],
+    [{ secondary: { usedPercent: 0 } }, "0%"],
+    [
+      {
+        primary: { usedPercent: 24 },
+        secondary: { usedPercent: 38 },
+        limitReached: true,
+      },
+      "24% (38%) · limit reached",
+    ],
+  ];
+  for (const [stats, expected] of cases) {
+    assert.equal(
+      buildFooterText(ADAPTER, { ...stats, balance: "4.20" }),
+      `Codex: ${expected}`,
+    );
+  }
 });
 
 test("buildFooterText formats credit balance", () => {

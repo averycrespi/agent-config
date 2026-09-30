@@ -89,7 +89,11 @@ function buildUsageSegment(
 
   const { label, stats } = usage;
   const labelText = theme.fg("muted", label);
-  if (stats.balance !== undefined) {
+  if (
+    stats.balance !== undefined &&
+    stats.primary?.usedPercent === undefined &&
+    stats.secondary?.usedPercent === undefined
+  ) {
     const reset = stats.primary?.resetAfterSeconds;
     return reset === undefined
       ? `${labelText} $${stats.balance}`

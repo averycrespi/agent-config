@@ -39,6 +39,8 @@ When everything fits, the left segment stays left and status segments are right-
 
 Within the status segment, priority is left-to-right: provider quota, context usage, model, thinking. Narrow terminals keep the highest-priority segments that fit. Labels, reset durations, context capacity, and model ID use muted text; percentages above thresholds use warning/error; and thinking levels use their corresponding theme tokens. In the repository segment, the ref uses accent, clean state uses success, conflicts use error, worktree changes use warning, and tracking/stash metadata uses muted text.
 
+Both footer formatters prefer any available quota percentage over a credit balance; zero is an available percentage. Credits remain a fallback only when both window percentages are absent.
+
 Keep `footer.ts` pure. Rendering tests should be able to exercise layout without Pi APIs, subprocesses, network, or timers.
 
 ## Git summary lifecycle

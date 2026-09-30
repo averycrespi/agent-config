@@ -60,7 +60,7 @@ Quota-fetch failures are logged once per session under `${tmpdir()}/pi-extension
 
 Usage requests preserve registry-provided headers and add `chatgpt-account-id` from the OAuth token's account claim when no explicit account header is supplied, matching Pi's model-request account routing. The token is decoded only to select the account, not to verify authentication. Malformed or missing claims retain bearer-only behavior. The account value is never included in diagnostics.
 
-The quota segment uses the API's top-level Codex quota, not additional feature-specific buckets. Percentages show quota consumed: primary window first, secondary in parentheses when available. A reported limit adds `limit` alongside available percentages rather than hiding them; it is an API flag, not proof that the selected model is blocked. The duration is the primary window's reported reset time, not necessarily the time until model access resumes. Credit-balance display is unchanged.
+The quota segment uses the API's top-level Codex quota, not additional feature-specific buckets. Percentages show quota consumed: primary window first, secondary in parentheses when available. A reported limit adds `limit` alongside available percentages rather than hiding them; it is an API flag, not proof that the selected model is blocked. The duration is the primary window's reported reset time, not necessarily the time until model access resumes. Available percentages take precedence over credit balances, including 0% and secondary-only usage. Credit balances are displayed only when neither window provides a percentage.
 
 ## Prior art
 

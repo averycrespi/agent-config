@@ -79,6 +79,42 @@ test("renderFooterLine renders statusline segments in priority order", () => {
   );
 });
 
+test("quota percentages take precedence over credits, including zero and secondary-only usage", () => {
+  const cases: Array<[UsageStats, string]> = [
+    [{ primary: { usedPercent: 95, resetAfterSeconds: 306161 } }, "95% 3d 13h"],
+    [{ primary: { usedPercent: 0 } }, "0%"],
+    [{ secondary: { usedPercent: 0 } }, "0%"],
+    [
+      {
+        primary: { usedPercent: 24 },
+        secondary: { usedPercent: 38 },
+        limitReached: true,
+      },
+      "24% (38%) limit",
+    ],
+    [{}, "$4.20"],
+    [{ primary: { resetAfterSeconds: 3600 } }, "$4.20 1h"],
+  ];
+  for (const [stats, expected] of cases) {
+    const state = {
+      cwd: "/repo",
+      usage: renderUsage({ ...stats, balance: "4.20" }),
+    };
+    assert.equal(
+      stripAnsi(renderFooterLine(state, 200, theme)),
+      `/repo · Codex ${expected}`,
+    );
+    for (const width of [12, 40, 100]) {
+      const lines = renderFooterLines(state, width, theme);
+      assert.ok(lines.every((line) => visibleWidth(line) <= width));
+      if (width >= 40)
+        assert.ok(
+          lines.some((line) => stripAnsi(line).includes(`Codex ${expected}`)),
+        );
+    }
+  }
+});
+
 test("quota limit warnings preserve available percentages", () => {
   const cases: Array<[UsageStats, string]> = [
     [

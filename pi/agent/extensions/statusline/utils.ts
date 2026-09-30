@@ -45,7 +45,11 @@ export function buildFooterText(
   adapter: ProviderAdapter,
   stats: UsageStats,
 ): string {
-  if (stats.balance !== undefined) {
+  if (
+    stats.balance !== undefined &&
+    stats.primary?.usedPercent === undefined &&
+    stats.secondary?.usedPercent === undefined
+  ) {
     const parts = [`${adapter.label}: $${stats.balance}`];
     if (stats.primary?.resetAfterSeconds !== undefined) {
       parts.push(
