@@ -10,6 +10,14 @@ For authorized follow-up, update scope/authorization/plan and next action with `
 
 A malformed checkpoint or identity conflict needs diagnosis and concrete recovery, not deletion or an unrestricted bypass. For a stale helper lock, prove the recorded process absent before removing that lock alone. Preserve corrupt bytes before any explicitly authorized repair and reconstruct facts from authoritative artifacts, never fabricate passing evidence.
 
+## Reconcile the current next action
+
+After recovery or an asynchronous interruption, compare current progress, blocker and next action with the original result evidence and actual operation/owner state. Separate historical failed/incomplete results from current blockers. Clear a resolved blocker from the checkpoint and current TODOs once supported by evidence, retaining the original failure and its disposition by reference. Conversely, replace a stale `next=self` with the actual dependency or approval boundary when one exists; do not resume from contradictory state without reconciliation.
+
+Apply the [turn-ending check](../SKILL.md#finish-and-stop-clearly) after handling the interruption. Green CI can leave promotion, reporting and release unfinished; a peer ACK can leave implementation or publication ready to continue. Neither is a terminal delivery boundary. Continue available authorized work rather than waiting for a coordinator reminder. A scoped continuation from the assigned coordinator resumes the existing objective and remaining allowances, not a fresh assignment or permission to replay pending effects.
+
+Check these read-only recovery scenarios against the actual instructions when changing them: green CI with `next=self` and no blocker continues remaining delivery; a peer resource-release ACK returns to the active objective; a live review/observer yields without duplication; an unknown external effect is reconciled before any retry; a resolved historical failure leaves current blockers but remains in evidence; an actual approval or exhausted allowance is reported, not bypassed. Structural checks do not prove model follow-through; live exercises require separate authority.
+
 ## Legacy adoption
 
 The new helper does not execute schema-v1 delivery gates or mutate `.pi/tickets/<uuid>/state.json`, `.ticket-run/`, or existing cleanup archives. On `status` showing missing new state, inspect any existing legacy records and other writers before initialization. Stop old wrappers; reread the new interface.
