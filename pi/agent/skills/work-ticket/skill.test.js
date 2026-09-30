@@ -10,6 +10,7 @@ for (const name of [
   "work-ticket",
   "work-stack",
   "spawn-agent",
+  "supervise",
   "review",
   "challenge",
   "simplify",

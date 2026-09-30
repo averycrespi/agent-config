@@ -16,6 +16,17 @@ Test these bounded read-only decision scenarios against the actual entry point a
 - Mailbox delivery exhaustion or uncertain handoff: inspect retained same-ID messages and prior applied effects; never blindly resend, reset attempts or launch replacement workers. A delivery limit is not task completion. Reconcile unrelated child CI observers within their original bounds.
 - Interrupted publication or cleanup: keep original work-ticket effects/evidence, confirm matching authoritative effects without replay, preserve branches/resources and require separate cleanup authority.
 
+## Supervision and autonomy scenarios
+
+Use the shared [supervision scenarios](../../supervise/references/verification.md), plus these stack-specific cases:
+
+- Authorized stack execution starts one default 20-minute/25-minute/12-hour/36-wake watchdog; planning/inspection alone does not. Explicit user bounds and inherited consumption win over defaults, and successors do not reset the envelope.
+- Both coordinator and child have yielded after a prerequisite, but the child has `next=self`, no blocker and no active/queued operation. The admitted watchdog wakes the coordinator to reconcile evidence and send one scoped continuation, not another initial assignment.
+- A child is legitimately awaiting its own CI monitor. Keep progress supervision separate; do not poll CI again, renew child allowance or declare the child stalled merely because it is silent.
+- Shared fixture contention requires a batch handoff, not per-command grants or parent source-inspection freezes. Independent child work continues under existing authority; final predecessor acceptance/release remains unchanged.
+- The final watchdog wake finds unfinished work. Disclose the impending coverage gap and request additional allowance if needed; never silently fall back to claiming mailbox-only proactive coverage or automatically renew. Preserve child execution authority and current next actions.
+- A resolved child blocker remains in an old report. Reconcile current checkpoint/evidence and clear the parent's current blocker, retaining the historical result by reference without copying its execution ledger.
+
 ## Controlled exercise
 
 Only with separate explicit authority, run two disposable serial workers using the shared live recipe. Pin the candidate source and full session inboxes; verify automatic listening. Verify A's actual evidence and released/quiescent ownership before launching B at its exact head with the correct PR-target policy. Retain original reports, evidence and acceptance-before-launch ordering. Do not create real tickets, publish unrelated PRs, install/link/reload or clean up resources implicitly.

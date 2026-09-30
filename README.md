@@ -90,6 +90,8 @@ Implementation stays in the owning session by default. Writable delegation needs
 
 ### Continue and watch
 
+For requested worker progress checks, [supervise](pi/agent/skills/supervise/SKILL.md) adds a bounded coordinator watchdog; authorized work-stack execution includes it by default. It detects unjustified stops without taking over child execution or renewing budgets. See the skill for default timing and recovery boundaries.
+
 Use Monitor for bounded polling, typed events or requested continuation, not as an unattended cron service or a substitute for ordinary multi-step work. Keep one observer owner and retain cumulative limits. Shutdown, reload and navigation invalidate observations; restoration does not resume them. A notification or elapsed deadline is not task success, and cancellation does not roll back effects. See [lifecycle and migration guidance](pi/docs/migrations.md#observer-retirement) before replacing historical observers.
 
 ### Compose external tool calls
