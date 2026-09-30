@@ -33,7 +33,7 @@ export const DEFAULT_SUBAGENTS_CONFIG: SubagentsConfig = {
   profileFastModel: "openai-codex/gpt-6-luna",
   profileFastEffort: "medium",
   profileBalancedModel: "openai-codex/gpt-6.1-sol",
-  profileBalancedEffort: "high",
+  profileBalancedEffort: "medium",
   profileStrongModel: "openai-codex/gpt-6-astra",
   profileStrongEffort: "high",
   allowedCapabilities: [...CAPABILITIES],

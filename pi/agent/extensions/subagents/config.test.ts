@@ -30,7 +30,7 @@ test("config exposes centralized policy defaults", () => {
     DEFAULT_SUBAGENTS_CONFIG.profileBalancedModel,
     "openai-codex/gpt-6.1-sol",
   );
-  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "high");
+  assert.equal(DEFAULT_SUBAGENTS_CONFIG.profileBalancedEffort, "medium");
   assert.equal(
     DEFAULT_SUBAGENTS_CONFIG.profileStrongModel,
     "openai-codex/gpt-6-astra",
@@ -54,7 +54,7 @@ test("global config normalizes selectors and capability allowlist", () => {
         profileFastModel: "p/f",
         profileFastEffort: "low",
         profileBalancedModel: "p/b",
-        profileBalancedEffort: "medium",
+        profileBalancedEffort: "high",
         profileStrongModel: "p/s",
         profileStrongEffort: "max",
         allowedCapabilities: ["read-web", "read-web", "write-filesystem"],
@@ -66,7 +66,7 @@ test("global config normalizes selectors and capability allowlist", () => {
       profileFastModel: "p/f",
       profileFastEffort: "low",
       profileBalancedModel: "p/b",
-      profileBalancedEffort: "medium",
+      profileBalancedEffort: "high",
       profileStrongModel: "p/s",
       profileStrongEffort: "max",
       allowedCapabilities: ["read-web", "write-filesystem"],
@@ -83,7 +83,7 @@ test("every field has an environment override", () => {
         SUBAGENTS_PROFILE_FAST_MODEL: "env/f",
         SUBAGENTS_PROFILE_FAST_EFFORT: "low",
         SUBAGENTS_PROFILE_BALANCED_MODEL: "env/b",
-        SUBAGENTS_PROFILE_BALANCED_EFFORT: "medium",
+        SUBAGENTS_PROFILE_BALANCED_EFFORT: "high",
         SUBAGENTS_PROFILE_STRONG_MODEL: "env/s",
         SUBAGENTS_PROFILE_STRONG_EFFORT: "max",
         SUBAGENTS_ALLOWED_CAPABILITIES: "read-mcp,write-filesystem",
@@ -94,7 +94,7 @@ test("every field has an environment override", () => {
       profileFastModel: "env/f",
       profileFastEffort: "low",
       profileBalancedModel: "env/b",
-      profileBalancedEffort: "medium",
+      profileBalancedEffort: "high",
       profileStrongModel: "env/s",
       profileStrongEffort: "max",
       allowedCapabilities: ["read-mcp", "write-filesystem"],
