@@ -10,6 +10,7 @@ for (const name of [
   "work-ticket",
   "work-stack",
   "spawn-agent",
+  "supervise",
   "review",
   "challenge",
   "simplify",
@@ -37,6 +38,34 @@ for (const name of [
     }
   });
 }
+
+// These assertions cover written continuation/recovery rules, not live behavior.
+test("ticket continuation distinguishes available work from real dependencies", async () => {
+  const skill = await readFile(resolve(root, "work-ticket/SKILL.md"), "utf8");
+  const recovery = await readFile(
+    resolve(root, "work-ticket/references/recovery.md"),
+    "utf8",
+  );
+  for (const pattern of [
+    /If `next=self` and authorized work is available with no real dependency, continue it in the same turn/,
+    /mailbox acknowledgments, resource handoffs, review results, CI completion and recovery/,
+    /yield for its notification without polling or duplicating it/,
+    /`next=self` alone is not authority/,
+  ])
+    assert.match(skill, pattern);
+  assert.match(
+    recovery,
+    /Clear a resolved blocker from the checkpoint and current TODOs/,
+  );
+  assert.match(
+    recovery,
+    /retaining the original failure and its disposition by reference/,
+  );
+  assert.match(
+    recovery,
+    /not a fresh assignment or permission to replay pending effects/,
+  );
+});
 
 test("retired skill entrypoints and Goal extension are absent", async () => {
   for (const name of [

@@ -11,7 +11,15 @@ Deliver an explicitly ordered stack with one ticket actively implementing at a t
 
 Read [Plane](../plane/SKILL.md) to resolve the requested ticket identities, canonical criteria and dependencies in one repository. Preserve the requested order; reconcile duplicates, cycles, forward dependencies or unavailable prerequisites before launch rather than silently adding or reordering tickets. Record the initial target branch and full immutable base SHA, plus each ticket's authorized local-only or PR-ready boundary. Ticket approval alone does not authorize execution or publication.
 
-Track order, progress/blockers, predecessor relationships and result references in existing TODOs/conversation. Link the child session and its work-ticket checkpoint instead of copying review findings, check inventories or CI counters. Do not create a stack registry or require assignment/revision counters. Preserve existing runs' reporting contracts and historical evidence without automatic cutover.
+Track order, progress/blockers, predecessor relationships and result references in existing TODOs/conversation. Keep current owner, next action and resource ownership concise; clear resolved blockers from current state while retaining historical failures in referenced child evidence. Link the child session and its work-ticket checkpoint instead of copying review findings, check inventories or CI counters. Do not create a stack registry or require assignment/revision counters. Preserve existing runs' reporting contracts and historical evidence without automatic cutover.
+
+## Supervise progress
+
+Authorized stack execution includes the default bounded watchdog in [supervise](../supervise/SKILL.md): 20-minute settlement-based wakes, a 25-minute cycle, up to 12 hours and 36 cumulative wakes. Load that skill, announce the envelope and register/reconcile coverage without asking for timer parameters again. Explicit overrides and existing runs' original allowances take precedence; inspection or planning alone does not authorize execution or supervision. Keep one coordinator watchdog across the stack, not a new envelope for each child. Supervision is separate from child-owned CI observers and never renews their limits.
+
+On wakes and meaningful reports, reconcile current progress, blockers, resource ownership and next actor/action. Resume only evidenced unjustified stops under the existing assignment, after checking active work and prior continuation delivery. Follow supervise's cancellation, exhaustion and recovery rules; mailbox reports alone cannot detect a silent stop. A denied or exhausted watchdog is a coverage gap to report, not permission to install tools or silently renew.
+
+Keep child execution autonomous. Allocate contested resources for a coherent bounded batch within existing authority, not per-command grants or parent-inspection freezes. Do not add approvals for already-authorized checks, repairs, reviews or evidence adoption. Preserve genuine safety/ownership holds and final acceptance gates; coordinate contention without becoming a second execution owner.
 
 ## Launch and deliver serially
 

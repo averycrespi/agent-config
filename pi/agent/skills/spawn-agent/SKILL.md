@@ -56,6 +56,8 @@ For long briefs use a unique ignored handoff in the target checkout; verify igno
 
 Require checkout-local locked dependency setup under repository instructions, distinct from global installs or installing delivered configuration. For ticket delivery name the sole implementation/review/CI owner and finite repair/monitor bounds in its existing work-ticket checkpoint; retain consumed allowances across recovery. Require exact revision evidence and explicit release/no further writes before accepting work. Use the [reporting and question protocol](references/decisions.md) for ongoing delegation. Keep continuity in conversation, TODO and existing checkpoints, never a replacement registry.
 
+For explicitly requested ongoing worker supervision, or when the calling workflow includes it, load [supervise](../supervise/SKILL.md). That request authorizes its documented default bounds unless overridden; announce them without asking for timer parameters again. A request to spawn alone does not authorize a recurring watchdog. Keep supervision distinct from launch confirmation and child-owned execution/CI observers.
+
 ## Failure and recovery
 
 Treat `prelaunch-failed` with `effects: none` as no resources created by this invocation. Diagnose the failed preflight (including missing capabilities) before an authorized new attempt. `partial`, `uncertain`, canceled/timeout or missing results after dispatch require inspecting the existing path, branch, Herdr inventory and original receipt first. Retain all resources; never automatically rerun, rename to evade a collision, restart, resend or roll back. Same branch/path/name collisions fail closed, not adoption or replay. This is collision protection, not cross-session idempotency or a launch registry.

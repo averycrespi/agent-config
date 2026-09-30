@@ -19,6 +19,12 @@ Resolve quoted user-supplied revisions to full commit hashes before fixed Git co
 
 Run repository-mandated or target-relevant deterministic checks before review when practical. Reuse observed passing evidence for unchanged relevant state; mark checks `passed` only with supporting command output, `failed` for unsuccessful checks, and `not-run` when unavailable, unsafe, or intentionally skipped. Save long output to a temporary artifact. Do not edit code just to make evidence preparation pass.
 
+## Preflight the review packet
+
+Before launching a reviewer, check the packet through the reviewer's actual read-only tool constraints. Follow the [evidence preparation contract](references/workflow-input.md#evidence-preflight): include readable complete required evidence, exact check invocation/result/source association, and separate independently required checks. Missing or unreadable evidence is a preparation problem to resolve or disclose, not a reason to launch a predictably incomplete review.
+
+For long generated-code lines, prepare lossless readable evidence and its source mapping before admission; do not change product code or rebuild merely to satisfy reader limits. Keep relevant source, generated change and provenance together when feasible. Split genuinely oversized independent targets with explicit coverage boundaries and a final coverage reconciliation, not an automatic review per fragment. Reuse accepted coverage for unchanged content/scope/requirements; new delivery labels do not invalidate it. Preserve exclusions, truncation and earlier findings rather than silently certifying the whole change from a partial packet.
+
 ## Invoke the workflow
 
 Read [the workflow input contract](references/workflow-input.md) completely before invocation. Supply the target, patch/context paths, canonical criteria, delivery scope, honest check evidence, and gaps. Inspect the execution ID from admission after notification; read its retained `resultFile` for the complete review before adjudicating repair or publication. Use focused `confirmation` after authorized repairs within unchanged scope, with original findings and dispositions. When scope or applicable requirements expand beyond prior coverage, use `initial` review against the uncovered requirements and affected change. A boundary label alone does not invalidate covered review. Assess the full supplied change and criteria; the caller determines when to request review and whether its coverage is sufficient for the next action.
