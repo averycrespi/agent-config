@@ -53,21 +53,26 @@ A detected process or saved session file does not prove that its Mailbox listene
 
 Human-only `/mailbox-clear` atomically removes the current inbox's messages, attempts, visibility deadlines and extension-owned pending batch. Sends committed after clear survive, and listening continues. It reports the removed count and that **already-handed Pi messages cannot be retracted**. Clear is not ACK, task acceptance or completion; it does not touch TODO, worker checkpoints or Background. No tool or Script equivalent exists.
 
-One below-editor line uses muted `mailbox`, immediately followed by exactly one state: accent `listening`, warning `pending`, or error `unavailable`. Counts and countdown values are normal text, metadata/countdown labels muted, separators dim. Pending/held wake and limit/uncertainty sections are independently warning-colored and preserved before optional counts/timing at narrow widths. `pending` means unacknowledged mail; `wake pending` means notification delivery is waiting. Unlike Background's handoff-based auto-hide, Mailbox stays pending until ACK or human clear. No bodies, sender labels or unsafe strings enter the widget.
+One below-editor line uses muted `mailbox` followed by normal-text `empty` or an unacknowledged count, without a routine listener state. Listener/storage failure shows error `unavailable` instead of a misleading empty inbox. Counts and countdown values are normal text, delivery waits and countdown labels muted, separators dim. Delivery-limit/uncertainty warnings remain warning-colored and take priority over optional counts/timing at narrow widths. Unlike Background's handoff-based auto-hide, Mailbox counts remain until ACK or human clear. No bodies, sender labels or unsafe strings enter the widget.
 
 ```text
-mailbox listening · empty
-mailbox pending · 3 unacked · wake in 4s
-mailbox pending · 3 unacked · wake pending
-mailbox pending · 3 unacked · wake held: draft
-mailbox pending · 3 unacked · wake held: dialog
-mailbox pending · 3 unacked · redelivery in 4m
-mailbox pending · delivery limit reached · 2 unacked
-mailbox pending · 2 at limit · 5 unacked · wake in 3s
-mailbox unavailable · /mailbox
+mailbox empty
+mailbox 3 unacked · delivery in 4s
+mailbox 3 unacked · delivery pending
+mailbox 3 unacked · waiting for draft
+mailbox 3 unacked · waiting for input
+mailbox 3 unacked · waiting for dialog
+mailbox 3 unacked · queued for agent
+mailbox 3 unacked · redelivery in 4m
+mailbox 5 unacked · 2 at delivery limit
+mailbox 3 unacked · delivery uncertain
+mailbox empty · queued for agent
+mailbox unavailable
 ```
 
-The widget mounts once and refreshes no faster than once a second for countdowns. Automatic wake rendering describes the event: neutral `mailbox received 2 messages`, warning-colored `mailbox redelivered 1 message`, or `mailbox received 2 messages (1 redelivered)` with only the redelivery qualifier warning-colored. Counts describe the delivered batch, not the whole inbox. Missing or malformed display metadata in historical wakes shows `mailbox status unavailable` rather than inferring delivery from prose. Expansion retains bounded sanitized sender/attempt/body details and trust guidance; the complete model-facing untrusted framing and ACK instructions are unchanged. Delivery-limit attention remains a warning toast (`mailbox delivery limit reached: 1 message`) and widget warning, not an additional model wake. Rendering changes neither model context nor ACK state. Tool rows follow the canonical [result convention](../_shared/README.md#tool-result-conventions): compact send/list/ack outcomes, accent activity and additive wrapped expansion. Untrusted message previews preserve body indentation with explicit truncation disclosure; labels stay muted and values readable. Persistence is not consumption, and scan completion is not inbox emptiness.
+A successfully submitted batch shows `queued for agent` until its matching Pi message-admission event. This indicator is independent of unacknowledged counts: ACK or human clear does not retract a queued wake or clear the indicator. Admission clears only the indicator, never ACKs messages or changes redelivery timing. While queued, the row shows queue status instead of the redelivery countdown. Unknown handoffs retain their uncertainty warning, not a known-queued claim. Queue tracking is local to the loaded session and cleared on reload/navigation, never reconstructed from historical messages.
+
+The widget mounts once and refreshes no faster than once a second for countdowns. Automatic wake rendering describes the event: neutral `mailbox received 2 messages`, muted `mailbox redelivered 1 message`, or `mailbox received 2 messages (1 redelivered)` with only the redelivery qualifier muted. Counts describe the delivered batch, not the whole inbox. Missing or malformed display metadata in historical wakes shows `mailbox status unavailable` rather than inferring delivery from prose. Expansion retains bounded sanitized sender/attempt/body details and trust guidance; the complete model-facing untrusted framing and ACK instructions are unchanged. Delivery-limit attention remains a warning toast (`mailbox delivery limit reached: 1 message`) and widget warning, not an additional model wake. Rendering changes neither model context nor ACK state. Tool rows follow the canonical [result convention](../_shared/README.md#tool-result-conventions): muted send/list/ack summaries and temporary sending/listing/acknowledging activity, without activity ellipses, plus additive wrapped expansion. List summaries use `unacked` for the current inbox total; the model-facing `pending` field is unchanged. Genuine failure/uncertainty keywords retain semantic styling while compact explanations are muted. Expanded body/value text remains normal. Truncation ellipses remain. Untrusted message previews preserve body indentation with explicit truncation disclosure; labels stay muted and values readable. Persistence is not consumption, and scan completion is not inbox emptiness.
 
 ## Configuration
 

@@ -53,7 +53,7 @@ for (const source of ["background", "monitor"] as const) {
             timeout: "timed out",
             evaluation_failure: "evaluation failed",
             coverage_failure: "coverage lost",
-            budget_exhausted: "budget exhausted",
+            budget_exhausted: "limit reached",
           };
     for (const [status, expected] of Object.entries(statuses)) {
       const m = message(source, status);
@@ -210,7 +210,7 @@ test("Monitor dispatch metadata is not mutation evidence in either display mode"
     ["condition", "timer", "timer elapsed", "success"],
     ["timeout", "observation", "timed out", "warning"],
     ["evaluation_failure", "observation", "evaluation failed", "error"],
-    ["coverage_failure", "observation", "coverage lost", "error"],
+    ["coverage_failure", "observation", "coverage lost", "warning"],
   ]) {
     const m = message("monitor", status, { mode, effectsMayPersist: true });
     const before = JSON.stringify(m);

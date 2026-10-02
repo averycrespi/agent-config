@@ -132,7 +132,7 @@ test("background returns before completion; mixed results and usage stay aligned
   assert.equal(admission.details.execution.label, "bad");
   assert.equal(
     runLine(admission),
-    `running… · ${admission.details.execution.id.slice(0, 8)}`,
+    `running · ${admission.details.execution.id.slice(0, 8)}`,
   );
   assert.match(admission.content[0].text, /"label":"bad"/);
   assert.match(
@@ -239,7 +239,7 @@ test("foreground/background share capacity; queued cancellation starts no child"
   for (let i = 0; !finish && i < 100; i++) await tick();
   const queued = await h.call({ agent: child() });
   const execution = queued.details.execution;
-  assert.equal(runLine(queued), `queued… · ${execution.id.slice(0, 8)}`);
+  assert.equal(runLine(queued), `queued · ${execution.id.slice(0, 8)}`);
   await tick();
   assert.equal(run.mock.callCount(), 1);
   assert.equal(

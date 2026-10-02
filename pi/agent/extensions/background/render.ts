@@ -51,7 +51,7 @@ export function renderExecutionResult(
   let color: ThemeColor = stateColor;
   if (options.isPartial) {
     outcome = "pending";
-    color = "muted";
+    color = "text";
   } else if (bad) {
     outcome = "request failed";
     color = "error";
@@ -60,7 +60,7 @@ export function renderExecutionResult(
     color = "muted";
   } else if (action === "dismiss") {
     outcome = "dismissed";
-    color = "muted";
+    color = "text";
   } else if (
     action === "cancel" &&
     selected?.cancelRequested &&
@@ -69,8 +69,6 @@ export function renderExecutionResult(
     outcome = "cancellation requested";
     color = "warning";
   }
-  if (outcome === "running" || outcome === "queued" || outcome === "pending")
-    outcome += "…";
 
   const warnings = [
     ...new Set(list.flatMap((r) => executionWarnings(r).map(([full]) => full))),
@@ -86,10 +84,8 @@ export function renderExecutionResult(
   if (warnings.length)
     line +=
       separator +
-      theme.fg(
-        "warning",
-        `${warnings.join("; ")}${unknown ? "; no replay" : ""}`,
-      );
+      theme.fg("warning", warnings.join("; ")) +
+      (unknown ? separator + theme.fg("muted", "no replay") : "");
   if (
     action === "inspect" &&
     !bad &&
@@ -129,15 +125,10 @@ export function renderExecutionResult(
         /\b((?:token|secret|password|api[_-]?key|authorization)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s;]+)/gi,
         "$1[redacted]",
       );
-    line +=
-      separator +
-      theme.fg(
-        selected?.status === "cancelled" ? "warning" : "error",
-        displayLabel(safe, 200),
-      );
+    line += separator + theme.fg("muted", displayLabel(safe, 200));
   }
   if (action === "run" && selected?.id && !bad && !options.isPartial)
-    line += separator + theme.fg("text", displayLabel(selected.id, 8));
+    line += separator + theme.fg("muted", displayLabel(selected.id, 8));
   const details: string[] = [];
   if (options.expanded) {
     for (const r of list)

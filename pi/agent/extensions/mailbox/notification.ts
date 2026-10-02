@@ -43,15 +43,15 @@ export const mailboxNotification: MessageRenderer = (
       Number.isSafeInteger(redelivered) &&
       redelivered >= 0 &&
       redelivered <= count;
-    let summary = theme.fg("muted", "status unavailable");
+    let summary = theme.fg("text", "status unavailable");
     if (valid) {
       const messages = `${count} message${count === 1 ? "" : "s"}`;
       summary =
         redelivered === count
-          ? theme.fg("warning", `redelivered ${messages}`)
+          ? theme.fg("muted", `redelivered ${messages}`)
           : theme.fg("text", `received ${messages}`) +
             (redelivered > 0
-              ? theme.fg("warning", ` (${redelivered} redelivered)`)
+              ? theme.fg("muted", ` (${redelivered} redelivered)`)
               : "");
     }
     const heading =

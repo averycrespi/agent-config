@@ -55,4 +55,5 @@
 
 - Lead with the answer or action. Use plain language and proportional detail; use lists and tables when useful, and keep required evidence, plans, and handoffs operationally complete.
 - Keep updates to one short paragraph or 3–5 bullets about decisions, milestones, and blockers. Include caveats and alternatives only when material or requested; avoid time estimates and unsolicited emojis.
+- When yielding with background work outstanding, explicitly name the pending operation and what its result gates. Do not present the task as ready until that result is reconciled.
 - Reference code with `file_path:line_number`. Use authoritative sources for URLs when accuracy matters; do not invent links.

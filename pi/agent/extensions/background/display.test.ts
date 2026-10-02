@@ -255,7 +255,7 @@ test("successful inspections include available telemetry and Script widgets show
   );
 });
 
-test("pending delivery has independent warning color and survives width pressure", () => {
+test("pending delivery has independent muted color and survives width pressure", () => {
   for (const status of ["success", "failed"] as const) {
     for (const hold of [undefined, "draft", "dialog"] as const) {
       const r = record({
@@ -264,14 +264,14 @@ test("pending delivery has independent warning color and survives width pressure
         label: "Audit\n\x1b[2J世界".repeat(15),
       });
       r.notification.intent = true;
-      const wake = hold ? `wake held: ${hold}` : "wake pending";
+      const wake = hold ? `waiting for ${hold}` : "delivery pending";
       const styled = widgetLines([r], 2000, marked, 90000, hold)[0];
       assert.ok(
         styled.includes(
           `<${status === "success" ? "success" : "error"}>${status === "success" ? "succeeded" : "failed"}</${status === "success" ? "success" : "error"}>`,
         ),
       );
-      assert.ok(styled.includes(`<warning>${wake}</warning>`));
+      assert.ok(styled.includes(`<muted>${wake}</muted>`));
       assert.match(styled, /<text>3s<\/text>/);
       for (const width of [0, 1, 24, 48, 64, 100]) {
         const row = widgetLines([r], width, theme, 90000, hold)[0];
@@ -302,10 +302,7 @@ test("combined adverse warnings retain wake and uncertainty at 48 columns", () =
           assert.ok(visibleWidth(row) <= width);
           assert.match(row, /unknown/);
           assert.match(row, /persist failed|persistence failed|save/);
-          assert.match(
-            row,
-            hold ? new RegExp(`wake(?::| held: )${hold}`) : /wake/,
-          );
+          assert.match(row, hold ? new RegExp(hold) : /pending/);
           assert.doesNotMatch(row.split(" · ").at(-1)!, /…/);
         }
       }

@@ -61,6 +61,30 @@ test("all terminal states use the same confirmed-handoff visibility deadline", (
   }
 });
 
+test("live queued display pins terminal rows without changing dismissal or consumption", () => {
+  const r = record("success");
+  assert.equal(widgetVisible(r, DEFAULT_WIDGET_CONFIG, 90000, true), true);
+  assert.equal(widgetVisible(r, DEFAULT_WIDGET_CONFIG, 90000, false), false);
+  assert.equal(
+    widgetVisible(
+      { ...r, dismissed: true },
+      DEFAULT_WIDGET_CONFIG,
+      90000,
+      true,
+    ),
+    false,
+  );
+  assert.equal(
+    widgetVisible(
+      { ...r, notification: { ...r.notification, consumed: true } },
+      DEFAULT_WIDGET_CONFIG,
+      90000,
+      true,
+    ),
+    false,
+  );
+});
+
 test("running stays visible; existing dismissal and consumption still hide earlier", () => {
   assert.equal(
     widgetVisible(record("running"), DEFAULT_WIDGET_CONFIG, 90000),

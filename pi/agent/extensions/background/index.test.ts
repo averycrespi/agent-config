@@ -235,7 +235,7 @@ test("held terminal rows survive old expiry and restoration; confirmed handoff s
   t.mock.timers.tick(14000);
   assert.ok(h.component);
   t.mock.timers.tick(1000);
-  assert.match(h.component.render(100).join(""), /wake held: input/);
+  assert.match(h.component.render(100).join(""), /waiting for input/);
   assert.deepEqual(h.service().inspect("script", r.id), before);
   assert.equal(readFileSync(path, "utf8"), disk);
   assert.equal(h.messages.length, 0);
@@ -246,10 +246,10 @@ test("held terminal rows survive old expiry and restoration; confirmed handoff s
   h.idle();
   h.draft("human draft");
   t.mock.timers.tick(20000);
-  assert.match(h.component.render(100).join(""), /wake held: draft/);
+  assert.match(h.component.render(100).join(""), /waiting for draft/);
   await h.hook("ui_prompt_start");
   t.mock.timers.tick(20000);
-  assert.match(h.component.render(100).join(""), /wake held: dialog/);
+  assert.match(h.component.render(100).join(""), /waiting for dialog/);
   assert.equal(h.messages.length, 0);
   h.draft("");
   await h.hook("ui_prompt_end");
@@ -260,9 +260,11 @@ test("held terminal rows survive old expiry and restoration; confirmed handoff s
   assert.equal(handed.notification.handedAt, Date.now());
   assert.equal(handed.endedAt, before.endedAt);
   assert.match(h.component.render(100).join(""), /0s/);
+  assert.match(h.component.render(100).join(""), /queued for agent/);
   t.mock.timers.tick(14000);
   await h.hook("session_tree");
   assert.ok(h.component);
+  assert.doesNotMatch(h.component.render(100).join(""), /queued for agent/);
   assert.equal(
     h.service().inspect("script", r.id).notification.handedAt,
     handed.notification.handedAt,
@@ -277,6 +279,80 @@ test("held terminal rows survive old expiry and restoration; confirmed handoff s
   t.mock.timers.tick(20000);
   assert.equal(h.paints, paints);
   assert.equal(h.messages.length, 1);
+});
+
+test("each Background adapter keeps queued wakes visible until matching admission without consuming them", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
+  const h = await harness(t);
+  h.idle();
+  for (const owner of ["script", "subagents", "workflow"]) {
+    const finished = h.terminal();
+    const r = h.service().admit({
+      owner,
+      label: owner,
+      deadlineMs: Date.now() + 60000,
+      run: async () => ({
+        status: "success",
+        effectsMayPersist: false,
+        outcomeUnknown: false,
+      }),
+    });
+    await finished;
+    await tick();
+    const message = h.messages.at(-1);
+    const before = h.service().inspect(owner, r.id);
+    t.mock.timers.tick(20000);
+    for (const width of [32, 48, 80, 120]) {
+      const lines = h.component.render(width);
+      assert.equal(lines.length, 1);
+      assert.ok(visibleWidth(lines[0]) <= width);
+      if (width >= 48) assert.match(lines[0], /queued for agent/);
+    }
+    await h.hook("message_start", {
+      message: {
+        ...message,
+        role: "custom",
+        details: { ...message.details, notificationId: "unrelated" },
+      },
+    });
+    assert.match(h.component.render(100).join(""), /queued for agent/);
+    await h.hook("message_start", { message: { ...message, role: "custom" } });
+    assert.equal(h.component, undefined);
+    assert.deepEqual(h.service().inspect(owner, r.id), before);
+    assert.equal(before.notification.consumed, false);
+  }
+  assert.equal(h.messages.length, 3);
+});
+
+test("synchronous admission and uncertain handoff never leave a known queued label", async (t) => {
+  const h = await harness(t);
+  h.idle();
+  for (const fail of [false, true]) {
+    h.pi.sendMessage = (message: any) => {
+      if (fail) throw Error("uncertain handoff");
+      void h.hook("message_start", { message: { ...message, role: "custom" } });
+    };
+    const finished = h.terminal();
+    const r = h.service().admit({
+      owner: "script",
+      label: "handoff",
+      deadlineMs: Date.now() + 60000,
+      run: async () => ({
+        status: "success",
+        effectsMayPersist: false,
+        outcomeUnknown: false,
+      }),
+    });
+    await finished;
+    await tick();
+    assert.doesNotMatch(h.component.render(100).join(""), /queued for agent/);
+    const receipt = h.service().inspect("script", r.id);
+    assert.equal(
+      receipt.notification.handoff,
+      fail ? "unknown" : "handed_to_pi",
+    );
+    assert.equal(receipt.notification.consumed, false);
+  }
 });
 
 test("RPC rows keep running work visible and expire terminal rows without model turns", async (t) => {
@@ -314,11 +390,15 @@ test("RPC rows keep running work visible and expire terminal rows without model 
   await tick();
   assert.match(rows!.join(""), /succeeded RPC child/);
   t.mock.timers.tick(15000);
-  assert.match(rows!.join(""), /wake held: input/);
+  assert.match(rows!.join(""), /waiting for input/);
   assert.equal(h.messages.length, 0);
   h.idle();
   await h.hook("agent_settled");
   t.mock.timers.tick(15000);
+  assert.match(rows!.join(""), /queued for agent/);
+  await h.hook("message_start", {
+    message: { ...h.messages[0], role: "custom" },
+  });
   assert.equal(rows, undefined);
   assert.equal(h.messages.length, 1);
 });

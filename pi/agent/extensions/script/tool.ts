@@ -202,8 +202,8 @@ export const renderers: Pick<
       const lines = [
         outcomeLine(
           theme,
-          `${isPartial ? "checking…" : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : `${entries.length} saved script(s)`}${d?.truncated ? " (truncated)" : ""}`,
-          isPartial ? "accent" : failed ? "error" : "muted",
+          `${isPartial ? "checking" : failed ? "failed" : args.action === "validate" ? "validated (not executed)" : plural(entries.length, "saved script")}${d?.truncated ? " (truncated)" : ""}`,
+          "muted",
         ),
       ];
       const details: string[] = [];
@@ -213,7 +213,7 @@ export const renderers: Pick<
             theme.fg("text", display(entry.name ?? entry.filename)) +
               " " +
               theme.fg(
-                entry.valid ? "muted" : "error",
+                "text",
                 `(${entry.valid ? "valid" : display(entry.diagnostic)})`,
               ),
           );
@@ -247,11 +247,11 @@ export const renderers: Pick<
         : traces.filter((t) => t.state === "succeeded").length;
     let summary: string;
     if (isPartial)
-      summary = action === "describe" ? "discovering providers…" : "running…";
+      summary = action === "describe" ? "discovering providers" : "running";
     else if (failed) {
       const state =
         d?.status === "cancelled"
-          ? "cancelled"
+          ? "canceled"
           : d?.status === "timeout"
             ? "timed out"
             : d?.code === "capability_denied" && !d?.effectsMayPersist
@@ -274,27 +274,34 @@ export const renderers: Pick<
     const lines = [
       failed && !isPartial && colon >= 0
         ? theme.fg(
-            d?.status === "cancelled" ? "warning" : "error",
+            d?.status === "cancelled" || d?.status === "timeout"
+              ? "warning"
+              : "error",
             summary.slice(0, colon),
           ) +
           theme.fg("muted", ": ") +
-          theme.fg(
-            d?.code === "cancelled" ? "warning" : "error",
-            summary.slice(colon + 2),
-          )
+          theme.fg("muted", summary.slice(colon + 2))
         : outcomeLine(
             theme,
             summary,
-            isPartial ? "accent" : failed ? "error" : "muted",
+            isPartial && action === "run"
+              ? "accent"
+              : failed
+                ? "error"
+                : "muted",
           ),
     ];
     if (d?.outcomeUnknown)
       lines.push(
-        theme.fg("error", "Outcome unknown; do not automatically retry."),
+        theme.fg("warning", "outcome unknown") +
+          separator +
+          theme.fg("muted", "do not retry automatically"),
       );
     if (failed && d?.partialExecution)
       lines.push(
-        theme.fg("warning", "Partial execution; inspect provider outcomes."),
+        theme.fg("warning", "partial execution") +
+          separator +
+          theme.fg("muted", "inspect provider outcomes"),
       );
     const compact = [...lines];
     lines.length = 0;
@@ -302,14 +309,14 @@ export const renderers: Pick<
       if (failed && d?.effectsMayPersist)
         lines.push(
           theme.fg(
-            "warning",
+            "text",
             "Inspect dispatched provider outcomes before further action; no automatic retry.",
           ),
         );
       if (failed && info) lines.push(theme.fg("text", info.guidance));
       if (failed && d?.code)
         lines.push(
-          theme.fg("muted", "  code: ") + theme.fg("error", display(d.code)),
+          theme.fg("muted", "  code: ") + theme.fg("text", display(d.code)),
         );
       if ((providerNames(args.providers)?.length ?? 0) > 3)
         for (const name of providerNames(args.providers)!)
@@ -342,19 +349,11 @@ export const renderers: Pick<
           [
             theme.fg("text", `  ${display(t.id)} ${display(t.tool)}`),
             theme.fg(
-              t.state === "succeeded"
-                ? "success"
-                : t.state === "cancelled"
-                  ? "warning"
-                  : t.state === "failed"
-                    ? "error"
-                    : t.state === "running"
-                      ? "accent"
-                      : "muted",
-              display(t.state),
+              "muted",
+              t.state === "cancelled" ? "canceled" : display(t.state),
             ),
             theme.fg("muted", `${display(t.durationMs)}ms`),
-            ...(t.code ? [theme.fg("error", display(t.code))] : []),
+            ...(t.code ? [theme.fg("text", display(t.code))] : []),
           ].join(theme.fg("dim", " · ")),
         );
         const callInfo = diagnostic(t.code, "run");

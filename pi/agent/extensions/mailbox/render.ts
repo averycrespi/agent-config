@@ -92,10 +92,7 @@ export function renderMailboxResult(
   const details = record(result.details);
   const lines: string[] = [];
   const add = (text: string) => lines.push(theme.fg("text", text));
-  const finish = (
-    summary: string | string[],
-    color: "muted" | "success" | "warning" | "error" | "accent",
-  ) =>
+  const finish = (summary: string | string[], color: "text" | "muted") =>
     getResultTextComponent(
       context.lastComponent,
       [
@@ -104,6 +101,16 @@ export function renderMailboxResult(
           Array.isArray(summary) ? summary : [summary],
           color,
         ),
+      ],
+      lines,
+    );
+  const failure = (summary: string) =>
+    getResultTextComponent(
+      context.lastComponent,
+      [
+        theme.fg("error", "failed") +
+          theme.fg("dim", ": ") +
+          theme.fg("muted", summary.replace(/^failed: /, "")),
       ],
       lines,
     );
@@ -132,28 +139,28 @@ export function renderMailboxResult(
         [
           [
             ...(context.isError || error ? [theme.fg("error", "failed")] : []),
-            theme.fg("warning", failures.publication_unknown),
+            theme.fg("warning", "send outcome unknown"),
+            theme.fg("muted", "do not retry automatically"),
           ].join(theme.fg("dim", " · ")),
         ],
         lines,
       );
-    return finish(
+    return failure(
       Object.hasOwn(failures, code)
         ? failures[code]
         : "failed: mailbox operation",
-      "error",
     );
   }
   if (isPartial) {
     return finish(
       args.action === "send"
-        ? "sending…"
+        ? "sending"
         : args.action === "ack"
-          ? "acknowledging…"
+          ? "acknowledging"
           : args.action === "list"
-            ? "listing…"
-            : "working…",
-      "accent",
+            ? "listing"
+            : "working",
+      "muted",
     );
   }
   const showMessage = (m: Message, previewLimit: number) => {
@@ -184,7 +191,7 @@ export function renderMailboxResult(
       add("Persisted, not consumed, accepted or completed.");
       showMessage(value, 1200);
     }
-    return finish("sent 1 message", "success");
+    return finish("sent 1 message", "muted");
   }
   if (
     args.action === "list" &&
@@ -198,7 +205,7 @@ export function renderMailboxResult(
   ) {
     const shown = value.messages.length;
     if (expanded) {
-      add("Shown counts this page; pending counts the current inbox.");
+      add("Shown counts this page; unacked counts the current inbox.");
       add(
         value.nextCursor
           ? "More pages remain in this scan; later arrivals require a fresh scan."
@@ -206,15 +213,21 @@ export function renderMailboxResult(
       );
       for (const m of value.messages) showMessage(m, 240);
     }
-    return finish(
-      shown === 0 && value.pending === 0
-        ? "no pending messages"
-        : [
-            `${shown} shown`,
-            `${value.pending} pending`,
-            value.nextCursor ? "more pages" : "scan complete",
-          ],
-      "muted",
+    return getResultTextComponent(
+      context.lastComponent,
+      [
+        shown === 0 && value.pending === 0
+          ? theme.fg("muted", "no unacked messages")
+          : [
+              theme.fg("muted", `${shown} shown`),
+              theme.fg("muted", `${value.pending} unacked`),
+              theme.fg(
+                "muted",
+                value.nextCursor ? "more pages" : "scan complete",
+              ),
+            ].join(theme.fg("dim", " · ")),
+      ],
+      lines,
     );
   }
   if (
@@ -240,10 +253,10 @@ export function renderMailboxResult(
     }
     return finish(
       n ? `acked ${plural(n, "message")}` : "no messages acked",
-      "success",
+      "muted",
     );
   }
   if (expanded)
     add("No recognized mailbox result; inspect the underlying tool result.");
-  return finish("failed: unrecognized mailbox result", "error");
+  return failure("failed: unrecognized mailbox result");
 }

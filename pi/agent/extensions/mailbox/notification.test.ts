@@ -60,7 +60,7 @@ test("normal wake headings describe receipt neutrally with singular/plural count
   }
 });
 
-test("redelivery and mixed-batch counts are truthful, warning-colored and fit 48 columns", () => {
+test("redelivery and mixed-batch counts are truthful, muted and fit 48 columns", () => {
   for (const [count, redelivered, expected] of [
     [1, 1, "mailbox redelivered 1 message"],
     [20, 20, "mailbox redelivered 20 messages"],
@@ -70,7 +70,7 @@ test("redelivery and mixed-batch counts are truthful, warning-colored and fit 48
     assert.deepEqual(rows, [expected]);
     assert.ok(
       colors.some(
-        ([color, text]) => color === "warning" && text.includes("redelivered"),
+        ([color, text]) => color === "muted" && text.includes("redelivered"),
       ),
     );
     if (count !== redelivered)

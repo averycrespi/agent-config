@@ -316,8 +316,8 @@ test("rows distinguish discovery scope, provider selection, and call outcomes", 
   });
   const collapsed = renderResult(failed, args);
   assert.match(collapsed, /failed: returned JSON exceeds 24,000 bytes/);
-  assert.match(collapsed, /Outcome unknown; do not automatically retry/);
-  assert.match(collapsed, /Partial execution; inspect provider outcomes/);
+  assert.match(collapsed, /outcome unknown · do not retry automatically/);
+  assert.match(collapsed, /partial execution · inspect provider outcomes/);
   assert.doesNotMatch(collapsed, /web.fetch|Reduce the returned JSON/);
   const expanded = renderResult(failed, args, true);
   assert.match(expanded, /web.fetch · succeeded/);

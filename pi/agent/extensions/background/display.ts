@@ -13,11 +13,11 @@ export function executionState(status: string): [string, ThemeColor] {
     case "cancelled":
       return ["canceled", "warning"];
     case "timeout":
-      return ["timed out", "error"];
+      return ["timed out", "warning"];
     case "interrupted":
       return ["interrupted", "warning"];
     default:
-      return ["status unavailable", "muted"];
+      return ["status unavailable", "text"];
   }
 }
 
@@ -32,7 +32,7 @@ export function executionRecordState(
     (a.queued ?? 0) > 0 &&
     a.started - a.completed === a.queued
   )
-    return ["queued", "muted"];
+    return ["queued", "text"];
   return executionState(r.status);
 }
 
