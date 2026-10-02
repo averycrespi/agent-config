@@ -51,9 +51,12 @@ export function renderWorkflowResult(
     context.isError || /^Error|^Invalid workflow input:/.test(text);
   const details: string[] = [];
   let summary: string;
-  if (isPartial) summary = theme.fg("accent", "starting…");
+  if (isPartial) summary = theme.fg("muted", "starting");
   else if (failed) {
-    summary = theme.fg("error", "request failed");
+    summary = theme.fg(
+      context.args?.action === "validate" ? "muted" : "error",
+      "request failed",
+    );
     if (expanded)
       details.push(
         ...expandedBodyResult(result).map((row) => theme.fg("text", row)),
@@ -63,7 +66,7 @@ export function renderWorkflowResult(
     const entries = inventory?.entries ?? [];
     summary = theme.fg(
       "muted",
-      `${entries.length} saved${inventory?.truncated ? " (truncated)" : ""}`,
+      `${entries.length} saved workflow${entries.length === 1 ? "" : "s"}${inventory?.truncated ? " (truncated)" : ""}`,
     );
     if (expanded) {
       details.push(
@@ -72,16 +75,13 @@ export function renderWorkflowResult(
       );
       for (const entry of entries.slice(0, 200)) {
         details.push(
-          theme.fg(
-            entry.valid ? "muted" : "error",
-            entry.valid ? "valid" : "invalid",
-          ) +
+          theme.fg("text", entry.valid ? "valid" : "invalid") +
             " " +
             theme.fg("text", displayLabel(entry.name ?? entry.filename)) +
             (entry.description || !entry.valid
               ? theme.fg("dim", " · ") +
                 theme.fg(
-                  entry.valid ? "text" : "error",
+                  "text",
                   displayLabel(
                     entry.valid
                       ? entry.description

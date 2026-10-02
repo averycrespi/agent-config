@@ -295,12 +295,12 @@ test("queued mailbox wakes clear only on matching admission, not ACK, clear or s
     ids: [sent.id],
   });
   r.hooks.get("agent_settled")();
-  assert.match(line(), /pending.*queued for agent.*empty/);
+  assert.match(line(), /empty · queued for agent/);
   await r.commands.get("mailbox-clear").handler("", r.ctx);
   assert.match(line(), /queued for agent/);
   const cleared = readFileSync(join(root, `${SESSION}.json`));
   r.hooks.get("message_start")({ message: { ...wake, role: "custom" } });
-  assert.equal(line(), "mailbox listening · empty");
+  assert.equal(line(), "mailbox empty");
   assert.deepEqual(readFileSync(join(root, `${SESSION}.json`)), cleared);
   assert.equal(r.messages.length, 1);
 });
@@ -331,7 +331,7 @@ test("mailbox queue projection handles synchronous admission, uncertain handoff 
   };
   store.send(SESSION, "test", "three", SESSION);
   r.hooks.get("agent_settled")();
-  assert.match(line(), /handoff uncertain/);
+  assert.match(line(), /delivery uncertain/);
   assert.doesNotMatch(line(), /queued for agent/);
   assert.equal(store.list(SESSION).messages[0].uncertain, true);
   r.hooks.get("session_shutdown")();

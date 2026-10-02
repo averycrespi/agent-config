@@ -47,10 +47,17 @@ export function widgetLines(
       Math.max(0, (r.endedAt ?? now) - r.createdAt),
     );
     const [state, color] = executionRecordState(r);
-    const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(color, r.status === "running" && r.cancelRequested ? "cancellation requested" : state)}`;
+    const canceling = r.status === "running" && r.cancelRequested;
+    const primary = `${theme.fg("muted", executionType(r.owner, r.progress?.total))} ${theme.fg(canceling ? "warning" : color, canceling ? "cancellation requested" : state)}`;
     const warnings = executionWarnings(r);
+    const warningCount = warnings.length;
     if (r.notification.intent && r.notification.handoff === "none") {
-      const wake = hold ? `wake held: ${hold}` : "wake pending";
+      const wake =
+        hold === "unavailable"
+          ? "delivery held"
+          : hold
+            ? `waiting for ${hold}`
+            : "delivery pending";
       warnings.push([wake, wake]);
     }
     if (
@@ -68,14 +75,15 @@ export function widgetLines(
       warnings.map(([, compact]) => compact).join("/").length;
     const tight: Record<string, string> = {
       "persist failed": "save",
-      "wake pending": "wake",
-      "wake held: draft": "wake:draft",
-      "wake held: dialog": "wake:dialog",
+      "delivery pending": "pending",
+      "waiting for draft": "draft",
+      "waiting for dialog": "dialog",
+      "waiting for input": "input",
     };
     const warning = warnings
-      .map(([full, compact]) =>
+      .map(([full, compact], index) =>
         theme.fg(
-          "warning",
+          index < warningCount ? "warning" : "muted",
           narrow
             ? compactWidth > width
               ? (tight[compact] ?? compact)

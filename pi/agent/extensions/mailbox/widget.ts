@@ -1,6 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
+import type { NotificationHold } from "../_shared/notification-delivery.ts";
 import type { DeliveryStatus } from "./delivery.ts";
 export function mailboxLine(
   s: DeliveryStatus,
@@ -8,69 +9,58 @@ export function mailboxLine(
   width: number,
   theme: Theme,
   queued = 0,
+  hold?: NotificationHold,
 ) {
-  const state = s.unavailable
-    ? "unavailable"
-    : s.pending || queued
-      ? "pending"
-      : "listening";
-  const head =
-    theme.fg("muted", "mailbox") +
-    " " +
-    theme.fg(
-      s.unavailable ? "error" : s.pending || queued ? "warning" : "accent",
-      state,
-    );
-  const fields: string[] = [];
-  const queuedField = queued
-    ? theme.fg("warning", "queued for agent")
-    : undefined;
-  if (s.unavailable) {
-    if (queuedField) fields.push(queuedField);
-    fields.push(theme.fg("muted", "/mailbox"));
-  } else {
+  const head = theme.fg("muted", "mailbox");
+  const separator = theme.fg("dim", " · ");
+  const count = theme.fg(
+    s.unavailable ? "error" : "text",
+    s.unavailable
+      ? "unavailable"
+      : s.pending
+        ? `${s.pending} unacked`
+        : "empty",
+  );
+  const warnings: string[] = [];
+  const waits: string[] = [];
+  if (!s.unavailable) {
     if (s.limited)
-      fields.push(
+      warnings.push(theme.fg("warning", `${s.limited} at delivery limit`));
+    if (s.uncertain) warnings.push(theme.fg("warning", "delivery uncertain"));
+    if (s.wakeAt !== undefined && s.wakeAt <= now) {
+      const reason = hold ?? s.hold;
+      waits.push(
         theme.fg(
-          "warning",
-          s.limited === s.pending
-            ? "delivery limit reached"
-            : `${s.limited} at limit`,
+          "muted",
+          reason === "draft" || reason === "dialog" || reason === "input"
+            ? `waiting for ${reason}`
+            : reason === "unavailable"
+              ? "delivery held"
+              : "delivery pending",
         ),
       );
-    if (s.uncertain) fields.push(theme.fg("warning", "handoff uncertain"));
-    if (queuedField) fields.push(queuedField);
-    const wake =
-      s.wakeAt !== undefined && s.wakeAt <= now
-        ? theme.fg(
-            "warning",
-            s.hold === "draft" || s.hold === "dialog"
-              ? `wake held: ${s.hold}`
-              : "wake pending",
-          )
-        : undefined;
-    const count = theme.fg(
-      s.pending ? "text" : "muted",
-      s.pending ? `${s.pending} unacked` : "empty",
-    );
-    // Reserve held/pending delivery ahead of counts under width pressure, but
-    // keep the ordinary count-first grammar when the complete row fits.
-    if (wake) fields.push(wake);
-    fields.push(count);
+    }
     if (s.wakeAt !== undefined && s.wakeAt > now)
-      fields.push(
-        theme.fg("muted", "wake in ") +
+      waits.push(
+        theme.fg("muted", "delivery in ") +
           theme.fg("text", formatWidgetCountdown(s.wakeAt - now)),
       );
     else if (!queued && s.wakeAt === undefined && s.redeliveryAt !== undefined)
-      fields.push(
+      waits.push(
         theme.fg("muted", "redelivery in ") +
           theme.fg("text", formatWidgetCountdown(s.redeliveryAt - now)),
       );
-    if (wake && visibleWidth([head, ...fields].join(" · ")) <= width) {
-      const index = fields.indexOf(wake);
-      fields.splice(index, 2, count, wake);
-    }
   }
-  return fitWidgetRow(head, fields, width, theme.fg("dim", " · "));
+  if (queued) waits.push(theme.fg("muted", "queued for agent"));
+  const fields = [...warnings, ...waits];
+  const full =
+    head + " " + count + fields.map((field) => separator + field).join("");
+  if (visibleWidth(full) <= width) return full;
+  // Preserve actionable warnings before optional count/clock detail under pressure.
+  return fitWidgetRow(
+    head + (s.unavailable ? " " + count : ""),
+    [...fields, ...(!s.unavailable ? [count] : [])],
+    width,
+    separator,
+  );
 }

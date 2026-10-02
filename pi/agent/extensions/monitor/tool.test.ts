@@ -71,7 +71,7 @@ test("list counts distinguish active jobs, retained receipts and pending attenti
     text({ action: "list", receipts: receipts.slice(1) }),
     /^no active jobs · 2 retained$/,
   );
-  assert.match(text({ action: "list", receipts }, true), /polling… · CI check/);
+  assert.match(text({ action: "list", receipts }, true), /polling · CI check/);
   assert.doesNotMatch(text({ action: "list", receipts }), /CI check/);
 });
 
@@ -144,7 +144,7 @@ test("polling warning is bounded, prominent, event-aware and display-safe", () =
         const details = { action: "start", receipt: r };
         assert.match(
           text(details, expanded),
-          expanded ? /Warning:/ : /registered; no repeat poll/,
+          expanded ? /Warning:/ : /registered · no repeat poll/,
         );
         const component = render(details, expanded);
         if (!expanded) {
@@ -197,7 +197,7 @@ test("get uses a short title identity and muted section separators without repea
 test("get shows selected job state, counters and honest terminal reasons", () => {
   assert.match(
     text({ action: "get", receipt: display(receipt()) }),
-    /polling… · 0 wakes · 4 evaluations/,
+    /polling · 0 wakes · 4 evaluations/,
   );
   const failed = receipt({
     status: "finished",
@@ -235,7 +235,7 @@ test("get shows selected job state, counters and honest terminal reasons", () =>
         }),
       ),
     }),
-    /awaiting settlement.*wakes 1\/2/,
+    /awaiting completion.*wakes 1\/2/,
   );
 });
 
@@ -243,11 +243,11 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   const r = receipt({ status: "cancelled" });
   assert.equal(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }),
-    "cancelled",
+    "canceled",
   );
   assert.equal(
     text({ action: "cancel", receipt: display(r), cancelChanged: false }),
-    "already cancelled",
+    "already canceled",
   );
   assert.match(
     text({
@@ -267,7 +267,7 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   };
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }),
-    /outcome unknown; no replay/,
+    /outcome unknown · do not retry automatically/,
   );
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }, true),
@@ -276,7 +276,7 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   r.lastAttention.disposition = "handoff_unknown";
   assert.match(
     text({ action: "cancel", receipt: display(r) }),
-    /unknown; no replay/,
+    /unknown · do not retry automatically/,
   );
   assert.match(
     text({ action: "cancel", receipt: display(r) }, true),
@@ -351,7 +351,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     wakes: 1,
   });
   const line = widgetLines([waiting], now, 150, theme)[0];
-  assert.match(line, /awaiting settlement CI check · wakes 1\/2 · expires 50s/);
+  assert.match(line, /awaiting completion CI check · wakes 1\/2 · expires 50s/);
   assert.doesNotMatch(line, /next check|timeout|continue in/);
   for (const [reason, expected] of [
     ["condition", "condition met"],
@@ -370,7 +370,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     });
     assert.ok(
       widgetLines([r], now, 150, theme)[0].includes(
-        `${expected} CI check · wake pending`,
+        `${expected} CI check · delivery pending`,
       ),
     );
     assert.deepEqual(
@@ -402,7 +402,8 @@ test("queued wakes stay visible until admission, not settlement", () => {
   for (const width of [32, 48, 80, 200]) {
     const lines = widgetLines([queued], now, width, theme);
     assert.equal(lines.length, 1);
-    assert.match(lines[0], /^monitor queued for agent/);
+    assert.match(lines[0], /^monitor condition met/);
+    if (width >= 48) assert.match(lines[0], /queued for agent/);
     assert.doesNotMatch(
       lines[0],
       /\u001b\[31m|\n|timeout|expires|polling|wake pending/,
@@ -425,7 +426,7 @@ test("queued wakes stay visible until admission, not settlement", () => {
       120,
       theme,
     )[0],
-    /awaiting settlement/,
+    /awaiting completion/,
   );
   // Cancellation cannot retract a wake already handed to Pi.
   assert.match(
@@ -461,7 +462,7 @@ test("uncertain control errors retain both failed request and no-replay status",
       { isError: !semantic },
     ).render(48);
     assert.equal(row.length, 1);
-    assert.match(row[0], /failed.*unknown.*no replay/);
+    assert.match(row[0], /failed.*unknown.*do not retry/);
   }
 });
 
@@ -502,7 +503,7 @@ test("widget state styling, adjacent identity and routine effect suppression", (
     [{ eventCount: 1, effectsMayPersist: true }, "watching", "accent"],
     [{ inFlight: true }, "checking", "accent"],
     [{ delayMs: 5000 }, "scheduled", "accent"],
-    [{ awaitingSettlement: true }, "awaiting settlement", "warning"],
+    [{ awaitingSettlement: true }, "awaiting completion", "text"],
   ];
   for (const reason of [
     "condition",
@@ -526,7 +527,7 @@ test("widget state styling, adjacent identity and routine effect suppression", (
         evaluation_failure: "evaluation failed",
         coverage_failure: "coverage lost",
       }[reason],
-      reason.includes("failure")
+      reason === "evaluation_failure"
         ? "error"
         : reason === "condition"
           ? "success"
@@ -655,6 +656,46 @@ test("monitor expansion preserves original framed evidence without changing payl
     if (expanded) assert.match(lines, /BEGIN UNTRUSTED MONITOR EVIDENCE/);
   }
   assert.equal(JSON.stringify(result), before);
+});
+
+test("uncertainty preserves the primary Monitor state and keeps explanations neutral", () => {
+  const r = receipt({
+    status: "finished",
+    outcomeUnknown: true,
+    lastAttention: {
+      id: "wake",
+      reason: "condition",
+      at: now,
+      disposition: "handed_to_pi",
+      admitted: true,
+    },
+  });
+  const colors: [string, string][] = [];
+  const row = renderers.renderResult!(
+    { content: [], details: { action: "get", receipt: display(r) } },
+    { expanded: false, isPartial: false },
+    {
+      ...theme,
+      fg: (color: string, value: string) => {
+        colors.push([color, value]);
+        return value;
+      },
+    } as any,
+    {} as any,
+  ).render(200)[0];
+  assert.match(
+    row,
+    /^condition met · outcome unknown · do not retry automatically$/,
+  );
+  assert.ok(colors.some(([c, t]) => c === "success" && t === "condition met"));
+  assert.ok(
+    colors.some(([c, t]) => c === "warning" && t === "outcome unknown"),
+  );
+  assert.ok(
+    colors.some(
+      ([c, t]) => c === "muted" && t === "do not retry automatically",
+    ),
+  );
 });
 
 test("failed jobs use error styling without marking an inspection request failed", () => {

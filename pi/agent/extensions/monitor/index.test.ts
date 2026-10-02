@@ -339,7 +339,7 @@ test("actual event provider holds one wake behind queued input; immutable contro
   assert.equal(pending.attention.disposition, "pending");
   assert.match(
     h.component.render(200)[0],
-    /monitor condition met safe name · wake pending/,
+    /monitor condition met safe name · waiting for input/,
   );
   await h.idle();
   await pause();
@@ -349,7 +349,10 @@ test("actual event provider holds one wake behind queued input; immutable contro
     triggerTurn: true,
   });
   assert.equal(h.component, mounted);
-  assert.match(h.component.render(80)[0], /monitor queued for agent safe name/);
+  assert.match(
+    h.component.render(80)[0],
+    /monitor condition met safe name · queued for agent/,
+  );
   const sent = value(await h.call({ action: "get", id }));
   assert.equal(sent.lastAttention.disposition, "handed_to_pi");
   assert.equal(sent.lastAttention.admitted, false);

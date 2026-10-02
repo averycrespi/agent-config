@@ -74,7 +74,14 @@ export default function mailboxExtension(
   const repaint = () => {
     if (context)
       widget.update(context, (width, theme) => [
-        mailboxLine(status, Date.now(), width, theme, queued.size),
+        mailboxLine(
+          status,
+          Date.now(),
+          width,
+          theme,
+          queued.size,
+          notificationHold(context!, dialogs),
+        ),
       ]);
   };
   const refresh = () => {

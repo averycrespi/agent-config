@@ -235,7 +235,7 @@ test("held terminal rows survive old expiry and restoration; confirmed handoff s
   t.mock.timers.tick(14000);
   assert.ok(h.component);
   t.mock.timers.tick(1000);
-  assert.match(h.component.render(100).join(""), /wake held: input/);
+  assert.match(h.component.render(100).join(""), /waiting for input/);
   assert.deepEqual(h.service().inspect("script", r.id), before);
   assert.equal(readFileSync(path, "utf8"), disk);
   assert.equal(h.messages.length, 0);
@@ -246,10 +246,10 @@ test("held terminal rows survive old expiry and restoration; confirmed handoff s
   h.idle();
   h.draft("human draft");
   t.mock.timers.tick(20000);
-  assert.match(h.component.render(100).join(""), /wake held: draft/);
+  assert.match(h.component.render(100).join(""), /waiting for draft/);
   await h.hook("ui_prompt_start");
   t.mock.timers.tick(20000);
-  assert.match(h.component.render(100).join(""), /wake held: dialog/);
+  assert.match(h.component.render(100).join(""), /waiting for dialog/);
   assert.equal(h.messages.length, 0);
   h.draft("");
   await h.hook("ui_prompt_end");
@@ -390,7 +390,7 @@ test("RPC rows keep running work visible and expire terminal rows without model 
   await tick();
   assert.match(rows!.join(""), /succeeded RPC child/);
   t.mock.timers.tick(15000);
-  assert.match(rows!.join(""), /wake held: input/);
+  assert.match(rows!.join(""), /waiting for input/);
   assert.equal(h.messages.length, 0);
   h.idle();
   await h.hook("agent_settled");

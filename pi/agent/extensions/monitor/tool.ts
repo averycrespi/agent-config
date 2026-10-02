@@ -1,7 +1,11 @@
 import { Type } from "typebox";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type {
+  Theme,
+  ThemeColor,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import {
   expandedBodyResult,
   getResultTextComponent,
@@ -11,6 +15,7 @@ import {
   outcomeLine,
 } from "../_shared/render.ts";
 import { fitWidgetRow, formatWidgetCountdown } from "../_shared/widget.ts";
+import type { NotificationHold } from "../_shared/notification-delivery.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 import { label, type Receipt } from "./contract.ts";
 import { DEFAULT_CONFIG, type MonitorConfig } from "./config.ts";
@@ -122,24 +127,77 @@ function queuedForAgent(r: DisplayReceipt): boolean {
     !r.lastAttention.admitted
   );
 }
+function attentionReason(
+  r: DisplayReceipt,
+  reason: keyof typeof reasons,
+): string {
+  return reason === "condition" && r.delayMs !== undefined
+    ? "timer elapsed"
+    : reasons[reason];
+}
 function activity(r: DisplayReceipt): string {
   if (r.attention?.disposition === "pending")
-    return `${reasons[r.attention.reason] ?? "attention"}; wake pending`;
-  if (queuedForAgent(r)) return "queued for agent";
+    return attentionReason(r, r.attention.reason);
+  if (queuedForAgent(r) && r.status === "active")
+    return attentionReason(r, r.lastAttention!.reason);
   if (r.status !== "active") {
-    if (r.status !== "finished") return label(r.status);
+    if (r.status !== "finished")
+      return r.status === "cancelled" ? "canceled" : label(r.status);
     if (r.failureCode === "wake_limit") return "wake limit reached";
     if (r.failureCode === "lifetime_limit") return "lifetime expired";
     const reason = r.attention?.reason ?? r.lastAttention?.reason;
-    return reason && reason !== "condition" ? reasons[reason] : "finished";
+    return reason ? attentionReason(r, reason) : "finished";
   }
-  if (r.awaitingSettlement) return "awaiting settlement";
+  if (r.awaitingSettlement) return "awaiting completion";
   if (r.inFlight) return "checking";
   if (r.delayMs !== undefined) return "scheduled";
   if (r.intervalMs !== undefined)
     return r.eventCount ? "polling + events" : "polling";
   if (r.eventCount) return "watching events";
   return "observing";
+}
+function stateColor(state: string): ThemeColor {
+  if (["condition met", "timer elapsed"].includes(state)) return "success";
+  if (state === "evaluation failed") return "error";
+  if (
+    [
+      "timed out",
+      "coverage lost",
+      "limit reached",
+      "wake limit reached",
+      "lifetime expired",
+      "canceled",
+      "invalidated",
+    ].includes(state)
+  )
+    return "warning";
+  if (
+    [
+      "watching",
+      "checking",
+      "scheduled",
+      "polling",
+      "polling + events",
+      "watching events",
+      "observing",
+    ].includes(state)
+  )
+    return "accent";
+  return "text";
+}
+function deliveryWait(r: DisplayReceipt, hold?: NotificationHold): string[] {
+  return [
+    ...(r.attention?.disposition === "pending"
+      ? [
+          hold === "unavailable"
+            ? "delivery held"
+            : hold
+              ? `waiting for ${hold}`
+              : "delivery pending",
+        ]
+      : []),
+    ...(queuedForAgent(r) ? ["queued for agent"] : []),
+  ];
 }
 function warnings(
   r: DisplayReceipt & Partial<Pick<Receipt, "interrupted" | "gap">>,
@@ -155,13 +213,14 @@ function warnings(
 }
 function jobLine(r: DisplayReceipt, includeName = false): string {
   return [
-    ...warnings(r),
     activity(r),
     ...(r.failureCode ? [label(r.failureCode)] : []),
     ...(includeName ? [label(r.name)] : []),
     r.recurring ? `wakes ${r.wakes}/${r.maxWakes}` : plural(r.wakes, "wake"),
     ...(r.evaluations ? [plural(r.evaluations, "evaluation")] : []),
     ...(r.calls ? [plural(r.calls, "call")] : []),
+    ...deliveryWait(r),
+    ...warnings(r),
   ].join(" · ");
 }
 function registrationLine(r: DisplayReceipt): string {
@@ -193,7 +252,7 @@ function resultLine(d: DisplayDetails, action: string): string {
     return [
       active ? `${active} active` : "no active jobs",
       `${receipts.length} retained`,
-      ...(pending ? [`${pending} wake pending`] : []),
+      ...(pending ? [`${pending} deliveries pending`] : []),
     ].join(" · ");
   }
   const r = d.receipt;
@@ -201,8 +260,10 @@ function resultLine(d: DisplayDetails, action: string): string {
   if (action === "start") return registrationLine(r);
   if (action === "cancel")
     return [
+      d.cancelChanged
+        ? "canceled"
+        : `already ${r.status === "cancelled" ? "canceled" : label(r.status)}`,
       ...warnings(r),
-      d.cancelChanged ? "cancelled" : `already ${label(r.status)}`,
       ...(r.lastAttention?.disposition === "handed_to_pi"
         ? ["notification already handed off"]
         : []),
@@ -222,17 +283,10 @@ export function widgetLines(
   now: number,
   width: number,
   theme: Theme,
+  hold?: NotificationHold,
 ) {
   return receipts.filter(visible).map((r) => {
     const pending = r.attention?.disposition === "pending";
-    const color =
-      pending && r.attention!.reason.includes("failure")
-        ? "error"
-        : pending && r.attention!.reason === "condition"
-          ? "success"
-          : pending || r.awaitingSettlement
-            ? "warning"
-            : "accent";
     const timing = (name: string, at: number) =>
       theme.fg("muted", `${name} `) +
       theme.fg("text", formatWidgetCountdown(at - now));
@@ -246,14 +300,8 @@ export function widgetLines(
           r.delayMs === undefined
         ? "watching"
         : activity(r);
-    const fields: string[] = pending
-      ? [
-          theme.fg("warning", "wake pending"),
-          ...(queuedForAgent(r)
-            ? [theme.fg("warning", "queued for agent")]
-            : []),
-        ]
-      : [];
+    const color = stateColor(state);
+    const fields: string[] = [];
     if (!pending && !r.awaitingSettlement) {
       if (!r.inFlight && r.nextAt !== undefined) {
         if (r.delayMs !== undefined) fields.push(timing("in", r.nextAt));
@@ -273,10 +321,14 @@ export function widgetLines(
       );
     if (r.awaitingSettlement && r.status === "active")
       fields.push(timing("expires", r.deadline));
+    const deliveryFields = deliveryWait(r, hold).map((wait) =>
+      theme.fg("muted", wait),
+    );
     const name = theme.fg("text", label(r.name));
     const separator = theme.fg("dim", " · ");
     const primary = `${theme.fg("muted", "monitor")} ${theme.fg(color, state)}`;
     const warningText = warnings(r);
+    if (warningText.length) fields.push(...deliveryFields);
     const compact: Record<string, string> = {
       "outcome uncertain": "unknown",
       "coverage gap": "gap",
@@ -289,7 +341,9 @@ export function widgetLines(
     );
     const suffix = critical.length
       ? separator + critical.join(narrow ? theme.fg("dim", "/") : separator)
-      : "";
+      : deliveryFields.length
+        ? separator + deliveryFields.join(separator)
+        : "";
     const mechanism =
       !pending && !r.awaitingSettlement && r.delayMs === undefined
         ? r.intervalMs !== undefined
@@ -365,28 +419,36 @@ export const renderers: Pick<
 
     const partial =
       action === "start"
-        ? "registering…"
+        ? "registering"
         : action === "cancel"
-          ? "cancelling…"
+          ? "canceling"
           : action === "list"
-            ? "listing jobs…"
-            : "reading job…";
+            ? "listing jobs"
+            : "reading job";
     const unknown =
       !isPartial &&
       (d.receipt?.outcomeUnknown ||
         d.receipt?.lastAttention?.disposition === "handoff_unknown")
-        ? (failed ? theme.fg("error", "failed") + theme.fg("dim", " · ") : "") +
+        ? (failed
+            ? theme.fg("error", "failed")
+            : theme.fg(
+                stateColor(activity(d.receipt!)),
+                activity(d.receipt!),
+              )) +
+          theme.fg("dim", " · ") +
           outcomeLine(
             theme,
             failed ||
               (d.receipt?.outcomeUnknown &&
                 d.receipt.lastAttention?.disposition === "handoff_unknown")
-              ? "unknown; no replay"
+              ? "unknown"
               : d.receipt?.outcomeUnknown
-                ? "outcome unknown; no replay"
-                : "handoff unknown; no replay",
+                ? "outcome unknown"
+                : "handoff unknown",
             "warning",
-          )
+          ) +
+          theme.fg("dim", " · ") +
+          theme.fg("muted", "do not retry automatically")
         : undefined;
     const fields = (
       isPartial
@@ -394,55 +456,46 @@ export const renderers: Pick<
         : failed
           ? "request failed"
           : polling
-            ? "registered; no repeat poll"
+            ? "registered · no repeat poll"
             : resultLine(d, action)
     ).split(" · ");
     const separator = theme.fg("dim", " · ");
-    const styleFields = (fields: string[], r = d.receipt) =>
+    const styleFields = (
+      fields: string[],
+      r = d.receipt,
+      expandedDetail = false,
+    ) =>
       fields
         .map((field, index) => {
-          const [state, queued] = field.split("; wake pending");
-          const warning =
-            /uncertain|interrupted|gap|cancel|limit|expired|timed out|awaiting settlement|no repeat poll/.test(
-              state,
-            );
-          const active =
-            !failed &&
-            r?.status === "active" &&
-            !r.awaitingSettlement &&
-            !r.attention &&
-            index === 0;
-          const error =
-            state === "evaluation failed" ||
-            state === "coverage lost" ||
-            (!!r?.failureCode && state === r.failureCode);
-          const color = isPartial
-            ? "accent"
-            : warning
-              ? "warning"
-              : error || (index === 0 && failed)
-                ? "error"
-                : state === "condition met"
-                  ? "success"
-                  : active && r?.delayMs === undefined
-                    ? "accent"
-                    : "muted";
-          return (
-            theme.fg(color, state + (active ? "…" : "")) +
-            (queued !== undefined
-              ? separator + theme.fg("warning", "wake pending")
-              : "")
-          );
+          const color: ThemeColor = isPartial
+            ? "muted"
+            : failed && index === 0
+              ? "error"
+              : r && warnings(r).includes(field)
+                ? "warning"
+                : field === "no repeat poll"
+                  ? "warning"
+                  : index === 0 && r && field === activity(r)
+                    ? stateColor(field)
+                    : index === 0 && action === "cancel" && d.cancelChanged
+                      ? "warning"
+                      : r &&
+                          (field === label(r.name) || field === r.failureCode)
+                        ? expandedDetail
+                          ? "text"
+                          : "muted"
+                        : "muted";
+          return theme.fg(color, field);
         })
         .join(separator);
     const summary = styleFields(fields);
     const lines: string[] = [];
     if (expanded && polling && !failed && !isPartial)
-      lines.push(theme.fg("warning", polling));
+      lines.push(theme.fg("text", polling));
     if (expanded && !failed && !isPartial) {
       if (action === "list")
         for (const r of d.receipts ?? [])
-          lines.push(styleFields(jobLine(r, true).split(" · "), r));
+          lines.push(styleFields(jobLine(r, true).split(" · "), r, true));
       else if (d.receipt) {
         const r = d.receipt;
         lines.push(
@@ -450,7 +503,7 @@ export const renderers: Pick<
             theme.fg("text", `${label(r.name)} (${label(r.id)})`),
         );
         if (action !== "get")
-          lines.push(styleFields(jobLine(r).split(" · "), r));
+          lines.push(styleFields(jobLine(r).split(" · "), r, true));
         if (r.lastAttention)
           lines.push(
             theme.fg("muted", "  notification: ") +

@@ -34,8 +34,8 @@ const OBSERVATION: Record<string, [string, ThemeColor]> = {
   condition: ["condition met", "success"],
   timeout: ["timed out", "warning"],
   evaluation_failure: ["evaluation failed", "error"],
-  coverage_failure: ["coverage lost", "error"],
-  budget_exhausted: ["budget exhausted", "warning"],
+  coverage_failure: ["coverage lost", "warning"],
+  budget_exhausted: ["limit reached", "warning"],
 };
 const MAX_TEXT = 64_000;
 const MAX_ROWS = 2_000;
@@ -116,7 +116,7 @@ export function notificationRenderer(
       (mode === undefined || mode === "timer" || mode === "observation");
     const [outcome, color] = valid
       ? vocabulary[status as string]
-      : ["status unavailable", "muted" as const];
+      : ["status unavailable", "text" as const];
     const reason =
       valid &&
       source === "monitor" &&
@@ -154,7 +154,7 @@ export function notificationRenderer(
           // At narrow widths preserve every warning before optional identity.
           const shortReason = reason
             .replace("evaluation", "eval")
-            .replace("budget exhausted", "budget")
+            .replace("limit reached", "limit")
             .replace("timed out", "timeout");
           prefix = `${title} ${theme.fg(color, shortReason)}`;
           essential =

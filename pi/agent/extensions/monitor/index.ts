@@ -60,7 +60,13 @@ export default async function monitor(pi: ExtensionAPI) {
       return;
     }
     widget.update(context, (width, theme) =>
-      widgetLines(engine!.list(), Date.now(), width, theme),
+      widgetLines(
+        engine!.list(),
+        Date.now(),
+        width,
+        theme,
+        notificationHold(context!, dialogs),
+      ),
     );
     if (context.hasUI && !ticker) {
       ticker = setInterval(refresh, 1000);

@@ -76,7 +76,7 @@ export function renderAgentsResult(
     );
   const failed = details.validationError || context.isError;
   const summary = options.isPartial
-    ? theme.fg("muted", "pending…")
+    ? theme.fg("text", "pending")
     : failed
       ? theme.fg("error", "request failed")
       : theme.fg("muted", "historical result");

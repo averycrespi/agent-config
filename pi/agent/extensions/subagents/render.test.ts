@@ -41,7 +41,7 @@ test("historical foreground results use sanitized text, not retired agent layout
 
 test("current receipts and pre-admission failures retain truthful state and additive expansion", () => {
   for (const [details, action, expected] of [
-    [{ execution: { id: "id", status: "running" } }, "run", "running… · id"],
+    [{ execution: { id: "id", status: "running" } }, "run", "running · id"],
     [{ execution: { id: "id", status: "failed" } }, "run", "failed · id"],
     [{ executions: [] }, "list", "0 executions"],
     [{ validationError: true }, "run", "request failed"],

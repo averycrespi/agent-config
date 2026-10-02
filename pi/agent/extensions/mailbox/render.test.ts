@@ -74,24 +74,24 @@ test("list distinguishes page size, current pending count and scan completion", 
     pending: 7,
     nextCursor: "OPAQUE",
   };
-  assert.equal(render("list", page), "1 shown · 7 pending · more pages");
+  assert.equal(render("list", page), "1 shown · 7 unacked · more pages");
   assert.equal(
     render("list", { ...page, nextCursor: null }),
-    "1 shown · 7 pending · scan complete",
+    "1 shown · 7 unacked · scan complete",
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 2 }),
-    "0 shown · 2 pending · scan complete",
+    "0 shown · 2 unacked · scan complete",
   );
   assert.equal(
     render("list", { ...page, messages: [], nextCursor: null, pending: 0 }),
-    "no pending messages",
+    "no unacked messages",
   );
   const expanded = render("list", page, true);
   assert.match(expanded, /later arrivals require a fresh scan/);
   assert.match(
     expanded,
-    /Shown counts this page; pending counts the current inbox/,
+    /Shown counts this page; unacked counts the current inbox/,
   );
   assert.match(expanded, /untrusted message:\nbody only/);
   assert.match(expanded, new RegExp(id));
@@ -116,7 +116,7 @@ test("ack shows counts and requested IDs without inventing removed IDs", () => {
     "acked 2 messages",
   );
 });
-test("partial activity uses accent and failures use error with safe fixed summaries", () => {
+test("partial activity is neutral and failures use error with safe fixed summaries", () => {
   const colors: string[] = [];
   const th = {
     ...theme,
@@ -126,9 +126,9 @@ test("partial activity uses accent and failures use error with safe fixed summar
     },
   } as Theme;
   for (const [action, summary] of [
-    ["send", "sending…"],
-    ["list", "listing…"],
-    ["ack", "acknowledging…"],
+    ["send", "sending"],
+    ["list", "listing"],
+    ["ack", "acknowledging"],
   ]) {
     colors.length = 0;
     const c = renderMailboxResult(
@@ -138,14 +138,18 @@ test("partial activity uses accent and failures use error with safe fixed summar
       context(args(action)),
     );
     assert.equal(c.render(100)[0], summary);
-    assert.ok(colors.includes("accent"));
+    assert.ok(colors.includes("muted"));
+    assert.ok(!colors.includes("accent"));
     assert.ok(!colors.includes("success"));
   }
   for (const [error, summary] of [
     ["invalid_input", "failed: invalid input"],
     ["mailbox_full", "failed: mailbox full"],
     ["storage_failed", "failed: storage unavailable"],
-    ["publication_unknown", "failed · send outcome unknown; no replay"],
+    [
+      "publication_unknown",
+      "failed · send outcome unknown · do not retry automatically",
+    ],
     ["SECRET\n\x1b[2J", "failed: mailbox operation"],
   ]) {
     for (const semantic of [false, true]) {
@@ -175,7 +179,7 @@ test("partial activity uses accent and failures use error with safe fixed summar
   );
   assert.equal(
     prefixed.render(200)[0],
-    "failed · send outcome unknown; no replay",
+    "failed · send outcome unknown · do not retry automatically",
   );
   assert.match(
     render("send", { error: "storage_failed" }),
@@ -316,7 +320,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(args("list")),
       )
       .render(200)[0],
-    "0 shown · 1 pending · scan complete",
+    "0 shown · 1 unacked · scan complete",
   );
   t.mock.method(_durability, "syncDirectory", () => {
     throw new Error("fsync");
@@ -380,7 +384,7 @@ test("registered renders preserve real direct envelopes, paging, ack and uncerta
         context(sendArgs, { isError: failure.isError }),
       )
       .render(200)[0],
-    "failed · send outcome unknown; no replay",
+    "failed · send outcome unknown · do not retry automatically",
   );
   assert.equal(new MailboxStore(root).list("project-alpha").pending, 2);
 });

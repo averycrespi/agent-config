@@ -48,7 +48,7 @@ test("current inventory, validation and pre-admission errors remain additive", (
         },
       },
       "inventory",
-      "2 saved",
+      "2 saved workflows",
     ],
     [
       { action: "validate", sourceFile: "inline" },

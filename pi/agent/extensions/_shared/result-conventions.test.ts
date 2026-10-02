@@ -57,16 +57,19 @@ test("field colors remain independent of lifecycle, telemetry and body", () => {
   assert.match(render("background-canceled"), /<warning>canceled<\/warning>/);
   assert.match(
     render("background-canceled"),
-    /<warning>outcome unknown; no replay<\/warning>/,
+    /<warning>outcome unknown<\/warning><dim> · <\/dim><muted>no replay<\/muted>/,
   );
   assert.match(
     render("monitor-attention"),
-    /<success>condition met<\/success><dim> · <\/dim><warning>wake pending<\/warning><dim> · <\/dim><muted>0 wakes<\/muted>/,
+    /<success>condition met<\/success><dim> · <\/dim><muted>0 wakes<\/muted>/,
   );
-  assert.match(render("monitor-attention"), /<muted>4 evaluations<\/muted>/);
+  assert.match(
+    render("monitor-attention"),
+    /<muted>4 evaluations<\/muted><dim> · <\/dim><muted>delivery pending<\/muted>/,
+  );
   assert.match(
     render("script-trace", true),
-    /<success>succeeded<\/success><dim> · <\/dim><muted>12ms<\/muted>/,
+    /<muted>succeeded<\/muted><dim> · <\/dim><muted>12ms<\/muted>/,
   );
   assert.match(
     render("mailbox-message", true),
@@ -88,7 +91,9 @@ test("uncertain failures separate error state from no-replay warnings across aff
       const row = fixture.render(expanded, marked).render(4000)[0];
       assert.match(
         row,
-        /^<error>failed<\/error><dim> · <\/dim><warning>.*unknown;? .*no replay<\/warning>$/,
+        fixture.name.startsWith("mailbox") || fixture.name.startsWith("monitor")
+          ? /^<error>failed<\/error><dim> · <\/dim><warning>.*unknown<\/warning><dim> · <\/dim><muted>do not retry automatically<\/muted>$/
+          : /^<error>failed<\/error><dim> · <\/dim><warning>.*unknown;? .*no replay<\/warning>$/,
       );
       assert.doesNotMatch(row, /<error>[^<]*unknown|<warning>failed/);
     }
