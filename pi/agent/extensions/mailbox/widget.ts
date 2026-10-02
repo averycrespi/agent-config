@@ -7,19 +7,28 @@ export function mailboxLine(
   now: number,
   width: number,
   theme: Theme,
+  queued = 0,
 ) {
   const state = s.unavailable
     ? "unavailable"
-    : s.pending
+    : s.pending || queued
       ? "pending"
       : "listening";
   const head =
     theme.fg("muted", "mailbox") +
     " " +
-    theme.fg(s.unavailable ? "error" : s.pending ? "warning" : "accent", state);
+    theme.fg(
+      s.unavailable ? "error" : s.pending || queued ? "warning" : "accent",
+      state,
+    );
   const fields: string[] = [];
-  if (s.unavailable) fields.push(theme.fg("muted", "/mailbox"));
-  else {
+  const queuedField = queued
+    ? theme.fg("warning", "queued for agent")
+    : undefined;
+  if (s.unavailable) {
+    if (queuedField) fields.push(queuedField);
+    fields.push(theme.fg("muted", "/mailbox"));
+  } else {
     if (s.limited)
       fields.push(
         theme.fg(
@@ -30,6 +39,7 @@ export function mailboxLine(
         ),
       );
     if (s.uncertain) fields.push(theme.fg("warning", "handoff uncertain"));
+    if (queuedField) fields.push(queuedField);
     const wake =
       s.wakeAt !== undefined && s.wakeAt <= now
         ? theme.fg(
@@ -52,7 +62,7 @@ export function mailboxLine(
         theme.fg("muted", "wake in ") +
           theme.fg("text", formatWidgetCountdown(s.wakeAt - now)),
       );
-    else if (s.wakeAt === undefined && s.redeliveryAt !== undefined)
+    else if (!queued && s.wakeAt === undefined && s.redeliveryAt !== undefined)
       fields.push(
         theme.fg("muted", "redelivery in ") +
           theme.fg("text", formatWidgetCountdown(s.redeliveryAt - now)),

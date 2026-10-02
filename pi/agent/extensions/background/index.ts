@@ -39,6 +39,7 @@ export function widgetLines(
   theme: Theme,
   now = Date.now(),
   hold?: NotificationHold,
+  queued?: ReadonlySet<string>,
 ) {
   return records.filter(visible).map((r) => {
     const singleChild = r.owner === "subagents" && r.progress?.total === 1;
@@ -52,6 +53,11 @@ export function widgetLines(
       const wake = hold ? `wake held: ${hold}` : "wake pending";
       warnings.push([wake, wake]);
     }
+    if (
+      r.notification.handoff === "handed_to_pi" &&
+      queued?.has(r.notification.id)
+    )
+      warnings.push(["queued for agent", "queued for agent"]);
     const separator = theme.fg("dim", " · ");
     const narrow =
       visibleWidth([primary, ...warnings.map(([full]) => full)].join(" · ")) >
@@ -119,20 +125,28 @@ export default function background(pi: ExtensionAPI) {
   let generation = 0;
   let dialogs = 0;
   let candidateIds = new Set<string>();
+  // Presentation only; admission does not mark durable notification consumption.
+  const queued = new Set<string>();
   const widget = createPersistentWidget("background-executions");
   let widgetShown = false;
   const deliveryHold = () => ctx && notificationHold(ctx, dialogs);
   const refresh = () => {
     if (!ctx || !service) return;
     const now = Date.now();
-    const rows = service
-      .all()
-      .filter((r) => widgetVisible(r, widgetConfig, now));
+    const records = service.all();
+    const liveIds = new Set(
+      records.filter(visible).map((r) => r.notification.id),
+    );
+    for (const id of queued) if (!liveIds.has(id)) queued.delete(id);
+    const rows = records.filter((r) =>
+      widgetVisible(r, widgetConfig, now, queued.has(r.notification.id)),
+    );
     if (rows.length || widgetShown)
       widget.update(
         ctx,
         rows.length
-          ? (w, t) => widgetLines(rows, w, t, Date.now(), deliveryHold())
+          ? (w, t) =>
+              widgetLines(rows, w, t, Date.now(), deliveryHold(), queued)
           : undefined,
       );
     widgetShown = rows.length > 0;
@@ -144,6 +158,7 @@ export default function background(pi: ExtensionAPI) {
     const old = service;
     service = undefined;
     candidateIds.clear();
+    queued.clear();
     try {
       old?.close();
     } finally {
@@ -180,28 +195,35 @@ export default function background(pi: ExtensionAPI) {
             handoff: r.notification.handoff,
             consumed: r.notification.consumed,
           }),
-        handoff: (r) =>
-          pi.sendMessage(
-            {
-              customType: NOTIFICATION,
-              content: `Background ${r.owner} execution ${r.id}: ${r.status}. Inspect with ${r.owner === "subagents" ? "subagent" : r.owner} action inspect and id ${r.id}.${r.outcomeUnknown ? " Outcome unknown; inspect retained evidence before further action." : ""} This notification is not acceptance and never authorizes replay.`,
-              display: true,
-              details: {
-                executionId: r.id,
-                notificationId: r.notification.id,
-                display: {
-                  version: 1,
-                  name: r.label,
-                  owner: r.owner,
-                  total: r.progress?.total,
-                  status: r.status,
-                  outcomeUnknown: r.outcomeUnknown,
-                  effectsMayPersist: r.effectsMayPersist,
-                } satisfies NotificationDisplay,
+        handoff: (r) => {
+          queued.add(r.notification.id);
+          try {
+            pi.sendMessage(
+              {
+                customType: NOTIFICATION,
+                content: `Background ${r.owner} execution ${r.id}: ${r.status}. Inspect with ${r.owner === "subagents" ? "subagent" : r.owner} action inspect and id ${r.id}.${r.outcomeUnknown ? " Outcome unknown; inspect retained evidence before further action." : ""} This notification is not acceptance and never authorizes replay.`,
+                display: true,
+                details: {
+                  executionId: r.id,
+                  notificationId: r.notification.id,
+                  display: {
+                    version: 1,
+                    name: r.label,
+                    owner: r.owner,
+                    total: r.progress?.total,
+                    status: r.status,
+                    outcomeUnknown: r.outcomeUnknown,
+                    effectsMayPersist: r.effectsMayPersist,
+                  } satisfies NotificationDisplay,
+                },
               },
-            },
-            { deliverAs: "steer", triggerTurn: true },
-          ),
+              { deliverAs: "steer", triggerTurn: true },
+            );
+          } catch (error) {
+            queued.delete(r.notification.id);
+            throw error;
+          }
+        },
       });
       refresh();
       // Delivery readiness only: no executor scheduling, retries or deadline renewal.
@@ -242,6 +264,13 @@ export default function background(pi: ExtensionAPI) {
   });
   pi.on("agent_settled", () => {
     service?.flush();
+  });
+  pi.on("message_start", ({ message }) => {
+    if (message.role !== "custom" || message.customType !== NOTIFICATION)
+      return;
+    const id = (message.details as { notificationId?: unknown } | undefined)
+      ?.notificationId;
+    if (typeof id === "string" && queued.delete(id)) refresh();
   });
   pi.on("context", (event) => {
     candidateIds = new Set(

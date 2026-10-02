@@ -114,9 +114,18 @@ const reasons = {
   coverage_failure: "coverage lost",
   budget_exhausted: "limit reached",
 };
+function queuedForAgent(r: DisplayReceipt): boolean {
+  // Restoration clears live settlement tracking, but retains historical handoffs.
+  return (
+    r.awaitingSettlement &&
+    r.lastAttention?.disposition === "handed_to_pi" &&
+    !r.lastAttention.admitted
+  );
+}
 function activity(r: DisplayReceipt): string {
   if (r.attention?.disposition === "pending")
     return `${reasons[r.attention.reason] ?? "attention"}; wake pending`;
+  if (queuedForAgent(r)) return "queued for agent";
   if (r.status !== "active") {
     if (r.status !== "finished") return label(r.status);
     if (r.failureCode === "wake_limit") return "wake limit reached";
@@ -201,7 +210,12 @@ function resultLine(d: DisplayDetails, action: string): string {
   return jobLine(r);
 }
 export function visible(r: Receipt) {
-  return r.status === "active" || r.attention?.disposition === "pending";
+  return (
+    r.status === "active" ||
+    r.attention?.disposition === "pending" ||
+    queuedForAgent(r) ||
+    (r.awaitingSettlement && r.lastAttention?.disposition === "handoff_unknown")
+  );
 }
 export function widgetLines(
   receipts: Receipt[],
@@ -233,7 +247,12 @@ export function widgetLines(
         ? "watching"
         : activity(r);
     const fields: string[] = pending
-      ? [theme.fg("warning", "wake pending")]
+      ? [
+          theme.fg("warning", "wake pending"),
+          ...(queuedForAgent(r)
+            ? [theme.fg("warning", "queued for agent")]
+            : []),
+        ]
       : [];
     if (!pending && !r.awaitingSettlement) {
       if (!r.inFlight && r.nextAt !== undefined) {

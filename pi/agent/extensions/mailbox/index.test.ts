@@ -134,7 +134,9 @@ test("wake display metadata follows actual attempts without changing payloads or
   await r.hooks.get("session_start")({}, r.ctx);
   const original = store.send(SESSION, "result", "body", SESSION);
   r.hooks.get("agent_settled")();
+  assert.match(r.messages[0].details.wakeId, /^[0-9a-f-]{36}$/);
   assert.deepEqual(r.messages[0].details, {
+    wakeId: r.messages[0].details.wakeId,
     recipient: SESSION,
     count: 1,
     display: { version: 1, count: 1, redelivered: 0 },
@@ -161,6 +163,7 @@ test("wake display metadata follows actual attempts without changing payloads or
   );
   now += 1001;
   r.hooks.get("agent_settled")();
+  assert.notEqual(r.messages[1].details.wakeId, r.messages[0].details.wakeId);
   assert.deepEqual(r.messages[1].details.display, {
     version: 1,
     count: 1,
@@ -237,6 +240,106 @@ test("wake recipient stays separate from sender and hostile body; ACK does not s
   assert.equal(store.list(SESSION).pending, 0);
   assert.equal(store.list(sender).pending, 0);
   assert.equal(r.messages.length, 1);
+});
+
+async function queuedFixture(t: any) {
+  const dir = mkdtempSync(join(tmpdir(), "mailbox-queued-"));
+  mkdirSync(join(dir, ".pi"));
+  writeFileSync(
+    join(dir, ".pi/settings.json"),
+    JSON.stringify({
+      "extension:mailbox": { batchWindowMs: 0 },
+    }),
+  );
+  const r = runtime(dir),
+    root = join(dir, "boxes"),
+    store = new MailboxStore(root);
+  let component: any;
+  r.ctx.hasUI = true;
+  const theme: any = { fg: (_: string, s: string) => s };
+  r.ctx.ui.setWidget = (_key: string, content: any) => {
+    component?.dispose?.();
+    component =
+      typeof content === "function"
+        ? content({ requestRender() {} }, theme)
+        : undefined;
+  };
+  t.after(() => {
+    r.hooks.get("session_shutdown")?.();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  mailbox(r.pi, root);
+  await r.hooks.get("session_start")({}, r.ctx);
+  return { r, store, root, line: () => component?.render(120).join("") };
+}
+
+test("queued mailbox wakes clear only on matching admission, not ACK, clear or settlement", async (t) => {
+  const { r, store, root, line } = await queuedFixture(t);
+  const sent = store.send(SESSION, "test", "body", SESSION);
+  r.hooks.get("agent_settled")();
+  const wake = r.messages[0];
+  assert.match(line(), /queued for agent/);
+  const before = readFileSync(join(root, `${SESSION}.json`));
+  r.hooks.get("message_start")({
+    message: {
+      ...wake,
+      role: "custom",
+      details: { ...wake.details, wakeId: "wrong" },
+    },
+  });
+  assert.match(line(), /queued for agent/);
+  assert.deepEqual(readFileSync(join(root, `${SESSION}.json`)), before);
+  await r.tool.execute("ack", {
+    action: "ack",
+    mailbox: SESSION,
+    ids: [sent.id],
+  });
+  r.hooks.get("agent_settled")();
+  assert.match(line(), /pending.*queued for agent.*empty/);
+  await r.commands.get("mailbox-clear").handler("", r.ctx);
+  assert.match(line(), /queued for agent/);
+  const cleared = readFileSync(join(root, `${SESSION}.json`));
+  r.hooks.get("message_start")({ message: { ...wake, role: "custom" } });
+  assert.equal(line(), "mailbox listening · empty");
+  assert.deepEqual(readFileSync(join(root, `${SESSION}.json`)), cleared);
+  assert.equal(r.messages.length, 1);
+});
+
+test("mailbox queue projection handles synchronous admission, uncertain handoff and navigation", async (t) => {
+  const { r, store, line } = await queuedFixture(t);
+  const send = r.pi.sendMessage;
+  r.pi.sendMessage = (wake: any) => {
+    send(wake);
+    r.hooks.get("message_start")({ message: { ...wake, role: "custom" } });
+  };
+  const first = store.send(SESSION, "test", "one", SESSION);
+  r.hooks.get("agent_settled")();
+  assert.doesNotMatch(line(), /queued for agent/);
+  assert.equal(store.list(SESSION).messages[0].attempts, 1);
+  store.ack(SESSION, [first.id]);
+  r.pi.sendMessage = send;
+  const second = store.send(SESSION, "test", "two", SESSION);
+  r.hooks.get("agent_settled")();
+  assert.match(line(), /queued for agent/);
+  assert.notEqual(r.messages[0].details.wakeId, r.messages[1].details.wakeId);
+  r.hooks.get("session_tree")({}, r.ctx);
+  assert.doesNotMatch(line(), /queued for agent/);
+  assert.equal(r.messages.length, 2);
+  store.ack(SESSION, [second.id]);
+  r.pi.sendMessage = () => {
+    throw Error("uncertain");
+  };
+  store.send(SESSION, "test", "three", SESSION);
+  r.hooks.get("agent_settled")();
+  assert.match(line(), /handoff uncertain/);
+  assert.doesNotMatch(line(), /queued for agent/);
+  assert.equal(store.list(SESSION).messages[0].uncertain, true);
+  r.hooks.get("session_shutdown")();
+  assert.doesNotThrow(() =>
+    r.hooks.get("message_start")({
+      message: { role: "custom", customType: "mailbox-wake" },
+    }),
+  );
 });
 
 test("duplicate session consumer is unavailable and cannot clear another owner's pending wake", async (t) => {

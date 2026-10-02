@@ -385,6 +385,72 @@ test("widgets distinguish continuation, events, queued attention and settlement"
   }
 });
 
+test("queued wakes stay visible until admission, not settlement", () => {
+  const queued = receipt({
+    status: "finished",
+    awaitingSettlement: true,
+    wakes: 1,
+    name: "safe\u001b[31m\nname" + " long".repeat(30),
+    lastAttention: {
+      id: "wake",
+      reason: "condition",
+      at: now,
+      disposition: "handed_to_pi",
+      admitted: false,
+    },
+  });
+  for (const width of [32, 48, 80, 200]) {
+    const lines = widgetLines([queued], now, width, theme);
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /^monitor queued for agent/);
+    assert.doesNotMatch(
+      lines[0],
+      /\u001b\[31m|\n|timeout|expires|polling|wake pending/,
+    );
+    assert.ok(visibleWidth(lines[0]) <= width);
+  }
+  assert.match(
+    text({ action: "get", receipt: display(queued) }),
+    /queued for agent/,
+  );
+  const admitted = {
+    ...queued,
+    lastAttention: { ...queued.lastAttention!, admitted: true },
+  };
+  assert.deepEqual(widgetLines([admitted], now, 80, theme), []);
+  assert.match(
+    widgetLines(
+      [{ ...admitted, status: "active", recurring: true }],
+      now,
+      120,
+      theme,
+    )[0],
+    /awaiting settlement/,
+  );
+  // Cancellation cannot retract a wake already handed to Pi.
+  assert.match(
+    widgetLines([{ ...queued, status: "cancelled" }], now, 80, theme)[0],
+    /queued for agent/,
+  );
+  // Restoration clears live settlement tracking; historical handoffs aren't queues.
+  assert.deepEqual(
+    widgetLines([{ ...queued, awaitingSettlement: false }], now, 80, theme),
+    [],
+  );
+  const unknown = {
+    ...queued,
+    lastAttention: {
+      ...queued.lastAttention!,
+      disposition: "handoff_unknown" as const,
+    },
+  };
+  assert.match(widgetLines([unknown], now, 120, theme)[0], /handoff uncertain/);
+  assert.doesNotMatch(
+    widgetLines([unknown], now, 120, theme)[0],
+    /queued for agent/,
+  );
+});
+
 test("uncertain control errors retain both failed request and no-replay status", () => {
   const r = display(receipt({ outcomeUnknown: true }));
   for (const semantic of [false, true]) {

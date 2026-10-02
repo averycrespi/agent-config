@@ -348,7 +348,8 @@ test("actual event provider holds one wake behind queued input; immutable contro
     deliverAs: "steer",
     triggerTurn: true,
   });
-  assert.equal(h.component, undefined);
+  assert.equal(h.component, mounted);
+  assert.match(h.component.render(80)[0], /monitor queued for agent safe name/);
   const sent = value(await h.call({ action: "get", id }));
   assert.equal(sent.lastAttention.disposition, "handed_to_pi");
   assert.equal(sent.lastAttention.admitted, false);
@@ -382,8 +383,18 @@ test("actual event provider holds one wake behind queued input; immutable contro
   assert.equal(h.messages.length, 1);
   assert.ok(h.messageRenderers.has("background-wake"));
   await h.hook("message_start", {
+    message: {
+      role: "custom",
+      ...message,
+      details: { ...message.details, wakeId: randomUUID() },
+    },
+  });
+  assert.equal(h.component, mounted);
+  await h.hook("message_start", {
     message: { role: "custom", ...h.messages[0].message },
   });
+  assert.equal(h.component, undefined);
+  assert.equal(h.messages.length, 1);
   await h.idle();
   assert.equal(
     value(await h.call({ action: "get", id })).lastAttention.admitted,
@@ -409,6 +420,24 @@ test("actual event provider holds one wake behind queued input; immutable contro
     ),
   );
   assert.doesNotMatch(JSON.stringify(observed), /safe name|Inspect|evidence/);
+});
+
+test("restored unadmitted handoffs do not appear as live queued wakes", async (t) => {
+  const h = await harness(t);
+  const id = value(await h.call(input)).id;
+  await h.hook("agent_start");
+  await h.idle();
+  await pause();
+  assert.equal(h.messages.length, 1);
+  assert.match(h.component.render(80)[0], /queued for agent/);
+  await h.hook("session_before_tree");
+  await h.hook("session_tree");
+  assert.equal(h.component, undefined);
+  const restored = value(await h.call({ action: "get", id }));
+  assert.equal(restored.lastAttention.disposition, "handed_to_pi");
+  assert.equal(restored.lastAttention.admitted, false);
+  assert.equal(restored.awaitingSettlement, false);
+  assert.equal(h.messages.length, 1);
 });
 
 test("visible human draft holds coalesced attention; RPC queues next turn conservatively", async (t) => {

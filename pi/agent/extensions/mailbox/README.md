@@ -61,11 +61,14 @@ mailbox pending · 3 unacked · wake in 4s
 mailbox pending · 3 unacked · wake pending
 mailbox pending · 3 unacked · wake held: draft
 mailbox pending · 3 unacked · wake held: dialog
+mailbox pending · queued for agent · 3 unacked
 mailbox pending · 3 unacked · redelivery in 4m
 mailbox pending · delivery limit reached · 2 unacked
 mailbox pending · 2 at limit · 5 unacked · wake in 3s
 mailbox unavailable · /mailbox
 ```
+
+A successfully submitted batch shows `queued for agent` until its matching Pi message-admission event. This indicator is independent of unacknowledged counts: ACK or human clear does not retract a queued wake or clear the indicator. Admission clears only the indicator, never ACKs messages or changes redelivery timing. While queued, the row shows queue status instead of the redelivery countdown. Unknown handoffs retain their uncertainty warning, not a known-queued claim. Queue tracking is local to the loaded session and cleared on reload/navigation, never reconstructed from historical messages.
 
 The widget mounts once and refreshes no faster than once a second for countdowns. Automatic wake rendering describes the event: neutral `mailbox received 2 messages`, warning-colored `mailbox redelivered 1 message`, or `mailbox received 2 messages (1 redelivered)` with only the redelivery qualifier warning-colored. Counts describe the delivered batch, not the whole inbox. Missing or malformed display metadata in historical wakes shows `mailbox status unavailable` rather than inferring delivery from prose. Expansion retains bounded sanitized sender/attempt/body details and trust guidance; the complete model-facing untrusted framing and ACK instructions are unchanged. Delivery-limit attention remains a warning toast (`mailbox delivery limit reached: 1 message`) and widget warning, not an additional model wake. Rendering changes neither model context nor ACK state. Tool rows follow the canonical [result convention](../_shared/README.md#tool-result-conventions): compact send/list/ack outcomes, accent activity and additive wrapped expansion. Untrusted message previews preserve body indentation with explicit truncation disclosure; labels stay muted and values readable. Persistence is not consumption, and scan completion is not inbox emptiness.
 

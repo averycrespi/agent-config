@@ -68,6 +68,33 @@ test("widget exact states, countdown ceiling, holds, totals and independent warn
     /2 at limit/,
   );
 });
+test("queued admission is visible independently of inbox counts and redelivery", () => {
+  for (const pending of [0, 3]) {
+    const s = { ...base, pending, redeliveryAt: 240000 };
+    for (const width of [0, 1, 32, 48, 100]) {
+      const line = mailboxLine(s, 0, width, theme, 1);
+      assert.ok(visibleWidth(line) <= width);
+      if (width >= 48) assert.match(line, /queued for agent/);
+      assert.doesNotMatch(line, /redelivery in/);
+    }
+    assert.match(
+      mailboxLine(s, 0, 100, theme, 1),
+      /mailbox pending · queued for agent/,
+    );
+    assert.doesNotMatch(mailboxLine(s, 0, 100, theme, 0), /queued for agent/);
+  }
+  const warning = mailboxLine(
+    { ...base, pending: 3, uncertain: 1, wakeAt: 0, hold: "draft" },
+    0,
+    160,
+    theme,
+    1,
+  );
+  assert.match(warning, /queued for agent/);
+  assert.match(warning, /handoff uncertain/);
+  assert.match(warning, /wake held: draft/);
+});
+
 test("delivery warnings stay independent and countdown values use text color", () => {
   for (const hold of ["idle", "draft", "dialog"] as const) {
     const colors: [string, string][] = [];
