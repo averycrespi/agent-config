@@ -354,6 +354,7 @@ export class MailboxStore {
     timeout: number,
     handoff: (messages: Message[], now: number) => void,
     now = Date.now,
+    ready = () => true,
   ) {
     address(mailbox);
     return this.mutate(mailbox, (s, commit) => {
@@ -368,12 +369,21 @@ export class MailboxStore {
       }
       if (!rows.length)
         return { value: { delivered: 0, limited: 0 }, changed: false };
+      if (!ready())
+        return { value: { delivered: 0, limited: 0 }, changed: false };
+      const prior = rows.map((row) => ({ ...row }));
       for (const row of rows) {
         row.attempts++;
         row.uncertain = true;
         row.visibleUntil = null;
       }
       commit();
+      // A known safety deferral is not a handoff attempt. Persist its rollback;
+      // a crash/save failure still leaves the conservative uncertain intent.
+      if (!ready()) {
+        rows.forEach((row, i) => Object.assign(row, prior[i]));
+        return { value: { delivered: 0, limited: 0 }, changed: true };
+      }
       const at = now();
       for (const row of rows) row.visibleUntil = at + timeout;
       try {

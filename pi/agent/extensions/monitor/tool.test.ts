@@ -271,7 +271,7 @@ test("cancel distinguishes changed versus terminal jobs and preserves effect/han
   );
   assert.match(
     text({ action: "cancel", receipt: display(r), cancelChanged: true }, true),
-    /follow-up: handed_to_pi/,
+    /notification: handed_to_pi/,
   );
   r.lastAttention.disposition = "handoff_unknown";
   assert.match(
@@ -370,7 +370,7 @@ test("widgets distinguish continuation, events, queued attention and settlement"
     });
     assert.ok(
       widgetLines([r], now, 150, theme)[0].includes(
-        `${expected} CI check · follow-up queued`,
+        `${expected} CI check · wake pending`,
       ),
     );
     assert.deepEqual(

@@ -38,6 +38,7 @@ async function harness(
     mounts: any[] = [],
     notices: string[] = [];
   let busy = true,
+    pending = true,
     draft = "",
     component: any,
     paints = 0;
@@ -46,6 +47,7 @@ async function harness(
     mode,
     hasUI: mode !== "json",
     isIdle: () => !busy,
+    hasPendingMessages: () => pending,
     sessionManager: {
       getSessionId: () => "11111111-2222-4333-8444-555555555555",
       getLeafId: () => entries.at(-1)?.id,
@@ -134,6 +136,10 @@ async function harness(
     messages,
     mounts,
     notices,
+    ctx,
+    pending: (value: boolean) => {
+      pending = value;
+    },
     draft: (text: string) => {
       draft = text;
     },
@@ -145,6 +151,7 @@ async function harness(
     },
     idle: async () => {
       busy = false;
+      pending = false;
       await hook("agent_settled");
     },
   };
@@ -312,7 +319,7 @@ test("invalid policy blocks starts without disabling inspection or cancellation"
   );
 });
 
-test("actual event provider holds one wake until idle; immutable controls, stable widget and lifecycle restoration", async (t) => {
+test("actual event provider holds one wake behind queued input; immutable controls, stable widget and lifecycle restoration", async (t) => {
   const h = await harness(t);
   const observed: any[] = [];
   for (const type of ["registered", "attention", "terminated", "notification"])
@@ -332,13 +339,13 @@ test("actual event provider holds one wake until idle; immutable controls, stabl
   assert.equal(pending.attention.disposition, "pending");
   assert.match(
     h.component.render(200)[0],
-    /monitor condition met safe name · follow-up queued/,
+    /monitor condition met safe name · wake pending/,
   );
   await h.idle();
   await pause();
   assert.equal(h.messages.length, 1);
   assert.deepEqual(h.messages[0].options, {
-    deliverAs: "followUp",
+    deliverAs: "steer",
     triggerTurn: true,
   });
   assert.equal(h.component, undefined);

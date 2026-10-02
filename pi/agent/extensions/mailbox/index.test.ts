@@ -15,7 +15,7 @@ import { runtime, context, SESSION } from "./fixture.ts";
 import { inspectMailbox } from "./api.ts";
 import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 
-test("lifecycle attribution, idle/draft/dialog holds, fork/resume/navigation, clear and provider independence", async (t) => {
+test("lifecycle attribution, queued-input/draft/dialog holds, fork/resume/navigation, clear and provider independence", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "mailbox-life-"));
   const old = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = dir;
@@ -40,7 +40,8 @@ test("lifecycle attribution, idle/draft/dialog holds, fork/resume/navigation, cl
   assert.equal(inspectMailbox(r.pi, SESSION)?.listening, true);
   let busy = true,
     draft = "";
-  r.ctx.isIdle = () => !busy;
+  r.ctx.isIdle = () => false;
+  r.ctx.hasPendingMessages = () => busy;
   r.ctx.ui.getEditorText = () => draft;
   const sent = await r.tool.execute("send", {
     action: "send",

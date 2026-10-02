@@ -18,6 +18,7 @@ import { createPersistentWidget } from "../_shared/widget.ts";
 import { registerConfigCommand } from "../_shared/config.ts";
 import { mailboxNotification } from "./notification.ts";
 import { mailboxLine } from "./widget.ts";
+import { notificationHold } from "../_shared/notification-delivery.ts";
 
 const mailboxSchema = {
   type: "string",
@@ -61,22 +62,16 @@ export default function mailboxExtension(
     hold: null,
     unavailable: true,
   };
+  const deliveryHold = (): Hold => {
+    if (!context || context.mode === "rpc") return "unavailable";
+    if (handedUntil > Date.now()) return "idle";
+    const hold = notificationHold(context, dialogs);
+    return hold === "input" ? "idle" : (hold ?? null);
+  };
   const refresh = () => {
     if (!context || delivering) return;
     const ctx = context;
-    let hold: Hold =
-      handedUntil > Date.now() || !ctx.isIdle() || ctx.hasPendingMessages()
-        ? "idle"
-        : dialogs
-          ? "dialog"
-          : null;
-    if (!hold && ctx.mode === "tui") {
-      try {
-        if (ctx.ui.getEditorText().length) hold = "draft";
-      } catch {
-        hold = "unavailable";
-      }
-    } else if (!hold && ctx.mode === "rpc") hold = "unavailable";
+    const hold = deliveryHold();
     delivering = true;
     try {
       if (delivery) status = delivery.tick(hold);
@@ -341,7 +336,7 @@ export default function mailboxExtension(
                 },
               },
             },
-            { deliverAs: "followUp", triggerTurn: true },
+            { deliverAs: "steer", triggerTurn: true },
           );
         },
         (count) => {
@@ -351,6 +346,8 @@ export default function mailboxExtension(
               "warning",
             );
         },
+        Date.now,
+        deliveryHold,
       );
       listener = watch(root, { persistent: false }, (_event, name) => {
         if (name === null || name.toString() === `${session}.json`) refresh();

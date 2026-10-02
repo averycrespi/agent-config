@@ -61,7 +61,7 @@ test("field colors remain independent of lifecycle, telemetry and body", () => {
   );
   assert.match(
     render("monitor-attention"),
-    /<success>condition met<\/success><dim> · <\/dim><warning>follow-up queued<\/warning><dim> · <\/dim><muted>0 wakes<\/muted>/,
+    /<success>condition met<\/success><dim> · <\/dim><warning>wake pending<\/warning><dim> · <\/dim><muted>0 wakes<\/muted>/,
   );
   assert.match(render("monitor-attention"), /<muted>4 evaluations<\/muted>/);
   assert.match(

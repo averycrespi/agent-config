@@ -78,7 +78,9 @@ Each fresh Script child receives `trigger` and `state` function arguments. Trigg
 - `registered`: after admission, before persistence/scheduling.
 - `attention`: a newly coalesced attention or stronger reason, before persistence.
 - `terminated`: observation ends or pending attention is suppressed, before persistence. A later cancellation/invalidation can publish another terminal transition to record suppression.
-- `notification`: persisted `handoff_unknown` before the Pi API call, then `handed_to_pi` after its synchronous return.
+- `notification`: persisted `handoff_unknown` before the Pi API call, then `handed_to_pi` after its synchronous return. A final safety recheck may defer without calling Pi, restoring pending attention without spending a wake. Therefore the first event alone never proves an attempted handoff.
+
+All eligible attention (including timer reminders) steers active TUI/headless runs at the supported boundary, or starts an ordinary idle run. Safety holds are rechecked by the existing engine timer while busy. RPC retains `nextTurn` without triggering a run. Positive matching wake admission and subsequent settlement, not steering submission or tool boundaries, still control recurrence.
 
 Only UUID and closed status/disposition enums are emitted. No source, names, message text, state, evidence, raw errors or tool payloads cross this surface. Observer failures are isolated. Polls/countdowns and restoration emit nothing; lifecycle observation adds no model calls, replay or permission. These events remain process-local and are not forwarded as cross-session selectors.
 
