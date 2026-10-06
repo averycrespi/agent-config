@@ -27,7 +27,7 @@ Brief description of each:
 | implement   | One task + AC + plan   | Scoped workspace diff and structured handoff                  | Owning session implements by default; writable delegation requires explicit user request and the execution contract below. |
 | validate    | All commits            | Pass/fail of deterministic gates (tests, types, lints, build) | Cheap, fast, infallible-on-true-pass.                                                                                      |
 | review      | All commits + AC       | Per-criterion verdicts + any findings                         | Independent read-only review; add distinct lenses according to risk.                                                       |
-| fix         | Review findings        | Code changes                                                  | 2-round cap. Sticky completion.                                                                                            |
+| fix         | Review findings        | Code changes                                                  | 2-round soft checkpoint within a hard envelope. Sticky completion.                                                         |
 | emit-report | Everything             | Structured JSON + human-readable summary                      | Always emits. No unbounded verify→implement loopback.                                                                      |
 
 Keep implementation and fixes in the owning session by default. When the user explicitly requests writable delegation, require an explicit execution workflow with one bounded task, one writer, orchestrator-owned state and evidence, a structured handoff, and independent verification. The orchestrator inspects the actual diff, runs relevant deterministic checks, and retains any separately authorized commit authority. Do not batch a writer with readers or other writers, or overlap parent and child writes. Preserve stricter workflow boundaries, including read-only subagents in `work-ticket`. Serialization prevents simultaneous-write conflicts, not loss of implicit decisions across handoffs; a fresh writer per task is not the default.
@@ -91,7 +91,7 @@ Maps to `ralph-meets-rex`'s "planner can reject upfront" pattern, applied betwee
 
 `roach-pi` runs 5 lenses × 2 seeds = 10 reviewers. `ruizrica/agent-pi` runs 5 lenses. Several high-performing SWE-bench scaffolds use multiple review/evaluation passes.
 
-Cap fix-loops at **2 rounds**. Without a cap, verifiers nitpick on style indefinitely. Sticky completion prevents automatic reopening for unsolicited improvements; explicitly authorized follow-ups or scoped exceptions preserve history and consumed allowances. Failed checks remain failed evidence even when the user accepts an exception.
+Start fix-loops with a **2-round soft checkpoint** inside a fixed hard task/runtime/spending envelope. Permit recorded finite additions only for evidence-backed progress or a new diagnostic approach under existing task authority. At the hard ceiling, report remaining issues and stop; do not renew blindly or reopen implementation for style nitpicks. Sticky completion prevents automatic reopening for unsolicited improvements; explicitly authorized follow-ups or scoped exceptions preserve history and consumed allowances. Failed checks remain failed evidence even when the user accepts an exception.
 
 ## GPT-5.6 model-managed delegation
 
@@ -195,7 +195,7 @@ Don't:
 Do:
 
 - Use validated machine-readable completion signals (JSON schemas or parsed tagged outputs).
-- Cap fix loops at 2 rounds by default, then record remaining findings as known issues.
+- Start with 2 repair rounds as a soft checkpoint; record justified finite additions within the hard envelope. At a hard ceiling, report remaining findings as known issues.
 - Prevent automatic reopening after completion; allow explicit follow-up and scoped user exceptions without erasing evidence or consumed allowances.
 - Halt instead of skip on first task failure (`ralph-meets-rex` halts at `human_intervention_required`; `roach-pi` halts after 3 clarification rounds).
 

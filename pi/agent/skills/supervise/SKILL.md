@@ -11,26 +11,28 @@ Keep authorized work progressing without taking over its execution. Use existing
 
 Treat an explicit request to supervise as authorization for the defaults below unless the user overrides them. An authorized workflow may explicitly include this same envelope, as [work-stack](../work-stack/SKILL.md) does. Announce the selected bounds and proceed without asking the user to repeat timer parameters. Merely loading a skill, launching a worker or receiving a worker message does not authorize supervision. Preserve narrower instructions and existing runs' original bounds; new defaults do not extend historical authority.
 
-| Bound          | Default                                                                           |
-| -------------- | --------------------------------------------------------------------------------- |
-| Wake delay     | 20 minutes after the supervising turn settles; first delay starts on registration |
-| Cycle timeout  | 25 minutes                                                                        |
-| Total lifetime | 12 hours from initial registration, including work and settlement waits           |
-| Wake cap       | 36 cumulative handoff attempts                                                    |
+| Bound          | Default                                                                            |
+| -------------- | ---------------------------------------------------------------------------------- |
+| Wake delay     | 20 minutes after the supervising turn settles; first delay starts on registration  |
+| Cycle timeout  | 25 minutes                                                                         |
+| Task deadline  | 24 hours from execution start; inherit the 72-hour deadline for an explicit stack  |
+| Wake allowance | Initially 72 cumulative attempts per task, 216 per stack; soft within the deadline |
 
 Identify the objective, existing owner/session, readable progress evidence, completion boundary and permitted interventions from the request and existing assignment. Ask only about consequential ambiguity in those facts. For worker supervision, use one coordinator-owned watchdog for the supervised set, separate from child-owned execution/CI observers. Keep the objective, authority reference, original absolute deadline, consumed wakes, Monitor ID and unresolved next action in existing TODOs/conversation or a checkpoint. Link child evidence rather than copying it; create no supervision registry or parallel execution ledger.
 
-Permit progress inspection, in-scope resource coordination and a scoped prompt to resume already-authorized work. Do not expand scope, grant permissions, renew child budgets, launch replacement workers, restart processes, replay uncertain operations, publish or clean up merely because supervision was requested. Retain the task's existing approval and ownership boundaries.
+Permit progress inspection, in-scope resource coordination and a scoped prompt to resume already-authorized work. Do not expand scope, grant permissions, launch replacement workers, restart processes, replay uncertain operations, publish or clean up merely because supervision was requested. Exercise authority already delegated by the task: routine outcome-scoped decisions and finite soft allowance additions need no new user approval. The child records its own additions with progress evidence and remaining hard allowance; supervision alone grants neither execution nor repair authority. Retain the task's existing approval and ownership boundaries.
 
 ## Choose the smallest observation mechanism
 
 - **Workers can silently stop:** use a recurring settlement-based coordinator wake. Interpret worker progress on each wake; do not duplicate their tests, reviews or CI polling.
-- **A process or external job exposes a deterministic condition:** use a bounded Monitor evaluator or typed event, waking for completion, failure or deadline rather than recurring model status checks. Observe only under the existing provider/action authority and task allowance; the 12-hour default is a ceiling, not permission to extend that task.
+- **A process or external job exposes a deterministic condition:** use a bounded Monitor evaluator or typed event, waking for completion, failure or deadline rather than recurring model status checks. Observe only under the existing provider/action authority and task allowance; the enclosing task deadline is a ceiling, not a fresh period from registration.
 - **A background tool already supplies completion notification:** rely on that notification. Do not add a competing completion observer. A coordinator watchdog may still cover the separate risk that its persistent workers stop before finishing their assignments.
 
 Read Monitor's current contract and discover permitted schemas with `monitor list` and `script describe` before selecting providers/events. Inspect historical receipts and retained registration attempts before starting. Reuse a matching active watchdog; reconcile and, when appropriate, cancel an obsolete one before replacement. If identity, registration or handoff is uncertain, preserve it and investigate rather than registering a duplicate.
 
-For a new worker-supervision envelope with the defaults, use this timer-only shape, tailoring the message to the actual objective and evidence references:
+Use bounded registrations inside the enclosing deadline: Monitor permits at most 24 hours and 100 wakes per job. A 72-hour stack therefore uses successive segments of at most 24 hours/72 wakes, reconciled before replacement; never request a 72-hour job or run competing segments. Retain cumulative usage and the original stack deadline between segments. Registration expiry is a checkpoint, not a request for human approval when useful authorized work remains within that envelope.
+
+For a new standalone worker-supervision task, use this timer-only shape, shortening lifetime to the remaining task deadline and tighter host policy, and tailoring the message to actual evidence references:
 
 ```json
 {
@@ -41,8 +43,8 @@ For a new worker-supervision envelope with the defaults, use this timer-only sha
   "recurring": true,
   "delay_ms": 1200000,
   "cycle_timeout_ms": 1500000,
-  "lifetime_ms": 43200000,
-  "max_wakes": 36
+  "lifetime_ms": 86400000,
+  "max_wakes": 72
 }
 ```
 
@@ -62,9 +64,9 @@ A release, milestone or housekeeping message does not replace the ongoing object
 
 Cancel and reconcile the watchdog when the objective finishes or no useful authorized supervision remains. Before requesting user input, cancel continuation for the affected input-blocked work. Independently authorized shared read-only observation may continue under the [nonblocking question contract](../spawn-agent/references/decisions.md#incorporation-and-questions); never poll approval or resume blocked writes.
 
-At the final available wake, surface unfinished work and the impending coverage gap; stop at the retained limits rather than promising continued attention. Monitor's final wake-cap exhaustion may not emit an extra notification. Request additional allowance only when needed, with consumed bounds and the unfinished objective; never automatically renew. Expiry is not completion and does not erase available work in the current authorized turn.
+At the final available wake, reconcile unfinished work and remaining hard allowance before coverage ends. Monitor's final wake-cap exhaustion may not emit an extra notification. For a segment boundary or soft wake exhaustion, record a finite addition/replacement only when current evidence supports useful coverage, preserving cumulative usage and the original deadline; this exercises existing authority, not automatic renewal. At a hard deadline, stricter user limit or unavailable host capability, report the coverage gap and request authority only if needed. Expiry is not completion. A segment ending does not stop available authorized work; at the task hard ceiling, checkpoint and hand off rather than continuing implementation unobserved.
 
-After interruption or an input-blocked cancellation, reconcile the original registration, receipts and any Pi-owned queued wake before a replacement. Preserve the original absolute deadline and cumulative wake count, conservatively charging attempted/unknown handoffs. Bound a replacement by remaining time and wakes, never a fresh 12 hours or 36 wakes; do not start when either is exhausted or unresolved. New task labels or successor children do not reset the envelope. Explicit user extensions are additions with provenance, not refunds.
+After interruption or an input-blocked cancellation, reconcile the original registration, receipts and any Pi-owned queued wake before a replacement. Preserve the original absolute deadline and cumulative wake count, conservatively charging attempted/unknown handoffs. Bound a replacement by remaining time and recorded wake allowance, never a fresh task envelope; do not start when hard allowance is exhausted or accounting is unresolved. New task labels or successor children do not reset the envelope. Finite soft additions require evidence and retained authority; hard-limit extensions require explicit user authority. Neither refunds consumption.
 
 Monitor is session-bound: reload, navigation and shutdown invalidate observations; restored receipts do not restart work. Disclose coverage loss and resume only within reconciled existing authority. Do not install, link, reload or add an external watchdog as recovery.
 

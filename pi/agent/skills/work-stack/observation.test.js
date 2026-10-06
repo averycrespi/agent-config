@@ -9,7 +9,10 @@ test("stack uses separate automatic messaging without role or observer setup", a
   const launch = await read("../spawn-agent/SKILL.md");
   const decisions = await read("../spawn-agent/references/decisions.md");
   assert.match(stack, /do not duplicate its observer or execution ledger/);
-  assert.match(stack, /Answers and recovery never renew child allowances/);
+  assert.match(
+    stack,
+    /Answers and recovery never reset child usage or hard deadlines/,
+  );
   assert.match(launch, /healthy automatic Mailbox listening in both sessions/);
   assert.match(decisions, /messages in both directions/);
   assert.match(decisions, /full session UUID/);

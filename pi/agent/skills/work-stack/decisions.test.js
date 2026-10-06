@@ -89,7 +89,10 @@ test("recovery reconciles existing effects without duplicate launches or renewed
     stack,
     /never blindly resend, replay a prompt or launch a duplicate child/,
   );
-  assert.match(stack, /Answers and recovery never renew child allowances/);
+  assert.match(
+    stack,
+    /Answers and recovery never reset child usage or hard deadlines/,
+  );
   assert.match(
     stack,
     /Retain sessions\/worktrees until explicit cleanup authorization/,

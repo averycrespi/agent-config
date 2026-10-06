@@ -204,7 +204,7 @@ test("scoped overrides preserve adverse evidence, are idempotent, and allow prog
   );
 });
 
-test("review and CI repairs retain independent allowances, resume identities and explicit additions", async (t) => {
+test("soft repair additions retain original authority, consumption and independent CI allowance", async (t) => {
   const f = await fixture(t);
   await f.init();
   for (const id of ["first", "second"]) {
@@ -244,8 +244,10 @@ test("review and CI repairs retain independent allowances, resume identities and
     requirement: "review-budget",
     scope: "same ticket",
     action: "One further repair",
-    instruction: "User authorizes one more repair",
-    reference: "current user message",
+    instruction:
+      "Initial assignment authorizes finite soft additions within the task deadline",
+    reference:
+      "Assignment and progress evidence: blockers narrowing; hard deadline retained",
     budget: "review",
     additional: 1,
   };
@@ -262,6 +264,12 @@ test("review and CI repairs retain independent allowances, resume identities and
   assert.equal(s.repairs.review.limit, 3);
   assert.equal(s.repairs.review.batches.length, 3);
   assert.equal(s.repairs.ci.batches.length, 1);
+  assert.equal(s.authorization, f.patch.authorization);
+  assert.deepEqual(s.overrides, [override]);
+  assert.deepEqual(
+    s.repairs.review.batches.map((batch) => batch.id),
+    ["first", "second", "third"],
+  );
   await assert.rejects(
     f.call({
       action: "repair",
@@ -799,7 +807,7 @@ test("CI state persists and requires an explicit, idempotent user allowance addi
   assert.equal((await f.status()).monitor.disposition, "passed");
   await assert.rejects(
     f.call({ action: "ci", operation: "extend", additionalMs: 60000 }),
-    /scoped user override/,
+    /scoped additive override under applicable authority/,
   );
   const override = {
     id: "wait-more",

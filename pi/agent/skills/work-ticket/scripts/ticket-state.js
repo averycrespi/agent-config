@@ -197,7 +197,7 @@ function apply(s, r) {
         need(b.active === null, "finish or resume the active repair batch");
         need(
           b.batches.length < b.limit,
-          "repair allowance exhausted; record an explicit user override with an additive allowance",
+          "repair soft allowance exhausted; record a justified additive override under existing authority, or request authority at a hard ceiling",
         );
         b.batches.push({ id: r.id, plan: r.plan });
         b.active = r.id;
@@ -212,7 +212,7 @@ function apply(s, r) {
     }
     case "override": {
       const o = r.override;
-      need(o && typeof o === "object", "scoped user override required");
+      need(o && typeof o === "object", "scoped authority record required");
       need(
         Object.keys(o).every((k) =>
           [
@@ -301,7 +301,7 @@ function apply(s, r) {
     case "ci":
       need(
         r.operation !== "extend",
-        "use a scoped user override to extend CI waiting",
+        "use a scoped additive override under applicable authority to extend CI waiting",
       );
       s.monitor = updateMonitor(s.monitor, {
         ...r,
