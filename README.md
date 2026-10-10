@@ -114,6 +114,8 @@ Install [Herdr](https://herdr.dev/), then run `herdr integration install pi` aft
 
 The companion [agent-tools](https://github.com/averycrespi/agent-tools) repository provides the gateway. Configure its endpoint separately and supply `MCP_GATEWAY_AGENT_TOKEN` in Pi's process environment, never in settings or committed files. Missing configuration leaves Pi usable but prevents authenticated gateway calls. See [gateway configuration](pi/agent/extensions/mcp-gateway/README.md#configuration).
 
+In the configured runtime, HTTP(S) and Git traffic is routed through the agent gateway, which applies access policy and injects credentials for configured destinations. Use ordinary URLs and native Git for repository transport; use MCP Gateway for GitHub API operations and other authenticated services, not direct `gh`. Do not locate or manually supply credentials, bypass the gateway or change authentication to resolve access failures. Authentication does not authorize actions such as publication.
+
 Gateway permissions govern service access, not shell isolation. Pi tools and extensions run with the Pi process's permissions; use an outer isolation layer when needed. The companion repository also provides a sandbox manager (`sb`).
 
 ## Developing this repository

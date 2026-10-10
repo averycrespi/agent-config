@@ -1,6 +1,6 @@
 # MCP Gateway design
 
-Expose the governed MCP Gateway as Pi's default authenticated external-access surface through three stable meta-tools, including explicitly loaded read-only children.
+Expose the governed MCP Gateway as Pi's GitHub API and other authenticated service surface through three stable meta-tools, including explicitly loaded read-only children. Native Git owns repository transport. The configured runtime's HTTP(S)/Git routing, access policy and credential injection are an environment premise, not implemented or reconfigured by this extension; authentication never substitutes for user authorization.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ Expose the governed MCP Gateway as Pi's default authenticated external-access su
 - `catalog.ts` owns keyword discovery capped at 50 results and the namespace-count prompt. Do not regenerate a per-tool system-prompt inventory.
 - `tools.ts` adapts the three operations to Pi, marks semantic failures through `tool_result`, and implements width-aware renderers. Never infer errors from arbitrary remote prose. Calls show only a safe query or tool name, never generic parameter keys. Collapsed results omit routine describe/call success, but retain parenthesized shown/matching search counts, muted truncation/file-save summaries, and failed/unknown effects without repeating the call or previewing arbitrary responses. Existing bounded preview metadata remains unchanged for compatibility, not displayed by default; expansion retains recognized rejection reasons, labelled untrusted guidance, a `Full response:` spill path and framed evidence. No renderer changes admission or result accounting.
 - `presentation.ts` normalizes MCP content, bounds previews, strips terminal controls, frames before spill, and writes metadata-only diagnostics using shared helpers.
-- `guard.ts` is advisory only. Command text is transient matching input, never copied into steering content or result details. Candidate names remain framed external metadata.
+- `guard.ts` is a GitHub-specific `gh` advisory only. Native Git produces neither notifications nor steering. Keep the once-per-turn steering limit and at most three candidates from visible GitHub discovery. Command text is transient matching input, never copied into steering content or result details. Candidate names remain framed external metadata. Do not implement this distinction as a namespace blacklist or transport policy.
 - `fixture.ts` supports colocated tests with an ephemeral HTTP server and synthetic agent token; it has no entrypoint or runtime side effects on import.
 
 ## State and lifecycle

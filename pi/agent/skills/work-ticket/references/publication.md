@@ -1,6 +1,6 @@
 # PR delivery and CI
 
-Follow [work-ticket](../SKILL.md) and [the checkpoint interface](helper.md). Use discovered Gateway schemas for authenticated Git/GitHub operations. Review-ready PR authority includes bounded read-only CI observation and in-scope corrective pushes; draft-only/publication-only requests do not silently expand that boundary.
+Follow [work-ticket](../SKILL.md) and [the checkpoint interface](helper.md). Use native Git for clone, fetch, pull, authorized push and remote queries; use discovered MCP Gateway schemas for GitHub API operations, not direct `gh`. In the configured runtime, use ordinary URLs without locating or manually supplying credentials; diagnose access failures rather than bypassing the gateway or changing authentication. Authentication is not publication authority. Reconcile uncertain Git writes against the remote state before any further attempt; never blindly replay them. Review-ready PR authority includes bounded read-only CI observation and in-scope corrective pushes; draft-only/publication-only requests do not silently expand that boundary.
 
 ## Review before publication
 
