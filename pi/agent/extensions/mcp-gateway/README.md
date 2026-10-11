@@ -125,9 +125,15 @@ Failed calls write small diagnostic logs under `${tmpdir()}/pi-extension-logs/mc
 
 Tool rows use bold tool names, plain-text targets and muted metadata; call argument names never expose values. Collapsed results are one contextual line: search shows muted `X shown (Y matches)` counts (singular `1 match`); routine describe/call success is silent, not execution acceptance. Successful spill summaries use muted `output truncated · full response saved to file`, separated from any other summary by a middle dot. Expansion labels the file path `Full response:`. Raw response/description previews stay expanded. Explicit `unknown effects; no replay` outranks optional targets; failed uncertain requests also retain `failed` rather than hiding the operation failure. Other failures say `request failed`; expand for recognized rejection reasons, labelled untrusted guidance, invocation IDs and diagnostic paths. Running/error/settled states use semantic theme tokens and meaningful words. Expansion retains framed content with a 2000-line display bound and spill references; model-facing payloads are unchanged. All dynamic text is sanitized before styling and gateway credential redaction is retained. Results follow the canonical [result convention](../_shared/README.md#tool-result-conventions): compact rows truncate, while expanded evidence wraps with meaningful indentation preserved. A nonempty compact prefix is unchanged and separated from details by one blank line; silent success starts directly with evidence. Body values use ordinary foreground, labels/telemetry muted, and diagnostics semantic colors.
 
+## Git transport and service APIs
+
+Prefer ordinary native `git` for clone, fetch, pull, push and remote queries. Use MCP Gateway for GitHub API operations and other authenticated services, not direct `gh`. In the configured runtime, HTTP(S) and Git traffic is routed through the agent gateway, which applies access policy and injects credentials for configured destinations. Use ordinary URLs; do not locate, extract or manually supply credentials. Diagnose access failures rather than bypassing the gateway or changing authentication. Authentication is not user authorization: publication and destructive actions still need explicit authority, and uncertain writes require reconciliation, not automatic replay.
+
+This environment contract does not configure routing in this extension or filter namespaces from discovery.
+
 ## Advisory bash guard
 
-Direct `gh` and remote-git operations (`push`, `pull`, `fetch`, `ls-remote`, and networked `remote show/update/prune`) still execute. The guard queues at most one steering hint per turn, with up to three visible candidates. It does not echo the command or arguments into retained hints. Local git is unaffected. Detection is heuristic; false positives never block work.
+Direct `gh` commands still execute. The GitHub-specific advisory queues at most one steering hint per turn, with up to three visible GitHub candidates. It does not echo the command or arguments into retained hints. Native Git commands, including clone, push, pull, fetch, ls-remote and networked remote operations, produce no notifications or steering hints. Detection is heuristic; false positives never block work.
 
 ## Migration and qualification
 

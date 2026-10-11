@@ -6,7 +6,8 @@ This public repository manages Pi configuration through GNU Stow: `pi/agent/` is
 
 - Edit Stow-managed configuration at its source under `pi/`, not through `~/.pi/` symlinks. For example, edit `pi/agent/extensions/<name>/index.ts`. Repo-local authoring skills live under `.pi/skills/` and are not installed globally.
 - Installing/linking Pi configuration, global/system installations, and changes to running sessions require explicit user authorization. Run `make stow-pi` only when explicitly requested. Required checkout-local development dependency setup is part of authorized implementation and verification; follow the setup guidance below.
-- Keep authenticated external access and its documentation aligned with `pi/agent/extensions/mcp-gateway/` and the `mcp_search`, `mcp_describe`, and `mcp_call` tools.
+- Prefer native `git` for clone, fetch, pull, push and remote queries; keep GitHub API operations and other authenticated services on MCP Gateway (`mcp_search`, `mcp_describe`, `mcp_call`), not direct `gh`. Keep guidance aligned with `pi/agent/AGENTS.md` and `pi/agent/extensions/mcp-gateway/`.
+- In the configured runtime, HTTP(S) and Git traffic is routed through the agent gateway, which applies access policy and injects credentials for configured destinations. Use ordinary URLs; do not locate, extract or manually supply credentials, bypass the gateway or change authentication to work around access failures. Diagnose failures; authentication does not authorize publication or destructive operations.
 - Exclude private/internal identifiers, URLs, credentials, and proprietary information from committed content. Public dependencies and prior art may be named. Use generic examples such as `ABC-123` and `example.com`; sanitize design artifacts before committing.
 
 ## README Purpose

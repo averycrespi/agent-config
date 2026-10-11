@@ -61,6 +61,13 @@ test("namespace prompts preserve normalized ordering, trust framing, and safety 
     /Reuse already inspected names and schemas in the current context unless errors or evidence indicate they changed/,
   );
   assert.match(prompt, /host-side admission checks still apply/);
+  assert.match(prompt, /Use native git for Git transport/);
+  assert.match(prompt, /over direct gh for GitHub API operations/);
+  assert.doesNotMatch(prompt, /over direct gh or remote-git/);
+  assert.match(
+    buildGatewayPrompt([tool("git.fetch")], false),
+    /- git: 1 tools/,
+  );
   assert.match(prompt, /Never automatically repeat a call/);
   assert.match(
     prompt,
@@ -721,8 +728,8 @@ test("unknown-outcome warning remains collapsed even when the error preview is l
   assert.match(expanded, /logFile: \/tmp\/example-log/);
 });
 
-test("advisory guard never blocks bash, leaves local git alone, and steers once using visible candidates", async (t) => {
-  for (const command of [
+test("advisory guard ignores native Git and steers only gh using visible candidates", async (t) => {
+  const ignored = [
     "git status",
     "git diff",
     "git remote",
@@ -737,31 +744,82 @@ test("advisory guard never blocks bash, leaves local git alone, and steers once 
     "echo 'git push'",
     "rg gh file",
     "gh-pages-cli deploy",
-  ])
-    assert.equal(matchCommand(command), undefined);
+    "git clone https://example.com/repo.git",
+    "env FOO=1 git clone https://example.com/repo.git",
+    "builtin git push",
+    "/usr/bin/git ls-remote origin",
+    "FOO=bar git fetch origin",
+    "git push && git pull; git fetch || git ls-remote origin",
+    "git --git-dir=/repo/.git pull",
+    "git -C /repo -c color.ui=false --no-pager push",
+    "echo ok\ngit fetch",
+    "git -C /repo push",
+    "command git --no-pager fetch",
+    "echo ok && git pull",
+    "git remote update",
+    "git remote prune origin",
+    "git remote show origin",
+  ];
+  const ignoredApi = api();
+  const notifications: unknown[] = [];
+  const ui = {
+    hasUI: true,
+    ui: { notify: (...args: unknown[]) => notifications.push(args) },
+  };
+  const noDiscoveryClient = {
+    getCachedTools: () => assert.fail("Git must not consult discovery"),
+  };
+  registerGuard(ignoredApi.pi, noDiscoveryClient as any);
+  for (const [index, command] of ignored.entries()) {
+    assert.equal(matchCommand(command), undefined, command);
+    const toolCallId = `ignored-${index}`;
+    assert.deepEqual(
+      await ignoredApi.fire(
+        "tool_call",
+        {
+          toolName: "bash",
+          toolCallId,
+          input: { command },
+        },
+        ui,
+      ),
+      [undefined],
+      command,
+    );
+    assert.deepEqual(
+      await ignoredApi.fire(
+        "tool_result",
+        {
+          toolName: "bash",
+          toolCallId,
+        },
+        ui,
+      ),
+      [undefined],
+      command,
+    );
+  }
+  assert.deepEqual(notifications, []);
+  assert.deepEqual(ignoredApi.messages, []);
   for (const command of [
     "gh pr list",
     "env FOO=1 gh pr list",
     "builtin gh pr list",
     "/usr/local/bin/gh pr list",
-    "git --git-dir=/repo/.git pull",
-    "git -C /repo -c color.ui=false --no-pager push",
     "echo ok | gh pr list",
-    "echo ok\ngit fetch",
-    "git -C /repo push",
-    "command git --no-pager fetch",
     "FOO=bar gh issue list",
-    "echo ok && git pull",
-    "git remote update",
-    "git remote prune origin",
-    "git remote show origin",
+    "git fetch && gh pr list",
   ])
-    assert.ok(matchCommand(command));
+    assert.equal(matchCommand(command)?.namespace, "github");
   const f = await fixture(t, (body, response) =>
     reply(response, body, {
       tools: [
         tool("github.list_reads", true),
         tool("github.list_writes", false),
+        tool("github.list_reads_two", true),
+        tool("github.list_reads_three", true),
+        tool("github.list_reads_four", true),
+        tool("git.list_reads", true),
       ],
     }),
   );
@@ -771,11 +829,15 @@ test("advisory guard never blocks bash, leaves local git alone, and steers once 
   registerGuard(a.pi, f.client);
   for (const id of ["one", "two"]) {
     assert.deepEqual(
-      await a.fire("tool_call", {
-        toolName: "bash",
-        toolCallId: id,
-        input: { command: "gh list secret-argument" },
-      }),
+      await a.fire(
+        "tool_call",
+        {
+          toolName: "bash",
+          toolCallId: id,
+          input: { command: "gh list secret-argument" },
+        },
+        ui,
+      ),
       [undefined],
     );
     await a.fire("tool_result", {
@@ -788,14 +850,25 @@ test("advisory guard never blocks bash, leaves local git alone, and steers once 
   assert.match(a.messages[0].content, /github.list_reads/);
   assert.doesNotMatch(
     JSON.stringify(a.messages),
-    /list_writes|secret-argument/,
+    /list_writes|secret-argument|git\.list_reads/,
   );
   assert.match(a.messages[0].content, /BEGIN UNTRUSTED/);
+  assert.match(a.messages[0].content, /GitHub API operations instead of gh/);
+  assert.equal(a.messages[0].content.match(/github\.list_/g)?.length, 3);
+  assert.equal(notifications.length, 2);
+  assert.match(
+    JSON.stringify(notifications),
+    /GitHub API operations instead of gh/,
+  );
+  assert.doesNotMatch(
+    JSON.stringify(notifications),
+    /secret-argument|remote-git/,
+  );
   await a.fire("turn_start", {});
   await a.fire("tool_call", {
     toolName: "bash",
     toolCallId: "three",
-    input: { command: "git push" },
+    input: { command: "gh pr list" },
   });
   await a.fire("tool_result", { toolName: "bash", toolCallId: "three" });
   assert.equal(a.messages.length, 2);

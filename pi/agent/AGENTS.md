@@ -39,7 +39,8 @@
 
 ## Tools and External Access
 
-- Use MCP Gateway (`mcp_search`, `mcp_describe`, `mcp_call`) for authenticated external systems, including remote Git/GitHub operations. Prefer local tools for local work; do not obtain external access through local secrets or ad hoc authenticated CLIs.
+- Prefer ordinary native `git` for clone, fetch, pull, push and remote queries. Use MCP Gateway (`mcp_search`, `mcp_describe`, `mcp_call`) for GitHub API operations and other authenticated services, not direct `gh`. Prefer local tools for local work.
+- In the configured runtime, HTTP(S) and Git traffic is routed through the agent gateway, which applies access policy and injects credentials for configured destinations. Use ordinary URLs and native Git; do not locate, extract or manually supply credentials. Authentication is not user authorization. Diagnose access failures rather than bypassing the gateway or changing authentication.
 - Reconcile dispatched operations and their effects after a failure. A verified failed read is distinct from an uncertain mutation: where existing authority and the active tool contract permit, make a bounded, purposeful fresh read to establish current state. Do not blindly replay failed scripts or uncertain writes, automatically bypass access denial, or seek new grants as a recovery tactic. If effect classification, identity, access, or remaining allowance is unresolved, stop the affected operation with that evidence.
 - Explicit user authorization permits direct MCP Gateway administrative API access. Obtain separate consent for the exact mutations before executing them.
 - For linked Git worktree management, load the `herdr` skill and use `herdr worktree`, not bare `git worktree` or generic workspace commands.

@@ -11,7 +11,7 @@ Use the saved `review` workflow as the review engine. Launch it asynchronously w
 
 1. Resolve the target as `working-tree`, `branch`, `commit-range`, `pull-request`, `document`, or `other`. Default an unqualified Git-workspace request to the current working tree. Ask only when materially different targets remain plausible after inspection.
 2. Derive the objective, acceptance criteria, delivery boundary, and evidence requirements from the user request, ticket, repository instructions, and task context. Do not invent requirements or exemptions. Declare which boundaries require each qualification.
-3. Collect changed files using local Git for local targets or gateway-backed GitHub for remote PRs, not direct `gh` or remote Git commands.
+3. Collect changed files using native Git for repository targets or MCP Gateway GitHub APIs for remote PR metadata, not direct `gh`. Use native Git for any needed clone, fetch or remote queries under the configured runtime's access policy; do not locate or manually supply credentials. Read-only review does not authorize publication or destructive operations.
 4. Create a temporary patch or review artifact outside the workspace. Code-change review requires a patch/diff artifact unless impossible; record absence as a known gap.
 5. Include specific readable instruction files, specifications, plans, and ticket evidence as context. List current files separately; record deleted or unreadable artifacts as gaps.
 

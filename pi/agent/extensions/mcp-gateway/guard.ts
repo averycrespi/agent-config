@@ -6,11 +6,7 @@ import { wrapUntrustedContent } from "../_shared/untrusted.ts";
 
 const ASSIGNMENT = String.raw`(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*`;
 const PREFIX = String.raw`^\s*${ASSIGNMENT}(?:command\s+|builtin\s+)?(?:env\s+${ASSIGNMENT})?(?:\S+/)?`;
-const GIT_FLAGS = String.raw`(?:-[CcP](?:\s+\S+)?|--[a-z][a-z0-9-]*(?:=\S+)?)`;
 const GH = new RegExp(`${PREFIX}gh(?=\\s|$)`);
-const GIT = new RegExp(
-  `${PREFIX}git(?:\\s+${GIT_FLAGS})*\\s+(push|pull|fetch|ls-remote|remote)\\b`,
-);
 
 export function matchCommand(
   command: string,
@@ -19,18 +15,6 @@ export function matchCommand(
     .replace(/'[^']*'|"[^"]*"/g, "")
     .split(/&&|\|\||;|\||\n/g)) {
     if (GH.test(segment)) return { namespace: "github", query: segment };
-    const git = GIT.exec(segment);
-    if (git) {
-      if (git[1] === "remote") {
-        const args = segment.slice(git[0].length).trim();
-        if (
-          !/^(update|prune|show)\b/.test(args) ||
-          /(?:^|\s)-n(?:\s|$)/.test(args)
-        )
-          continue;
-      }
-      return { namespace: "git", query: segment };
-    }
   }
   return undefined;
 }
@@ -56,7 +40,7 @@ export function registerGuard(pi: ExtensionAPI, client: GatewayClient): void {
     pending.set(event.toolCallId, match);
     if (ctx.hasUI)
       ctx.ui.notify(
-        "Prefer MCP Gateway tools for authenticated gh/remote-git work; bash is not blocked.",
+        "Prefer MCP Gateway tools for GitHub API operations instead of gh; bash is not blocked.",
         "info",
       );
     return undefined;
@@ -77,7 +61,7 @@ export function registerGuard(pi: ExtensionAPI, client: GatewayClient): void {
         customType: "gateway-guard",
         display: false,
         content: [
-          "Prefer MCP Gateway tools for authenticated external operations. Use mcp_search to find a tool and mcp_describe for its schema, then mcp_call.",
+          "Prefer MCP Gateway tools for GitHub API operations instead of gh. Use mcp_search to find a tool and mcp_describe for its schema, then mcp_call.",
           ...(names.length
             ? [
                 wrapUntrustedContent(

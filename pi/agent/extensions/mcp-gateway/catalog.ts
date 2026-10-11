@@ -56,7 +56,7 @@ export function buildGatewayPrompt(
       ? [`${entries.length - 24} additional namespaces omitted.`]
       : []),
     "Use mcp_search when the exact tool name is unknown, mcp_describe to obtain its schema before invocation, and mcp_call to invoke. Reuse already inspected names and schemas in the current context unless errors or evidence indicate they changed; host-side admission checks still apply. Search returns at most 50 matches; narrow the query for omitted matches.",
-    "Prefer gateway tools over direct gh or remote-git commands for authenticated external access.",
+    "Use native git for Git transport; prefer MCP Gateway tools over direct gh for GitHub API operations and use MCP Gateway for other authenticated services.",
     "Never automatically repeat a call after cancellation, timeout, or an unknown outcome; downstream effects may have occurred.",
     ...(readOnly
       ? [
