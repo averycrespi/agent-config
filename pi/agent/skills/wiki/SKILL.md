@@ -9,7 +9,7 @@ Maintain a persistent, compounding markdown wiki from immutable source documents
 
 ## Activation checks
 
-Default to `/Users/avery/work/agent-wiki` as the personal wiki vault unless the user explicitly names another vault. Do not infer a wiki from the current workspace. Before reading or editing a wiki, verify that the target vault directory exists; if it does not exist, stop and report the missing path instead of creating a replacement or falling back elsewhere.
+Default to `/home/agent/work/agent-wiki` as the personal wiki vault unless the user explicitly names another vault. Do not infer a wiki from the current workspace. Before reading or editing a wiki, verify that the target vault directory exists; if it does not exist, stop and report the missing path instead of creating a replacement or falling back elsewhere.
 
 After verifying the vault exists, read the local vault schema in this order:
 
@@ -36,7 +36,7 @@ Authorized wiki writes include automatic checkpoints as an explicit exception to
 - Commit after applying accepted lint recommendations.
 - Do not commit for read-only queries unless the answer is filed back into the wiki.
 - Before committing, run `git status -sb`, inspect the changed files, and stage only files that belong to the wiki operation.
-- Run the target vault's documented deterministic checks before committing. For `/Users/avery/work/agent-wiki`, run `npm run lint` from the vault root.
+- Run the target vault's documented deterministic checks before committing. For `/home/agent/work/agent-wiki`, run `npm run lint` from the vault root.
 - If a pre-commit hook fails, fix the reported issue and retry the commit; never bypass the hook.
 - Include raw source files or assets only when they were intentionally added for the operation.
 - Never commit secrets, credentials, `.env` files, transient app state, or unrelated user changes.
