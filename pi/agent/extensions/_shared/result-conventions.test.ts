@@ -71,10 +71,7 @@ test("field colors remain independent of lifecycle, telemetry and body", () => {
     render("script-trace", true),
     /<muted>succeeded<\/muted><dim> · <\/dim><muted>12ms<\/muted>/,
   );
-  assert.match(
-    render("mailbox-message", true),
-    /<muted>  untrusted message:<\/muted>/,
-  );
+  assert.match(render("mailbox-message", true), /<muted>  message:<\/muted>/);
   assert.match(render("mcp-silent", true), /<text>    "value":/);
   for (const fixture of fixtures)
     assert.doesNotMatch(

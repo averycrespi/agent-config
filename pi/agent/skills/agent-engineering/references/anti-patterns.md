@@ -74,7 +74,7 @@ This document is for _debugging an existing harness_. If a harness is misbehavin
 
 **Why it fails**: Verifier finds new issues with each iteration; perfectionism prevents termination.
 
-**Instead**: Use an explicit fix phase with a hard cap (2 rounds by default). After cap, surface remaining issues as known issues in the report. Always emit a final report. Sticky completion: once a phase reaches `done`, no edge out.
+**Instead**: Use bounded fix batches as soft progress checkpoints within the task's hard envelope. Continue justified repairs under existing authority; stop an unproductive approach rather than asking for routine permission. Explicit user caps and actual runtime/spending limits remain binding. Reuse completed qualification for unchanged relevant state, but do not let a local `done` label terminate an unfinished user objective. Report unresolved issues honestly at a genuine stopping boundary.
 
 **Citation**: `klaudworks/ralph-meets-rex` ships the loopback design with explicit warnings and a `HUMAN_INTERVENTION_REQUIRED` escape hatch.
 

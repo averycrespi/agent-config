@@ -5,6 +5,68 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 // Written-contract regressions only; decision scenarios require model exercises.
+test("cleanup discards scratch without losing protected work or unresolved effects", async () => {
+  const global = await read("../../AGENTS.md");
+  const cleanup = await read("./references/settlement.md");
+  const recovery = await read("./references/recovery.md");
+  assert.match(
+    global,
+    /explicit workspace cleanup includes that scratch state/,
+  );
+  assert.match(cleanup, /no blanket archive or checksum manifest is required/);
+  assert.match(cleanup, /unique implementation\/user work/);
+  assert.match(cleanup, /evidence needed to reconcile unresolved operations/);
+  assert.match(cleanup, /verify the copy before removal/);
+  assert.match(cleanup, /reconcile pending effects/);
+  assert.match(recovery, /discard task-owned scratch by default/);
+  assert.doesNotMatch(
+    cleanup,
+    /persist until their deletion is separately authorized/,
+  );
+});
+
+test("soft checkpoints and evaluator failure do not create routine permission gates", async () => {
+  const global = await read("../../AGENTS.md");
+  const publication = await read("./references/publication.md");
+  const ticket = await read("./SKILL.md");
+  assert.match(global, /Continue toward the requested outcome/);
+  assert.match(
+    global,
+    /do not invent extra hard caps in delegated assignments/,
+  );
+  assert.match(
+    global,
+    /Routine failures, safe retries and observation-window expiry are not permission boundaries/,
+  );
+  assert.match(publication, /Inside this evaluator, never retry calls/);
+  assert.match(
+    publication,
+    /owning agent may diagnose the failure and make a safe, reconciled fresh read/,
+  );
+  assert.match(
+    ticket,
+    /agent resumes an interrupted repair or records a justified soft monitoring addition/,
+  );
+  assert.doesNotMatch(ticket, /user adds monitoring allowance/);
+});
+
+test("unanswered decisions resurface conversationally without mandatory task machinery", async () => {
+  const global = await read("../../AGENTS.md");
+  const supervision = await read("../supervise/SKILL.md");
+  assert.match(
+    global,
+    /next sensible decision point, meaningful progress update or handoff/,
+  );
+  assert.match(global, /No mandatory TODO entry, question ledger or new UI/);
+  assert.match(
+    global,
+    /Stop resurfacing answered, withdrawn or superseded questions/,
+  );
+  assert.match(
+    supervision,
+    /do not repeat it on every healthy wake or require a TODO\/question ledger/,
+  );
+});
 test("outcome authority includes prerequisite fixes without expanding consequential boundaries", async () => {
   const global = await read("../../AGENTS.md");
   const ticket = await read("./SKILL.md");

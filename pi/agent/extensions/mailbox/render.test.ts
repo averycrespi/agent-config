@@ -29,7 +29,7 @@ const result = (value: unknown) => ({
   content: [
     {
       type: "text" as const,
-      text: wrapUntrustedContent("MAILBOX RESULT", JSON.stringify(value)),
+      text: JSON.stringify(value),
     },
   ],
   details: {},
@@ -58,13 +58,14 @@ test("stable call header hides body, cursor and IDs and reuses its component", (
     c,
   );
 });
-test("send summarizes persistence, expanded metadata and untrusted preview", () => {
+test("send summarizes persistence, expanded metadata and message preview", () => {
   assert.equal(render("send", sent), "sent 1 message");
   const expanded = render("send", sent, true);
   assert.match(expanded, /Persisted, not consumed, accepted or completed/);
   assert.match(expanded, /1970-01-01T00:00:00.000Z/);
   assert.match(expanded, new RegExp(`ID: ${id}`));
-  assert.match(expanded, /untrusted message:\nbody only/);
+  assert.match(expanded, /message:\nbody only/);
+  assert.doesNotMatch(expanded, /untrusted message/);
   assert.doesNotMatch(render("send", sent), /body only|12345678/);
 });
 test("list distinguishes page size, current pending count and scan completion", () => {
@@ -93,7 +94,7 @@ test("list distinguishes page size, current pending count and scan completion", 
     expanded,
     /Shown counts this page; unacked counts the current inbox/,
   );
-  assert.match(expanded, /untrusted message:\nbody only/);
+  assert.match(expanded, /message:\nbody only/);
   assert.match(expanded, new RegExp(id));
   assert.doesNotMatch(expanded, /OPAQUE/);
 });
@@ -207,7 +208,6 @@ test("malformed, missing and mismatched results cannot render success", () => {
   }
   for (const text of [
     "not json",
-    JSON.stringify(sent),
     wrapUntrustedContent("OTHER", JSON.stringify(sent)),
     "x".repeat(25000),
   ]) {
@@ -219,6 +219,19 @@ test("malformed, missing and mismatched results cannot render success", () => {
     );
     assert.match(c.render(100)[0], /^failed:/);
   }
+});
+test("historical framed results remain readable without rewriting history", () => {
+  const text = wrapUntrustedContent("MAILBOX RESULT", JSON.stringify(sent));
+  const response = { content: [{ type: "text" as const, text }], details: {} };
+  const before = JSON.stringify(response);
+  const component = renderMailboxResult(
+    response,
+    { expanded: true, isPartial: false },
+    theme,
+    context(args("send")),
+  );
+  assert.match(component.render(400).join("\n"), /^sent 1 message/);
+  assert.equal(JSON.stringify(response), before);
 });
 test("hostile controls are sanitized, previews bounded and expanded bodies wrap", () => {
   const hostile = "\x1b[2J\x1b]0;title\x07hello\nworld\r\t\u009b\u202e";

@@ -13,7 +13,7 @@ function field(value: unknown, key: string): unknown {
   return Object.getOwnPropertyDescriptor(value, key)?.value;
 }
 
-/** Display only: retain original untrusted model content; never ACK on rendering. */
+/** Display only: retain original model content; never ACK on rendering. */
 export const mailboxNotification: MessageRenderer = (
   message,
   { expanded },
