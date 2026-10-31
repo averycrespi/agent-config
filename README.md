@@ -131,10 +131,6 @@ make test            # run repository tests
 
 GitHub Actions runs these checks for pull requests and pushes to `main`. Documentation-only changes need formatting and affected path, link, example and claim checks; runtime changes require the full checks above.
 
-## Notes
-
-[Public notes](notes/) discuss agent harness design, permissions, delegation and related trade-offs.
-
 ## License
 
 - Repository licensed under [MIT](LICENSE)

@@ -47,7 +47,6 @@ make test               # run extension, saved-workflow, saved-Script and skill 
 - Keep saved-workflow tests beside their `*.js` definitions in `pi/agent/workflows/`; load the actual definition through the generic runtime in `pi/agent/extensions/workflows/`. Apply the same convention to saved Scripts in `pi/agent/scripts/` using the generic Script runtime. Keep lint, typecheck, test, and lint-staged globs covering both directories.
 - Run focused tests during development with `npx tsx --test pi/agent/extensions/<name>/*.test.ts` or `npx tsx --test pi/agent/workflows/<name>.test.ts`; these do not replace required full checks for code changes.
 
-## Skills and Notes
+## Skills
 
 - Name workflow skills with verb-object names when natural or concise task names; name reference skills with nouns. Use `create-skill` when authoring skills.
-- Write `notes/` as concise, opinionated, evidence-backed essays: one H1, no frontmatter, a clear opening thesis, short H2 sections, and concrete examples. Include a steelman or caveats when relevant; end with `## References` containing links and short descriptions, using relative links for other notes.
