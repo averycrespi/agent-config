@@ -14,7 +14,10 @@ test("stack uses separate automatic messaging without role or observer setup", a
     /Answers and recovery never reset child usage or hard deadlines/,
   );
   assert.match(launch, /healthy automatic Mailbox listening in both sessions/);
-  assert.match(decisions, /messages in both directions/);
+  assert.match(
+    decisions,
+    /follow-up instructions between local agents, including peers/,
+  );
   assert.match(decisions, /full session UUID/);
   assert.match(decisions, /same-ID redelivery against prior application/);
   assert.doesNotMatch(

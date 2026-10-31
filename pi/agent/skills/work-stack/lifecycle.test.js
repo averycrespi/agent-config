@@ -29,7 +29,7 @@ const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 // These ordinary disposable repositories use separate Git directories, not real
 // linked worktrees. Remote surfaces and Herdr removal are explicit fixture I/O.
-test("serial cleanup retains verified archives, merge evidence and pending effects across interruptions", async (t) => {
+test("explicit artifact retention survives serial cleanup and interrupted effects", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "stack-cleanup-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const retained = [];
@@ -62,7 +62,7 @@ test("serial cleanup retains verified archives, merge evidence and pending effec
       patch: {
         scope: `Fixture ticket ${ticketId} delivered at ${head}`,
         authorization:
-          "Synthetic explicit settlement and non-force removal authority; no branch deletion",
+          "Synthetic explicit settlement and non-force removal authority; explicitly retain original handoff, legacy record and review artifacts with verified manifests; no branch deletion",
         plan: "Archive; confirm merge and settlement; removal intent; release; remove; confirm",
         next: {
           actor: "fixture",

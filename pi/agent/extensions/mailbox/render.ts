@@ -49,14 +49,17 @@ function message(value: unknown): value is Message {
   );
 }
 
-// Read only the exact existing direct-tool frame. Never reinterpret report bodies.
+// Read current JSON or the historical direct-tool frame, never report-body prose.
 function payload(result: AgentToolResult<unknown>): Record<string, unknown> {
   const text = getResultText(result);
   if (text.length > 24000) return {};
   const frame = wrapUntrustedContent("MAILBOX RESULT", "\0").split("\0");
-  if (!text.startsWith(frame[0]) || !text.endsWith(frame[1])) return {};
+  const json =
+    text.startsWith(frame[0]) && text.endsWith(frame[1])
+      ? text.slice(frame[0].length, -frame[1].length)
+      : text;
   try {
-    return record(JSON.parse(text.slice(frame[0].length, -frame[1].length)));
+    return record(JSON.parse(json));
   } catch {
     return {};
   }
@@ -172,7 +175,7 @@ export function renderMailboxResult(
       ].join(theme.fg("dim", " · ")),
     );
     lines.push(theme.fg("muted", "  ID: ") + theme.fg("text", m.id));
-    lines.push(theme.fg("muted", "  untrusted message:"));
+    lines.push(theme.fg("muted", "  message:"));
     lines.push(
       ...displayBody(m.message.slice(0, previewLimit)).map((row) =>
         theme.fg("text", row),
