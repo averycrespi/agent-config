@@ -17,5 +17,10 @@
   "statusLine": {
     "type": "command",
     "command": "bash \"$HOME/.claude/scripts/statusline.sh\""
+  },
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "autoCompactWindow": 400000
+    }
   }
 }
