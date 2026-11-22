@@ -478,7 +478,14 @@ test("Node permission boundary denies ambient access even outside VM", async (t)
   });
   const r = await f.run("return null;");
   assert.equal(r.status, "success");
-  assert.deepEqual(JSON.parse(r.json!), {
+  const evidence = JSON.parse(r.json!);
+  // macOS adds __CF_USER_TEXT_ENCODING to every process, even one spawned
+  // with an empty environment; it is a non-secret text-encoding hint.
+  if (process.platform === "darwin")
+    evidence.env = evidence.env.filter(
+      (key: string) => key !== "__CF_USER_TEXT_ENCODING",
+    );
+  assert.deepEqual(evidence, {
     env: [],
     denied: ["read", "write", "spawn", "worker", "network"],
   });

@@ -18,6 +18,22 @@ import {
   parseGitHubUrl,
 } from "./github.ts";
 
+// Process startup can take well over 100ms on macOS, so tests wait for the
+// descendant to record its PID instead of assuming it started in time.
+async function waitForFile(path: string, timeoutMs = 5_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await readFile(path, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (Date.now() > deadline)
+        throw new Error(`Timed out waiting for ${path}`);
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+}
+
 function assertProcessStopped(pid: number): void {
   try {
     process.kill(pid, 0);
@@ -224,20 +240,22 @@ test("Git command timeout terminates descendants without waiting for their pipes
   await writeFile(
     command,
     `#!/bin/sh
-sh -c 'trap "" TERM; echo $$ > "$1"; sleep 2' sh '${childPidFile}' &
+sh -c 'trap "" TERM; echo $$ > "$1"; sleep 10' sh '${childPidFile}' &
 wait
 `,
   );
   await chmod(command, 0o700);
 
+  // The timeout must exceed descendant startup so the PID is recorded before
+  // the kill; the elapsed bound stays far below the descendant's 10s sleep.
   const startedAt = Date.now();
   try {
-    await assert.rejects(() => _exec(command, [], { timeout: 100 }));
+    await assert.rejects(() => _exec(command, [], { timeout: 1_500 }));
     assert.ok(
-      Date.now() - startedAt < 1_000,
+      Date.now() - startedAt < 5_000,
       "timeout waited for an orphaned descendant to close its inherited pipes",
     );
-    const childPid = Number.parseInt(await readFile(childPidFile, "utf8"), 10);
+    const childPid = Number.parseInt(await waitForFile(childPidFile, 0), 10);
     assertProcessStopped(childPid);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -252,25 +270,26 @@ test("Git command cancellation terminates descendants", async () => {
   await writeFile(
     command,
     `#!/bin/sh
-sh -c 'trap "" TERM; echo $$ > "$1"; sleep 2' sh '${childPidFile}' &
+sh -c 'trap "" TERM; echo $$ > "$1"; sleep 10' sh '${childPidFile}' &
 wait
 `,
   );
   await chmod(command, 0o700);
   const controller = new AbortController();
-  const startedAt = Date.now();
-  const abortHandle = setTimeout(() => controller.abort(), 100);
+  let abortedAt = 0;
 
   try {
-    await assert.rejects(
-      () => _exec(command, [], { signal: controller.signal }),
-      { name: "AbortError" },
-    );
-    assert.ok(Date.now() - startedAt < 1_000);
-    const childPid = Number.parseInt(await readFile(childPidFile, "utf8"), 10);
+    const run = _exec(command, [], { signal: controller.signal });
+    // Avoid an unhandled rejection if waiting for the PID fails first.
+    run.catch(() => {});
+    const childPid = Number.parseInt(await waitForFile(childPidFile), 10);
+    abortedAt = Date.now();
+    controller.abort();
+    await assert.rejects(() => run, { name: "AbortError" });
+    assert.ok(Date.now() - abortedAt < 1_000);
     assertProcessStopped(childPid);
   } finally {
-    clearTimeout(abortHandle);
+    controller.abort();
     await rm(root, { recursive: true, force: true });
   }
 });
