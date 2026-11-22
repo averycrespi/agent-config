@@ -1,4 +1,4 @@
-.PHONY: install-dev install-playwright stow-pi unstow-pi typecheck test
+.PHONY: install-dev install-playwright stow-pi unstow-pi stow-claude unstow-claude typecheck test
 
 install-dev:
 	npm install
@@ -17,6 +17,13 @@ stow-pi:
 
 unstow-pi:
 	stow -D -d pi -t ~/.pi/agent agent
+
+stow-claude:
+	mkdir -p ~/.claude
+	stow --no-folding -d . -t ~/.claude claude
+
+unstow-claude:
+	stow -D --no-folding -d . -t ~/.claude claude
 
 typecheck:
 	npm run typecheck

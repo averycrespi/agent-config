@@ -12,6 +12,7 @@ This is not a standalone agent. **Install Pi separately.** [GNU Stow](https://ww
 - [Working with the agent](#working-with-the-agent)
 - [Delegation and automation](#delegation-and-automation)
 - [Optional integrations](#optional-integrations)
+- [Claude Code](#claude-code)
 - [Developing this repository](#developing-this-repository)
 
 ## What's included
@@ -117,6 +118,10 @@ The companion [agent-tools](https://github.com/averycrespi/agent-tools) reposito
 In the configured runtime, HTTP(S) and Git traffic is routed through the agent gateway, which applies access policy and injects credentials for configured destinations. Use ordinary URLs and native Git for repository transport; use MCP Gateway for GitHub API operations and other authenticated services, not direct `gh`. Do not locate or manually supply credentials, bypass the gateway or change authentication to resolve access failures. Authentication does not authorize actions such as publication.
 
 Gateway permissions govern service access, not shell isolation. Pi tools and extensions run with the Pi process's permissions; use an outer isolation layer when needed. The companion repository also provides a sandbox manager (`sb`).
+
+## Claude Code
+
+A separate, smaller [Claude Code configuration](claude/README.md) links into `~/.claude/` with `make stow-claude`. It provides global instructions and skills for one coordinator session that delegates work to child Claude sessions, each in its own Herdr worktree, and passes their questions and approvals up to you. Install Claude Code separately; credentials and machine-specific settings stay local.
 
 ## Developing this repository
 

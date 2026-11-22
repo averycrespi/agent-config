@@ -50,6 +50,7 @@
       "prettier --write"
     ],
     "*.{js,json,md,yml,yaml}": "prettier --write",
-    "pi/**/*.{json,md,yml,yaml}": "prettier --write"
+    "pi/**/*.{json,md,yml,yaml}": "prettier --write",
+    "claude/**/*.{json,md,yml,yaml}": "prettier --write"
   }
 }

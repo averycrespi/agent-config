@@ -4,3 +4,5 @@ pi/agent/settings.json
 pi/agent/mailboxes/
 pi/agent/extensions/herdr-agent-state.ts
 node_modules/
+claude/settings.local.json
+claude/skills/synced/
