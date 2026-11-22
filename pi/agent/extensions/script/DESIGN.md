@@ -27,7 +27,7 @@ Providers retain domain-specific permission, admission, redaction and transport 
 
 ## Saved admission
 
-Named runs and validation resolve only the configured user store, never a caller path. A store-root symlink supports Stow, but candidate files use no-follow/nonblocking opens, regular-file checks, descriptor-path containment and bounded reads. File edits are observed on the next invocation. Inventory bounds source, candidate count and serialized output; invalid candidates are evidence, not silently skipped valid definitions.
+Named runs and validation resolve only the configured user store, never a caller path. A store-root symlink supports Stow, but candidate files use no-follow/nonblocking opens, regular-file checks, opened-file containment (descriptor path on Linux, resolved path plus file identity elsewhere; see `_shared/opened-file.ts`) and bounded reads. File edits are observed on the next invocation. Inventory bounds source, candidate count and serialized output; invalid candidates are evidence, not silently skipped valid definitions.
 
 The parser permits one literal metadata declaration and one exported async `run()` declaration. It extracts literal data without evaluation and compiles syntax without running it. Strict Ajv object schemas reject unsupported/async/external contracts. The argument snapshot is descriptor-based strict JSON before asynchronous admission, preserving prototype keys as data. The existing prepared executor pins selected registrations, effective minimum limits, source, context and deadline. Definition identity is retained separately from result JSON and never grants providers. Source/digest/validated args are resolved once, not reread by the background callback.
 

@@ -1,20 +1,17 @@
 import { constants } from "node:fs";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
-import { join, resolve, relative, isAbsolute } from "node:path";
+import { join, resolve } from "node:path";
 import {
   parseDefinition,
   SAVED_NAME,
   MAX_DEFINITION_BYTES,
 } from "./definition.ts";
+import { openedFileWithin } from "../_shared/opened-file.ts";
 
 const MAX_ENTRIES = 200;
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAX_TEXT_BYTES = 24000;
 export const _storeHooks = { beforeOpen: async (_path: string) => {} };
-const contained = (root: string, path: string) => {
-  const part = relative(root, path);
-  return part !== ".." && !part.startsWith("../") && !isAbsolute(part);
-};
 async function rootPath(directory: string) {
   try {
     const root = await realpath(resolve(directory));
@@ -35,16 +32,7 @@ async function readDefinition(root: string, filename: string) {
       path,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     );
-    let actual: string | undefined;
-    for (const prefix of ["/proc/self/fd", "/dev/fd"]) {
-      try {
-        actual = await realpath(join(prefix, String(handle.fd)));
-        break;
-      } catch {
-        /* Try the platform's other descriptor path. */
-      }
-    }
-    if (!actual || !contained(root, actual))
+    if (!(await openedFileWithin(root, path, handle)))
       throw new Error("unsafe_script_path");
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error("nonregular_definition");

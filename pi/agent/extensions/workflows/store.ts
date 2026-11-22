@@ -2,6 +2,7 @@ import { constants, type Dirent } from "node:fs";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { stripVTControlCharacters } from "node:util";
+import { openedFileWithin } from "../_shared/opened-file.ts";
 import { parseWorkflowScript } from "./parser.ts";
 import type { ParsedWorkflow } from "./types.ts";
 
@@ -85,18 +86,6 @@ function contained(root: string, path: string): boolean {
   );
 }
 
-async function openedPath(fd: number): Promise<string> {
-  let lastError: unknown;
-  for (const path of [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]) {
-    try {
-      return await realpath(path);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError ?? new Error("Unable to verify opened workflow path.");
-}
-
 async function readCandidate(
   root: string,
   filename: string,
@@ -113,8 +102,7 @@ async function readCandidate(
         (constants.O_NONBLOCK ?? 0),
     );
     try {
-      const actualPath = await openedPath(handle.fd);
-      if (!contained(root, actualPath))
+      if (!(await openedFileWithin(root, path, handle)))
         return { diagnostic: "Workflow path escapes the configured store." };
       const info = await handle.stat();
       if (!info.isFile())

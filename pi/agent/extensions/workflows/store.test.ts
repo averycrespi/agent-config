@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -17,8 +25,10 @@ const script = (name: string, description = "desc") =>
   `export const meta = { name: ${JSON.stringify(name)}, description: ${JSON.stringify(description)} };\nexport async function run() { return agent("read"); }`;
 
 async function fixture(t: test.TestContext): Promise<string> {
+  // Resolve tmpdir so expected paths match the store's resolved paths on
+  // platforms where it is a symlink (macOS: /var -> /private/var).
   const dir = join(
-    tmpdir(),
+    await realpath(tmpdir()),
     `workflow-store-${process.pid}-${Date.now()}-${Math.random()}`,
   );
   await mkdir(dir, { recursive: true });
