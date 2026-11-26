@@ -22,5 +22,6 @@
     "claude-opus-5-5": {
       "autoCompactWindow": 400000
     }
-  }
+  },
+  "theme": "dark"
 }
