@@ -12,6 +12,7 @@ GNU Stow links this directory's contents into `~/.claude/`. It supplies global i
 | [skills/herdr](skills/herdr/SKILL.md)                    | Control Herdr panes, tabs, workspaces, agents, and Git worktrees (adapted from upstream)                                                          |
 | [skills/coordinate](skills/coordinate/SKILL.md)          | Run this session as the coordinator: delegate, stay unblocked, surface child needs                                                                |
 | [skills/spawn-agent](skills/spawn-agent/SKILL.md)        | Start a child Claude session in a new Herdr worktree with a written brief                                                                         |
+| [skills/wiki](skills/wiki/SKILL.md)                      | Maintain the personal markdown wiki at `~/work/agent-wiki`: ingest, query, file analyses, lint                                                    |
 | [settings.json](settings.json)                           | Shared settings: registers the Herdr session hook and the status line                                                                             |
 | [scripts/statusline.sh](scripts/statusline.sh)           | Status line: working dir, git branch with `+` staged, `!` modified, `?` untracked, `↑`/`↓` ahead/behind, and session (five-hour) and weekly usage |
 | [hooks/herdr-agent-state.sh](hooks/herdr-agent-state.sh) | Herdr's generated Claude integration hook, committed unchanged ([attribution](hooks/ATTRIBUTION))                                                 |

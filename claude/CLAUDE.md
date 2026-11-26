@@ -12,3 +12,7 @@
 
 - Load the `herdr` skill for Herdr control and for any Git worktree management. Use `herdr worktree`, not bare `git worktree`.
 - To delegate work to other Claude sessions, use the `coordinate` and `spawn-agent` skills. Each child gets its own worktree; never write in another session's worktree.
+
+## Wiki
+
+- My agent wiki lives at `~/work/agent-wiki`. Load the `wiki` skill to ingest sources into it, query it, file analyses, or lint it.
