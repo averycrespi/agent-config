@@ -26,7 +26,7 @@ The retained Background names identify **historical observations only**, not rec
 
 ## Legacy workflow retirement
 
-The `.design` lifecycle and its `architect`, `specify`, `plan`, `advance-plan`, and `create-jira-ticket` skills are retired. Use [direct authorized work or Plane delivery](../../README.md#working-with-the-agent). Existing local design artifacts remain historical context: verify their claims and re-scope unfinished work; never resume removed helpers or delete artifacts to restart delivery.
+The `.design` lifecycle and its `architect`, `specify`, `plan`, `advance-plan`, and `create-jira-ticket` skills are retired. Use [direct authorized work or Plane delivery](../README.md#working-with-the-agent). Existing local design artifacts remain historical context: verify their claims and re-scope unfinished work; never resume removed helpers or delete artifacts to restart delivery.
 
 ## Goal extension retirement
 
