@@ -13,11 +13,10 @@ This public repository manages Pi and Claude Code configuration through GNU Stow
 
 ## README Purpose
 
-- Keep the root `README.md` an orientation and decision guide: explain what this repository is, what it contains and enables, how to install it, and where to learn more. Make clear that Pi is installed separately and personal settings and credentials are not supplied by the repository.
-- Describe components by purpose before introducing tool names. Separate working with the configured agent from developing this repository, and present development activities as optional rather than a mandatory pipeline.
-- Group delegation and automation by the reader's goal: delegate reasoning, continue/watch/schedule work, or compose external tool calls. Preserve material authorization, ownership, and lifecycle boundaries without reproducing detailed execution policies.
-- Keep the full inventory in `pi/README.md` and detailed contracts in the relevant skill and extension documentation. Link to those sources instead of accumulating API details, recovery procedures, or repeated integration setup in the root README.
-- Keep `pi/README.md` a current, linked component catalog and configuration reference. Explain component purpose, primary entry points, and installation versus loading behavior; keep detailed execution contracts in skill/extension docs and integration walkthroughs and migration procedures in `pi/docs/`. Preserve useful incoming section links when reorganizing.
+- Keep the root `README.md` a short, high-level orientation across both agents: what the repository is, what each agent directory provides, shared installation steps, development checks, and where to learn more. Make clear that each agent is installed separately and personal settings and credentials are not supplied by the repository.
+- Keep agent-specific detail out of the root README. Pi setup, usage guidance, delegation and automation choices, and integration setup belong in `pi/README.md`; Claude Code detail belongs in `claude/README.md`. Link to those sources instead.
+- Describe components by purpose before introducing tool names, and present development activities as optional rather than a mandatory pipeline.
+- Keep `pi/README.md` a current, linked setup guide, component catalog and configuration reference. Group delegation and automation by the reader's goal (delegate reasoning, continue/watch work, or compose external tool calls), preserving material authorization, ownership and lifecycle boundaries without reproducing detailed execution policies. Keep detailed execution contracts in skill/extension docs and integration walkthroughs and migration procedures in `pi/docs/`. Preserve useful incoming section links when reorganizing.
 - Keep the linked main-branch CI badge directly beneath the title, and keep installation commands and verification guidance aligned with repository tooling.
 
 ## Authoring Guidance
