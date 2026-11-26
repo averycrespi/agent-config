@@ -9,6 +9,7 @@ import {
   symlink,
   writeFile,
   lstat,
+  realpath,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +25,11 @@ function git(cwd, ...args) {
   }).trim();
 }
 async function fixture(t) {
-  const cwd = await mkdtemp(join(tmpdir(), "ticket-checkpoint-"));
+  // Resolve tmpdir: the CLI reports resolved paths, and macOS tmpdir is a
+  // symlink (/var -> /private/var).
+  const cwd = await realpath(
+    await mkdtemp(join(tmpdir(), "ticket-checkpoint-")),
+  );
   t.after(() => rm(cwd, { recursive: true, force: true }));
   git(cwd, "init", "-q", "--initial-branch=main");
   git(cwd, "config", "user.email", "test@example.com");
