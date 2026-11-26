@@ -6,6 +6,7 @@
 - Commit messages use imperative conventional commits, under 50 characters, with no trailing period, and explain why.
 - Stage files by name. Never commit secrets or unrelated work.
 - Push, open PRs, merge, rewrite history, or run destructive Git commands only with explicit authorization.
+- Use native `git` for clone, fetch, pull and push. Use the `gh` CLI for GitHub API operations such as pull requests and CI status.
 
 ## Herdr and worktrees
 
